@@ -122,7 +122,7 @@ var reads as unset.
 
 | Name | Kind | Value |
 |---|---|---|
-| `GITHUB_TOKEN` | secret | The person's fine-grained PAT (permissions in [worker/AGENTS.md](../worker/AGENTS.md)) |
+| `GITHUB_TOKEN` | secret | The person's PAT: classic with `repo`, or fine-grained (permissions in [worker/AGENTS.md](../worker/AGENTS.md)) |
 | `GITHUB_LOGIN` | var | Their login; unset reads it from the token |
 | `GITHUB_ORGS` | var | Default filter for the app |
 | `PUSH_RELAY_URL` | var | Jai's relay base URL |

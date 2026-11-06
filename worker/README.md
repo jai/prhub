@@ -6,7 +6,7 @@ follow [AGENTS.md](AGENTS.md), the deployment guide.
 ## What it does
 
 - Keeps a copy of your open PRs: the ones waiting on your review, your own, and the ones you reviewed.
-- Checks GitHub every minute with your fine-grained personal access token (PAT). An optional GitHub App sends
+- Checks GitHub every minute with your personal access token (PAT). An optional GitHub App sends
   webhooks, so updates arrive in seconds.
 - Stores each PR's diff in R2 (Cloudflare's object storage) and serves it to the app.
 - Sends your reviews, comments and merges to GitHub as you, with your PAT.

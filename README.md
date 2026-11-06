@@ -17,8 +17,8 @@ on GitHub with your own token. Your coding agent deploys it for you.
 
 - A Cloudflare account with R2 (Cloudflare's object storage) turned on. The free plan is enough. R2 asks for billing
   details when you turn it on, even on the free plan.
-- A GitHub fine-grained personal access token (PAT) for the organization or account whose PRs you review. Your agent
-  tells you which permissions to give it.
+- A GitHub personal access token (PAT, classic) with the `repo` scope and an expiry, such as 90 days. It covers
+  every org you belong to and your own repos.
 - Optional: an Anthropic API key, for key lines, description rewrites and Ask AI. Model calls bill to your key.
 - Optional: a relay key from Jai, for push. With push, the app updates when a PR changes. Without push, the app
   updates when you open it. To get a key, [open an issue](https://github.com/jai/prhub/issues/new).

@@ -12,7 +12,7 @@ Contracts: [docs/api.md](../docs/api.md) (pairing, config, every var and secret)
 ## What you deploy
 
 - One Cloudflare Worker with two Durable Objects (SQLite, free plan), one R2 bucket and a one-minute cron.
-- It reads GitHub with one fine-grained personal access token (PAT). No GitHub App is needed: the cron finds changes
+- It reads GitHub with one personal access token (PAT). No GitHub App is needed: the cron finds changes
   within about a minute. An optional webhook App makes it seconds ("Faster updates", below).
 - Optional: an Anthropic API key, for key lines and description rewrites, and for Ask AI after one more script.
 - Optional: push through Jai's relay, so the phone wakes for changes. Without it the app syncs when it is opened.
@@ -29,23 +29,17 @@ Ask your human for each of these. Never print or commit a secret. Pass secrets i
    - **API token**: My Profile, API Tokens, Create Token, Custom token, scoped to that account, with: Account /
      Workers Scripts / Edit, Account / Workers R2 Storage / Edit, Account / Account Settings / Read. Add Account /
      Workers Tail / Read for `wrangler tail`.
-2. **GitHub fine-grained PAT**: GitHub, Settings, Developer settings, Fine-grained tokens, Generate new token.
-   - **Resource owner**: the org (or the human's own account) whose PRs they review. An org may need to approve it.
-   - **Repository access**: All repositories (or the ones they review in).
-   - **Repository permissions**, the minimum the Worker uses:
-
-     | Permission | Access | Used for |
-     |---|---|---|
-     | Metadata | Read | Required by GitHub for any repository access |
-     | Pull requests | Read and write | The lists, diffs, detail; reviews, line comments, replies, conversation comments, resolving threads, marking files viewed, editing the description and its checkboxes, update branch, removing a review request |
-     | Contents | Read | The changed files around a diff (key lines, rewrites) and Ask AI's checkout. **Read and write** only to merge from the app |
-     | Checks | Read | Check runs on a PR |
-     | Commit statuses | Read | Status contexts, PolicyBot |
-     | Actions | Read | The workflow name of each check |
-
-     Issues is not needed: comments on a PR's conversation go through Pull requests (write).
-   - A fine-grained PAT covers one resource owner. Someone who reviews in several orgs needs a classic PAT with the
-     `repo` scope instead (broader), until the Worker takes more than one token.
+2. **GitHub personal access token (classic), with an expiry**: GitHub, Settings, Developer settings, Personal access
+   tokens, Tokens (classic), Generate new token (classic).
+   - **Expiration**: 30 or 90 days. When it runs out, the human makes a new one and the agent replaces the secret
+     (`wrangler secret put GITHUB_TOKEN`); no redeploy is needed.
+   - **Scope**: `repo`. It covers every org the human belongs to and their own repos, private ones included: the
+     lists, diffs, reviews, comments, statuses and merging.
+   - **Org with SAML single sign-on**: after generating, choose Configure SSO next to the token and Authorize it for
+     that org, or its private repos answer `404`.
+   - A fine-grained token also works, with Repository permissions Pull requests (Read and write), Contents (Read;
+     Read and write to merge), Commit statuses, Actions and Metadata (Read). It covers one resource owner only, and an
+     org may hold it for an owner's approval. Fine-grained tokens have no Checks permission; check runs still read.
 3. **Optional, an Anthropic API key** (console.anthropic.com), for key lines, rewrites and Ask AI. Model calls are
    billed to it; Ask AI caps each PR's session at $2.
 4. **Optional, a relay key from Jai**, for push. The key starts `rks_`; Jai issues one per Worker: ask in an issue on [jai/prhub](https://github.com/jai/prhub/issues/new).
@@ -97,17 +91,16 @@ gh_api "/repos/<owner>/<repo>/pulls/<n>" | jq '{number, state}'
 gh_api "/repos/<owner>/<repo>/commits/$(gh_api /repos/<owner>/<repo>/pulls/<n> | jq -r .head.sha)/check-runs?per_page=1" | jq .total_count
 ```
 
-Expected: the PR, then a number. A `403` or `404` means the token lacks that repo or a permission. Pick a private
-repo if the owner has any: an org can hold a new fine-grained PAT for approval, and until an org owner approves it
-the token reads only public repos. Check that private ones are in reach:
+Expected: the PR, then a number. A `403` or `404` means the token lacks that repo or the `repo` scope. Pick a
+private repo if the org has any, and check that private ones are in reach:
 
 ```sh
 gh_api "/orgs/<owner>/repos?type=private&per_page=1" | jq length
 ```
 
-Expected: `1` when the org has private repos. `0` (or only public repos above) means the token is waiting for
-approval, or the org does not allow fine-grained tokens: an org owner approves it under the org's Settings,
-Personal access tokens, Pending requests (or allows such tokens under Settings there).
+Expected: `1` when the org has private repos. `0` (or only public repos above) means the org uses SAML single
+sign-on and the token is not authorized for it (Configure SSO, Authorize), or, for a fine-grained token, that it was
+made for another resource owner or waits for an org owner's approval.
 
 ### 4. Run setup
 
@@ -183,8 +176,8 @@ vault once, then pass the ids to setup:
 ```
 
 It prints `{"ASK_AGENT_ID": …, "ASK_ENVIRONMENT_ID": …, "ASK_VAULT_ID": …, "ASK_CREDENTIAL_ID": …}`. Export the four,
-and preferably a second fine-grained PAT that is read only (Metadata, Pull requests, Contents, Checks, Commit
-statuses, Actions: all Read) as `ASK_GITHUB_TOKEN`, so the agent never holds the write token. Without it the agent
+and preferably a second, read-only token as `ASK_GITHUB_TOKEN` (a classic token cannot be read only for private
+repos, so this one is fine-grained: Metadata, Pull requests, Contents, Commit statuses, Actions, all Read), so the agent never holds the write token. Without it the agent
 gets `GITHUB_TOKEN`. Run `worker/setup.sh` again.
 
 Check: `/device/config` shows `"ask_ai": true`. Each run of the script creates new resources: run it once.
@@ -225,7 +218,7 @@ Check: `/device/config` shows `"webhooks": true`, and a comment on a PR shows in
 | Step 2: R2 answers `success: false` | R2 is not enabled on the account | Enable R2 in the dashboard once, re-run |
 | `GitHub did not accept GITHUB_TOKEN` | Expired, revoked, or pending org approval | Make a new token, or ask the org owner to approve it |
 | `/prs` stays empty after a few minutes | The token cannot see the repos | Check `/events` for `poll_failed`; widen the token's repository access |
-| Only public repos answer; private ones `404` | The org has not approved the PAT, or does not allow fine-grained PATs | An org owner approves or allows it (step 3); no redeploy needed |
+| Only public repos answer; private ones `404` | The org uses SAML SSO and the token is not authorized for it; or a fine-grained token was made for another owner, or waits for approval | Authorize the token for the org (Configure SSO), or remake it (step 3); no redeploy needed |
 | A write answers `403 Resource not accessible by personal access token` | A permission is missing (merge needs Contents write) | Edit the token's permissions; no redeploy needed |
 | `/device/pair` answers `pairing_code_invalid` | The code is used, expired or mistyped | Mint a new one (step 6) |
 | A paired app gets `401` | Another phone was paired without `--app`, replacing it | Pair it again with `--app "<label>"` |
