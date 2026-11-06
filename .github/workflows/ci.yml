@@ -23,7 +23,7 @@ jobs:
           cache: npm
           cache-dependency-path: worker/package-lock.json
       - run: npm ci
-      - run: node --test test/
+      - run: npm test
       - name: Render the template with placeholder values
         run: |
           sed -e 's/__WORKER_NAME__/pr-review/' \

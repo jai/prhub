@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test test/*.test.ts",
     "pair": "node scripts/pair.mjs",
     "ask-agent": "node --experimental-strip-types scripts/ask-agent.mts"
   },
