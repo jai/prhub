@@ -64,7 +64,7 @@ git clone https://github.com/jai/prhub.git && cd prhub
 (cd worker && npm ci)
 ```
 
-Check: `(cd worker && npm test)` ends with `fail 0`.
+Check: `(cd worker && npm test)` reports `fail 0` in its closing summary.
 
 ### 2. Check the Cloudflare token
 

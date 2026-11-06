@@ -1,5 +1,7 @@
 import { type Env, githubLogin } from "./env.ts";
 import { contextsOf, detailState, jaiReview, mergeOf, postGraphql, verdictOf } from "./github.ts";
+import { peopleOf } from "./policy-github.ts";
+import { PEOPLE_FIELDS, type PeopleDecision, type PeopleNode } from "./policy-people.ts";
 
 /**
  * What a PR's state is, for PRs on none of Jai's lists too: this Worker is the one reader of it, so a list, a thread
@@ -17,9 +19,10 @@ const FRAGMENT = `fragment State on PullRequest {
   viewerLatestReview { state submittedAt }
   viewerLatestReviewRequest { id }
   overall: commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+  ${PEOPLE_FIELDS}
 }`;
 
-type StateNode = Parameters<typeof verdictOf>[0] & Parameters<typeof jaiReview>[0] & {
+type StateNode = Parameters<typeof verdictOf>[0] & Parameters<typeof jaiReview>[0] & PeopleNode & {
   title: string; state: string; isDraft: boolean; mergeable: string; mergeStateStatus: string; createdAt: string;
   author: { login: string; name?: string | null } | null;
   viewerLatestReview: { state: string; submittedAt: string | null } | null;
@@ -41,9 +44,9 @@ export interface PrState {
 }
 
 /** A PR's state in the words Agent Pager keeps. An unsent draft review shows only here: the PRs tab asks for none. */
-export function stateOf(node: StateNode, login: string): PrState {
+export function stateOf(node: StateNode, login: string, people: PeopleDecision | null = null): PrState {
   const state = detailState(node);
-  const { checks, review } = verdictOf(node);
+  const { checks, review } = verdictOf(node, people);
   const mine = jaiReview(node, login);
   const draft = node.viewerLatestReview?.state === "PENDING" ? node.viewerLatestReview : undefined;
   const author = node.author?.login ?? "";
@@ -104,6 +107,7 @@ export interface StatesAnswer {
 /** What one query's answer says of each ref. */
 export function statesFrom(
   answer: GraphqlAnswer, aliases: Map<string, [string, string]>, login: string,
+  people: ReadonlyMap<string, PeopleDecision | null> = new Map(),
 ): StatesAnswer {
   const missing = new Set((answer.errors ?? []).filter((error) => error.type === "NOT_FOUND")
     .map((error) => (error.path ?? []).slice(0, 2).join(".")));
@@ -111,7 +115,7 @@ export function statesFrom(
   for (const [ref, [repo, pull]] of aliases) {
     const node = answer.data?.[repo]?.[pull];
     if (node) {
-      result.states[ref] = stateOf(node, login);
+      result.states[ref] = stateOf(node, login, people.get(ref) ?? null);
     } else if (missing.has(repo) || missing.has(`${repo}.${pull}`)) {
       result.states[ref] = null;
     } else {
@@ -131,7 +135,12 @@ async function ask(refs: string[], env: Env): Promise<StatesAnswer | "refused"> 
   }
   const answer = (await response.json()) as GraphqlAnswer;
   if (answer.data) {
-    return statesFrom(answer, aliases, await githubLogin(env));
+    const people = new Map(await Promise.all([...aliases].map(async ([ref, [repo, pull]]) => {
+      const node = answer.data?.[repo]?.[pull];
+      const decision = node ? await peopleOf(ref.split("#")[0] ?? "", node, env).catch(() => null) : null;
+      return [ref, decision] as const;
+    })));
+    return statesFrom(answer, aliases, await githubLogin(env), people);
   }
   if (answer.errors?.some((error) => error.type === "RATE_LIMITED")) {
     throw new GitHubFailure("HTTP 200 RATE_LIMITED");

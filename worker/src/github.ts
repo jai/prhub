@@ -1,4 +1,6 @@
 import { type Env, githubLogin, isSet } from "./env.ts";
+import { peopleOf } from "./policy-github.ts";
+import { PEOPLE_FIELDS, type PeopleDecision, type PeopleNode } from "./policy-people.ts";
 
 /** `reviewed`: GitHub dropped the request when Jai answered it. The PR stays where it was until it closes. */
 export type ListKind = "review" | "reviewed" | "mine" | "merged";
@@ -141,7 +143,7 @@ interface LatestReview {
   submittedAt: string | null;
 }
 
-interface Node {
+interface Node extends Pick<PeopleNode, "peopleComments" | "committers"> {
   id: string;
   number: number;
   title: string;
@@ -212,6 +214,7 @@ const FIELDS = `fragment Fields on PullRequest {
       comments(first: 30) { nodes { ${COMMENT} } }
     }
   }
+  ${PEOPLE_FIELDS}
 }`;
 
 /** A PR's checks. Inline, not in a fragment: only GitHub knows which are required, and it asks for the PR's number. */
@@ -345,8 +348,12 @@ export function policyOf(contexts: Context[]): Policy | null {
  * GitHub's decision where no PolicyBot answered, and PolicyBot's word for it where one did. A change request is the
  * exception: PolicyBot can pass while GitHub still holds the merge for one.
  */
-export function reviewDecisionOf(policy: Policy | null, decision: string | null): string | null {
-  return decision === "CHANGES_REQUESTED" ? decision : (policy && POLICY_DECISIONS[policy.state]) ?? decision;
+export function reviewDecisionOf(
+  policy: Policy | null, decision: string | null, people: PeopleDecision | null = null,
+): string | null {
+  if (decision === "CHANGES_REQUESTED") return decision;
+  // Where `.policy.yml` could be read, its people decide; PolicyBot's word also carries its conditions (checks).
+  return people ?? (policy && POLICY_DECISIONS[policy.state]) ?? decision;
 }
 
 /**
@@ -430,14 +437,19 @@ export function mergeOf(mergeable: string | null, mergeState: string): string {
 export function verdictOf(
   node: { reviewDecision: string | null; overall: Node["overall"]; commits: { nodes: { commit: {
     statusCheckRollup: { contexts: { nodes: Context[] } } | null } }[] } },
-): { checks: string; review: string; policy: Policy | null; overall: string | null; contexts: Context[] } {
+  people: PeopleDecision | null = null,
+): {
+  checks: string; review: string; decision: string | null; policy: Policy | null; overall: string | null;
+  contexts: Context[];
+} {
   const overall = node.overall.nodes[0]?.commit.statusCheckRollup?.state ?? null;
   const contexts = node.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? [];
   const policy = policyOf(contexts);
+  const decision = reviewDecisionOf(policy, node.reviewDecision, people);
   return {
     checks: CHECKS[requiredChecks(contexts) ?? ""] ?? "none",
-    review: REVIEWS[reviewDecisionOf(policy, node.reviewDecision) ?? ""] ?? "none",
-    policy, overall, contexts,
+    review: REVIEWS[decision ?? ""] ?? "none",
+    decision, policy, overall, contexts,
   };
 }
 
@@ -507,8 +519,10 @@ export function reviewDueAt(requestedAt: string | null, week: ReviewWeek | null)
   return new Date(due - offset).toISOString().replace(".000Z", "Z");
 }
 
-function pullRequest(node: Node, login: string, wasAsked: boolean, week: ReviewWeek | null): PullRequest {
-  const { checks, review, policy, overall, contexts } = verdictOf(node);
+function pullRequest(
+  node: Node, login: string, wasAsked: boolean, week: ReviewWeek | null, people: PeopleDecision | null,
+): PullRequest {
+  const { checks, review, decision, policy, overall, contexts } = verdictOf(node, people);
   const list = listOf(node, login, wasAsked);
   return {
     repo: node.repository.nameWithOwner,
@@ -527,7 +541,7 @@ function pullRequest(node: Node, login: string, wasAsked: boolean, week: ReviewW
       id: node.id, url: node.url, state: detailState(node), head: node.headRefOid, base: node.baseRefName,
       headBranch: node.headRefName,
       author: node.author, isAuthor: node.viewerDidAuthor, body: node.body, additions: node.additions,
-      deletions: node.deletions, changedFiles: node.changedFiles, reviewDecision: node.reviewDecision,
+      deletions: node.deletions, changedFiles: node.changedFiles, reviewDecision: decision,
       mergeState: node.mergeStateStatus, mergeMethod: node.repository.viewerDefaultMergeMethod, policy,
       reviewers: reviewersOf(node),
       viewedFiles: (node.files?.nodes ?? []).filter((file) => file.viewerViewedState === "VIEWED").map((file) => file.path),
@@ -637,9 +651,13 @@ export async function readPullRequests(
     githubLogin(env),
   ]);
   const week = reviewWeek(env);
+  const people = await Promise.all(refs.map((ref, index) => {
+    const node = data[`p${index}`]?.pullRequest;
+    return node ? peopleOf(ref.repo, node, env).catch(() => null) : null;
+  }));
   return new Map(refs.map((ref, index) => {
     const node = data[`p${index}`]?.pullRequest;
-    return [ref.id, node ? pullRequest(node, login, asked.has(ref.id), week) : null];
+    return [ref.id, node ? pullRequest(node, login, asked.has(ref.id), week, people[index] ?? null) : null];
   }));
 }
 
