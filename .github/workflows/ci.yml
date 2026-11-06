@@ -1,0 +1,35 @@
+# Tests the Worker and checks that it bundles, on every pull request and every push to main.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  worker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - name: Render the template with placeholder values
+        run: |
+          sed -e 's/__WORKER_NAME__/pr-review/' \
+              -e 's/__CLOUDFLARE_ACCOUNT_ID__/00000000000000000000000000000000/' \
+              -e 's/__R2_BUCKET__/pr-review-diffs/' \
+              -e 's/__[A-Z0-9_]*__//g' \
+              wrangler.template.jsonc > wrangler.jsonc
+      - name: wrangler deploy --dry-run
+        run: npx --yes wrangler@4 deploy --dry-run --outdir dist --config wrangler.jsonc
