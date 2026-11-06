@@ -29,6 +29,7 @@ export const PEOPLE_FIELDS = `baseRefName title author { login }
   files(first: 100) { nodes { path } }
   labels(first: 20) { nodes { name } }
   latestReviews(first: 50) { nodes { author { login } state submittedAt } }
+  peopleReviews: reviews(last: 100) { nodes { author { login } state submittedAt } }
   peopleComments: comments(last: 100) { nodes { author { login } body createdAt } }
   committers: commits(last: 100) { nodes { commit { committedDate
     author { user { login } } committer { user { login } } } } }`;
@@ -40,6 +41,8 @@ export interface PeopleNode {
   files?: { nodes: { path: string }[] } | null;
   labels?: { nodes: { name: string }[] };
   latestReviews: { nodes: { author: { login: string } | null; state: string; submittedAt: string | null }[] };
+  /** Every review: `latestReviews` leaves out the reader's own, and the Worker reads as Jai. */
+  peopleReviews?: { nodes: { author: { login: string } | null; state: string; submittedAt: string | null }[] };
   peopleComments?: { nodes: { author: { login: string } | null; body: string; createdAt: string }[] };
   committers?: { nodes: { commit: { committedDate: string; author: { user: { login: string } | null } | null;
     committer: { user: { login: string } | null } | null } }[] };
@@ -56,11 +59,25 @@ export function factsOf(node: PeopleNode): PeopleFacts {
     committers: logins(commits.flatMap(({ commit }) => [commit.author?.user?.login, commit.committer?.user?.login])),
     headAt: commits.at(-1)?.commit.committedDate ?? null,
     labels: (node.labels?.nodes ?? []).map((label) => label.name),
-    reviews: node.latestReviews.nodes.flatMap((review) => review.author
-      ? [{ login: review.author.login, state: review.state, submittedAt: review.submittedAt }] : []),
+    reviews: latestByPerson([...node.latestReviews.nodes, ...node.peopleReviews?.nodes ?? []]),
     comments: (node.peopleComments?.nodes ?? []).flatMap((comment) => comment.author
       ? [{ login: comment.author.login, body: comment.body, createdAt: comment.createdAt }] : []),
   };
+}
+
+/** Each person's latest review that took a side: a comment-only review changes nothing, a dismissal undoes one. */
+function latestByPerson(
+  reviews: { author: { login: string } | null; state: string; submittedAt: string | null }[],
+): PeopleFacts["reviews"] {
+  const latest = new Map<string, PeopleFacts["reviews"][number]>();
+  for (const review of reviews) {
+    if (!review.author || !["APPROVED", "CHANGES_REQUESTED", "DISMISSED"].includes(review.state)) continue;
+    const seen = latest.get(review.author.login);
+    if (!seen || (review.submittedAt ?? "") > (seen.submittedAt ?? "")) {
+      latest.set(review.author.login, { login: review.author.login, state: review.state, submittedAt: review.submittedAt });
+    }
+  }
+  return [...latest.values()];
 }
 
 /** Whether `login` is in the team (`org/slug`) or the org. Answers null when it can't tell. */
@@ -110,7 +127,8 @@ export async function peopleDecision(policy: Policy, pr: PeopleFacts, members: M
     }
   }
   const result = await all(policy.policy?.approval ?? [], "and", rules, pr, members);
-  return result === null ? null : result === "pending" ? "REVIEW_REQUIRED" : "APPROVED";
+  // PolicyBot calls a policy whose every rule was skipped an error: nobody has approved it.
+  return result === null ? null : result === "approved" ? "APPROVED" : "REVIEW_REQUIRED";
 }
 
 /** "approved", "pending", "skipped", or null when a rule is missing or membership couldn't be read. */
@@ -126,7 +144,7 @@ async function all(
     outcomes.push(outcome);
   }
   const counted = outcomes.filter((outcome) => outcome !== "skipped");
-  if (counted.length === 0) return outcomes.length === 0 && join === "and" ? "approved" : "skipped";
+  if (counted.length === 0) return "skipped";
   const approved = join === "and" ? counted.every((o) => o === "approved") : counted.some((o) => o === "approved");
   return approved ? "approved" : "pending";
 }

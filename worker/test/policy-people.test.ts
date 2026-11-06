@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { type Membership, type PeopleFacts, parsePolicy, peopleDecision } from "../src/policy-people.ts";
+import { type Membership, type PeopleFacts, factsOf, parsePolicy, peopleDecision } from "../src/policy-people.ts";
 
 const POLICY = `
 policy:
@@ -99,8 +99,20 @@ test("a 👍 comment counts as an approval by default", async () => {
   assert.equal(await peopleDecision(policy, pr({ reviews: [approve("anzor")], comments }), members), "APPROVED");
 });
 
-test("a policy whose every rule is skipped passes", async () => {
-  assert.equal(await peopleDecision(policy, pr({ base: "feature/x" }), members), "APPROVED");
+test("a policy whose every rule is skipped is not approved, as PolicyBot says", async () => {
+  assert.equal(await peopleDecision(policy, pr({ base: "feature/x" }), members), "REVIEW_REQUIRED");
+});
+
+test("the reader's own approval counts though latestReviews leaves it out", async () => {
+  const node = {
+    baseRefName: "main", title: "feat: x", author: { login: "hussein" }, files: { nodes: [] }, labels: { nodes: [] },
+    latestReviews: { nodes: [{ author: { login: "anzor" }, state: "APPROVED", submittedAt: "2026-11-01T00:00:00Z" }] },
+    peopleReviews: { nodes: [
+      { author: { login: "poom" }, state: "APPROVED", submittedAt: "2026-11-01T00:00:00Z" },
+      { author: { login: "poom" }, state: "COMMENTED", submittedAt: "2026-11-02T00:00:00Z" },
+    ] },
+  };
+  assert.equal(await peopleDecision(policy, factsOf(node), members), "APPROVED");
 });
 
 test("membership GitHub won't answer leaves the decision to PolicyBot", async () => {

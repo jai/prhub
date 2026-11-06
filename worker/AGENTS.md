@@ -97,7 +97,17 @@ gh_api "/repos/<owner>/<repo>/pulls/<n>" | jq '{number, state}'
 gh_api "/repos/<owner>/<repo>/commits/$(gh_api /repos/<owner>/<repo>/pulls/<n> | jq -r .head.sha)/check-runs?per_page=1" | jq .total_count
 ```
 
-Expected: the PR, then a number. A `403` or `404` means the token lacks that repo or a permission.
+Expected: the PR, then a number. A `403` or `404` means the token lacks that repo or a permission. Pick a private
+repo if the owner has any: an org can hold a new fine-grained PAT for approval, and until an org owner approves it
+the token reads only public repos. Check that private ones are in reach:
+
+```sh
+gh_api "/orgs/<owner>/repos?type=private&per_page=1" | jq length
+```
+
+Expected: `1` when the org has private repos. `0` (or only public repos above) means the token is waiting for
+approval, or the org does not allow fine-grained tokens: an org owner approves it under the org's Settings,
+Personal access tokens, Pending requests (or allows such tokens under Settings there).
 
 ### 4. Run setup
 
@@ -141,12 +151,14 @@ SECRET=$(openssl rand -hex 32)
 auth() { printf 'header = "Authorization: Bearer %s"\n' "$SECRET"; }
 auth | curl -s --config - -H 'content-type: application/json' -d '{"code":"<code it printed>"}' $URL/device/pair | jq .role
 auth | curl -s --config - $URL/device/config | jq
-sleep 60; auth | curl -s --config - $URL/prs | jq '{rows: (.prs | length), synced_at}'
+until [ "$(auth | curl -s --config - $URL/prs | jq .synced_at)" != 0 ]; do sleep 30; done
+auth | curl -s --config - $URL/prs | jq '{rows: (.prs | length), synced_at}'
 auth | curl -s --config - -o /dev/null -w '%{http_code}\n' -X DELETE $URL/device/pair
 ```
 
 Expected: `"app"`; the config with `login` set and each feature as configured ([docs/api.md](../docs/api.md)); after the
-first cron run, `synced_at` not 0 and the human's open PRs counted; `204`.
+first cron run, `synced_at` not 0 and the human's open PRs counted; `204`. A new Worker's cron can take several
+minutes to fire the first time (10 on a test deploy), so the loop may wait that long.
 
 ### 6. Pair the phone
 
@@ -213,6 +225,7 @@ Check: `/device/config` shows `"webhooks": true`, and a comment on a PR shows in
 | Step 2: R2 answers `success: false` | R2 is not enabled on the account | Enable R2 in the dashboard once, re-run |
 | `GitHub did not accept GITHUB_TOKEN` | Expired, revoked, or pending org approval | Make a new token, or ask the org owner to approve it |
 | `/prs` stays empty after a few minutes | The token cannot see the repos | Check `/events` for `poll_failed`; widen the token's repository access |
+| Only public repos answer; private ones `404` | The org has not approved the PAT, or does not allow fine-grained PATs | An org owner approves or allows it (step 3); no redeploy needed |
 | A write answers `403 Resource not accessible by personal access token` | A permission is missing (merge needs Contents write) | Edit the token's permissions; no redeploy needed |
 | `/device/pair` answers `pairing_code_invalid` | The code is used, expired or mistyped | Mint a new one (step 6) |
 | A paired app gets `401` | Another phone was paired without `--app`, replacing it | Pair it again with `--app "<label>"` |
