@@ -33,8 +33,10 @@ Ask your human for each of these. Never print or commit a secret. Pass secrets i
    tokens, Tokens (classic), Generate new token (classic).
    - **Expiration**: 30 or 90 days. When it runs out, the human makes a new one and the agent replaces the secret
      (`wrangler secret put GITHUB_TOKEN`); no redeploy is needed.
-   - **Scope**: `repo`. It covers every org the human belongs to and their own repos, private ones included: the
-     lists, diffs, reviews, comments, statuses and merging.
+   - **Scopes**: `repo`, `workflow` and `read:org`, nothing else. `repo` covers every org the human belongs to and
+     their own repos, private ones included: the lists, diffs, reviews, comments, statuses and merging. `workflow`
+     lets a merge or an update branch go through when the PR changes `.github/workflows/`. `read:org` reads the
+     names of teams asked to review; without it reading a PR fails with `INSUFFICIENT_SCOPES`.
    - **Org with SAML single sign-on**: after generating, choose Configure SSO next to the token and Authorize it for
      that org, or its private repos answer `404`.
    - A fine-grained token also works, with Repository permissions Pull requests (Read and write), Contents (Read;
@@ -219,6 +221,7 @@ Check: `/device/config` shows `"webhooks": true`, and a comment on a PR shows in
 | `GitHub did not accept GITHUB_TOKEN` | Expired, revoked, or pending org approval | Make a new token, or ask the org owner to approve it |
 | `/prs` stays empty after a few minutes | The token cannot see the repos | Check `/events` for `poll_failed`; widen the token's repository access |
 | Only public repos answer; private ones `404` | The org uses SAML SSO and the token is not authorized for it; or a fine-grained token was made for another owner, or waits for approval | Authorize the token for the org (Configure SSO), or remake it (step 3); no redeploy needed |
+| `/events` shows `read_failed` with `INSUFFICIENT_SCOPES` | The token lacks `read:org` (team reviewers) | Add the scope to the token (classic scopes can be edited in place); no redeploy needed |
 | A write answers `403 Resource not accessible by personal access token` | A permission is missing (merge needs Contents write) | Edit the token's permissions; no redeploy needed |
 | `/device/pair` answers `pairing_code_invalid` | The code is used, expired or mistyped | Mint a new one (step 6) |
 | A paired app gets `401` | Another phone was paired without `--app`, replacing it | Pair it again with `--app "<label>"` |
