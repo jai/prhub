@@ -70,7 +70,7 @@ public struct PrStateIcon: View {
             .frame(width: 14, height: 14)
             .foregroundStyle(color)
             .frame(width: PrListGrid.state, height: PrListGrid.state)
-            .background(color.opacity(0.15), in: .circle)
+            .background(color.opacity(PRStyle.toneGroundOpacity), in: .circle)
             .accessibilityLabel(state.rawValue)
     }
 

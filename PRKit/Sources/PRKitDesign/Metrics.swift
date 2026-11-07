@@ -18,6 +18,8 @@ public enum PRStyle {
     /// A control while pressed, and while it can't be used.
     public static let pressedOpacity = 0.7
     public static let disabledOpacity = 0.4
+    /// A tone's strength behind the thing it colours: a chip's words, a PR's state icon.
+    public static let toneGroundOpacity = 0.15
 }
 
 /// A chat's bubble and field (`SessionBubble`, `SessionComposer`).
@@ -37,8 +39,6 @@ public enum ChatStyle {
 public enum ChipStyle {
     public static let horizontal = Space.sm
     public static let vertical: CGFloat = 3
-    /// The tint's strength behind the words.
-    public static let groundOpacity = 0.15
 }
 
 /// What people write, laid out (`MarkdownText`).

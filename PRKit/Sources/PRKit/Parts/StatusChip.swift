@@ -18,6 +18,6 @@ public struct StatusChip: View {
             .padding(.horizontal, ChipStyle.horizontal)
             .padding(.vertical, ChipStyle.vertical)
             .foregroundStyle(tint)
-            .background(tint.opacity(ChipStyle.groundOpacity), in: Capsule())
+            .background(tint.opacity(PRStyle.toneGroundOpacity), in: Capsule())
     }
 }
