@@ -39,7 +39,11 @@ For what the Worker does and what it costs, read [worker/README.md](worker/READM
 
 ## Install the app
 
-> 🚧 Coming soon: PRHub is not on TestFlight yet. Its public TestFlight link goes here: `TESTFLIGHT_PUBLIC_LINK`.
+Install PRHub with TestFlight, Apple's app for beta apps: <https://testflight.apple.com/join/SG8nZjVa>. The link
+works after Apple's beta review approves PRHub.
+
+To look around before you deploy a Worker, tap **Try with sample PRs** on the app's first screen. The sample PRs
+are made up, and nothing that you do with them reaches GitHub.
 
 ## Pair the app
 
