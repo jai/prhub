@@ -3,9 +3,9 @@
 #
 #   scripts/scrub.sh [path ...]     (default: the whole repo)
 #
-# Scans every tracked or untracked text file but .git, node_modules, lockfiles and this script. One value is allowed
-# where it appears: the shared relay's public URL. PRHub's bundle ID, team ID and App Store Connect app ID are public
-# and are not on the list.
+# Scans every tracked or untracked text file but .git, node_modules, lockfiles and this script. Two values are allowed
+# where they appear: the public URLs of the shared relay and the hosted Worker. PRHub's bundle ID, team ID and App
+# Store Connect app ID are public and are not on the list.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -35,7 +35,7 @@ EOF
 )
 
 # Allowed values: removed from a line before the patterns are tried.
-allowed='https://agent-pager-relay\.jai-f89\.workers\.dev'
+allowed='https://(agent-pager-relay|prhub)\.jai-f89\.workers\.dev'
 
 files=$(find "$@" \( -name .git -o -name node_modules -o -name .build -o -name DerivedData -o -name build -o -name tmp \) -prune -o \
   -type f ! -name package-lock.json ! -name Package.resolved ! -path ./scripts/scrub.sh ! -path scripts/scrub.sh -print)

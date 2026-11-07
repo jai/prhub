@@ -3,7 +3,7 @@
 
 Run it on a Mac where Jai is signed in to github.com in the default browser:
 
-    python3 -I deploy/github-app/create.py [--worker https://prhub.<account>.workers.dev]
+    python3 -I deploy/github-app/create.py [--worker https://<custom domain>]
 
 It opens a page that posts manifest.json to github.com/settings/apps/new. After Jai clicks Create, GitHub returns
 to this script, which trades the one-time code for the App's credentials and writes them, mode 0600, to
@@ -25,7 +25,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-PLACEHOLDER = "https://prhub.TBD.workers.dev"
+# The hosted Worker the manifest names; --worker swaps in another origin (a custom domain).
+PLACEHOLDER = "https://prhub.jai-f89.workers.dev"
 NEW_APP_URL = "https://github.com/settings/apps/new"
 
 
@@ -49,7 +50,7 @@ def convert(code: str) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--worker", default="https://prhub.<account>.workers.dev",
+    parser.add_argument("--worker", default=PLACEHOLDER,
                         help="the hosted Worker's origin, https://host with no path")
     parser.add_argument("--port", type=int, default=53682, help="local port for GitHub's redirect")
     parser.add_argument("--dry-run", action="store_true", help="print the manifest and exit")
