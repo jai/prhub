@@ -182,6 +182,8 @@ struct PRNavigator: View {
             }
         }
         .background(Color.groundCard)
+        // The panel sets its own width: a wide screen's readable margins are not for it.
+        .contentMargins(.horizontal, 0, for: .scrollContent)
     }
 
     private var filesFoot: some View {

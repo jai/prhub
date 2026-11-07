@@ -16,6 +16,10 @@ public struct PrListBlock: View {
     public var opened: [String: Date] = [:]
     public var onOpen: (PRListPullRequest) -> Void = { _ in }
     public let folds: FoldSet
+    /// Set where PR links push PR screens (`opensPullRequestLinks`): then a PR row has the Review shortcut.
+    @Environment(\.pullRequestOpener) private var opener
+    @Environment(\.rowSwipeActions) private var swipeActions
+    @Environment(\.openURL) private var openURL
 
     public init(
         item: PRListItem, id: String, sentAt: Date, now: Date, format: ThreadTimeFormat = ThreadTimeFormat(),
@@ -81,7 +85,66 @@ public struct PrListBlock: View {
     }
 
     private func pullRequestRow(_ pullRequest: PRListPullRequest) -> some View {
+        let url = PrListLinks.openable(pullRequest.url)
+        let ref = url.flatMap(PRLink.init(url:))?.ref
+        let review: (() -> Void)? = if let ref, let opener { { opener.review(ref) } } else { nil }
+        return pullRequestLink(pullRequest, leavesStateColumn: review != nil)
+            .overlay(alignment: .topTrailing) {
+                if let review, let ref {
+                    reviewButton(id: "pr-row-review-\(ref.repo)#\(ref.number)", review)
+                }
+            }
+            .contextMenu {
+                if let url {
+                    menu(pullRequest, url: url, review: review)
+                }
+            }
+    }
+
+    /// The Review shortcut, in the state column under the state: the PR with its diff on top and its key lines open.
+    private func reviewButton(id: String, _ review: @escaping () -> Void) -> some View {
+        Button(action: review) {
+            Image(systemName: AppIcon.reviewChanges.symbol)
+                .font(.appCaption2.weight(.semibold))
+                .foregroundStyle(.tint)
+                .frame(width: PrListGrid.state, height: PrListGrid.state)
+                .background(Color.accentColor.opacity(PRStyle.toneGroundOpacity), in: .circle)
+                .frame(width: PRStyle.rowHeight, height: PRStyle.rowHeight)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .padding(.top, PrListGrid.state)
+        .padding(.trailing, (PrListGrid.state - PRStyle.rowHeight) / 2)
+        .accessibilityLabel("Review changes")
+        .accessibilityIdentifier(id)
+    }
+
+    /// A long press: open it, review it, GitHub, its link, and whatever the row's swipe holds.
+    @ViewBuilder private func menu(_ pullRequest: PRListPullRequest, url: URL, review: (() -> Void)?) -> some View {
+        Button("Open", systemImage: AppIcon.openPullRequest.symbol) {
+            onOpen(pullRequest)
+            openURL(url)
+        }
+        .accessibilityIdentifier("pr-menu-open")
+        if let review {
+            Button("Review changes", systemImage: AppIcon.reviewChanges.symbol, action: review)
+                .accessibilityIdentifier("pr-menu-review")
+        }
+        Button("Open in GitHub", systemImage: AppIcon.openInGitHub.symbol) { PRPlatform.openExternally(url) }
+            .accessibilityIdentifier("pr-menu-github")
+        Button("Copy link", systemImage: AppIcon.copyLink.symbol) { Pasteboard.copy(url.absoluteString) }
+            .accessibilityIdentifier("pr-menu-copy")
+        ForEach(swipeActions.filter(\.inMenu), id: \.id) { swipe in
+            Button(
+                swipe.title, systemImage: swipe.icon.symbol, role: swipe.tone == .destructive ? .destructive : nil,
+                action: swipe.action
+            )
+        }
+    }
+
+    private func pullRequestLink(_ pullRequest: PRListPullRequest, leavesStateColumn: Bool) -> some View {
         let opacity = pullRequest.isDecidedByJai(since: sentAt) ? PrListGrid.fadedOpacity : 1
+        let underTitle = leavesStateColumn ? PrListGrid.state + Space.sm : 0
         return PrListLink(url: pullRequest.url, onOpen: { onOpen(pullRequest) }, content: {
             HStack(alignment: .top, spacing: PrListGrid.gutter) {
                 VStack(spacing: Space.xs) {
@@ -101,10 +164,12 @@ public struct PrListBlock: View {
                     .opacity(opacity)
                     metaLine(pullRequest)
                         .opacity(opacity)
+                        .padding(.trailing, underTitle)
                     let signals = pullRequest.status.signalMarks
                     if !signals.isEmpty {
                         PrStatusMarks(marks: signals)
                             .opacity(opacity)
+                            .padding(.trailing, underTitle)
                     }
                     if let mark = pullRequest.jaiMark(openedAt: opened[pullRequest.key], now: now, format: format) {
                         PrJaiMarkLabel(mark: mark)

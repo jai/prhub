@@ -4,45 +4,76 @@ import PRKitDesign
 import SwiftUI
 import UIKit
 
-/// A row that slides left to show one action. It is drawn here because a list's own swipe needs a `List`, and these rows
-/// sit in a plain stack (`DESIGN.md`).
+/// A row that slides to show an action on either side: right for `leading` (Review changes), left for `trailing`
+/// (Remove me). It is drawn here because a list's own swipe needs a `List`, and these rows sit in a plain stack
+/// (`DESIGN.md`). The row's long-press menu lists the same actions.
 struct PRSwipeRow<Content: View>: View {
     private static var width: CGFloat { 132 }
 
-    let title: String
-    let action: () -> Void
+    var leading: PRSwipeAction?
+    var trailing: PRSwipeAction?
     @ViewBuilder let content: Content
     @State private var offset: CGFloat = 0
+    /// Where the row sat when the finger took it: a swipe carries on from an action already showing.
+    @State private var start: CGFloat?
 
     var body: some View {
         content
+            .environment(\.rowSwipeActions, [leading, trailing].compactMap(\.self))
             .offset(x: offset)
-            .background(alignment: .trailing) {
-                Button(action: run) {
-                    Text(title)
-                        .font(.appFootnote.weight(.semibold))
-                        .foregroundStyle(Color.onAccent)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, Space.sm)
-                        .frame(width: Self.width)
-                        .frame(maxHeight: .infinity)
-                        .background(Color.toneBad)
+            .background(alignment: .leading) {
+                if let leading, offset > 0 {
+                    button(leading)
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("pr-remove-request")
+            }
+            .background(alignment: .trailing) {
+                if let trailing, offset < 0 {
+                    button(trailing)
+                }
             }
             .clipped()
             .gesture(HorizontalPan { translation in
-                offset = min(0, translation)
-            } ended: { translation in
-                withAnimation(AppMotion.fold) { offset = translation < -Self.width / 2 ? -Self.width : 0 }
+                let from = start ?? offset
+                start = from
+                offset = min(maxOffset, max(minOffset, from + translation))
+            } ended: { _ in
+                start = nil
+                withAnimation(AppMotion.fold) {
+                    offset = offset > Self.width / 2 ? Self.width : offset < -Self.width / 2 ? -Self.width : 0
+                }
             })
-            .accessibilityAction(named: title, action)
+            .accessibilityActions {
+                ForEach([leading, trailing].compactMap(\.self), id: \.id) { action in
+                    Button(action.title) { run(action) }
+                }
+            }
     }
 
-    private func run() {
+    /// How far the row slides: past its action a little, and not at all toward a side with none.
+    private var maxOffset: CGFloat { leading == nil ? 0 : Self.width * 1.5 }
+    private var minOffset: CGFloat { trailing == nil ? 0 : -Self.width * 1.5 }
+
+    private func button(_ swipe: PRSwipeAction) -> some View {
+        Button {
+            run(swipe)
+        } label: {
+            Text(swipe.title)
+                .font(.appFootnote.weight(.semibold))
+                .foregroundStyle(Color.onAccent)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, Space.sm)
+                .frame(width: max(Self.width, abs(offset)))
+                .frame(maxHeight: .infinity)
+                .background(swipe.tone.ground)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(swipe.id)
+        .transition(.opacity)
+    }
+
+    private func run(_ swipe: PRSwipeAction) {
         withAnimation(AppMotion.fold) { offset = 0 }
-        action()
+        swipe.action()
     }
 }
 

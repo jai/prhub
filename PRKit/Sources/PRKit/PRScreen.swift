@@ -42,116 +42,60 @@ final class DiffOpenTimer {
     }
 }
 
-enum PRPage: String, CaseIterable, Identifiable {
-    case description = "Description"
-    case diff = "Diff"
+/// One PR: its description and conversation, with a way into its diff (`PRDiffScreen`), which is pushed over it. All of
+/// it comes from the session. Anything below that keeps state of its own, such as a half-typed comment, goes when the
+/// session does, through the `.id`.
+struct PRScreen: View {
+    @Bindable var session: PRSession
+    @Environment(\.pullRequestOpener) private var opener
 
-    var id: Self { self }
-
-    var symbol: String {
-        switch self {
-        case .description: "doc.text"
-        case .diff: "plus.forwardslash.minus"
+    var body: some View {
+        PRLoadedContent(session: session) { content in
+            PRDescriptionView(session: session, detail: content.detail) { opener?.showDiff(of: session) }
         }
+        .id(ObjectIdentifier(session))
+        .navigationTitle(session.label)
+        .inlineNavigationTitle()
+        .macBackButton { opener?.stack.backFromPullRequest() }
+        .pullRequestActions(session, showsAsk: !session.isDiffOnScreen)
+        .onAppear { session.hasShownDescription = true }
+        .task(id: ObjectIdentifier(session)) { await session.loadIfNeeded() }
     }
 }
 
-/// One PR: its description and conversation, and its diff with the review threads in place. All of it comes from the
-/// session, the page on show included. Anything below that keeps state of its own, such as a half-typed comment, goes
-/// when the session does, through the `.id`.
-struct PRScreen: View {
+/// A PR's diff, pushed over its PR: Back is the PR. The bars leave as the code is read, and the panel of files and key
+/// lines is over it on a phone and beside it where there is room.
+struct PRDiffScreen: View {
     @Bindable var session: PRSession
+    @Environment(\.pullRequestOpener) private var opener
+
     var body: some View {
-        content
-            .id(ObjectIdentifier(session))
-            .animation(AppMotion.swap, value: session.page)
-            .inlineNavigationTitle()
-            .macBackButton()
-            .sheet(isPresented: $session.isShowingAsk) { PRAskSheet(session: session) }
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Picker("Page", selection: $session.page) {
-                        ForEach(PRPage.allCases) { page in
-                            Image(systemName: page.symbol)
-                                .accessibilityLabel(page.rawValue)
-                                .tag(page)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 112)
-                }
-                if session.content != nil, session.offersAsk {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("Ask AI", systemImage: "bubble.left.and.text.bubble.right") { session.openAsk() }
-                            .accessibilityIdentifier("pr-ask")
-                    }
-                }
-                if let url = session.content.flatMap({ URL(string: $0.detail.url) }) {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("Open in GitHub", systemImage: "safari") { PRPlatform.openExternally(url) }
-                            .accessibilityIdentifier("open-in-github")
-                            .accessibilityValue(url.absoluteString)
-                    }
-                }
-            }
-            .phoneBarsHidden(session.page == .diff && session.barsHidden)
-            .animation(AppMotion.fold, value: session.barsHidden)
-            .onChange(of: session.page) {
-                PRPlatform.endEditing()
-                session.barsHidden = false
-            }
-            // Back from a pushed screen, or the app: the bars are there to leave by.
-            .onAppear { session.barsHidden = false }
-            .onChange(of: session.timer.milliseconds) { report() }
-            .task(id: ObjectIdentifier(session)) { await session.loadIfNeeded() }
-    }
-
-    @ViewBuilder private var content: some View {
-        switch session.state {
-        case .reading:
-            message("Reading this PR from GitHub")
-        case let .failed(reason):
-            ContentUnavailableView {
-                Label("Couldn't read this PR", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(reason)
-            } actions: {
-                Button("Try again") { Task { await session.retry() } }
-                    .buttonStyle(PRButtonStyle(.secondary))
-            }
-        case let .ready(content):
-            ZStack {
-                shown(.description) { PRDescriptionView(session: session, detail: content.detail) }
-                if session.hasOpenedDiff {
-                    shown(.diff) { diff(content) }
-                }
+        PRLoadedContent(session: session) { content in
+            switch content.diff {
+            case let .document(document, rows):
+                PRDiffPage(session: session, document: document, rows: rows) { opener?.stack.back() }
+            case .tooLarge:
+                ContentUnavailableView(
+                    "Diff too large", systemImage: "doc.text.magnifyingglass",
+                    description: Text("GitHub won't supply a diff this big. Use Open in GitHub.")
+                )
             }
         }
-    }
-
-    private func shown(_ page: PRPage, @ViewBuilder content: () -> some View) -> some View {
-        content()
-            .opacity(session.page == page ? 1 : 0)
-            .allowsHitTesting(session.page == page)
-            .accessibilityHidden(session.page != page)
-    }
-
-    private func message(_ text: String) -> some View {
-        Text(text)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    @ViewBuilder private func diff(_ content: PRContent) -> some View {
-        switch content.diff {
-        case let .document(document, rows):
-            PRDiffPage(session: session, document: document, rows: rows)
-        case .tooLarge:
-            ContentUnavailableView(
-                "Diff too large", systemImage: "doc.text.magnifyingglass",
-                description: Text("GitHub won't supply a diff this big. Use Open in GitHub.")
-            )
+        .id(ObjectIdentifier(session))
+        .navigationTitle("Files changed")
+        .navigationSubtitle(session.label)
+        .inlineNavigationTitle()
+        .macBackButton { opener?.stack.back() }
+        .pullRequestActions(session, showsAsk: session.isDiffOnScreen)
+        .phoneBarsHidden(session.barsHidden)
+        .animation(AppMotion.fold, value: session.barsHidden)
+        .onAppear { session.diffAppeared() }
+        .onDisappear {
+            PRPlatform.endEditing()
+            session.diffDisappeared()
         }
+        .onChange(of: session.timer.milliseconds) { report() }
+        .task(id: ObjectIdentifier(session)) { await session.loadIfNeeded() }
     }
 
     private func report() {
@@ -166,12 +110,62 @@ struct PRScreen: View {
     }
 }
 
+/// A PR's screen while it is read from GitHub, when that fails, and once it is there.
+private struct PRLoadedContent<Content: View>: View {
+    let session: PRSession
+    @ViewBuilder let content: (PRContent) -> Content
+
+    var body: some View {
+        switch session.state {
+        case .reading:
+            Text("Reading this PR from GitHub")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case let .failed(reason):
+            ContentUnavailableView {
+                Label("Couldn't read this PR", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text(reason)
+            } actions: {
+                Button("Try again") { Task { await session.retry() } }
+                    .buttonStyle(PRButtonStyle(.secondary))
+            }
+        case let .ready(content):
+            self.content(content)
+                .transition(.opacity)
+        }
+    }
+}
+
 private extension View {
+    /// Ask AI and Open in GitHub, on the PR and on its diff. Only the screen on top shows the Ask sheet: the PR stays
+    /// under its diff, and two sheets on one flag would fight.
+    func pullRequestActions(_ session: PRSession, showsAsk: Bool) -> some View {
+        sheet(isPresented: Binding(
+            get: { showsAsk && session.isShowingAsk }, set: { session.isShowingAsk = $0 }
+        )) { PRAskSheet(session: session) }
+        .toolbar {
+            if session.content != nil, session.offersAsk {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Ask AI", systemImage: "bubble.left.and.text.bubble.right") { session.openAsk() }
+                        .accessibilityIdentifier("pr-ask")
+                }
+            }
+            if let url = session.content.flatMap({ URL(string: $0.detail.url) }) {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Open in GitHub", systemImage: AppIcon.openInGitHub.symbol) { PRPlatform.openExternally(url) }
+                        .accessibilityIdentifier("open-in-github")
+                        .accessibilityValue(url.absoluteString)
+                }
+            }
+        }
+    }
+
     /// The system's Back and Forward on the Mac walk a history, which is not where a PR came from. This is one Back, which
-    /// does what the stack says (`PullRequestBack`).
-    @ViewBuilder func macBackButton() -> some View {
+    /// does what the stack says.
+    @ViewBuilder func macBackButton(_ back: @escaping () -> Void) -> some View {
         #if os(macOS)
-        modifier(MacBackButton())
+        modifier(MacBackButton(back: back))
         #else
         self
         #endif
@@ -180,14 +174,14 @@ private extension View {
 
 #if os(macOS)
 private struct MacBackButton: ViewModifier {
-    @Environment(\.pullRequestBack) private var back
+    let back: () -> Void
 
     func body(content: Content) -> some View {
         content
             .navigationBarBackButtonHidden(true)
             .toolbar {
                 ToolbarItem(placement: .navigation) {
-                    Button("Back", systemImage: "chevron.left") { back?() }
+                    Button("Back", systemImage: "chevron.left", action: back)
                         .keyboardShortcut("[", modifiers: .command)
                 }
             }

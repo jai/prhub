@@ -52,28 +52,34 @@ public final class PRKitController {
 
     /// Shows this PR on the PRs tab, over nothing else. The host selects the tab.
     public func open(_ ref: PullRequestRef) {
-        navigation.pendingPullRequest = ref
+        open(PRLink(ref: ref))
+    }
+
+    /// Shows this PR on the PRs tab, over nothing else, with its diff on top when the link asks for it (GitHub's
+    /// `/files`): Back from the diff is the PR. The host selects the tab.
+    public func open(_ link: PRLink) {
+        navigation.pendingLink = link
     }
 
     /// Shows the PR that `text` names — a github.com PR link or `owner/repo#N` (`PRLinkParser`) — and says whether
     /// it named one. The way in for a link, and later for the clipboard, a share sheet or a quick jump.
     @discardableResult
     public func open(text: String) -> Bool {
-        guard let ref = PRLinkParser.ref(in: text) else {
+        guard let link = PRLinkParser.link(in: text) else {
             return false
         }
-        open(ref)
+        open(link)
         return true
     }
 
-    /// How many screens are pushed over the list.
+    /// How many screens are pushed over the list: a PR, and its diff over it.
     public var openCount: Int {
-        navigation.path.count
+        navigation.routes.count
     }
 
     /// Back to the list: the tab picked again while it shows.
     public func popToRoot() {
-        navigation.path = NavigationPath()
+        navigation.routes = []
     }
 
     /// PRHub's Disconnect: the rows, the mirror's files, the answers and the filter, so another Worker's PRs start
@@ -93,13 +99,41 @@ public final class PRKitController {
     }
 }
 
-/// What the PRs tab has open. Held by the controller, so nothing a tab does to its view can drop an open PR.
+/// What the PRs tab has open. Held by the controller, so nothing a tab does to its view can drop an open PR, and the same
+/// screens show whichever way the tab is laid out: on a narrow screen a stack over the list; on a wide one the first PR
+/// beside the list, with the rest stacked over it.
 @MainActor
 @Observable
 final class PRNavigation {
-    var path = NavigationPath()
+    var routes: [PRRoute] = []
     /// A PR opened from a link anywhere in the app: the PRs tab shows it, then sets this back to `nil`.
-    var pendingPullRequest: PullRequestRef?
+    var pendingLink: PRLink?
+
+    /// The PR beside the list on a wide screen.
+    var selected: PRSession? {
+        guard case let .pullRequest(session) = routes.first else {
+            return nil
+        }
+        return session
+    }
+
+    /// What is stacked over that PR: its diff, and any PR a link in it opened.
+    var detailRoutes: [PRRoute] {
+        get { Array(routes.dropFirst()) }
+        set { routes = Array(routes.prefix(1)) + newValue }
+    }
+
+    /// The diff on show, if one is: on a wide screen it takes the list's room, and the keyboard steps through it.
+    var diffOnShow: PRSession? {
+        guard case let .diff(session) = routes.last else {
+            return nil
+        }
+        return session
+    }
+
+    var showsDiff: Bool {
+        diffOnShow != nil
+    }
 }
 
 /// The PRs tab: the host puts it in a tab of its own.
@@ -123,12 +157,13 @@ extension View {
         environment(kit.model)
     }
 
-    /// On a `NavigationStack`: PR links in it push the PR on this stack (the phone); elsewhere they open as links.
+    /// On a `NavigationStack`: PR links in it push the PR on this stack (the phone); elsewhere they open as links. A
+    /// link to a PR's files pushes its diff over it, and a PR row's Review shortcut does the same.
     public func opensPullRequestLinks(in path: Binding<NavigationPath>, backGoesToRoot: Bool = false) -> some View {
-        modifier(PullRequestLinks(path: path, backGoesToRoot: backGoesToRoot))
+        opensPullRequestLinks(on: .path(path, backGoesToRoot: backGoesToRoot))
     }
 
-    /// Inside that stack: where those PRs land.
+    /// Inside that stack: where those PRs and their diffs land.
     public func showsPullRequests() -> some View {
         modifier(PullRequestDestination())
     }

@@ -79,23 +79,27 @@ final class PRSession: Hashable {
     private(set) var state: PRSessionState
     /// Line comments waiting for the review they will go out with.
     private(set) var drafts: [PRDraftComment]
-    /// The description first. The diff is built the first time it shows, and both then stay, so a switch keeps each
-    /// page's scroll position and whatever is open on it.
-    var page = PRPage.description {
-        didSet {
-            if page == .diff, !hasOpenedDiff {
-                hasOpenedDiff = true
-                timer.restart()
-            }
-        }
-    }
-    private(set) var hasOpenedDiff = false
+    /// The diff has shown once: the timer counts from there, unless the PR opened on its diff.
+    var hasShownDiff = false
+    /// The PR's description has shown, so a diff after it was a tap of its own.
+    var hasShownDescription = false
+    /// The diff is the screen on top: it, and not the PR under it, shows the Ask sheet.
+    var isDiffOnScreen = false
+    /// The Review shortcut: the diff arrives with its panel open on the key lines.
+    var opensPanelOnArrival = false
     /// Set here first, so a file folds under Jai's thumb. GitHub follows, and a refusal puts it back.
     var viewedFiles: Set<String> = []
     private(set) var changedLinesOnly = UserDefaults.standard.bool(forKey: PRSession.changedLinesKey)
     private(set) var jump: DiffJump?
     var isShowingNavigator = false
-    var navigatorPage = PRNavigatorPage.files
+    /// Key lines first; the panel shows Files alone where the Worker has none.
+    var navigatorPage = PRNavigatorPage.keyLines
+    /// Beside the diff where there is room, else over it (`PRPanelPlacement`). Set by the diff as its width changes.
+    var panelPlacement = PRPanelPlacement.overlay
+    /// The panel's column, put away by its button.
+    var isPanelColumnHidden = false
+    /// The file at the top of the diff's screen, as the reader scrolls: where Next file and Viewed start.
+    var topFile: Int?
     /// The key line being looked at: marked in the list and the diff, with its note under its line, until it's closed.
     private(set) var selectedKeyLine: PRKeyLines.Item?
     /// The line of the document being commented on. The comment box sits above the keyboard, not in the diff.
@@ -144,11 +148,6 @@ final class PRSession: Hashable {
         self.model = model
         rowTitle = title
         isPreloaded = content != nil
-        #if DEBUG
-        let page = UserDefaults.standard.string(forKey: "prPage").flatMap(PRPage.init(rawValue:)) ?? .description
-        self.page = page
-        hasOpenedDiff = page == .diff
-        #endif
         let drafts = draftStore.load(ref)
         self.drafts = drafts
         let changedLinesOnly = UserDefaults.standard.bool(forKey: Self.changedLinesKey)
@@ -266,7 +265,7 @@ final class PRSession: Hashable {
     func show(file path: String) {
         selectedKeyLine = nil
         rebuildRows()
-        closeNavigator()
+        closePanelOverDiff()
         jump = DiffJump(path: path)
     }
 
@@ -274,10 +273,17 @@ final class PRSession: Hashable {
         withAnimation(AppMotion.fold) { isShowingNavigator = false }
     }
 
+    /// A pick in the panel shows its place: the panel over the diff goes, its column stays.
+    private func closePanelOverDiff() {
+        if panelPlacement == .overlay {
+            closeNavigator()
+        }
+    }
+
     func show(_ item: PRKeyLines.Item) {
         selectedKeyLine = item
         rebuildRows()
-        closeNavigator()
+        closePanelOverDiff()
         jump = DiffJump(path: item.path, line: item.line, side: PRDiffSide(rawValue: item.side))
     }
 

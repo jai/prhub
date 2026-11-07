@@ -109,4 +109,6 @@ struct DiffActions {
     let removeDraft: (PRDraftComment) -> Void
     let reply: (PullRequestDetail.Thread, String) async throws -> Void
     let setResolved: (PullRequestDetail.Thread, Bool) async throws -> Void
+    /// The file at the top of the screen, by index, as the reader scrolls.
+    let showsFileOnTop: (Int) -> Void
 }

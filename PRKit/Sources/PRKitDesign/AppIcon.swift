@@ -97,6 +97,11 @@ public enum AppIcon: String {
     case alertSent = "bell"
     case messageSent = "message"
     case conversation = "text.bubble"
+    case openPullRequest = "arrow.triangle.pull"
+    case reviewChanges = "plus.forwardslash.minus"
+    case openInGitHub = "safari"
+    case copyLink = "link"
+    case drillIn = "chevron.right"
 
     /// The SF Symbol's name, for an API that takes one.
     public var symbol: String { rawValue }

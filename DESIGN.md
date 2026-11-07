@@ -138,15 +138,16 @@ all of them are in scope. A new screen adds a row here and a step in `PRHubScree
 | Sign in again | GitHub signed the person out | `SignedOutView`, `PageHeader`, `PRPageBlock` |
 | Connect to a pr-worker | first run, when the build allows it (`PRHUB_SELF_HOSTED`), under "Connect your own Worker" | `OnboardingView`, `SetupCodeScanner` |
 | Sample PRs | onboarding's "Try with sample PRs" | the PR screens over `PRSampleSet.prHub` |
-| PR list | PRs | `PRsView`, `PrListBlock`, `PRSectionTitle`, `PRSwipeRow` |
+| PR list | PRs | `PRsView`, `PRsList`, `PrListBlock`, `PRSectionTitle`, `PRSwipeRow` |
+| Review shortcut | PRs → a row's Review button, its swipe right, or its long-press menu | `PrListBlock`, `PRSwipeRow`, `PullRequestOpener` |
 | PR filter | PRs → Filter | `PRFilterPanel`, `PRSectionTitle` |
-| PR description | PRs → a PR | `PRDescriptionView`, `PRStatusCard`, `.prCard()`, `PRCommentText`, `PRThreadCard` |
+| PR description | PRs → a PR | `PRScreen`, `PRDescriptionView`, `PRChangesCard`, `PRStatusCard`, `.prCard()`, `PRCommentText`, `PRThreadCard` |
 | Ask AI | PRs → a PR → the toolbar, or a line's comment box | `PRAskSheet`, `SessionBubble`, `SessionComposer` |
-| PR diff | PRs → a PR → Diff | `DiffTableView`, `PRDiffPage`, `PRNavigator` |
+| PR diff | PRs → a PR → Review changes, or Files changed | `PRDiffScreen`, `DiffTableView`, `PRDiffPage`, `PRNavigator` |
 | Settings | Settings; signed in: account, App installs, Anthropic key, Sign out, Delete account | `PRHubSettingsView`, `PRPageBlock`, `PRValueLine`, `AnthropicKeySection`, `DeleteAccountSheet` |
 | Diff font | Settings → Diff font: a preview, the size (9 to 20 pt) and the face; every diff and code view follows it | `DiffFontSection`, `PRPageBlock`, `DiffFont` |
 | No PRs yet | PRs, hosted, nothing listed | `PREmptyHint` in `PRsView` |
-| iPad | the phone's tabs, every orientation | the same views; `readableContentWidth()` centres scroll views |
+| iPad | the phone's tabs, every orientation; a regular width puts the list beside the PR | `PRsSplitView`, `PRDiffShortcuts`; `readableContentWidth()` centres scroll views |
 
 ## Overview
 
@@ -258,6 +259,25 @@ notes, and is lazy.
 (`.prCard()`). `Radius.lg` 18 for a chat bubble and the chat field. Corners are continuous. A chip and a state icon's
 ring are capsules and circles.
 
+### Navigation
+
+A PR and its diff are two screens on one stack, as on GitHub. `PRRoute` names them; `PRNavigation` holds them.
+
+- **PR → diff is a push.** The PR's `PRChangesCard` (Files changed · N, with the lines added and removed, and Review
+  changes) pushes the diff. Back from the diff is the PR, and Back from the PR is where it came from. No segmented
+  control switches them.
+- **The Review shortcut.** A PR row's Review button (in the state column, under the state), its swipe right and its
+  long-press menu push the PR with its diff on top, the panel open on Key lines. Back goes diff → PR → list, never
+  skipping one. The menu also has Open, Open in GitHub and Copy link, and whatever the row's swipe holds.
+- **Links land where they point.** A link to a PR opens the PR; a link to its files (`…/pull/N/files` or `/changes`)
+  opens the diff with the PR under it.
+- **Wide screens.** By size class, never by device. A regular width (an iPad, full screen or a wide Split View) puts the
+  list in a column and the picked PR beside it; what the PR opens stacks over it there. A diff takes the list's room,
+  and its panel is a column beside the code when there is room for both (`PRPanelPlacement`). A compact width (a phone,
+  Slide Over, a narrow Split View) is the phone's stack. A change of width keeps what is open.
+- **The keyboard.** On the diff: ⌥⌘↓ and ⌥⌘↑ the next and previous file, ⌃⌘V Viewed on the file at the top, ⌥⌘0 the
+  panel (`PRDiffShortcuts`).
+
 ## Components
 
 The shared parts. Use these; extend one rather than writing a near-copy. Each is the only place its thing is drawn.
@@ -278,7 +298,8 @@ The shared parts. Use these; extend one rather than writing a near-copy. Each is
 | `SessionBubble`, `SessionComposer` | a message in a chat, and its field | PRKit `Parts/` |
 | `IconText`, `.labelStyle(.iconText)` | an icon and its words | PRKitDesign |
 | `sidePanel` | a panel from the right | PRKit `Parts/SidePanel.swift` |
-| `PRSwipeRow` | the one swipe on a row | PRKit `Phone/` |
+| `PRSwipeRow`, `PRSwipeAction` | the one swipe on a row: right for Review changes, left for Remove me | PRKit `Phone/`, `Parts/` |
+| `PRChangesCard` | a PR's way into its diff: Files changed and Review changes | PRKit |
 | `PRPageBlock`, `PRBlockNote`, `PRValueLine` | a page of blocks (onboarding, Sign in again, Settings): a block, the note under it, a setting's name and value | PRKit `Parts/PRPageBlock.swift` |
 | `PageHeader`, `ProblemLine` | PRHub's own pages: a title, why something failed | app `Views/PageParts.swift` |
 
@@ -323,16 +344,19 @@ parts:
   meta:    { row: 2, column: text, holds: "first name · repo#N · age", font: appCaption, lines: 1 }
   signals: { row: 3, column: text, holds: signalMarks, optional: true }
   yours:   { row: 4, column: text, holds: PrJaiMarkLabel, optional: true }
+  review:  { row: 2, column: state, holds: "Review button (AppIcon.reviewChanges, accent), 44 pt to tap", optional: "where PR links push PR screens" }
 states: [resolving, notFound, open, draft, merged, closed, faded, answered]
 rules:
   - An empty optional part collapses. The state column never moves.
   - Meta gives way in this order, the name, then the repo's front. `#N` and the age stay.
   - Signals wrap whole. Words in status never truncate.
+  - The Review button is the one button in a row. With it, meta and signals stop short of the state column.
+  - A long press opens the row's menu: Open, Review changes, Open in GitHub, Copy link, then the swipe's actions.
   - Answered: you approved, requested changes or commented on a PR the list asked of you. It fades from the moment
     GitHub takes it, and stays until the PR closes. "You approved · 3m" says it in words.
 antiPatterns:
   - A status anywhere but its part.
-  - A button inside the row.
+  - Any button inside the row but Review.
 ```
 
 ### Ticket line
@@ -437,12 +461,14 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
 ### Other parts
 
 - **A panel from the right:** `sidePanel`, over the page, dimming it with `Color.scrim`; a tap on the dim or a swipe
-  right closes it. In place: no sheet. A diff's Files and Key lines (`PRNavigator`) use it.
+  right closes it. In place: no sheet. A diff's Files and Key lines (`PRNavigator`) use it. It opens on Key lines when
+  the PR offers them, else on Files. Where a regular width has room (`PanelStyle`), the diff's panel is a column beside
+  the code instead, open until its button puts it away, and a pick in it keeps it open.
 - **Room for the code:** on the phone the nav bar and tab bar leave as you scroll down and return as you scroll up, or
   when the keyboard goes. The diff runs under them, so they never move it. They never stay gone with no way back: they
   return at the top, when there is nothing to scroll, when a file folds or opens, on a tap of the status bar or below
-  the last line, and when the diff comes back on screen. The edge swipe goes back while they are gone. `DiffBars` is
-  the rule.
+  the last line, and when the diff comes back on screen. The edge swipe goes back to the PR while they are gone.
+  `DiffBars` is the rule.
 
 ## Do's and Don'ts
 
@@ -454,7 +480,8 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
 - **Don't** use the system's colours (`.green`, `.orange`, `.red`) for a state. Use its tone.
 - **Don't** use `.bordered`, `.borderedProminent` or `.textFieldStyle(.roundedBorder)`. They read as stock.
 - **Don't** use a list's swipe for a row: rows sit in a plain stack. `PRSwipeRow` is the one swipe, and it pans only
-  sideways.
+  sideways: right shows Review changes, left Remove me.
+- **Don't** switch a PR and its diff in place. The diff is pushed, so Back is always one screen.
 - **Don't** put glass on content. On a PR's screens it is for the controls that float over the diff: Finish, the
   panel button and the key line stepper.
 - **Do** say a repo filter is on, under the switch: a filter can hide most of a list.

@@ -56,8 +56,12 @@ package reads them from the main bundle. PRHub's are in `app/PRHub/Assets.xcasse
 ## Messages in and out
 
 - In, on `PRKitController`: `refresh(_:)` for a wake or a foreground, `register(apnsToken:)`, `open(_:)` for a
-  `PullRequestRef`, `open(text:)` for words that may name a PR, `popToRoot()`, `forgetEverything()`, and the outbox's
-  answers. The host selects its own PRs tab.
+  `PullRequestRef` or a `PRLink` (a link to a PR's files opens its diff over the PR), `open(text:)` for words that may
+  name a PR, `popToRoot()`, `forgetEverything()`, and the outbox's answers. The host selects its own PRs tab.
+- Navigation: the diff is pushed over its PR, and a PR row's Review shortcut pushes both (DESIGN.md, Navigation). On a
+  regular width the PRs tab puts the list beside the PR. Another tab's stack gets the same with
+  `opensPullRequestLinks(in:)` on it and `showsPullRequests()` inside it; `TabStack` takes a `NavigationPath` or an
+  array of one type of screen.
 - Out, to `PRKitHost.receive`: `.opened(ref)`, `.synced(trigger, outcome)`, `.reviewRequests(count)` for a badge,
   `.writeRefused(words)`.
 

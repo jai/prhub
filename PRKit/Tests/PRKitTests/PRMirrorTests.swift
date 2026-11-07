@@ -45,14 +45,14 @@ struct PRMirrorTests {
         var path = NavigationPath(["first", "second"])
         let binding = Binding(get: { path }, set: { path = $0 })
 
-        PullRequestBack(path: binding, goesToRoot: false)()
+        PRStack.path(binding, backGoesToRoot: false).backFromPullRequest()
         #expect(path.count == 1)
 
         path.append("second")
-        PullRequestBack(path: binding, goesToRoot: true)()
+        PRStack.path(binding, backGoesToRoot: true).backFromPullRequest()
         #expect(path.isEmpty)
 
-        PullRequestBack(path: binding, goesToRoot: false)()
+        PRStack.path(binding, backGoesToRoot: false).backFromPullRequest()
         #expect(path.isEmpty)
     }
 

@@ -2,64 +2,89 @@ import PRKitCore
 import PRKitDesign
 import SwiftUI
 
-/// Goes on a `NavigationStack`, not inside it: pushed screens take their environment from the stack. A PR link in any of
-/// them then pushes the PR on this stack, so Back returns to where the link was.
-struct PullRequestLinks: ViewModifier {
-    @Environment(PRsModel.self) private var model
-    @Binding var path: NavigationPath
-    /// The PRs tab's: Back from any PR is the list. A link from another tab's screen returns to that screen.
-    var backGoesToRoot = false
-
-    func body(content: Content) -> some View {
-        content
-            .environment(\.openURL, OpenURLAction { url in
-                guard let ref = PullRequestRef(url: url) else {
-                    return .systemAction
-                }
-                path.append(model.session(for: ref))
-                return .handled
-            })
-            .environment(\.pullRequestBack, PullRequestBack(path: $path, goesToRoot: backGoesToRoot))
-    }
-}
-
-/// What a PR's Back does on the Mac, in place of the system's Back and Forward (`PRScreen.macBackButton`).
-struct PullRequestBack {
-    let path: Binding<NavigationPath>
-    let goesToRoot: Bool
-
-    @MainActor func callAsFunction() {
-        if goesToRoot {
-            path.wrappedValue = NavigationPath()
-        } else if !path.wrappedValue.isEmpty {
-            path.wrappedValue.removeLast()
-        }
-    }
-}
-
-extension EnvironmentValues {
-    @Entry var pullRequestBack: PullRequestBack?
-}
-
-/// Goes inside the `NavigationStack`.
-struct PullRequestDestination: ViewModifier {
-    /// Handed on by name: on the Mac a pushed screen doesn't get what is set on its stack.
-    @Environment(\.pullRequestBack) private var back
-
-    func body(content: Content) -> some View {
-        content.navigationDestination(for: PRSession.self) {
-            PRScreen(session: $0)
-                .environment(\.pullRequestBack, back)
-                .pushedOnMac()
-        }
-    }
-}
-
-/// The PRs tab: one row per PR, from the file on disk, and a tap pushes it.
+/// The PRs tab. Where it is narrow (a phone, Slide Over, a narrow Split View) a stack: the list, a PR pushed over it and
+/// its diff over that. Where it is wide, the list beside the PR, and a diff takes the whole width. Both show
+/// `PRNavigation`'s routes, so a change of width keeps what is open.
 struct PRsView: View {
     let model: PRsModel
     @Bindable var navigation: PRNavigation
     let launchOptions: PRKitLaunchOptions
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
+
+    var body: some View {
+        layout
+            .background {
+                if let session = navigation.diffOnShow {
+                    PRDiffShortcuts(session: session)
+                }
+            }
+            .onChange(of: navigation.pendingLink, initial: true) { _, link in
+                if let link {
+                    navigation.pendingLink = nil
+                    open(link)
+                }
+            }
+            .task {
+                guard !launchOptions.isEmpty else {
+                    return
+                }
+                try? await Task.sleep(for: .seconds(3))
+                openBenchmark()
+                if let ref = launchOptions.linkAfterOpening {
+                    try? await Task.sleep(for: .seconds(2))
+                    navigation.pendingLink = PRLink(ref: ref)
+                }
+            }
+    }
+
+    @ViewBuilder private var layout: some View {
+        #if os(iOS)
+        if sizeClass == .regular {
+            PRsSplitView(model: model, navigation: navigation)
+        } else {
+            stack
+        }
+        #else
+        stack
+        #endif
+    }
+
+    private var stack: some View {
+        TabStack(path: $navigation.routes) {
+            PRsList(model: model, selected: nil)
+                .returnedToOnMac(atRoot: navigation.routes.isEmpty)
+                .showsPullRequests()
+        }
+        .opensPullRequestLinks(on: .routes($navigation.routes))
+    }
+
+    /// A link from a notification: there is no stack of its own to go back to, so it shows here, over nothing else.
+    private func open(_ link: PRLink) {
+        navigation.routes = PRRoute.opening(model.session(for: link.ref), showsDiff: link.showsDiff)
+    }
+
+    /// A benchmark or UI test's launch: the row, on its diff when `-prPage Diff` asks.
+    private func openBenchmark() {
+        guard let id = launchOptions.benchmarkRow, let row = model.rows.first(where: { $0.id == id }) else {
+            return
+        }
+        #if DEBUG
+        let showsDiff = UserDefaults.standard.string(forKey: "prPage") == "Diff"
+        #else
+        let showsDiff = false
+        #endif
+        navigation.routes = PRRoute.opening(model.session(for: row), showsDiff: showsDiff)
+    }
+}
+
+/// The list of PRs: one row per PR, from the file on disk, and a tap opens it.
+struct PRsList: View {
+    let model: PRsModel
+    /// The PR open beside the list on a wide screen, marked in it.
+    let selected: PullRequestRef?
+    @Environment(\.pullRequestOpener) private var opener
     @State private var folds = FoldSet()
     /// `nil` until a filter is picked: then the model's default, which can follow the Worker.
     @AppStorage("prOrgFilter") private var savedOrgFilter: PROrgFilter?
@@ -112,99 +137,77 @@ struct PRsView: View {
     }
 
     var body: some View {
-        TabStack(path: $navigation.path) {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: Space.sm) {
-                    if let since = model.staleSince {
-                        banner("Last checked GitHub \(since.formatted(.relative(presentation: .named)))")
-                    }
-                    if !model.rows.isEmpty, let message = model.errorMessage {
-                        banner("Not up to date. \(message)")
-                    }
-                    if let refused = model.refusedWrite {
-                        Button { model.dismissRefusedWrite() } label: {
-                            Label {
-                                Text(refused)
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            } icon: {
-                                Image(systemName: "xmark.circle.fill")
-                            }
-                            .font(.appCaption)
-                            .foregroundStyle(Color.toneBad)
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: Space.sm) {
+                if let since = model.staleSince {
+                    banner("Last checked GitHub \(since.formatted(.relative(presentation: .named)))")
+                }
+                if !model.rows.isEmpty, let message = model.errorMessage {
+                    banner("Not up to date. \(message)")
+                }
+                if let refused = model.refusedWrite {
+                    Button { model.dismissRefusedWrite() } label: {
+                        Label {
+                            Text(refused)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        } icon: {
+                            Image(systemName: "xmark.circle.fill")
                         }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, Space.lg)
-                        .padding(.top, Space.sm)
-                        .accessibilityHint("Dismisses this")
-                        .transition(.fold)
+                        .font(.appCaption)
+                        .foregroundStyle(Color.toneBad)
                     }
-                    pagePicker
-                    if !orgFilter.repos.isEmpty {
-                        repoFilterNote
-                    }
-                    list(rows(on: page), on: page)
-                    if showsMergedHere, let error = model.mergedError[page] {
-                        banner("Merged PRs didn't load. \(error)")
-                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, Space.lg)
+                    .padding(.top, Space.sm)
+                    .accessibilityHint("Dismisses this")
+                    .transition(.fold)
                 }
-                .padding(.bottom, Space.lg)
-            }
-            .animation(AppMotion.fold, value: model.rows)
-            .animation(AppMotion.fold, value: model.errorMessage)
-            .animation(AppMotion.fold, value: model.refusedWrite)
-            .animation(AppMotion.fold, value: orgFilter)
-            .animation(AppMotion.fold, value: page)
-            .animation(AppMotion.fold, value: model.merged)
-            .animation(AppMotion.fold, value: showsMergedHere)
-            .animation(AppMotion.fold, value: model.removedRequests)
-            .animation(AppMotion.fold, value: model.localAnswers)
-            .background(Color.groundPage)
-            .navigationTitle("PRs")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) { filterButton }
-            }
-            .overlay {
-                if model.rows.isEmpty, let message = model.errorMessage {
-                    ContentUnavailableView("No PRs", systemImage: "arrow.triangle.pull", description: Text(message))
-                } else if model.rows.isEmpty, model.workerSyncedAt != nil || model.samples != nil,
-                          let hint = model.configuration.emptyHint {
-                    emptyHint(hint)
-                        .transition(.opacity)
-                } else if !model.rows.isEmpty, rows(on: page).isEmpty, !showsMergedHere || model.mergedError[page] == nil {
-                    ContentUnavailableView(
-                        "No PRs", systemImage: "line.3.horizontal.decrease",
-                        description: Text("None in the orgs and repos you picked.")
-                    )
+                pagePicker
+                if !orgFilter.repos.isEmpty {
+                    repoFilterNote
+                }
+                list(rows(on: page), on: page)
+                if showsMergedHere, let error = model.mergedError[page] {
+                    banner("Merged PRs didn't load. \(error)")
                 }
             }
-            .refreshable {
-                await model.refresh(.pull)
-                if showsMergedHere { await model.loadMerged(on: page) }
-            }
-            .task(id: "\(page.rawValue)-\(showsMergedHere)") {
-                if showsMergedHere { await model.loadMerged(on: page) }
-            }
-            .returnedToOnMac(atRoot: navigation.path.isEmpty)
-            .showsPullRequests()
+            .padding(.bottom, Space.lg)
         }
-        .opensPullRequestLinks(in: $navigation.path, backGoesToRoot: true)
-        .onChange(of: navigation.pendingPullRequest, initial: true) { _, ref in
-            if let ref {
-                navigation.pendingPullRequest = nil
-                open(ref)
+        .animation(AppMotion.fold, value: model.rows)
+        .animation(AppMotion.fold, value: model.errorMessage)
+        .animation(AppMotion.fold, value: model.refusedWrite)
+        .animation(AppMotion.fold, value: orgFilter)
+        .animation(AppMotion.fold, value: page)
+        .animation(AppMotion.fold, value: model.merged)
+        .animation(AppMotion.fold, value: showsMergedHere)
+        .animation(AppMotion.fold, value: model.removedRequests)
+        .animation(AppMotion.fold, value: model.localAnswers)
+        .background(Color.groundPage)
+        .navigationTitle("PRs")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) { filterButton }
+        }
+        .overlay {
+            if model.rows.isEmpty, let message = model.errorMessage {
+                ContentUnavailableView("No PRs", systemImage: "arrow.triangle.pull", description: Text(message))
+            } else if model.rows.isEmpty, model.workerSyncedAt != nil || model.samples != nil,
+                      let hint = model.configuration.emptyHint {
+                emptyHint(hint)
+                    .transition(.opacity)
+            } else if !model.rows.isEmpty, rows(on: page).isEmpty, !showsMergedHere || model.mergedError[page] == nil {
+                ContentUnavailableView(
+                    "No PRs", systemImage: "line.3.horizontal.decrease",
+                    description: Text("None in the orgs and repos you picked.")
+                )
             }
         }
-        .task {
-            guard !launchOptions.isEmpty else {
-                return
-            }
-            try? await Task.sleep(for: .seconds(3))
-            openBenchmark()
-            if let ref = launchOptions.linkAfterOpening {
-                try? await Task.sleep(for: .seconds(2))
-                navigation.pendingPullRequest = ref
-            }
+        .refreshable {
+            await model.refresh(.pull)
+            if showsMergedHere { await model.loadMerged(on: page) }
+        }
+        .task(id: "\(page.rawValue)-\(showsMergedHere)") {
+            if showsMergedHere { await model.loadMerged(on: page) }
         }
     }
 
@@ -293,30 +296,25 @@ struct PRsView: View {
     }
 
     @ViewBuilder private func rowView(_ row: PullRequestRow) -> some View {
+        let ref = PullRequestRef(repo: row.repo, number: row.number)
         let block = PrListBlock(
             item: PRListItem(ticket: nil, pullRequests: [row.listPullRequest], title: nil, note: nil),
             id: row.id, sentAt: .now, now: .now, folds: folds
-        ).notUpdated(model.notUpdated.contains(row.id))
-        if row.isReviewRequest {
-            PRSwipeRow(title: row.status?.review == "approved" ? "Approved · Remove me" : "Remove me") {
-                model.removeReviewRequest(row)
-            } content: {
-                block
-            }
-        } else {
+        )
+        .notUpdated(model.notUpdated.contains(row.id))
+        .selected(selected == ref)
+        PRSwipeRow(
+            leading: opener.map { opener in
+                PRSwipeAction(
+                    title: "Review changes", icon: .reviewChanges, id: "pr-swipe-review", tone: .accent, inMenu: false
+                ) { opener.review(ref) }
+            },
+            trailing: row.isReviewRequest ? PRSwipeAction(
+                title: row.status?.review == "approved" ? "Approved · Remove me" : "Remove me", icon: .dismiss,
+                id: "pr-remove-request", tone: .destructive
+            ) { model.removeReviewRequest(row) } : nil
+        ) {
             block
-        }
-    }
-
-    /// A link from a notification: there is no stack of its own to go back to, so it shows here, over nothing else.
-    private func open(_ ref: PullRequestRef) {
-        navigation.path = NavigationPath()
-        navigation.path.append(model.session(for: ref))
-    }
-
-    private func openBenchmark() {
-        if let id = launchOptions.benchmarkRow, let row = model.rows.first(where: { $0.id == id }) {
-            navigation.path.append(model.session(for: row))
         }
     }
 }

@@ -9,6 +9,8 @@ public enum PRStyle {
     public static let cardRadius = Radius.md
     public static let controlRadius = Radius.sm
     public static let controlHeight: CGFloat = 32
+    /// A row that is one tap target: the least a finger needs.
+    public static let rowHeight: CGFloat = 44
     /// Between lines of what people write: a review tool's dense text, with room to read.
     public static let bodyLineSpacing: CGFloat = 3
     /// Above and below a reviewer's or a check's line inside the status box.
@@ -22,6 +24,15 @@ public enum PRStyle {
     public static let disabledOpacity = 0.4
     /// A tone's strength behind the thing it colours: a chip's words, a PR's state icon.
     public static let toneGroundOpacity = 0.15
+}
+
+/// The panel beside a diff (`sidePanel`, and its column on a wide screen).
+public enum PanelStyle {
+    /// Over the page: its width where the page is wide. On a phone it leaves a strip of the page to tap.
+    public static let width: CGFloat = 380
+    /// Beside the diff, where there is room: the diff keeps at least `diffWidth`.
+    public static let columnWidth: CGFloat = 340
+    public static let diffWidth: CGFloat = 640
 }
 
 /// A chat's bubble and field (`SessionBubble`, `SessionComposer`).

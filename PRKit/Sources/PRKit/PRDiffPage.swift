@@ -3,12 +3,18 @@ import PRKitDesign
 import SwiftUI
 
 /// The diff, with as little else on screen as can be: the bars leave as you read, Files and Key lines wait in a panel,
-/// and a small capsule steps through the key lines. The comment box sits above the keyboard, with the line just over it.
+/// and a small capsule steps through the key lines. The panel is over the code on a phone, and a column beside it where
+/// the screen has room. The comment box sits above the keyboard, with the line just over it.
 struct PRDiffPage: View {
     @Bindable var session: PRSession
     let document: DiffDocument
     let rows: DiffRows
+    /// Finish review: back to the PR, where the review is sent.
+    let finish: () -> Void
     @Environment(\.openURL) private var openURL
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
     @AppStorage(diffFontIn: nil) private var diffFont
     #if os(macOS)
     /// Read so the diff redraws when View → Make Text Bigger changes it.
@@ -16,6 +22,40 @@ struct PRDiffPage: View {
     #endif
 
     var body: some View {
+        HStack(spacing: 0) {
+            diff
+            if session.panelPlacement == .column, session.isPanelOpen {
+                Divider()
+                    .ignoresSafeArea()
+                PRNavigator(session: session, document: document, files: rows.files)
+                    .frame(width: PanelStyle.columnWidth)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+        }
+        .onGeometryChange(for: PRPanelPlacement.self) { [isRegularWidth] proxy in
+            .fitting(width: proxy.size.width, isRegularWidth: isRegularWidth)
+        } action: { placement in
+            session.placePanel(placement)
+        }
+        .sidePanel(
+            isPresented: session.panelPlacement == .overlay && session.isShowingNavigator,
+            close: session.closeNavigator
+        ) {
+            PRNavigator(session: session, document: document, files: rows.files)
+        }
+        .sensoryFeedback(.selection, trigger: session.selectedKeyLine?.id)
+        .task(id: session.contextLines) { await session.loadKeyLines() }
+    }
+
+    private var isRegularWidth: Bool {
+        #if os(iOS)
+        sizeClass == .regular
+        #else
+        false
+        #endif
+    }
+
+    private var diff: some View {
         GeometryReader { proxy in
             DiffTableView(
                 document: document, rows: rows, viewed: session.viewedFiles, jump: session.jump,
@@ -44,11 +84,6 @@ struct PRDiffPage: View {
                     .transition(.opacity)
             }
         }
-        .sidePanel(isPresented: session.isShowingNavigator, close: session.closeNavigator) {
-            PRNavigator(session: session, document: document, files: rows.files)
-        }
-        .sensoryFeedback(.selection, trigger: session.selectedKeyLine?.id)
-        .task(id: session.contextLines) { await session.loadKeyLines() }
     }
 
     private var actions: DiffActions {
@@ -74,7 +109,12 @@ struct PRDiffPage: View {
             },
             removeDraft: { session.removeDraft($0) },
             reply: { thread, text in try await session.send(text, to: .reply(thread: thread)) },
-            setResolved: { thread, resolved in try await session.setResolved(resolved, thread: thread) }
+            setResolved: { thread, resolved in try await session.setResolved(resolved, thread: thread) },
+            showsFileOnTop: { file in
+                if session.topFile != file {
+                    session.topFile = file
+                }
+            }
         )
     }
 
@@ -148,9 +188,7 @@ struct PRDiffPage: View {
     }
 
     private var finishReview: some View {
-        Button {
-            withAnimation(AppMotion.swap) { session.page = .description }
-        } label: {
+        Button(action: finish) {
             Text("Finish · \(session.drafts.count)")
                 .font(.appFootnote.weight(.semibold))
                 .foregroundStyle(Color.onAccent)
@@ -168,7 +206,7 @@ struct PRDiffPage: View {
     private var panelButton: some View {
         let viewed = rows.files.filter { session.viewedFiles.contains($0.path) }.count
         return Button {
-            openPanel()
+            session.togglePanel()
         } label: {
             Image(systemName: "sidebar.right")
                 .frame(width: 44, height: 44)
@@ -180,22 +218,13 @@ struct PRDiffPage: View {
         .accessibilityIdentifier("diff-files")
     }
 
-    private func openPanel(on page: PRNavigatorPage? = nil) {
-        withAnimation(AppMotion.fold) {
-            if let page {
-                session.navigatorPage = page
-            }
-            session.isShowingNavigator = true
-        }
-    }
-
     private var stepper: some View {
         let items = session.keyLineItems
         let current = items.firstIndex { $0.id == session.selectedKeyLine?.id }
         return HStack(spacing: 0) {
             stepButton("Previous key line", symbol: "chevron.left", id: "key-line-previous", step: -1)
             Button {
-                openPanel(on: .keyLines)
+                session.openPanel(on: .keyLines)
             } label: {
                 Text(current.map { "\($0 + 1) of \(items.count)" } ?? "\(items.count) key lines")
                     .font(.appFootnote.weight(.semibold).monospacedDigit())

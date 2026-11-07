@@ -34,6 +34,8 @@ struct PRDescriptionView: View {
 
     let session: PRSession
     let detail: PullRequestDetail
+    /// Pushes the diff over this PR.
+    let showDiff: () -> Void
     @State private var action: Action?
     private static let descriptionEditor = "description-editor"
 
@@ -69,6 +71,7 @@ struct PRDescriptionView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Space.md) {
                 header
+                PRChangesCard(detail: detail, showDiff: showDiff)
                 PRStatusCard(session: session, detail: detail, folds: folds)
                 actions
                 composer
@@ -104,10 +107,6 @@ struct PRDescriptionView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
-            (Text("+\(detail.additions)").foregroundStyle(Color.toneGood)
-                + Text("  −\(detail.deletions)").foregroundStyle(Color.toneBad)
-                + Text("  ·  \(detail.changedFiles) files").foregroundStyle(.secondary))
-                .font(.appCaption.monospacedDigit())
             labels
         }
     }

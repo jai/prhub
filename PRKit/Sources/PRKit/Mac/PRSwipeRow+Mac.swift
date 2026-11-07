@@ -3,17 +3,15 @@ import PRKitCore
 import PRKitDesign
 import SwiftUI
 
-/// The phone's swipe as the Mac does it: the same action, from the row's menu.
+/// The phone's swipe as the Mac does it: the same actions, in the row's menu (`PrListBlock`).
 struct PRSwipeRow<Content: View>: View {
-    let title: String
-    let action: () -> Void
+    var leading: PRSwipeAction?
+    var trailing: PRSwipeAction?
     @ViewBuilder let content: Content
 
     var body: some View {
         content
-            .contextMenu {
-                Button(title, role: .destructive, action: action)
-            }
+            .environment(\.rowSwipeActions, [leading, trailing].compactMap(\.self))
     }
 }
 #endif

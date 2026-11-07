@@ -268,6 +268,19 @@ extension View {
         }
         .animation(AppMotion.fold, value: isNotUpdated)
     }
+
+    /// The row whose PR is open beside the list, on a wide screen.
+    func selected(_ isSelected: Bool) -> some View {
+        overlay {
+            if isSelected {
+                Color.groundFill
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .animation(AppMotion.swap, value: isSelected)
+    }
 }
 
 /// Under a row whose newest files would not download: it shows the last good revision until a pull tries again.

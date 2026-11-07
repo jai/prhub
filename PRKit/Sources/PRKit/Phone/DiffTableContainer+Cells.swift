@@ -80,6 +80,15 @@ extension DiffTableContainer {
             lastScrollY = scroll.offset
         }
         apply(DiffBars.decide(scroll))
+        reportFileOnTop()
+    }
+
+    /// The file whose header or lines are just under the bars.
+    private func reportFileOnTop() {
+        let top = CGPoint(x: 0, y: table.contentOffset.y + topInset + 1)
+        if let section = table.indexPathForRow(at: top)?.section ?? table.indexPathsForVisibleRows?.first?.section {
+            actions.showsFileOnTop(section)
+        }
     }
 
     /// The status bar's tap goes to the top, where the bars belong.

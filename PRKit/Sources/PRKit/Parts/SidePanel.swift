@@ -3,7 +3,7 @@ import SwiftUI
 
 extension View {
     /// A panel that slides in from the right over the page, which dims under it; a tap on the dim closes it, and a
-    /// swipe to the right carries it with the finger, then lets it go or springs it back (docs/design.md, Other parts).
+    /// swipe to the right carries it with the finger, then lets it go or springs it back (DESIGN.md, Other parts). Where the screen has room, the diff puts its panel in a column instead (`PRPanelPlacement`).
     /// The panel draws its own ground.
     public func sidePanel(
         isPresented: Bool, close: @escaping () -> Void, @ViewBuilder panel: @escaping () -> some View
@@ -22,8 +22,7 @@ private struct SidePanel<Panel: View>: ViewModifier {
     /// starts as scrolling stays scrolling.
     @State private var isSwiping: Bool?
 
-    /// The panel's width where the page is wide; on a phone it leaves a strip of the page to tap.
-    private static var width: Double { 380 }
+    private static var width: Double { PanelStyle.width }
 
     func body(content: Content) -> some View {
         content.overlay {

@@ -352,37 +352,53 @@ public struct StackLink<Value: Hashable, Label: View>: View {
 
 /// A tab's `NavigationStack`, whose open screens outlast a trip to another tab. The Mac's sidebar takes a tab's view away
 /// while it is not showing: on the way out the stack can clear its path, and coming back it can show its root with a path
-/// still set. So on the Mac a tab remembers what it had open as it goes, and opens that again as it comes back.
-public struct TabStack<Root: View>: View {
-    @Binding public var path: NavigationPath
+/// still set. So on the Mac a tab remembers what it had open as it goes, and opens that again as it comes back. The path
+/// is a `NavigationPath`, or an array of one type of screen.
+public struct TabStack<Path: Equatable, Root: View>: View {
+    @Binding public var path: Path
     @ViewBuilder public let root: Root
+    private let empty: Path
+    private let stack: (Binding<Path>, Root) -> NavigationStack<Path, Root>
 
-    public init(path: Binding<NavigationPath>, @ViewBuilder root: () -> Root) {
-        _path = path
-        self.root = root()
-    }
     #if os(macOS)
-    @State private var leftOpen = NavigationPath()
+    @State private var leftOpen: Path?
     #endif
 
     public var body: some View {
         #if os(iOS)
-        NavigationStack(path: $path) { root }
+        stack($path, root)
         #else
-        NavigationStack(path: $path) { root }
+        stack($path, root)
             .onDisappear { leftOpen = path }
             .onAppear {
-                guard !leftOpen.isEmpty else {
+                guard let open = leftOpen, open != empty else {
                     return
                 }
-                let open = leftOpen
-                leftOpen = NavigationPath()
-                path = NavigationPath()
+                leftOpen = nil
+                path = empty
                 Task { @MainActor in
                     try? await Task.sleep(for: .milliseconds(50))
                     path = open
                 }
             }
         #endif
+    }
+}
+
+extension TabStack where Path == NavigationPath {
+    public init(path: Binding<NavigationPath>, @ViewBuilder root: () -> Root) {
+        _path = path
+        self.root = root()
+        empty = NavigationPath()
+        stack = { path, root in NavigationStack(path: path) { root } }
+    }
+}
+
+extension TabStack {
+    public init<Screen: Hashable>(path: Binding<[Screen]>, @ViewBuilder root: () -> Root) where Path == [Screen] {
+        _path = path
+        self.root = root()
+        empty = []
+        stack = { path, root in NavigationStack(path: path) { root } }
     }
 }

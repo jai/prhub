@@ -27,9 +27,9 @@ struct PRKitControllerTests {
     @Test func textThatNamesAPRShowsItAndOtherTextDoesNot() {
         let kit = PRKitController(host: Host())
         #expect(!kit.open(text: "not a PR"))
-        #expect(kit.navigation.pendingPullRequest == nil)
+        #expect(kit.navigation.pendingLink == nil)
         #expect(kit.open(text: "https://github.com/jai/agent-pager/pull/28"))
-        #expect(kit.navigation.pendingPullRequest == PullRequestRef(repo: "jai/agent-pager", number: 28))
+        #expect(kit.navigation.pendingLink == PRLink(ref: PullRequestRef(repo: "jai/agent-pager", number: 28)))
     }
 
     @Test func theScreensFollowTheHostsConfigurationAsItChanges() {
