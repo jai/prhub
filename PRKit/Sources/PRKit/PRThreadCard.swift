@@ -143,7 +143,7 @@ struct PRFileList: View {
         return HStack(spacing: 8) {
             Image(systemName: isViewed ? "checkmark.circle.fill" : "circle")
                 .font(.appFootnote)
-                .foregroundStyle(isViewed ? Color("ToneGood") : Color.secondary)
+                .foregroundStyle(isViewed ? Color.toneGood : Color.secondary)
             Text(file.path)
                 .font(.appCaption.monospaced())
                 .lineLimit(2)
@@ -151,10 +151,10 @@ struct PRFileList: View {
             Spacer(minLength: 4)
             Text("+\(file.change.added)")
                 .font(.appCaption.monospacedDigit())
-                .foregroundStyle(Color("ToneGood"))
+                .foregroundStyle(Color.toneGood)
             Text("−\(file.change.removed)")
                 .font(.appCaption.monospacedDigit())
-                .foregroundStyle(Color("ToneBad"))
+                .foregroundStyle(Color.toneBad)
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 44)

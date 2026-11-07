@@ -56,7 +56,7 @@ struct PRStatusCard: View {
         if session.isMerged {
             Text("Merged")
                 .font(.appFootnote.weight(.semibold))
-                .foregroundStyle(Color("ToneMerged"))
+                .foregroundStyle(Color.toneMerged)
         } else if detail.mergeState == "BEHIND" {
             Button(session.isUpdatingBranch ? "Updating…" : "Update") { Task { await session.updateBranch() } }
                 .buttonStyle(PRButtonStyle(.secondary))
@@ -65,7 +65,7 @@ struct PRStatusCard: View {
         } else if isReadyToMerge {
             Button("Merge") { isConfirmingMerge = true }
                 .buttonStyle(PRButtonStyle(.primary))
-                .tint(Color("ToneGood"))
+                .tint(Color.toneGood)
                 .accessibilityIdentifier("merge-pr")
         }
     }
@@ -98,11 +98,11 @@ struct PRStatusCard: View {
 
     private func reviewer(_ person: PullRequestDetail.Reviewer) -> some View {
         let state: Status = switch person.state {
-        case "APPROVED": Status(AppIcon.reviewApproved.symbol, Color("ToneGood"), "Approved")
-        case "CHANGES_REQUESTED": Status(AppIcon.reviewChangesRequested.symbol, Color("ToneBad"), "Changes requested")
+        case "APPROVED": Status(AppIcon.reviewApproved.symbol, Color.toneGood, "Approved")
+        case "CHANGES_REQUESTED": Status(AppIcon.reviewChangesRequested.symbol, Color.toneBad, "Changes requested")
         case "COMMENTED": Status(AppIcon.reviewCommented.symbol, .secondary, "Commented")
         case "DISMISSED": Status(AppIcon.reviewDismissed.symbol, .secondary, "Dismissed")
-        default: Status(AppIcon.reviewWaiting.symbol, Color("ToneWaiting"), "Waiting")
+        default: Status(AppIcon.reviewWaiting.symbol, Color.toneWaiting, "Waiting")
         }
         return HStack(spacing: 8) {
             PRAvatar(author: .init(login: person.login, avatarUrl: person.avatarUrl))
@@ -169,7 +169,7 @@ struct PRStatusCard: View {
     private var merge: Status {
         typealias Merge = PullRequestStatus.Merge
         switch detail.state {
-        case "merged": return Status(AppIcon.merged.symbol, Color("ToneMerged"), "Merged")
+        case "merged": return Status(AppIcon.merged.symbol, Color.toneMerged, "Merged")
         case "closed": return Status(AppIcon.closed.symbol, .secondary, "Closed")
         default: break
         }
@@ -178,7 +178,7 @@ struct PRStatusCard: View {
         case "BEHIND": Status(Merge.behind.mark)
         case "DIRTY": Status(Merge.conflicting.mark)
         case "BLOCKED": Status(Merge.blocked.mark)
-        case "UNSTABLE": Status(AppIcon.mergeableFailing.symbol, Color("ToneWaiting"), "Mergeable with failing checks")
+        case "UNSTABLE": Status(AppIcon.mergeableFailing.symbol, Color.toneWaiting, "Mergeable with failing checks")
         default: Status(AppIcon.unknown.symbol, .secondary, "Merge state unknown")
         }
     }
@@ -201,10 +201,10 @@ struct PRStatusCard: View {
     /// Skipped covers cancelled runs too: GitHub's overall state doesn't count them, so neither does the summary.
     private static func color(_ state: String) -> Color {
         switch state {
-        case "failure": Color("ToneBad")
-        case "pending": Color("ToneWaiting")
+        case "failure": Color.toneBad
+        case "pending": Color.toneWaiting
         case "skipped": .secondary
-        default: Color("ToneGood")
+        default: Color.toneGood
         }
     }
 

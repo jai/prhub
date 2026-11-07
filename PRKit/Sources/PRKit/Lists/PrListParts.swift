@@ -87,10 +87,10 @@ public struct PrStateIcon: View {
 
     private var color: Color {
         switch state {
-        case .open: Color("ToneGood")
-        case .merged: Color("ToneMerged")
-        case .closed: Color("ToneBad")
-        case .notFound: Color("ToneWaiting")
+        case .open: Color.toneGood
+        case .merged: Color.toneMerged
+        case .closed: Color.toneBad
+        case .notFound: Color.toneWaiting
         case .draft, .resolving: Color.secondary
         }
     }
@@ -116,11 +116,11 @@ public struct PrStatusMarks: View {
 extension PrStatusMark.Tone {
     public var color: Color {
         switch self {
-        case .good: Color("ToneGood")
-        case .bad: Color("ToneBad")
-        case .waiting: Color("ToneWaiting")
+        case .good: Color.toneGood
+        case .bad: Color.toneBad
+        case .waiting: Color.toneWaiting
         case .quiet: Color.secondary
-        case .merged: Color("ToneMerged")
+        case .merged: Color.toneMerged
         }
     }
 }
@@ -145,9 +145,9 @@ public struct PrJaiMarkLabel: View {
 
     private var tone: Color {
         switch mark.kind {
-        case .approved: Color("ToneGood")
-        case .blocking: Color("ToneBad")
-        case .askedAgain: Color("ToneWaiting")
+        case .approved: Color.toneGood
+        case .blocking: Color.toneBad
+        case .askedAgain: Color.toneWaiting
         default: Color.secondary
         }
     }

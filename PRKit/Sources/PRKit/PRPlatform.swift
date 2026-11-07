@@ -41,41 +41,6 @@ extension Color {
         self.init(nsColor: color)
         #endif
     }
-
-    /// A box on a PR's page.
-    public static var prCard: Color {
-        #if os(iOS)
-        Color(uiColor: .secondarySystemGroupedBackground)
-        #else
-        Color(nsColor: .controlBackgroundColor)
-        #endif
-    }
-
-    /// Behind a field or a quiet button.
-    public static var prFill: Color {
-        #if os(iOS)
-        Color(uiColor: .tertiarySystemFill)
-        #else
-        Color(nsColor: .tertiarySystemFill)
-        #endif
-    }
-
-    public static var prSeparator: Color {
-        #if os(iOS)
-        Color(uiColor: .separator)
-        #else
-        Color(nsColor: .separatorColor)
-        #endif
-    }
-
-    /// The page under the boxes.
-    public static var prPage: Color {
-        #if os(iOS)
-        Color(uiColor: .systemGroupedBackground)
-        #else
-        Color(nsColor: .windowBackgroundColor)
-        #endif
-    }
 }
 
 extension View {

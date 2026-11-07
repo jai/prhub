@@ -47,10 +47,12 @@ typography:
   caption2: { fontFamily: *family, fontSize: 11px, fontWeight: 400 }
   code: { fontFamily: system-mono, fontSize: 12px, fontWeight: 400 }
 rounded:
-  # Inside a block (chips, buttons, fields), and a box of its own.
+  # Inside a block (buttons, fields), a box of its own, and a chat bubble or the chat field.
   sm: 6px
   md: 8px
+  lg: 18px
 spacing:
+  xxs: 2px
   xs: 4px
   sm: 8px
   md: 12px
@@ -70,6 +72,13 @@ components:
   state-bad: { textColor: "{colors.tone-bad}" }
   state-waiting: { textColor: "{colors.tone-waiting}" }
   state-merged: { textColor: "{colors.tone-merged}" }
+# How long things take to move: AppMotion's fold (opening, closing, arriving), swap (one state replacing another in
+# place), press (a control's press and focus) and screen (a Mac screen pushed or returned to).
+x-motion:
+  fold: 280ms
+  swap: 180ms
+  press: 120ms
+  screen: 300ms
 # Every SF Symbol's variant (none, fill, circle, circle-fill, square, square-fill), set once at the app's root. Which
 # symbol means what is AppIcon.swift.
 x-icons:

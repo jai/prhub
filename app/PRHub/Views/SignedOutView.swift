@@ -36,7 +36,7 @@ struct SignedOutView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         } icon: {
                             Image(systemName: AppIcon.problem.rawValue)
-                                .foregroundStyle(Color("ToneBad"))
+                                .foregroundStyle(Color.toneBad)
                         }
                         .labelStyle(.iconText)
                         .accessibilityElement(children: .combine)
@@ -51,7 +51,7 @@ struct SignedOutView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(Space.lg)
-                .background(HomePalette.cardBackground)
+                .background(Color.groundCard)
 
                 VStack(alignment: .leading, spacing: Space.md) {
                     Text("Signing out forgets your account and its PRs on this phone.")
@@ -70,13 +70,13 @@ struct SignedOutView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(Space.lg)
-                .background(HomePalette.cardBackground)
+                .background(Color.groundCard)
                 .padding(.top, Space.xl)
             }
             .padding(.vertical, Space.xl)
             .animation(AppMotion.fold, value: connection.phase)
         }
-        .background(HomePalette.screenBackground)
+        .background(Color.groundPage)
         .readableContentWidth()
         .disabled(connection.isWorking)
     }

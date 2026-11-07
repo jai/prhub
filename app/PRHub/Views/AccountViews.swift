@@ -17,7 +17,7 @@ struct AnthropicKeySection: View {
                 LabeledContent("Anthropic key") {
                     Label("Key set", systemImage: AppIcon.ok.rawValue)
                         .labelStyle(.iconText)
-                        .foregroundStyle(Color("ToneGood"))
+                        .foregroundStyle(Color.toneGood)
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("prhub-anthropic-key-set")
@@ -69,7 +69,7 @@ struct AnthropicKeySection: View {
                         .fixedSize(horizontal: false, vertical: true)
                 } icon: {
                     Image(systemName: AppIcon.problem.rawValue)
-                        .foregroundStyle(Color("ToneBad"))
+                        .foregroundStyle(Color.toneBad)
                 }
                 .labelStyle(.iconText)
                 .accessibilityElement(children: .combine)
@@ -152,7 +152,7 @@ struct DeleteAccountSheet: View {
                             .fixedSize(horizontal: false, vertical: true)
                     } icon: {
                         Image(systemName: AppIcon.problem.rawValue)
-                            .foregroundStyle(Color("ToneBad"))
+                            .foregroundStyle(Color.toneBad)
                     }
                     .labelStyle(.iconText)
                     .accessibilityIdentifier("prhub-delete-account-error")
@@ -170,7 +170,7 @@ struct DeleteAccountSheet: View {
                         .padding(.vertical, Space.xs)
                     }
                     .buttonStyle(PRButtonStyle(.primary))
-                    .tint(Color("ToneBad"))
+                    .tint(Color.toneBad)
                     .accessibilityIdentifier("prhub-delete-account-confirm")
                     Button {
                         dismiss()
@@ -188,7 +188,7 @@ struct DeleteAccountSheet: View {
             .padding(Space.lg)
             .animation(AppMotion.fold, value: failure)
         }
-        .background(HomePalette.cardBackground)
+        .background(Color.groundCard)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(isDeleting)

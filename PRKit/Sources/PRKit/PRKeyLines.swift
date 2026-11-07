@@ -67,7 +67,7 @@ struct PRKeyLinesList: View {
                     .multilineTextAlignment(.center)
                     .frame(width: 48, height: PRStyle.controlHeight)
                     .background(
-                        Color.prFill,
+                        Color.groundFill,
                         in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous)
                     )
                     .onSubmit {
@@ -96,7 +96,7 @@ struct PRKeyLinesList: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(reason)
                     .font(.appFootnote)
-                    .foregroundStyle(Color("ToneBad"))
+                    .foregroundStyle(Color.toneBad)
                 Button("Try again") { Task { await session.loadKeyLines(retry: true) } }
                     .buttonStyle(PRButtonStyle(.secondary))
             }
@@ -126,7 +126,7 @@ struct PRKeyLinesList: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: item.symbol)
                 .font(.appCaption)
-                .foregroundStyle(item.kind == "risk" ? Color("ToneBad") : Color.secondary)
+                .foregroundStyle(item.kind == "risk" ? Color.toneBad : Color.secondary)
                 .frame(width: 16)
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: "\(item.path):\(item.line)")
@@ -181,7 +181,7 @@ struct PRNavigator: View {
                 PRKeyLinesList(session: session)
             }
         }
-        .background(Color.prCard)
+        .background(Color.groundCard)
     }
 
     private var filesFoot: some View {
@@ -223,7 +223,7 @@ struct PRKeyLineNote: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: item.symbol)
                 .font(.appCaption)
-                .foregroundStyle(item.kind == "risk" ? Color("ToneBad") : Color.secondary)
+                .foregroundStyle(item.kind == "risk" ? Color.toneBad : Color.secondary)
             Text(item.why)
                 .font(.appFootnote)
                 .frame(maxWidth: .infinity, alignment: .leading)

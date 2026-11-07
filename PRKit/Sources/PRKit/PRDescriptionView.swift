@@ -83,7 +83,7 @@ struct PRDescriptionView: View {
             }
             .padding()
         }
-        .background(Color.prPage)
+        .background(Color.groundPage)
     }
 
     private var header: some View {
@@ -104,8 +104,8 @@ struct PRDescriptionView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
-            (Text("+\(detail.additions)").foregroundStyle(Color("ToneGood"))
-                + Text("  −\(detail.deletions)").foregroundStyle(Color("ToneBad"))
+            (Text("+\(detail.additions)").foregroundStyle(Color.toneGood)
+                + Text("  −\(detail.deletions)").foregroundStyle(Color.toneBad)
                 + Text("  ·  \(detail.changedFiles) files").foregroundStyle(.secondary))
                 .font(.appCaption.monospacedDigit())
             labels
@@ -134,7 +134,7 @@ struct PRDescriptionView: View {
             if let notice = session.notice {
                 Text(notice)
                     .font(.appFootnote)
-                    .foregroundStyle(notice == session.model.writeNotice ? Color.secondary : Color("ToneBad"))
+                    .foregroundStyle(notice == session.model.writeNotice ? Color.secondary : Color.toneBad)
                     .accessibilityIdentifier("pr-notice")
                     .transition(.fold)
             }

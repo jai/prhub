@@ -28,14 +28,10 @@ public enum HomePalette {
     })
     #endif
 
-    /// The grouped list's cell, which a band over a bar and a chart's badge are cut from, and the screen behind it.
-    #if os(iOS)
-    public static let cardBackground = Color(.secondarySystemGroupedBackground)
-    public static let screenBackground = Color(.systemGroupedBackground)
-    #else
-    public static let cardBackground = Color(nsColor: .controlBackgroundColor)
-    public static let screenBackground = Color(nsColor: .windowBackgroundColor)
-    #endif
+    /// The grouped list's cell, which a band over a bar and a chart's badge are cut from, and the screen behind it: the
+    /// app's grounds (`Color.groundCard`, `Color.groundPage`), under the names Agent Pager's Home uses.
+    public static var cardBackground: Color { .groundCard }
+    public static var screenBackground: Color { .groundPage }
 
     public static func net(_ kcal: Double) -> Color {
         kcal < 0 ? burn : intake

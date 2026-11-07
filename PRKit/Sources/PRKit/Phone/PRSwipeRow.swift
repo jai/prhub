@@ -26,7 +26,7 @@ struct PRSwipeRow<Content: View>: View {
                         .padding(.horizontal, 8)
                         .frame(width: Self.width)
                         .frame(maxHeight: .infinity)
-                        .background(Color("ToneBad"))
+                        .background(Color.toneBad)
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("pr-remove-request")

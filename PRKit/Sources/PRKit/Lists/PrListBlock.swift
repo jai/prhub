@@ -77,7 +77,7 @@ public struct PrListBlock: View {
                 }
             }
         }
-        .background(HomePalette.cardBackground)
+        .background(Color.groundCard)
     }
 
     private func pullRequestRow(_ pullRequest: PRListPullRequest) -> some View {
@@ -86,7 +86,7 @@ public struct PrListBlock: View {
             HStack(alignment: .top, spacing: PrListGrid.gutter) {
                 VStack(spacing: 4) {
                     PrAuthorAvatar(pullRequest: pullRequest)
-                        .background(HomePalette.cardBackground, in: .circle)
+                        .background(Color.groundCard, in: .circle)
                         .opacity(opacity)
                     if let due = pullRequest.pastSLA(now: now) {
                         PrPastSLAMark(due: due, now: now, format: format)
@@ -218,7 +218,7 @@ public struct PrPastSLAMark: View {
             Text(format.age(due, now: now))
                 .font(.appCaption2.weight(.semibold).monospacedDigit())
         }
-        .foregroundStyle(Color("ToneBad"))
+        .foregroundStyle(Color.toneBad)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Past review SLA, due \(format.ago(due, now: now))")
         .accessibilityIdentifier("pr-past-sla")

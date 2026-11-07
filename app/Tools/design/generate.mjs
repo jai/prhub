@@ -1,7 +1,7 @@
 // Writes PRHub's design from DESIGN.md's tokens, so a font, colour, size, corner or icon style is one line there:
 // - a colour set per colour token, light and dark (`ink` and `ink-dark`), in app/PRHub/Assets.xcassets, and
 //   AccentColor from `primary`;
-// - PRKit/Sources/PRKitDesign/DesignTokens.swift: type, spacing, corners and icon style.
+// - PRKit/Sources/PRKitDesign/DesignTokens.swift: type, spacing, corners, motion and icon style.
 // Run `make -C app design` after editing DESIGN.md. `--check` changes nothing and fails if the outputs are stale.
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -91,6 +91,8 @@ if (!code) fail("typography.code is required: diffs and code use it");
 
 const space = Object.entries(tokens.spacing ?? {}).map(([name, value]) => `    public static let ${camel(name)}: CGFloat = ${points(value)}`);
 const radius = Object.entries(tokens.rounded ?? {}).map(([name, value]) => `    public static let ${camel(name)}: CGFloat = ${points(value)}`);
+const motion = Object.entries(tokens["x-motion"] ?? {}).map(([name, value]) => `    public static let ${camel(name)}: Double = ${seconds(value)}`);
+if (motion.length === 0) fail("x-motion is required: AppMotion's durations come from it");
 const icons = tokens["x-icons"] ?? {};
 const VARIANTS = { none: ".none", fill: ".fill", circle: ".circle", "circle-fill": ".circle.fill", square: ".square",
   "square-fill": ".square.fill" };
@@ -136,6 +138,11 @@ ${space.join("\n")}
 public enum Radius {
 ${radius.join("\n")}
 }
+
+/// How long things take to move, in seconds (DESIGN.md \`x-motion\`). \`AppMotion\` is drawn from these.
+public enum MotionTokens {
+${motion.join("\n")}
+}
 `;
 outputs.set(swiftOut, swift);
 
@@ -146,6 +153,11 @@ function points(value) {
   const match = String(value).match(/^(\d+(?:\.\d+)?)px$/);
   if (!match) fail(`${value} must be in px (points)`);
   return Number(match[1]);
+}
+function seconds(value) {
+  const match = String(value).match(/^(\d+)ms$/);
+  if (!match) fail(`${value} must be in ms`);
+  return Number(match[1]) / 1000;
 }
 function weight(value) {
   const name = WEIGHTS[Number(value)];

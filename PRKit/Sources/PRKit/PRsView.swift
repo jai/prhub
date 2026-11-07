@@ -131,7 +131,7 @@ struct PRsView: View {
                                 Image(systemName: "xmark.circle.fill")
                             }
                             .font(.appCaption)
-                            .foregroundStyle(Color("ToneBad"))
+                            .foregroundStyle(Color.toneBad)
                         }
                         .buttonStyle(.plain)
                         .padding(.horizontal, 16)
@@ -159,7 +159,7 @@ struct PRsView: View {
             .animation(AppMotion.fold, value: showsMergedHere)
             .animation(AppMotion.fold, value: model.removedRequests)
             .animation(AppMotion.fold, value: model.localAnswers)
-            .background(HomePalette.screenBackground)
+            .background(Color.groundPage)
             .navigationTitle("PRs")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) { filterButton }
@@ -273,7 +273,7 @@ struct PRsView: View {
     private func banner(_ text: String) -> some View {
         Text(text)
             .font(.appCaption)
-            .foregroundStyle(Color("ToneWaiting"))
+            .foregroundStyle(Color.toneWaiting)
             .padding(.horizontal, 16)
             .padding(.top, 8)
     }

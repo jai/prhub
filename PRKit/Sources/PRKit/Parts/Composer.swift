@@ -91,10 +91,10 @@ private struct ComposerBar: ViewModifier {
             .padding(.bottom, keyboardUp ? 16 : 8)
             .background {
                 VStack(spacing: 0) {
-                    LinearGradient(colors: [HomePalette.screenBackground.opacity(0), HomePalette.screenBackground],
+                    LinearGradient(colors: [Color.groundPage.opacity(0), Color.groundPage],
                                    startPoint: .top, endPoint: .bottom)
                         .frame(height: 14)
-                    HomePalette.screenBackground
+                    Color.groundPage
                 }
                 .ignoresSafeArea(edges: .bottom)
             }

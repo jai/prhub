@@ -44,7 +44,7 @@ struct PRAskSheet: View {
                 }
                 .onAppear { proxy.scrollTo(Self.end, anchor: .bottom) }
             }
-            .background(HomePalette.screenBackground)
+            .background(Color.groundPage)
             .safeAreaBar(edge: .bottom) { composer }
             .inlineNavigationTitle()
             .navigationTitle(Text(verbatim: "\(session.ref.repo.split(separator: "/").last ?? "")#\(session.ref.number)"))
@@ -81,7 +81,7 @@ struct PRAskSheet: View {
         } else if let problem = session.askChat?.problem {
             Text(problem)
                 .font(.appFootnote)
-                .foregroundStyle(Color("ToneBad"))
+                .foregroundStyle(Color.toneBad)
                 .padding(.horizontal, PRStyle.inset)
         } else if let cents = session.askChat?.costCents, !messages.isEmpty {
             Text("\((Double(cents) / 100).formatted(.currency(code: "USD"))) so far, of $2")
@@ -113,7 +113,7 @@ struct PRAskSheet: View {
             if let error = session.askError {
                 Text(error)
                     .font(.appFootnote)
-                    .foregroundStyle(Color("ToneBad"))
+                    .foregroundStyle(Color.toneBad)
             }
             SessionComposer(
                 draft: $session.askDraft, isSending: session.isSendingAsk, send: send,

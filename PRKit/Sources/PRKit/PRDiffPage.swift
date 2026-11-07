@@ -112,7 +112,7 @@ struct PRDiffPage: View {
                 }
             )
             .padding(8)
-            .background(Color.prCard)
+            .background(Color.groundCard)
             .overlay(alignment: .top) { Divider() }
         }
     }
@@ -122,7 +122,7 @@ struct PRDiffPage: View {
             if let notice = session.notice {
                 Text(notice)
                     .font(.appFootnote)
-                    .foregroundStyle(Color("ToneBad"))
+                    .foregroundStyle(Color.toneBad)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .transition(.fold)
             }

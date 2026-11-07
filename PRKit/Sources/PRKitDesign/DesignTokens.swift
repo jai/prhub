@@ -41,6 +41,7 @@ public enum DesignTokens {
 
 /// Space between and around things (DESIGN.md `spacing`).
 public enum Space {
+    public static let xxs: CGFloat = 2
     public static let xs: CGFloat = 4
     public static let sm: CGFloat = 8
     public static let md: CGFloat = 12
@@ -52,4 +53,13 @@ public enum Space {
 public enum Radius {
     public static let sm: CGFloat = 6
     public static let md: CGFloat = 8
+    public static let lg: CGFloat = 18
+}
+
+/// How long things take to move, in seconds (DESIGN.md `x-motion`). `AppMotion` is drawn from these.
+public enum MotionTokens {
+    public static let fold: Double = 0.28
+    public static let swap: Double = 0.18
+    public static let press: Double = 0.12
+    public static let screen: Double = 0.3
 }

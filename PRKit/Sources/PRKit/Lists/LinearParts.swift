@@ -68,7 +68,7 @@ public enum LinearPalette {
     /// `#e2e2e2` can't be seen as a ring on white. Not found is the app's waiting tone.
     public static func color(of ticket: PRListTicket) -> Color {
         guard ticket.found == true else {
-            return ticket.found == nil ? Color.secondary : Color("ToneWaiting")
+            return ticket.found == nil ? Color.secondary : Color.toneWaiting
         }
         switch ticket.stateType {
         case "unstarted", "backlog": return Color.secondary

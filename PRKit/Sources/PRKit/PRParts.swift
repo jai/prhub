@@ -2,24 +2,15 @@ import PRKitCore
 import PRKitDesign
 import SwiftUI
 
-/// The measures of a PR's boxes and controls (`DESIGN.md`): tight corners and room around small text.
-public enum PRStyle {
-    public static let inset: CGFloat = 12
-    public static let cardRadius: CGFloat = 8
-    public static let controlRadius: CGFloat = 6
-    public static let controlHeight: CGFloat = 32
-    public static let bodyLineSpacing: CGFloat = 3
-}
-
 extension View {
     /// The box every comment and section sits in. It clips, so what opens inside it slides in from under the header.
     public func prCard() -> some View {
         frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.prCard)
+            .background(Color.groundCard)
             .clipShape(.rect(cornerRadius: PRStyle.cardRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: PRStyle.cardRadius, style: .continuous)
-                    .strokeBorder(Color.prSeparator, lineWidth: 0.5)
+                    .strokeBorder(Color.line, lineWidth: 0.5)
             )
     }
 }
@@ -61,7 +52,7 @@ public struct PRButtonStyle: ButtonStyle {
     private var background: AnyShapeStyle {
         switch kind {
         case .primary: AnyShapeStyle(.tint)
-        case .secondary: AnyShapeStyle(Color.prFill)
+        case .secondary: AnyShapeStyle(Color.groundFill)
         case .plain: AnyShapeStyle(.clear)
         }
     }
@@ -101,7 +92,7 @@ public struct PRAvatar: View {
                 .font(.appCaption2.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.prFill)
+                .background(Color.groundFill)
         }
         .frame(width: 20, height: 20)
         .clipShape(.circle)
@@ -192,7 +183,7 @@ public struct InlineComposer: View {
                 .padding(.horizontal, PRStyle.inset)
                 .padding(.vertical, 8)
                 .background(
-                    Color.prFill,
+                    Color.groundFill,
                     in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous)
                 )
                 .overlay(
@@ -279,11 +270,11 @@ struct PRNotUpdatedNote: View {
     var body: some View {
         Text("Couldn't update · Pull to try again")
             .font(.appCaption)
-            .foregroundStyle(Color("ToneWaiting"))
+            .foregroundStyle(Color.toneWaiting)
             .padding(.leading, 16 + PrListGrid.avatar + PrListGrid.gutter)
             .padding(.bottom, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(HomePalette.cardBackground)
+            .background(Color.groundCard)
             .accessibilityIdentifier("pr-not-updated")
     }
 }

@@ -84,7 +84,7 @@ struct OnboardingView: View {
             .animation(AppMotion.fold, value: scanner)
         }
         .scrollDismissesKeyboard(.interactively)
-        .background(HomePalette.screenBackground)
+        .background(Color.groundPage)
         .readableContentWidth()
         .disabled(connection.isWorking)
     }
@@ -286,7 +286,7 @@ struct OnboardingView: View {
                 .fixedSize(horizontal: false, vertical: true)
         } icon: {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(Color("ToneBad"))
+                .foregroundStyle(Color.toneBad)
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("onboardingStatus")
@@ -315,7 +315,7 @@ struct OnboardingView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
-            .background(HomePalette.cardBackground)
+            .background(Color.groundCard)
         }
         .padding(.top, title == nil ? 0 : 16)
     }
