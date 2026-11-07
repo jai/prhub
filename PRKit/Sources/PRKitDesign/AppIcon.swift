@@ -60,6 +60,19 @@ public enum AppIcon: String {
     case moveUp = "arrow.up"
     case remove = "minus"
 
+    // Settings: the account, the Worker, alerts and the diff font.
+    case signIn = "person.crop.circle"
+    case signOut = "rectangle.portrait.and.arrow.right"
+    case ownWorker = "server.rack"
+    case installApp = "building.2"
+    case alertsTurnOn = "bell.circle"
+    case alertsOff = "bell.slash.circle"
+    case smaller = "arrow.down.right.and.arrow.up.left"
+    case bigger = "arrow.up.left.and.arrow.down.right"
+    case scanCode = "qrcode.viewfinder"
+    case samples = "sparkles.rectangle.stack"
+    case fold = "chevron.down"
+
     // Actions.
     case refresh = "arrow.clockwise"
     case copy = "doc.on.doc"

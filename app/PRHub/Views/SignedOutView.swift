@@ -17,7 +17,7 @@ struct SignedOutView: View {
                     messageIdentifier: "signedOutReason"
                 )
 
-                PageBlock {
+                PRPageBlock {
                     SignInWithGitHubButton(isWorking: connection.phase == .working(.signingIn)) {
                         Task { await environment.signIn() }
                     }
@@ -33,7 +33,7 @@ struct SignedOutView: View {
                     }
                 }
 
-                PageBlock {
+                PRPageBlock {
                     Text("Signing out forgets your account and its PRs on this phone.")
                         .font(.appFootnote)
                         .foregroundStyle(Color.inkQuiet)

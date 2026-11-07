@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The parts of PRHub's own pages (onboarding, Sign in again, Delete Account): one look for each, so a change to one
-/// is a change here (DESIGN.md, Components).
+/// The parts of PRHub's own pages (onboarding, Sign in again, Settings, Delete Account) that PRKit doesn't share: one
+/// look for each, so a change to one is a change here (DESIGN.md, Components). Blocks are PRKit's `PRPageBlock`.
 
 /// A page's title and what it is for, at the top of the page.
 struct PageHeader: View {
@@ -22,32 +22,6 @@ struct PageHeader: View {
         }
         .padding(.horizontal, Space.lg)
         .padding(.bottom, Space.lg)
-    }
-}
-
-/// A block on the page's grey, the width of the screen, with its section's title above it.
-struct PageBlock<Content: View>: View {
-    let title: String?
-    @ViewBuilder let content: Content
-
-    init(_ title: String? = nil, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Space.sm) {
-            if let title {
-                PRSectionTitle(title)
-            }
-            VStack(alignment: .leading, spacing: Space.md) {
-                content
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(Space.lg)
-            .background(Color.groundCard)
-        }
-        .padding(.top, title == nil ? 0 : Space.lg)
     }
 }
 

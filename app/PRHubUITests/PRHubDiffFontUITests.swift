@@ -52,16 +52,16 @@ final class PRHubDiffFontUITests: XCTestCase {
 
         app.tabBars.buttons["Settings"].tap()
         let preview = app.descendants(matching: .any)["diff-font-preview"]
-        XCTAssertTrue(scroll(to: preview))
+        XCTAssertTrue(app.scrollSettings(to: preview))
         try picture("diff-font-settings-before")
-        let bigger = app.steppers["diff-font-size"].buttons.element(boundBy: 1)
+        let bigger = app.descendants(matching: .any)["diff-font-size"].buttons["Bigger"]
         for _ in 0..<4 {
             bigger.tap()
         }
         let face = app.buttons["diff-font-jetBrainsMono"]
-        XCTAssertTrue(scroll(to: face))
+        XCTAssertTrue(app.scrollSettings(to: face))
         face.tap()
-        XCTAssertTrue(scroll(to: preview))
+        XCTAssertTrue(app.scrollSettings(to: preview, up: false))
         try picture("diff-font-settings-after")
 
         app.tabBars.buttons["PRs"].tap()
@@ -82,13 +82,6 @@ final class PRHubDiffFontUITests: XCTestCase {
 
     private func name(_ appearance: XCUIDevice.Appearance) -> String {
         appearance == .dark ? "dark" : "light"
-    }
-
-    private func scroll(to element: XCUIElement) -> Bool {
-        for _ in 0..<8 where !(element.exists && element.isHittable) {
-            app.collectionViews.firstMatch.swipeUp(velocity: .slow)
-        }
-        return element.exists && element.isHittable
     }
 
     private func waitFor(timeout: TimeInterval = 5, _ condition: () -> Bool) -> Bool {

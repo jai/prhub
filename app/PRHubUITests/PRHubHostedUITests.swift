@@ -37,9 +37,7 @@ final class PRHubHostedUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 5))
 
         let delete = app.buttons["prhub-delete-account"]
-        app.collectionViews.firstMatch.swipeUp()
-        app.collectionViews.firstMatch.swipeUp()
-        XCTAssertTrue(delete.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.scrollSettings(to: delete))
         delete.tap()
         let confirm = app.buttons["prhub-delete-account-confirm"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))

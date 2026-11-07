@@ -72,21 +72,19 @@ final class PRHubScreenshotTests: XCTestCase {
 
         launch(look, ["-PRHubHosted", "-PRHubSettings", "-PRHubAnthropicKey"])
         XCTAssertTrue(app.descendants(matching: .any)["prhub-account-login"].waitForExistence(timeout: 10))
-        XCTAssertTrue(scroll(to: app.descendants(matching: .any)["prhub-anthropic-key-set"]))
+        XCTAssertTrue(app.scrollSettings(to: app.descendants(matching: .any)["prhub-anthropic-key-set"]))
         try picture("8-account-key-set", look)
 
         launch(look, ["-PRHubHosted", "-PRHubSettings"])
         XCTAssertTrue(app.descendants(matching: .any)["prhub-account-login"].waitForExistence(timeout: 10))
-        XCTAssertTrue(scroll(to: app.secureTextFields["prhub-anthropic-key-field"]))
+        XCTAssertTrue(app.scrollSettings(to: app.secureTextFields["prhub-anthropic-key-field"]))
         try picture("9-account-no-key", look)
         let delete = app.buttons["prhub-delete-account"]
-        XCTAssertTrue(scroll(to: delete))
-        app.collectionViews.firstMatch.swipeUp()
+        XCTAssertTrue(app.scrollSettings(to: delete))
+        app.scrollViews["prhub-settings"].swipeUp()
         try picture("10-account-bottom", look)
         // The diff font's section sits under it, so the bottom of Settings can be past the button.
-        for _ in 0..<8 where !(delete.exists && delete.isHittable) {
-            app.collectionViews.firstMatch.swipeDown(velocity: .slow)
-        }
+        XCTAssertTrue(app.scrollSettings(to: delete, up: false))
         delete.tap()
         XCTAssertTrue(app.buttons["prhub-delete-account-confirm"].waitForExistence(timeout: 5))
         try picture("11-delete-account", look)
@@ -103,14 +101,6 @@ final class PRHubScreenshotTests: XCTestCase {
         }
         XCTAssertTrue(app.descendants(matching: .any)["pr-empty-hint-link"].waitForExistence(timeout: 10))
         try picture("13-empty-list", look)
-    }
-
-    /// Settings' rows past the screen are made only once scrolled to.
-    private func scroll(to element: XCUIElement) -> Bool {
-        for _ in 0..<8 where !(element.exists && element.isHittable) {
-            app.collectionViews.firstMatch.swipeUp(velocity: .slow)
-        }
-        return element.exists
     }
 
     private func picture(_ step: String, _ look: Look) throws {

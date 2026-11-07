@@ -134,8 +134,8 @@ all of them are in scope. A new screen adds a row here and a step in `PRHubScree
 
 | Feature | Where | Drawn by |
 |---|---|---|
-| Sign in with GitHub | first run, on the hosted Worker | `OnboardingView`, `SignInWithGitHubButton`, `PageHeader`, `PageBlock` |
-| Sign in again | GitHub signed the person out | `SignedOutView`, `PageHeader`, `PageBlock` |
+| Sign in with GitHub | first run, on the hosted Worker | `OnboardingView`, `SignInWithGitHubButton`, `PageHeader`, `PRPageBlock` |
+| Sign in again | GitHub signed the person out | `SignedOutView`, `PageHeader`, `PRPageBlock` |
 | Connect to a pr-worker | first run, when the build allows it (`PRHUB_SELF_HOSTED`), under "Connect your own Worker" | `OnboardingView`, `SetupCodeScanner` |
 | Sample PRs | onboarding's "Try with sample PRs" | the PR screens over `PRSampleSet.prHub` |
 | PR list | PRs | `PRsView`, `PrListBlock`, `PRSectionTitle`, `PRSwipeRow` |
@@ -143,8 +143,8 @@ all of them are in scope. A new screen adds a row here and a step in `PRHubScree
 | PR description | PRs → a PR | `PRDescriptionView`, `PRStatusCard`, `.prCard()`, `PRCommentText`, `PRThreadCard` |
 | Ask AI | PRs → a PR → the toolbar, or a line's comment box | `PRAskSheet`, `SessionBubble`, `SessionComposer` |
 | PR diff | PRs → a PR → Diff | `DiffTableView`, `PRDiffPage`, `PRNavigator` |
-| Settings | Settings; signed in: account, App installs, Anthropic key, Sign out, Delete account | `PRHubSettingsView`, `AnthropicKeySection`, `DeleteAccountSheet` |
-| Diff font | Settings → Diff font: a preview, the size (9 to 20 pt) and the face; every diff and code view follows it | `DiffFontSection`, `DiffFont` |
+| Settings | Settings; signed in: account, App installs, Anthropic key, Sign out, Delete account | `PRHubSettingsView`, `PRPageBlock`, `PRValueLine`, `AnthropicKeySection`, `DeleteAccountSheet` |
+| Diff font | Settings → Diff font: a preview, the size (9 to 20 pt) and the face; every diff and code view follows it | `DiffFontSection`, `PRPageBlock`, `DiffFont` |
 | No PRs yet | PRs, hosted, nothing listed | `PREmptyHint` in `PRsView` |
 | iPad | the phone's tabs, every orientation | the same views; `readableContentWidth()` centres scroll views |
 
@@ -279,7 +279,8 @@ The shared parts. Use these; extend one rather than writing a near-copy. Each is
 | `IconText`, `.labelStyle(.iconText)` | an icon and its words | PRKitDesign |
 | `sidePanel` | a panel from the right | PRKit `Parts/SidePanel.swift` |
 | `PRSwipeRow` | the one swipe on a row | PRKit `Phone/` |
-| `PageHeader`, `PageBlock`, `ProblemLine` | PRHub's own pages: a title, a block, why something failed | app `Views/PageParts.swift` |
+| `PRPageBlock`, `PRBlockNote`, `PRValueLine` | a page of blocks (onboarding, Sign in again, Settings): a block, the note under it, a setting's name and value | PRKit `Parts/PRPageBlock.swift` |
+| `PageHeader`, `ProblemLine` | PRHub's own pages: a title, why something failed | app `Views/PageParts.swift` |
 
 ### Status
 
@@ -383,17 +384,22 @@ antiPatterns:
 ### Page and block
 
 ```text
-name: PageBlock
-purpose: PRHub's own pages (onboarding, Sign in again): a block on the page's grey, the width of the screen.
+name: PRPageBlock
+purpose: A page of blocks (onboarding, Sign in again, Settings): a block on the page's grey, the width of the screen.
 parts:
   header:  { holds: PageHeader, title: appTitle3 semibold, message: appFootnote quiet, once, at the top }
   title:   { holds: PRSectionTitle, optional: true, above the block }
   content: { inset: Space.lg, gap: Space.md, ground: groundCard }
+  value:   { holds: PRValueLine, name: appFootnote, value: appFootnote quiet at the right, under the name at large text }
+  note:    { holds: PRBlockNote, font: appCaption quiet, under the block, optional: true }
   problem: { holds: ProblemLine, under what it is about }
 rules:
   - A field is .prField; a button is PRButtonStyle; a failure is ProblemLine, in place.
+  - A destructive button (Delete account, Remove key, Disconnect) is PRButtonStyle(.secondary) tinted toneBad.
+  - Whatever comes and goes in a block (a key set, an alert's state) folds in with AppMotion.fold.
 antiPatterns:
-  - A Form or inset-grouped list for a page of your own. Settings is the one Form, until it moves to blocks.
+  - A Form or inset-grouped list for a page of your own.
+  - A LabeledContent: its value is body size.
 ```
 
 ### Icon and words

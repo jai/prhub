@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Settings' AI section on the hosted Worker: the person's own Anthropic key (`PUT` and `DELETE /account/anthropic-key`).
+/// Settings' AI block on the hosted Worker: the person's own Anthropic key (`PUT` and `DELETE /account/anthropic-key`).
 /// The key is pasted or typed into a secure field, sent once, and never shown again: the Worker answers only whether
 /// one is set (`account.anthropic_key`). Which AI features it turns on is the config's to say.
 struct AnthropicKeySection: View {
@@ -8,28 +8,41 @@ struct AnthropicKeySection: View {
     @State private var key = ""
     @State private var isWorking = false
     @State private var failure: AccountActionError?
+    @FocusState private var isFocused: Bool
 
     private var hasKey: Bool { connection.config?.account?.anthropicKey == true }
 
     var body: some View {
-        Section {
+        PRPageBlock(
+            "AI",
+            note: hasKey
+                ? "Key lines, Rewrite and Ask AI run on your key, billed to your Anthropic account. PRHub never "
+                    + "shows the key again."
+                : "Key lines, Rewrite and Ask AI run on your own Anthropic key, billed to your Anthropic account. "
+                    + "Make one at console.anthropic.com. PRHub keeps it encrypted and never shows it again."
+        ) {
             if hasKey {
-                LabeledContent("Anthropic key") {
-                    Label("Key set", systemImage: AppIcon.ok.rawValue)
+                PRValueLine("Anthropic key") {
+                    Label("Key set", systemImage: AppIcon.ok.symbol)
                         .labelStyle(.iconText)
                         .foregroundStyle(Color.toneGood)
                 }
-                .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("prhub-anthropic-key-set")
+                .transition(.fold)
                 if let config = connection.config {
-                    LabeledContent("AI", value: PRHubSettingsView.aiWords(config))
+                    PRValueLine("AI", value: PRHubSettingsView.aiWords(config))
                         .accessibilityIdentifier("prhub-ai-features")
+                        .transition(.fold)
                 }
-                Button("Remove key", systemImage: AppIcon.delete.rawValue, role: .destructive) {
+                Button("Remove key", systemImage: AppIcon.delete.symbol, role: .destructive) {
                     run { try await connection.removeAnthropicKey() }
                 }
+                .labelStyle(.iconText)
+                .buttonStyle(PRButtonStyle(.secondary))
+                .tint(Color.toneBad)
                 .disabled(isWorking)
                 .accessibilityIdentifier("prhub-anthropic-key-remove")
+                .transition(.fold)
             } else {
                 SecureField("Paste your Anthropic API key", text: $key)
                     .font(.appFootnote.monospaced())
@@ -37,7 +50,10 @@ struct AnthropicKeySection: View {
                     .autocorrectionDisabled()
                     .submitLabel(.done)
                     .onSubmit(save)
+                    .focused($isFocused)
+                    .prField(isFocused: isFocused)
                     .accessibilityIdentifier("prhub-anthropic-key-field")
+                    .transition(.fold)
                 HStack(spacing: Space.sm) {
                     PasteButton(payloadType: String.self) { strings in
                         guard let pasted = strings.first else {
@@ -61,23 +77,17 @@ struct AnthropicKeySection: View {
                     .disabled(isWorking || key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("prhub-anthropic-key-save")
                 }
+                .transition(.fold)
             }
             if let failure {
                 ProblemLine(message: failure.message)
                     .accessibilityIdentifier("prhub-anthropic-key-error")
                     .transition(.fold)
             }
-        } header: {
-            Text("AI")
-        } footer: {
-            Text(hasKey
-                 ? "Key lines, Rewrite and Ask AI run on your key, billed to your Anthropic account. PRHub never "
-                    + "shows the key again."
-                 : "Key lines, Rewrite and Ask AI run on your own Anthropic key, billed to your Anthropic account. "
-                    + "Make one at console.anthropic.com. PRHub keeps it encrypted and never shows it again.")
         }
         .animation(AppMotion.fold, value: hasKey)
         .animation(AppMotion.fold, value: failure)
+        .animation(AppMotion.swap, value: isWorking)
         .sensoryFeedback(.success, trigger: hasKey) { wasSet, isSet in !wasSet && isSet }
     }
 
@@ -126,7 +136,7 @@ struct DeleteAccountSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
                 VStack(alignment: .leading, spacing: Space.xs) {
                     ForEach(Self.deleted, id: \.self) { line in
-                        Label(line, systemImage: AppIcon.remove.rawValue)
+                        Label(line, systemImage: AppIcon.remove.symbol)
                             .labelStyle(.iconText)
                             .font(.appFootnote)
                     }

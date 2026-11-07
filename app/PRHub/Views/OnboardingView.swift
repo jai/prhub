@@ -108,7 +108,7 @@ struct OnboardingView: View {
     // MARK: - Sign in with GitHub
 
     private var signInBlock: some View {
-        PageBlock {
+        PRPageBlock {
             SignInWithGitHubButton(isWorking: connection.phase == .working(.signingIn), action: signIn)
             Text("PRHub reads your PRs through the PRHub GitHub App, with your own GitHub access. Each org needs the "
                  + "App installed once, by an owner.")
@@ -121,7 +121,7 @@ struct OnboardingView: View {
     // MARK: - Your own Worker
 
     private var ownWorkerRow: some View {
-        PageBlock {
+        PRPageBlock {
             FoldRow(
                 title: "Connect your own Worker", isOpen: opened.isFlipped(Self.ownWorkerFold),
                 identifier: "onboardingOwnWorker"
@@ -135,10 +135,10 @@ struct OnboardingView: View {
     // MARK: - Scan
 
     @ViewBuilder private var scanBlock: some View {
-        PageBlock("Scan the QR code") {
+        PRPageBlock("Scan the QR code") {
             switch scanner {
             case .closed:
-                Button("Scan QR code", systemImage: "qrcode.viewfinder") { openScanner() }
+                Button("Scan QR code", systemImage: AppIcon.scanCode.symbol) { openScanner() }
                     .buttonStyle(PRButtonStyle(.primary))
                     .accessibilityIdentifier("onboardingScan")
             case .open:
@@ -184,7 +184,7 @@ struct OnboardingView: View {
     // MARK: - Paste
 
     private var pasteBlock: some View {
-        PageBlock("Or paste the setup link") {
+        PRPageBlock("Or paste the setup link") {
             TextField("prhub://setup?worker=…&code=…", text: $link, axis: .vertical)
                 .font(.appFootnote.monospaced())
                 .lineLimit(1...4)
@@ -212,7 +212,7 @@ struct OnboardingView: View {
     // MARK: - Address and code
 
     private var manualBlock: some View {
-        PageBlock {
+        PRPageBlock {
             FoldRow(
                 title: "Enter the address and code instead", isOpen: opened.isFlipped(Self.manualFold),
                 identifier: "onboardingManual"
@@ -246,11 +246,11 @@ struct OnboardingView: View {
     // MARK: - Samples
 
     private func samplesBlock(_ trySamples: @escaping () -> Void) -> some View {
-        PageBlock(build.signInWithGitHub ? "Just looking?" : "No pr-worker yet?") {
+        PRPageBlock(build.signInWithGitHub ? "Just looking?" : "No pr-worker yet?") {
             Text("Look around PRHub with sample PRs in made-up repos. Nothing reaches GitHub.")
                 .font(.appFootnote)
                 .foregroundStyle(.secondary)
-            Button("Try with sample PRs", systemImage: "sparkles.rectangle.stack") { trySamples() }
+            Button("Try with sample PRs", systemImage: AppIcon.samples.symbol) { trySamples() }
                 .buttonStyle(PRButtonStyle(.secondary))
                 .accessibilityIdentifier("onboardingTrySamples")
         }
@@ -259,7 +259,7 @@ struct OnboardingView: View {
     // MARK: - Status
 
     @ViewBuilder private var statusBlock: some View {
-        PageBlock {
+        PRPageBlock {
             switch connection.phase {
             case .idle:
                 EmptyView()
@@ -331,7 +331,7 @@ private struct FoldRow: View {
                 Text(title)
                     .font(.appFootnote.weight(.semibold))
                 Spacer()
-                Image(systemName: "chevron.down")
+                Image(AppIcon.fold)
                     .rotationEffect(.degrees(isOpen ? 180 : 0))
             }
             .contentShape(.rect)
@@ -351,7 +351,7 @@ struct SignInWithGitHubButton: View {
     var body: some View {
         Button(action: action) {
             ZStack {
-                Label("Sign in with GitHub", systemImage: "person.crop.circle")
+                Label("Sign in with GitHub", systemImage: AppIcon.signIn.symbol)
                     .labelStyle(.iconText)
                     .opacity(isWorking ? 0 : 1)
                 if isWorking {

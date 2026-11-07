@@ -6,36 +6,77 @@ import UIKit
 #endif
 
 /// Settings' "Diff font": a live preview of a few diff lines drawn by the diff itself, the size, and every face, each
-/// name in its own face. One view for every app that embeds PRKit: put it in the app's Settings `Form`.
+/// name in its own face. One view for every app that embeds PRKit: put it in the app's Settings page, among its
+/// `PRPageBlock`s.
 public struct DiffFontSection: View {
     @AppStorage(diffFontIn: nil) private var diffFont
 
     public init() {}
 
     public var body: some View {
-        Section {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            PRSectionTitle("Diff font")
             DiffFontPreview(font: diffFont)
-                .listRowInsets(EdgeInsets())
-            Stepper(value: sizeBinding, in: DiffFont.sizes, step: 1) {
-                LabeledContent("Size", value: "\(Int(diffFont.size)) pt")
-                    .contentTransition(.numericText())
+                .background(Color.groundCard)
+            PRPageBlock(note: "Code in diffs and comments. It grows with your text size; a file's name is a step bigger.") {
+                sizeLine
+                faces
             }
-            .accessibilityIdentifier("diff-font-size")
-            Picker("Font", selection: faceBinding) {
-                ForEach(DiffFontFace.allCases) { face in
-                    Text(face.name)
-                        .diffFont(DiffFont(face: face, size: Font.appleSize(.body)))
-                        .tag(face)
-                        .accessibilityIdentifier("diff-font-\(face.rawValue)")
+        }
+        .padding(.top, Space.lg)
+    }
+
+    /// The size, with a smaller and a bigger button.
+    private var sizeLine: some View {
+        HStack(spacing: Space.sm) {
+            PRValueLine("Size", value: "\(Int(diffFont.size)) pt")
+                .contentTransition(.numericText())
+            sizeButton("Smaller", icon: .smaller, step: -1)
+            sizeButton("Bigger", icon: .bigger, step: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("diff-font-size")
+    }
+
+    private func sizeButton(_ label: String, icon: AppIcon, step: CGFloat) -> some View {
+        let size = diffFont.size + step
+        return Button(label, systemImage: icon.symbol) { sizeBinding.wrappedValue = size }
+            .labelStyle(.iconOnly)
+            .buttonStyle(PRButtonStyle(.secondary))
+            .disabled(!DiffFont.sizes.contains(size))
+    }
+
+    private var faces: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(DiffFontFace.allCases) { face in
+                faceRow(face)
+            }
+        }
+    }
+
+    private func faceRow(_ face: DiffFontFace) -> some View {
+        let isChosen = face == diffFont.face
+        return Button {
+            faceBinding.wrappedValue = face
+        } label: {
+            HStack(spacing: Space.sm) {
+                Text(face.name)
+                    .diffFont(DiffFont(face: face, size: Font.appleSize(.footnote)))
+                    .foregroundStyle(Color.ink)
+                Spacer(minLength: 0)
+                if isChosen {
+                    Image(AppIcon.done)
+                        .font(.appFootnote.weight(.semibold))
+                        .foregroundStyle(.tint)
+                        .transition(.opacity)
                 }
             }
-            .pickerStyle(.inline)
-            .labelsHidden()
-        } header: {
-            Text("Diff font")
-        } footer: {
-            Text("Code in diffs and comments. It grows with your text size; a file's name is a step bigger.")
+            .frame(minHeight: PRStyle.controlHeight)
+            .contentShape(.rect)
         }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isChosen ? .isSelected : [])
+        .accessibilityIdentifier("diff-font-\(face.rawValue)")
     }
 
     private var sizeBinding: Binding<CGFloat> {
@@ -84,6 +125,7 @@ struct DiffFontPreview: View {
             font: font, onContent: {}, actions: actions
         )
         .frame(height: height)
+        .scrollDisabled(true)
         .accessibilityIdentifier("diff-font-preview")
     }
 

@@ -172,6 +172,9 @@ struct DiffTableView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: DiffTableContainer, context: Context) {
+        // `.scrollDisabled` for a diff inside a page that scrolls, Settings' preview: the page takes the swipe.
+        uiView.isScrollEnabled = context.environment.isScrollEnabled
+        uiView.table.isScrollEnabled = context.environment.isScrollEnabled
         uiView.update(font: font)
         uiView.update(rows: rows)
         uiView.update(viewed: viewed)
