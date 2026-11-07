@@ -15,6 +15,21 @@ extension View {
     }
 }
 
+extension View {
+    /// A field to type in, on every screen: words 12 by 8 from its edge on the fill, in a control's corner, ringed in
+    /// the accent while it has focus. The system's rounded border reads as stock.
+    public func prField(isFocused: Bool) -> some View {
+        padding(.horizontal, PRStyle.inset)
+            .padding(.vertical, Space.sm)
+            .background(Color.groundFill, in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: PRStyle.controlRadius, style: .continuous)
+                    .strokeBorder(isFocused ? Color.accentColor : .clear, lineWidth: PRStyle.focusRing)
+            )
+            .animation(AppMotion.press, value: isFocused)
+    }
+}
+
 /// A button on a PR's screens. The system's `.bordered` is a capsule on iOS 26, so these are drawn here. `.tint` colours
 /// primary and secondary.
 public struct PRButtonStyle: ButtonStyle {
@@ -180,17 +195,7 @@ public struct InlineComposer: View {
                 .lineSpacing(PRStyle.bodyLineSpacing)
                 .lineLimit(lines)
                 .focused($isFocused)
-                .padding(.horizontal, PRStyle.inset)
-                .padding(.vertical, Space.sm)
-                .background(
-                    Color.groundFill,
-                    in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: PRStyle.controlRadius, style: .continuous)
-                        .strokeBorder(isFocused ? Color.accentColor : .clear, lineWidth: 1)
-                )
-                .animation(AppMotion.press, value: isFocused)
+                .prField(isFocused: isFocused)
                 .accessibilityIdentifier("inline-composer-field")
             if let failure {
                 Text(failure)

@@ -15,6 +15,8 @@ public enum PRStyle {
     public static let listRowPadding: CGFloat = 5
     /// A box's border and a ring.
     public static let hairline: CGFloat = 0.5
+    /// A focused field's ring.
+    public static let focusRing: CGFloat = 1
     /// A control while pressed, and while it can't be used.
     public static let pressedOpacity = 0.7
     public static let disabledOpacity = 0.4

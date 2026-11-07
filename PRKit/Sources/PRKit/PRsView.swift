@@ -284,13 +284,8 @@ struct PRsView: View {
         ForEach(page.entries(rows)) { entry in
             switch entry {
             case let .header(title):
-                Text(title)
-                    .font(.appFootnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, Space.lg)
+                PRSectionTitle(title)
                     .padding(.top, Space.sm)
-                    .accessibilityAddTraits(.isHeader)
             case let .row(row):
                 rowView(row)
             }
@@ -344,7 +339,7 @@ private struct PRFilterPanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if let showsMerged {
-                    heading("Show")
+                    PRSectionTitle("Show").padding(.bottom, Space.xs)
                     row("Open", isOn: !showsMerged.wrappedValue, id: "pr-filter-open") {
                         showsMerged.wrappedValue = false
                     }
@@ -354,13 +349,13 @@ private struct PRFilterPanel: View {
                     Divider()
                         .padding(.vertical, Space.sm)
                 }
-                heading("Orgs")
+                PRSectionTitle("Orgs").padding(.bottom, Space.xs)
                 ForEach(orgs, id: \.self) { org in
                     row(org, isOn: filter.selected.contains(org), id: "pr-filter-org-\(org)") { filter.toggle(org) }
                 }
                 Divider()
                     .padding(.vertical, Space.sm)
-                heading("Repos")
+                PRSectionTitle("Repos").padding(.bottom, Space.xs)
                 row("All repos", isOn: filter.repos.isEmpty, id: "pr-filter-all-repos") { filter.showAllRepos() }
                 ForEach(repos, id: \.self) { repo in
                     row(
@@ -379,13 +374,6 @@ private struct PRFilterPanel: View {
         filter.selected.count > 1 ? repo : String(repo.drop { $0 != "/" }.dropFirst())
     }
 
-    private func heading(_ title: String) -> some View {
-        Text(title)
-            .font(.appCaption)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, Space.lg)
-            .padding(.bottom, Space.xs)
-    }
 
     private func row(
         _ title: String, count: Int? = nil, isOn: Bool, id: String, action: @escaping () -> Void

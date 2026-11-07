@@ -12,51 +12,31 @@ struct SignedOutView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Space.sm) {
-                VStack(alignment: .leading, spacing: Space.sm) {
-                    Text("Sign in to GitHub again")
-                        .font(.appTitle3.weight(.semibold))
-                        .accessibilityAddTraits(.isHeader)
-                    Text(Self.words(reason: connection.config?.account?.reason))
-                        .font(.appFootnote)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("signedOutReason")
-                }
-                .padding(.horizontal, Space.lg)
-                .padding(.bottom, Space.lg)
+                PageHeader(
+                    title: "Sign in to GitHub again", message: Self.words(reason: connection.config?.account?.reason),
+                    messageIdentifier: "signedOutReason"
+                )
 
-                VStack(alignment: .leading, spacing: Space.md) {
+                PageBlock {
                     SignInWithGitHubButton(isWorking: connection.phase == .working(.signingIn)) {
                         Task { await environment.signIn() }
                     }
                     if case .signInFailed(let error) = connection.phase, let message = error.message {
-                        Label {
-                            Text(message)
-                                .font(.appFootnote)
-                                .fixedSize(horizontal: false, vertical: true)
-                        } icon: {
-                            Image(systemName: AppIcon.problem.rawValue)
-                                .foregroundStyle(Color.toneBad)
-                        }
-                        .labelStyle(.iconText)
-                        .accessibilityElement(children: .combine)
-                        .accessibilityIdentifier("signedOutStatus")
-                        .transition(.fold)
+                        ProblemLine(message: message)
+                            .accessibilityIdentifier("signedOutStatus")
+                            .transition(.fold)
                     }
                     if let login = connection.config?.account?.login {
                         Text("Signed in as \(login) until GitHub stopped answering for you.")
                             .font(.appCaption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.inkQuiet)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(Space.lg)
-                .background(Color.groundCard)
 
-                VStack(alignment: .leading, spacing: Space.md) {
+                PageBlock {
                     Text("Signing out forgets your account and its PRs on this phone.")
                         .font(.appFootnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.inkQuiet)
                     Button("Sign out") {
                         signingOut = true
                         Task {
@@ -68,9 +48,6 @@ struct SignedOutView: View {
                     .disabled(signingOut)
                     .accessibilityIdentifier("signedOutSignOut")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(Space.lg)
-                .background(Color.groundCard)
                 .padding(.top, Space.xl)
             }
             .padding(.vertical, Space.xl)

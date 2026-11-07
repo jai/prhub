@@ -63,18 +63,9 @@ struct AnthropicKeySection: View {
                 }
             }
             if let failure {
-                Label {
-                    Text(failure.message)
-                        .font(.appFootnote)
-                        .fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: AppIcon.problem.rawValue)
-                        .foregroundStyle(Color.toneBad)
-                }
-                .labelStyle(.iconText)
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("prhub-anthropic-key-error")
-                .transition(.fold)
+                ProblemLine(message: failure.message)
+                    .accessibilityIdentifier("prhub-anthropic-key-error")
+                    .transition(.fold)
             }
         } header: {
             Text("AI")
@@ -146,17 +137,9 @@ struct DeleteAccountSheet: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if let failure {
-                    Label {
-                        Text(failure.message)
-                            .font(.appFootnote)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } icon: {
-                        Image(systemName: AppIcon.problem.rawValue)
-                            .foregroundStyle(Color.toneBad)
-                    }
-                    .labelStyle(.iconText)
-                    .accessibilityIdentifier("prhub-delete-account-error")
-                    .transition(.fold)
+                    ProblemLine(message: failure.message)
+                        .accessibilityIdentifier("prhub-delete-account-error")
+                        .transition(.fold)
                 }
                 VStack(spacing: Space.sm) {
                     Button(action: confirm) {

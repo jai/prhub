@@ -20,6 +20,11 @@ struct OnboardingView: View {
     @State private var code = ""
     @State private var opened = FoldSet()
     @State private var scanner = ScannerState.closed
+    @FocusState private var focusedField: Field?
+
+    enum Field: Hashable {
+        case link, worker, code
+    }
 
     enum ScannerState: Equatable {
         case closed
@@ -90,26 +95,20 @@ struct OnboardingView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: Space.sm) {
-            Text(build.signInWithGitHub ? "Review pull requests on your phone" : "Connect PRHub to your pr-worker")
-                .font(.appTitle3.weight(.semibold))
-                .accessibilityAddTraits(.isHeader)
-            Text(build.signInWithGitHub
-                 ? "PRHub lists the PRs waiting on you, and lets you read the diff, comment, approve and merge."
-                 : "When your agent set up your pr-worker from github.com/jai/prhub, it printed a setup link and a "
+        PageHeader(
+            title: build.signInWithGitHub ? "Review pull requests on your phone" : "Connect PRHub to your pr-worker",
+            message: build.signInWithGitHub
+                ? "PRHub lists the PRs waiting on you, and lets you read the diff, comment, approve and merge."
+                : "When your agent set up your pr-worker from github.com/jai/prhub, it printed a setup link and a "
                     + "QR code. Scan the code or paste the link to connect this phone. For a new one, run npm run "
-                    + "pair there again.")
-                .font(.appFootnote)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, Space.lg)
-        .padding(.bottom, Space.lg)
+                    + "pair there again."
+        )
     }
 
     // MARK: - Sign in with GitHub
 
     private var signInBlock: some View {
-        block(nil) {
+        PageBlock {
             SignInWithGitHubButton(isWorking: connection.phase == .working(.signingIn), action: signIn)
             Text("PRHub reads your PRs through the PRHub GitHub App, with your own GitHub access. Each org needs the "
                  + "App installed once, by an owner.")
@@ -122,7 +121,7 @@ struct OnboardingView: View {
     // MARK: - Your own Worker
 
     private var ownWorkerRow: some View {
-        block(nil) {
+        PageBlock {
             FoldRow(
                 title: "Connect your own Worker", isOpen: opened.isFlipped(Self.ownWorkerFold),
                 identifier: "onboardingOwnWorker"
@@ -136,7 +135,7 @@ struct OnboardingView: View {
     // MARK: - Scan
 
     @ViewBuilder private var scanBlock: some View {
-        block("Scan the QR code") {
+        PageBlock("Scan the QR code") {
             switch scanner {
             case .closed:
                 Button("Scan QR code", systemImage: "qrcode.viewfinder") { openScanner() }
@@ -185,11 +184,13 @@ struct OnboardingView: View {
     // MARK: - Paste
 
     private var pasteBlock: some View {
-        block("Or paste the setup link") {
+        PageBlock("Or paste the setup link") {
             TextField("prhub://setup?worker=…&code=…", text: $link, axis: .vertical)
                 .font(.appFootnote.monospaced())
                 .lineLimit(1...4)
                 .plainEntry()
+                .focused($focusedField, equals: .link)
+                .prField(isFocused: focusedField == .link)
                 .accessibilityIdentifier("onboardingLinkField")
             HStack(spacing: Space.sm) {
                 PasteButton(payloadType: String.self) { strings in
@@ -211,7 +212,7 @@ struct OnboardingView: View {
     // MARK: - Address and code
 
     private var manualBlock: some View {
-        block(nil) {
+        PageBlock {
             FoldRow(
                 title: "Enter the address and code instead", isOpen: opened.isFlipped(Self.manualFold),
                 identifier: "onboardingManual"
@@ -223,10 +224,14 @@ struct OnboardingView: View {
                     TextField("pr-review.example.workers.dev", text: $worker)
                         .font(.appFootnote.monospaced())
                         .plainEntry(isURL: true)
+                        .focused($focusedField, equals: .worker)
+                        .prField(isFocused: focusedField == .worker)
                         .accessibilityIdentifier("onboardingWorkerField")
                     TextField("Code, like 7KQ2-M9XA", text: $code)
                         .font(.appFootnote.monospaced())
                         .plainEntry(isCode: true)
+                        .focused($focusedField, equals: .code)
+                        .prField(isFocused: focusedField == .code)
                         .accessibilityIdentifier("onboardingCodeField")
                     Button("Connect") { Task { await connection.connect(worker: worker, code: code) } }
                         .buttonStyle(PRButtonStyle(.primary))
@@ -241,7 +246,7 @@ struct OnboardingView: View {
     // MARK: - Samples
 
     private func samplesBlock(_ trySamples: @escaping () -> Void) -> some View {
-        block(build.signInWithGitHub ? "Just looking?" : "No pr-worker yet?") {
+        PageBlock(build.signInWithGitHub ? "Just looking?" : "No pr-worker yet?") {
             Text("Look around PRHub with sample PRs in made-up repos. Nothing reaches GitHub.")
                 .font(.appFootnote)
                 .foregroundStyle(.secondary)
@@ -254,7 +259,7 @@ struct OnboardingView: View {
     // MARK: - Status
 
     @ViewBuilder private var statusBlock: some View {
-        block(nil) {
+        PageBlock {
             switch connection.phase {
             case .idle:
                 EmptyView()
@@ -280,16 +285,8 @@ struct OnboardingView: View {
     }
 
     private func failureLabel(_ message: String) -> some View {
-        Label {
-            Text(message)
-                .font(.appFootnote)
-                .fixedSize(horizontal: false, vertical: true)
-        } icon: {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(Color.toneBad)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("onboardingStatus")
+        ProblemLine(message: message)
+            .accessibilityIdentifier("onboardingStatus")
     }
 
     static func words(for step: DevicePairing.Step) -> String {
@@ -301,24 +298,6 @@ struct OnboardingView: View {
         }
     }
 
-    /// A block on the page's grey, the width of the screen, with its section's title above it.
-    private func block(_ title: String?, @ViewBuilder content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: Space.sm) {
-            if let title {
-                Text(title)
-                    .font(.appFootnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, Space.lg)
-            }
-            VStack(alignment: .leading, spacing: Space.md) {
-                content()
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(Space.lg)
-            .background(Color.groundCard)
-        }
-        .padding(.top, title == nil ? 0 : Space.lg)
-    }
 }
 
 private extension View {
@@ -329,11 +308,11 @@ private extension View {
             .textInputAutocapitalization(isCode ? .characters : .never)
             .autocorrectionDisabled()
             .keyboardType(isURL ? .URL : .asciiCapable)
-            .textFieldStyle(.roundedBorder)
+            .textFieldStyle(.plain)
         #else
         self
             .autocorrectionDisabled()
-            .textFieldStyle(.roundedBorder)
+            .textFieldStyle(.plain)
         #endif
     }
 }
