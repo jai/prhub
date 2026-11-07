@@ -6,18 +6,15 @@
  */
 import { z } from "zod";
 import type { GitHubUser, TokenGrant } from "./boundary.ts";
+import { countOf, durationOf, LimitName, type Limits } from "./limits.ts";
 import { type Fetch, type OAuthApp, refreshGrant, revokeGrant } from "./oauth.ts";
 import { sha256Hex } from "./pairing.ts";
 import {
-  type Keyring, openToken, pkceChallengeOf, randomToken, sealToken, timingSafeEqual,
+  type Keyring, keyIdOf, openToken, pkceChallengeOf, randomToken, sealToken, timingSafeEqual,
 } from "./token-crypto.ts";
 
 /** Refreshed this long before GitHub's 8 hours run out, so no request carries a token about to die. */
 export const REFRESH_MARGIN_MS = 5 * 60_000;
-/** How long the app has to swap the callback's one-time code for its session. */
-export const HANDOFF_MS = 5 * 60_000;
-/** Signed-in phones kept per person; the oldest session goes first. */
-export const MAX_SESSIONS = 20;
 
 /** `<user id>.<43 base64url characters>`: a session secret, and the one-time code that hands one over. */
 const SECRET = /^([1-9]\d{0,15})\.([A-Za-z0-9_-]{43})$/;
@@ -77,6 +74,8 @@ export interface AccountDeps {
   app: OAuthApp;
   fetch: Fetch;
   now: () => number;
+  /** How long a one-time code and a session live, and how many sessions a person keeps (`limits.ts`). */
+  limits: Limits;
   /** Tells the person's phones to sign in again: a push, once, when GitHub stops honouring their tokens. */
   onSignedOut: (reason: SignedOutReason) => Promise<void>;
 }
@@ -153,7 +152,10 @@ export class AccountCore {
       sessions: held?.sessions ?? [],
       handoffs: [
         ...(held?.handoffs ?? []).filter((entry) => entry.expires_at > now),
-        { code_hash: await sha256Hex(handoff), challenge: appChallenge, expires_at: now + HANDOFF_MS },
+        {
+          code_hash: await sha256Hex(handoff), challenge: appChallenge,
+          expires_at: now + durationOf(this.#deps.limits, LimitName.SignInCodeMinutes),
+        },
       ],
     };
     await this.#write(record);
@@ -179,8 +181,9 @@ export class AccountCore {
       return null;
     }
     const secret = `${record.user_id}.${randomToken()}`;
-    record.sessions = [...record.sessions, { fingerprint: await sha256Hex(secret), created_at: now }]
-      .slice(-MAX_SESSIONS);
+    record.sessions = [...record.sessions.filter((session) => this.#isLive(session, now)),
+      { fingerprint: await sha256Hex(secret), created_at: now }]
+      .slice(-countOf(this.#deps.limits, LimitName.SessionsMax));
     await this.#write(record);
     return { secret, login: record.login, userId: String(record.user_id) };
   }
@@ -188,13 +191,48 @@ export class AccountCore {
   /** Whose session this fingerprint is, and whether they are still signed in; null for one never minted or gone. */
   async session(fingerprint: string): Promise<SessionInfo | null> {
     const record = await this.#read();
-    if (!record || !record.sessions.some((session) => timingSafeEqual(session.fingerprint, fingerprint))) {
+    const now = this.#deps.now();
+    if (!record || !record.sessions.some((session) => timingSafeEqual(session.fingerprint, fingerprint)
+      && this.#isLive(session, now))) {
       return null;
     }
     return {
       userId: String(record.user_id), login: record.login, state: record.state, reason: record.signed_out_reason,
       hasAnthropicKey: (await this.#readAi()) !== null,
     };
+  }
+
+  /** A session lives `session_lifetime_days` from when it was made; after that its phone signs in again. */
+  #isLive(session: { created_at: number }, now: number): boolean {
+    return now - session.created_at < durationOf(this.#deps.limits, LimitName.SessionLifetimeDays);
+  }
+
+  /**
+   * The re-seal sweep after a key rotation (docs/hosted-deploy.md, "Rotating the token key"): each value sealed with
+   * an older key is sealed again with the first. Reading the access token does that for the tokens (`#current`, or a
+   * refresh) and for the Anthropic key (`#ai`). Answers what moved, and what is still on an old key: a value whose key
+   * left the keyring, which opens no more.
+   */
+  async resealStale(): Promise<{ current: string; resealed: SealedField[]; stale: SealedField[] } | null> {
+    const keyring = await this.#deps.keyring();
+    if (!keyring) {
+      return null;
+    }
+    const before = await this.#staleFields(keyring.current);
+    if (before.length > 0) {
+      await this.accessToken();
+    }
+    const stale = await this.#staleFields(keyring.current);
+    return { current: keyring.current, resealed: before.filter((field) => !stale.includes(field)), stale };
+  }
+
+  async #staleFields(current: string): Promise<SealedField[]> {
+    const record = await this.#read();
+    const ai = await this.#readAi();
+    const sealed: [SealedField, string | null | undefined][] = [
+      ["access", record?.tokens?.access], ["refresh", record?.tokens?.refresh], ["anthropic", ai?.anthropic_key],
+    ];
+    return sealed.flatMap(([field, value]) => value && keyIdOf(value) !== current ? [field] : []);
   }
 
   async isSignedIn(): Promise<boolean> {
@@ -456,7 +494,9 @@ export class AccountCore {
   }
 }
 
+export type SealedField = "access" | "refresh" | "anthropic";
+
 /** Whose secret and which: a sealed value moved to another person or field fails to open. */
-export function associatedData(userId: number, kind: "access" | "refresh" | "anthropic"): string {
+export function associatedData(userId: number, kind: SealedField): string {
   return `prhub:user:${userId}:${kind}`;
 }

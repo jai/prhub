@@ -4,6 +4,7 @@ import type { AskChat, AskInput } from "./ask-chat";
 import { type Env, isSet } from "./env";
 import { prId, type RepoFullName } from "./ids";
 import { askRepoToken, InstallationTokenRefused } from "./app-token";
+import { askBudgetOf, limitsOf } from "./limits";
 import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models";
 
 /**
@@ -21,9 +22,6 @@ import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models";
  * per message. So a question asked at another model or effort than the session's starts a new session, and the chat
  * the phone sees is that new one.
  */
-
-/** Hard stop on one PR's spend, at list price, in cents. */
-const SESSION_BUDGET_CENTS = "200";
 
 /** A session from before the vault can't reach GitHub's API, and a vault can't be added to one: it starts again. */
 const RECORD_VERSION = 2;
@@ -59,7 +57,7 @@ async function startSession(
     environment_id: env.ASK_ENVIRONMENT_ID!,
     vault_ids: [env.ASK_VAULT_ID!],
     title: prId(repo, number),
-    budget: { type: "limit", max_list_cost: { amount: SESSION_BUDGET_CENTS, currency: "USD" } },
+    budget: { type: "limit", max_list_cost: { amount: String(askBudgetOf(limitsOf(env))), currency: "USD" } },
     resources: [{
       type: "github_repository", url: `https://github.com/${repo}`, authorization_token: token,
       checkout: { type: "commit", sha: head },

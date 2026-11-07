@@ -23,6 +23,7 @@
     "APNS_KEY_ID": "__APNS_KEY_ID__",
     // AI runs only on each person's own Anthropic key. Defaults from docs/plans/ai-model-eval.md.
     "AI_DEFAULTS": "key_lines=claude-opus-5-5:high,ask=claude-haiku-5-5:high"
+    // Limits (docs/api.md, "Limits") take their hosted defaults; set a LIMIT_* var here to change one.
   },
   "durable_objects": {
     "bindings": [
@@ -30,15 +31,15 @@
       { "name": "AI_JOBS", "class_name": "AiJobs" },
       { "name": "USER_ACCOUNTS", "class_name": "UserAccount" },
       { "name": "SIGN_INS", "class_name": "SignIn" },
-      { "name": "INSTALLATIONS", "class_name": "Installation" }
+      { "name": "INSTALLATIONS", "class_name": "Installation" },
+      { "name": "IP_LIMITS", "class_name": "IpLimit" }
     ]
   },
   "migrations": [
     { "tag": "pr-index-v1", "new_sqlite_classes": ["PrIndex"] },
     { "tag": "ai-jobs-v1", "new_sqlite_classes": ["AiJobs"] },
-    { "tag": "hosted-v1", "new_sqlite_classes": ["UserAccount", "SignIn", "Installation"] }
+    { "tag": "hosted-v1", "new_sqlite_classes": ["UserAccount", "SignIn", "Installation"] },
+    { "tag": "limits-v1", "new_sqlite_classes": ["IpLimit"] }
   ],
-  // Sign-in start and finish, per IP: 10 a minute each.
-  "ratelimits": [{ "name": "AUTH_RATE_LIMIT", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }],
   "r2_buckets": [{ "binding": "DIFFS", "bucket_name": "prhub-hosted" }]
 }

@@ -22,6 +22,9 @@ import {
 import { putVersioned, storeDiff } from "./versioned";
 import { newRateLimitState } from "./rate-limit";
 import { DEFAULT_CONTEXT } from "./key-lines";
+import { consumeLimits, createLimitHitsTable, type LimitCheck, type LimitDecision } from "./limit-counter";
+import { indexedPullRequestsMaxOf, LimitName, limitsOf, retentionOf } from "./limits";
+import { sweepClosedPullRequests } from "./retention";
 
 const BUSY_WINDOW_MS = 3_000;
 /** The push that asks a hosted person to sign in again; the app shows Sign in with GitHub when it opens. */
@@ -44,6 +47,8 @@ const KEY_LINES_PER_PASS = 5;
 const KEY_LINES_RETRY_MS = 30 * 60_000;
 /** Raise it when what a row or detail holds changes shape: every held PR is then read again, once. */
 const ROW_SHAPE = 8;
+/** The retention sweep (`retention.ts`) runs at most this often. */
+const RETENTION_SWEEP_MS = 86_400_000;
 const LIST_ORDER = "CASE list WHEN 'mine' THEN 1 ELSE 0 END, updated_at DESC";
 
 export function diffKey(repo: string, number: number, revision: string): string {
@@ -103,6 +108,7 @@ export class PrIndex extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS paired (fingerprint TEXT PRIMARY KEY, role TEXT, label TEXT, paired_at INTEGER);
       CREATE TABLE IF NOT EXISTS spent_codes (code_hash TEXT PRIMARY KEY, at INTEGER);
       CREATE TABLE IF NOT EXISTS alerts (key TEXT PRIMARY KEY, at INTEGER);`);
+    createLimitHitsTable(this.sql);
     const columns = this.sql.exec<{ name: string }>("PRAGMA table_info(pull_requests)").toArray();
     if (!columns.some(({ name }) => name === "version")) {
       this.sql.exec("ALTER TABLE pull_requests ADD COLUMN version TEXT NOT NULL DEFAULT ''");
@@ -194,10 +200,12 @@ export class PrIndex extends DurableObject<Env> {
       const alerts: Promise<unknown>[] = [];
       for (const { id, generation } of dirty) {
         const pr = read.get(id);
-        if (pr?.status) {
+        if (pr?.status && !this.isFullFor(id)) {
           const listed: Listed = { ...pr, status: pr.status };
           alerts.push(...this.alertsOn(listed));
           await this.store(listed, env);
+        } else if (pr?.status) {
+          this.addEvent("limit_reached", { limit: LimitName.IndexedPullRequestsMax, pr: id });
         } else {
           this.remove(id);
         }
@@ -235,7 +243,26 @@ export class PrIndex extends DurableObject<Env> {
       }
     }
     this.sql.exec("DELETE FROM alerts WHERE at < ?", now - ALERTS_KEPT_MS);
+    await this.sweepIfDue(env, now);
     await this.pushIfDue(now);
+  }
+
+  /** Once a day when retention is on: stored objects of PRs off the list past it go (`retention.ts`). */
+  private async sweepIfDue(env: Env, now: number): Promise<void> {
+    const retention = retentionOf(limitsOf(this.env));
+    if (retention === null || now - this.meta("retention_swept_at") < RETENTION_SWEEP_MS) {
+      return;
+    }
+    this.setMeta("retention_swept_at", now);
+    const held = new Set(this.sql.exec<{ id: string }>("SELECT id FROM pull_requests").toArray()
+      .map((row) => row.id.toLowerCase()));
+    try {
+      const deleted = await sweepClosedPullRequests(env.DIFFS, scopedKey(env, ""), (id) => held.has(id.toLowerCase()),
+        now - retention);
+      this.addEvent("retention_swept", { deleted });
+    } catch (error) {
+      this.addEvent("retention_failed", { error: String(error) });
+    }
   }
 
   private async compareWithGitHub(env: Env): Promise<void> {
@@ -322,6 +349,24 @@ export class PrIndex extends DurableObject<Env> {
     }
   }
 
+  /** One request against this person's (or, self-hosted, one IP's) limits (`limit-counter.ts`). */
+  consumeLimits(checks: LimitCheck[], subject: string, key: string, now: number): LimitDecision {
+    return consumeLimits(this.sql, checks, subject, key, now);
+  }
+
+  /** The person lost these repos (an installation removed them, or was suspended or deleted): their rows go now. */
+  dropRepos(repos: string[]): void {
+    const names = new Set(repos.map((repo) => repo.toLowerCase()));
+    const held = this.sql.exec<{ id: string; repo: string }>("SELECT id, repo FROM pull_requests").toArray();
+    for (const row of held.filter((one) => names.has(one.repo.toLowerCase()))) {
+      this.remove(row.id);
+    }
+    const dirty = this.sql.exec<{ id: string; repo: string }>("SELECT id, repo FROM dirty").toArray();
+    for (const row of dirty.filter((one) => names.has(one.repo.toLowerCase()))) {
+      this.sql.exec("DELETE FROM dirty WHERE id = ?", row.id);
+    }
+  }
+
   /**
    * A pairing code admits the device secret whose fingerprint this is (docs/api.md). The code is spent in
    * this object's own storage before anything is awaited, so two requests with it can't both pass. A `device` code
@@ -405,6 +450,13 @@ export class PrIndex extends DurableObject<Env> {
     }[what];
     const parameter = what === "pending" ? Date.now() - 60_000 : id;
     return (parameter === undefined ? this.sql.exec(query) : this.sql.exec(query, parameter)).toArray().length > 0;
+  }
+
+  /** Whether a PR not held yet must wait: the index holds `indexed_pull_requests_max` already. */
+  private isFullFor(id: string): boolean {
+    const max = indexedPullRequestsMaxOf(limitsOf(this.env));
+    return max !== null && !this.exists("pull_requests", id)
+      && this.sql.exec<{ n: number }>("SELECT count(*) AS n FROM pull_requests").one().n >= max;
   }
 
   private markDirty(id: PrId, repo: RepoFullName, number: number): void {

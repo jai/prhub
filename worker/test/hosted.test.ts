@@ -322,7 +322,7 @@ test("hosted mode is off unless HOSTED is on, and serves nothing when it is on b
   assert.deepEqual(hostedMode(env({ GITHUB_TOKEN: "t", GITHUB_APP_CLIENT_ID: "x", HOSTED: "" })), { kind: "off" });
   assert.deepEqual(hostedMode(env({ HOSTED: "on", GITHUB_APP_CLIENT_ID: "x" })), {
     kind: "misconfigured",
-    missing: ["GITHUB_APP_CLIENT_SECRET", "TOKEN_ENCRYPTION_KEY", "USER_ACCOUNTS", "SIGN_INS", "INSTALLATIONS"],
+    missing: ["GITHUB_APP_CLIENT_SECRET", "TOKEN_ENCRYPTION_KEY", "USER_ACCOUNTS", "SIGN_INS", "INSTALLATIONS", "IP_LIMITS"],
   });
   assert.equal(hostedMode(hostedWorld().workerEnv).kind, "on");
 });

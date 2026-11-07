@@ -8,8 +8,11 @@ import {
 } from "../src/hosted.ts";
 import type { RepoFullName, Sha } from "../src/ids.ts";
 import { InstallationCore, isInvolved, type ListStore } from "../src/installation-core.ts";
+import { consumeLimits, createLimitHitsTable, type LimitSql } from "../src/limit-counter.ts";
+import { gitHubReserveOf, limitsOf } from "../src/limits.ts";
 import type { OAuthApp } from "../src/oauth.ts";
 import { parseKeyring, pkceChallengeOf, randomToken } from "../src/token-crypto.ts";
+import { memorySql } from "./memory-sql.ts";
 
 export const env = (vars: Partial<Env>) => vars as Env;
 export const keyOf = (fill: number) => Buffer.alloc(32, fill).toString("base64");
@@ -157,6 +160,8 @@ export class FakeIndex implements UserIndexApi {
   signedOut(reason: SignedOutReason) { this.calls.push(`signed_out:${reason}`); }
   forgetDevices() { this.calls.push("forget_devices"); }
   deleteEverything() { this.calls.push("delete"); }
+  dropRepos(repos: string[]) { this.calls.push(`drop:${[...repos].sort().join(",")}`); }
+  record(kind: string) { this.calls.push(`event:${kind}`); }
   marks(): string[] {
     return this.calls.filter((call) => call.startsWith("mark:") || call.startsWith("head:"));
   }
@@ -177,15 +182,18 @@ export function hostedWorld(vars: Partial<Env> = {}) {
   const pending = new Map<string, PendingSignIn>();
   const deleted: string[] = [];
   const signedOut: SignedOutReason[] = [];
-  const allowed = new Map<string, number>();
-  const anthropic = { valid: new Set<string>(), provisioned: [] as string[], limit: 10 };
+  const ipCounts = new Map<string, LimitSql>();
+  const forgottenJobs: string[] = [];
+  const anthropic = { valid: new Set<string>(), provisioned: [] as string[] };
+  const limits = limitsOf({ HOSTED: "on", ...vars });
   const index = (userId: string) => indexes.get(userId) ?? indexes.set(userId, new FakeIndex()).get(userId) as FakeIndex;
   const account = (userId: string) => {
     if (!accounts.has(userId)) {
       const store = new MapStore();
       stores.set(userId, store);
       accounts.set(userId, new AccountCore({
-        store, keyring: () => parseKeyring(KEY), app: APP, fetch: github.fetch, now: () => clock.now,
+        store, keyring: () => parseKeyring(KEY), app: APP, fetch: github.fetch,
+        now: () => clock.now, limits,
         onSignedOut: async (reason) => {
           signedOut.push(reason);
           await index(userId).signedOut(reason);
@@ -207,7 +215,10 @@ export function hostedWorld(vars: Partial<Env> = {}) {
             index(userId).markHead(target.repo, target.sha);
           }
         },
-        canSee: (userId, repo) => canSeeWith(account(userId), repo, github.fetch, clock.now),
+        dropRepos: async (userId, repos) => {
+          index(userId).dropRepos(repos);
+        },
+        canSee: (userId, repo) => canSeeWith(account(userId), repo, github.fetch, clock.now, gitHubReserveOf(limits)),
       }));
     }
     return installations.get(id) as InstallationCore;
@@ -229,10 +240,17 @@ export function hostedWorld(vars: Partial<Env> = {}) {
     deleteStored: async (userId) => {
       deleted.push(userId);
     },
-    allow: async (key) => {
-      allowed.set(key, (allowed.get(key) ?? 0) + 1);
-      return (allowed.get(key) ?? 0) <= anthropic.limit;
+    forgetJobs: async (userId) => {
+      forgottenJobs.push(userId);
     },
+    limitIp: async (ipHash, checks, key, now) => {
+      if (!ipCounts.has(ipHash)) {
+        ipCounts.set(ipHash, memorySql());
+        createLimitHitsTable(ipCounts.get(ipHash) as LimitSql);
+      }
+      return consumeLimits(ipCounts.get(ipHash) as LimitSql, checks, "", key, now);
+    },
+    limits,
     anthropic: {
       check: async (key) => anthropic.valid.has(key) ? "ok" : "invalid",
       provisionAsk: async (key) => {
@@ -247,7 +265,8 @@ export function hostedWorld(vars: Partial<Env> = {}) {
     HOSTED: "on", GITHUB_APP_CLIENT_ID: APP.clientId, GITHUB_APP_CLIENT_SECRET: APP.clientSecret,
     TOKEN_ENCRYPTION_KEY: KEY, WEBHOOK_SECRET: "hook-secret", APPLE_APP_ID: "TEAMID.com.example.prhub",
     ANTHROPIC_API_KEY: "operator-anthropic-key", USER_ACCOUNTS: {} as Env["USER_ACCOUNTS"],
-    SIGN_INS: {} as Env["SIGN_INS"], INSTALLATIONS: {} as Env["INSTALLATIONS"], ...vars,
+    SIGN_INS: {} as Env["SIGN_INS"], INSTALLATIONS: {} as Env["INSTALLATIONS"], IP_LIMITS: {} as Env["IP_LIMITS"],
+    ...vars,
   });
   const waited: Promise<unknown>[] = [];
   const route = async (path: string, init: RequestInit = {}) => {
@@ -257,8 +276,8 @@ export function hostedWorld(vars: Partial<Env> = {}) {
     return answer;
   };
   return {
-    github, clock, stores, accounts, indexes, installations, installationStores, pending, deleted, signedOut, allowed,
-    anthropic, services, workerEnv, route, waited,
+    github, clock, stores, accounts, indexes, installations, installationStores, pending, deleted, signedOut, ipCounts,
+    forgottenJobs, anthropic, services, workerEnv, route, waited,
   };
 }
 

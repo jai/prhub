@@ -1,5 +1,6 @@
 import { pushMode } from "./apns.ts";
 import { type Env, isSet } from "./env.ts";
+import { type LimitName, limitsConfig, limitsOf } from "./limits.ts";
 import { type AiConfig, type AiFeature, type FeatureModels, featureModels, parseAiConfig } from "./models.ts";
 
 /** `GET /device/config` (docs/api.md): what this Worker can serve, so the app shows only that. */
@@ -18,6 +19,8 @@ export interface DeviceConfig {
   orgs?: string[];
   /** Model and effort per AI feature that is on. Absent when none is. */
   ai?: { features: Partial<Record<AiFeature, FeatureModels>> };
+  /** Each limit in force in this Worker's mode, in its unit; null is off (docs/api.md, "Limits"). */
+  limits: Partial<Record<LimitName, number | null>>;
 }
 
 let parsed: { key: string; config: AiConfig } | null = null;
@@ -61,5 +64,6 @@ export function deviceConfig(env: Env, login: string | null): DeviceConfig {
     login,
     ...(orgs.length > 0 ? { orgs } : {}),
     ...(on.length > 0 ? { ai: { features: Object.fromEntries(on.map((feature) => [feature, featureModels(ai, feature)])) } } : {}),
+    limits: limitsConfig(limitsOf(env)),
   };
 }

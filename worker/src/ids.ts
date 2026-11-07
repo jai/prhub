@@ -5,7 +5,7 @@
  */
 
 declare const brand: unique symbol;
-type Brand<T, Name extends string> = T & { readonly [brand]: Name };
+export type Brand<T, Name extends string> = T & { readonly [brand]: Name };
 
 /** A commit: 40 lowercase hex characters. */
 export type Sha = Brand<string, "Sha">;

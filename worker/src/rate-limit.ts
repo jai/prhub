@@ -2,14 +2,17 @@
  * GitHub's rate limits, per token (docs/api.md, "Rate limits"). A hosted person's token shares their 5,000 requests an
  * hour with their own `gh`, PATs and other apps, so the Worker's background reads stop well before the limit:
  *
- * - `low`: under a tenth of the hour (at least 100 requests) is left. Background reads (the poll and webhook marks)
- *   wait for the reset; the person's own requests still go.
+ * - `low`: under the reserve is left (`github_reserve_percent` of the hour, at least `github_reserve_minimum`
+ *   requests; `limits.ts`). Background reads (the poll and webhook marks) wait for the reset; the person's own requests
+ *   still go.
  * - `primary`: none left. Nothing goes until the reset.
  * - `secondary`: GitHub said `retry-after`, or answered 429. Nothing goes until then (a minute when it gave no time).
  *
  * `observe` reads each answer. The PR index keeps the result per person, in `/events` (`rate_limited`); each isolate
  * keeps it per token too, so a person's requests stop while GitHub asks them to.
  */
+
+import type { GitHubReserve } from "./limits.ts";
 
 export type RateLimitKind = "low" | "primary" | "secondary";
 
@@ -25,8 +28,6 @@ export interface RateLimitState {
   backoff: { kind: RateLimitKind; until: number } | null;
 }
 
-export const LOW_SHARE = 0.1;
-export const LOW_FLOOR = 100;
 export const SECONDARY_DEFAULT_MS = 60_000;
 /** Never longer than GitHub's hour, whatever a header says. */
 const MAX_BACKOFF_MS = 3_600_000;
@@ -42,7 +43,9 @@ function intHeader(response: Response, name: string): number | null {
 }
 
 /** The backoff one answer calls for; null when it calls for none. */
-export function backoffOf(response: Response, now: number): { kind: RateLimitKind; until: number } | null {
+export function backoffOf(
+  response: Response, now: number, reserve: GitHubReserve,
+): { kind: RateLimitKind; until: number } | null {
   const remaining = intHeader(response, "x-ratelimit-remaining");
   const limit = intHeader(response, "x-ratelimit-limit");
   const reset = intHeader(response, "x-ratelimit-reset");
@@ -59,14 +62,14 @@ export function backoffOf(response: Response, now: number): { kind: RateLimitKin
     return { kind: "secondary", until: now + SECONDARY_DEFAULT_MS };
   }
   if (remaining !== null && limit !== null && resetAt !== null && resetAt > now
-    && remaining < Math.max(LOW_FLOOR, limit * LOW_SHARE)) {
+    && remaining < Math.max(reserve.floor, limit * reserve.share)) {
     return { kind: remaining === 0 ? "primary" : "low", until: resetAt };
   }
   return null;
 }
 
 /** Counts the call and keeps what the answer says, the later and stricter backoff winning. */
-export function observe(state: RateLimitState, response: Response, now: number): void {
+export function observe(state: RateLimitState, response: Response, now: number, reserve: GitHubReserve): void {
   state.calls += 1;
   const remaining = intHeader(response, "x-ratelimit-remaining");
   if (remaining !== null) {
@@ -75,7 +78,7 @@ export function observe(state: RateLimitState, response: Response, now: number):
     const reset = intHeader(response, "x-ratelimit-reset");
     state.resetAt = reset === null ? state.resetAt : reset * 1_000;
   }
-  const backoff = backoffOf(response, now);
+  const backoff = backoffOf(response, now, reserve);
   if (backoff && (!state.backoff || backoff.until > state.backoff.until)) {
     state.backoff = backoff;
   }

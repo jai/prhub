@@ -1,5 +1,6 @@
 import { type Env, githubLogin, isSet } from "./env.ts";
 import { renewAfterUnauthorized } from "./hosted.ts";
+import { gitHubReserveOf, limitsOf } from "./limits.ts";
 import { backoffOf, heldBackoff, holdBackoff, observe, stops, waitAnswer } from "./rate-limit.ts";
 import {
   parseSha, prId, type PrId, repoOf, type RepoFullName, repoParts, type Revision, revisionOf, type Sha, shaOf,
@@ -282,10 +283,11 @@ async function github(path: string, env: Env, accept: string, init: RequestInit 
       headers: { Accept: accept, Authorization: `Bearer ${token}`, "User-Agent": "pr-viewer" },
     });
     const now = Date.now();
+    const reserve = gitHubReserveOf(limitsOf(env));
     if (env.GITHUB_RATE) {
-      observe(env.GITHUB_RATE, response, now);
+      observe(env.GITHUB_RATE, response, now, reserve);
     }
-    holdBackoff(key, backoffOf(response, now));
+    holdBackoff(key, backoffOf(response, now, reserve));
     return response;
   };
   const response = await send(env.GITHUB_TOKEN);

@@ -56,6 +56,8 @@ export interface InstallationDeps {
   store: ListStore;
   /** Marks the delivery in the person's own PR index. */
   deliver(userId: string, target: DeliveryTarget, login: string): Promise<void>;
+  /** Drops the person's rows of these repos at once: the installation no longer gives them access. */
+  dropRepos(userId: string, repos: string[]): Promise<void>;
   /** Whether the person's own token can read the repo; null when it could not be asked (signed out counts as no). */
   canSee(userId: string, repo: RepoFullName): Promise<boolean | null>;
 }
@@ -121,23 +123,45 @@ export class InstallationCore {
     await this.#putAll(Object.fromEntries(repos.map((repo) => [addedKey(repo), now])));
   }
 
-  /** `installation_repositories` `removed`: nobody is routed to them; each person's poll drops their rows. */
+  /** `installation_repositories` `removed`: nobody is routed to them, and every member's rows of them go now. */
   async reposRemoved(repos: string[]): Promise<void> {
     const members = [...(await this.members()).keys()];
     await this.#deleteKeys(repos.flatMap((repo) => [
       addedKey(repo), ...members.flatMap((userId) => [seenKey(userId, repo), checkKey(userId, repo)]),
     ]));
+    await this.#dropForMembers(members, repos);
   }
 
+  /** Suspended, nothing is routed and every member's rows of its repos go; `unsuspend` brings them back by the poll. */
   async setSuspended(suspended: boolean): Promise<void> {
     await this.#deps.store.put({ meta: { ...await this.#meta(), suspended } satisfies Meta });
+    if (suspended) {
+      await this.#dropForMembers([...(await this.members()).keys()], await this.#repos());
+    }
   }
 
-  /** `installation` `deleted`: everything goes. Answers who was a member. */
+  /** `installation` `deleted`: every member's rows of its repos go, then everything else. Answers who was a member. */
   async forget(): Promise<string[]> {
     const members = [...(await this.members()).keys()];
+    await this.#dropForMembers(members, await this.#repos());
     await this.#deps.store.deleteAll();
     return members;
+  }
+
+  /** Every repo this installation has named, lowercased: in an event, or in a member's list. */
+  async #repos(): Promise<string[]> {
+    const added = [...(await this.#deps.store.list("repo:")).keys()].map((key) => key.slice("repo:".length));
+    const seen = [...(await this.#deps.store.list("seen:")).keys()].map((key) => key.split(":").slice(2).join(":"));
+    return [...new Set([...added, ...seen])];
+  }
+
+  async #dropForMembers(members: string[], repos: string[]): Promise<void> {
+    if (repos.length === 0) {
+      return;
+    }
+    for (const userId of members) {
+      await this.#deps.dropRepos(userId, repos);
+    }
   }
 
   async members(): Promise<Map<string, Member>> {

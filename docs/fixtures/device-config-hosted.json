@@ -1,0 +1,33 @@
+{
+  "features": {
+    "ask_ai": false,
+    "key_lines": false,
+    "rewrite": false,
+    "feedback": false,
+    "push": false,
+    "webhooks": false
+  },
+  "login": "octocat",
+  "limits": {
+    "sign_in_starts_per_ip_per_minute": 10,
+    "sign_in_finishes_per_ip_per_minute": 10,
+    "writes_per_minute": 20,
+    "writes_per_hour": 200,
+    "ask_questions_per_hour": 30,
+    "ask_questions_per_day": 150,
+    "ai_jobs_per_hour": 60,
+    "ask_session_budget_cents": 200,
+    "github_reserve_percent": 10,
+    "github_reserve_minimum": 100,
+    "poll_interval_minutes": 10,
+    "installation_sync_hours": 6,
+    "installation_sync_on_open_minutes": 10,
+    "indexed_pull_requests_max": 500,
+    "indexed_repos_max": 3000,
+    "closed_pull_request_retention_days": 30,
+    "session_lifetime_days": 180,
+    "sessions_max": 20,
+    "sign_in_minutes": 10,
+    "sign_in_code_minutes": 5
+  }
+}

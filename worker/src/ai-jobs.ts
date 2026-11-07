@@ -35,6 +35,14 @@ export class AiJobs extends DurableObject<Env> {
     }
   }
 
+  /** Delete Account: no queued job runs, or stores an answer, for a person who is gone. */
+  async forget(): Promise<void> {
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
+    // This object may serve the same id again before it is evicted: a person who deletes and signs in again.
+    this.sql.exec("CREATE TABLE IF NOT EXISTS jobs (key TEXT PRIMARY KEY, job TEXT)");
+  }
+
   override async alarm(): Promise<void> {
     const rows = this.sql.exec<{ key: string; job: string }>("SELECT key, job FROM jobs LIMIT ?", JOBS_AT_ONCE).toArray();
     await Promise.all(rows.map(async ({ key, job }) => {

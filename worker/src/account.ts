@@ -1,8 +1,9 @@
 /**
- * The hosted Worker's Durable Objects (docs/api.md, "Hosted sign-in", "Webhook routing"): `UserAccount`, one per person
- * named `user:<GitHub user id>`; `SignIn`, one per sign-in in flight named by its state; and `Installation`, one per
- * installation of the App named `installation:<id>`. Their logic is in `account-core.ts`, `installation-core.ts` and
- * `hosted.ts`; these classes only give it storage and alarms.
+ * The hosted Worker's Durable Objects (docs/api.md, "Hosted sign-in", "Webhook routing", "Limits"): `UserAccount`, one
+ * per person named `user:<GitHub user id>`; `SignIn`, one per sign-in in flight named by its state; `Installation`, one
+ * per installation of the App named `installation:<id>`; and `IpLimit`, one per client IP named by its hash. Their logic
+ * is in `account-core.ts`, `installation-core.ts`, `limit-counter.ts` and `hosted.ts`; these classes only give it
+ * storage and alarms.
  */
 import { DurableObject } from "cloudflare:workers";
 import {
@@ -13,10 +14,14 @@ import type { Env } from "./env.ts";
 import { canSee, installationOf, keyringOf, oauthAppOf, type PendingSignIn, userIndex } from "./hosted.ts";
 import type { RepoFullName } from "./ids.ts";
 import { type DeliveryTarget, InstallationCore, isInvolved, type Member, storageStore } from "./installation-core.ts";
-import { SYNC_MS, syncInstallations } from "./installations.ts";
+import { syncInstallations } from "./installations.ts";
+import { consumeLimits, createLimitHitsTable, lastExpiry, type LimitCheck, type LimitDecision } from "./limit-counter.ts";
+import { durationOf, LimitName, limitsOf } from "./limits.ts";
 
 /** Each person's safety-net poll, and the refresh that keeps their 6-month refresh token alive. */
-export const POLL_MS = 10 * 60_000;
+function pollMs(env: Env): number {
+  return durationOf(limitsOf(env), LimitName.PollIntervalMinutes);
+}
 
 export class UserAccount extends DurableObject<Env> {
   readonly #core: AccountCore;
@@ -29,6 +34,7 @@ export class UserAccount extends DurableObject<Env> {
       app: oauthAppOf(env),
       fetch: (input, init) => fetch(input, init),
       now: () => Date.now(),
+      limits: limitsOf(env),
       onSignedOut: (reason) => this.#signedOut(reason),
     });
   }
@@ -36,7 +42,7 @@ export class UserAccount extends DurableObject<Env> {
   async signIn(user: GitHubUser, grant: TokenGrant, appChallenge: string): Promise<{ handoff: string }> {
     const answer = await this.#core.signIn(user, grant, appChallenge);
     await this.ctx.storage.put("user_id", user.id);
-    await this.ctx.storage.setAlarm(Date.now() + POLL_MS);
+    await this.ctx.storage.setAlarm(Date.now() + pollMs(this.env));
     return answer;
   }
 
@@ -90,19 +96,28 @@ export class UserAccount extends DurableObject<Env> {
   }
 
   /**
-   * Every `POLL_MS` while signed in: refresh when due, then the person's index compares with GitHub. Every `SYNC_MS`,
-   * their installations are read again too, so webhooks for repos they gained reach them.
+   * Every `poll_interval_minutes` while signed in: values sealed with an older key are sealed again, the token is
+   * refreshed when due, and the person's index compares with GitHub. Every `installation_sync_hours`, their
+   * installations are read again too, so webhooks for repos they gained reach them.
    */
   override async alarm(): Promise<void> {
     const userId = await this.ctx.storage.get<number>("user_id");
     if (!userId || !(await this.#core.isSignedIn())) {
       return;
     }
-    await this.ctx.storage.setAlarm(Date.now() + POLL_MS);
+    await this.ctx.storage.setAlarm(Date.now() + pollMs(this.env));
+    const index = userIndex(this.env, String(userId));
+    const keys = await this.#core.resealStale();
+    if (keys && keys.resealed.length + keys.stale.length > 0) {
+      const report = { current: keys.current, resealed: keys.resealed, stale: keys.stale };
+      console.log("token_keys", { user_id: userId, ...report });
+      await index.record("token_keys", report);
+    }
     if ((await this.#core.accessToken()).kind === "ok") {
-      await userIndex(this.env, String(userId)).tick(Date.now());
+      await index.tick(Date.now());
       await syncInstallations(this.#core, (id) => installationOf(this.env, id), (input, init) => fetch(input, init),
-        Date.now(), SYNC_MS).catch((error: unknown) => console.error("installation sync failed", error));
+        Date.now(), durationOf(limitsOf(this.env), LimitName.InstallationSyncHours))
+        .catch((error: unknown) => console.error("installation sync failed", error));
     }
   }
 
@@ -131,6 +146,8 @@ export class SignIn extends DurableObject<Env> {
 
   override async alarm(): Promise<void> {
     await this.ctx.storage.deleteAll();
+    // The object may count again before it is evicted.
+    createLimitHitsTable(this.ctx.storage.sql);
   }
 }
 
@@ -146,6 +163,9 @@ export class Installation extends DurableObject<Env> {
     this.#core = new InstallationCore({
       store: storageStore(ctx.storage),
       deliver: (userId, target, login) => deliver(env, userId, target, login),
+      dropRepos: async (userId, repos) => {
+        await userIndex(env, userId).dropRepos(repos);
+      },
       canSee: (userId, repo) => canSee(env, userId, repo),
     });
   }
@@ -198,5 +218,31 @@ async function deliver(env: Env, userId: string, target: DeliveryTarget, login: 
     await index.mark(target.repo, target.number, isInvolved(target, login));
   } else {
     await index.markHead(target.repo as RepoFullName, target.sha);
+  }
+}
+
+/**
+ * One client IP's counts toward the per-IP limits (`limit-counter.ts`), named `ip:<SHA-256 of the IP>`. It deletes
+ * itself when its last count expires, so no IP's trace outlives the longest window.
+ */
+export class IpLimit extends DurableObject<Env> {
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    createLimitHitsTable(ctx.storage.sql);
+  }
+
+  async consume(checks: LimitCheck[], key: string, now: number): Promise<LimitDecision> {
+    const decision = consumeLimits(this.ctx.storage.sql, checks, "", key, now);
+    const last = lastExpiry(this.ctx.storage.sql);
+    if (last !== null) {
+      await this.ctx.storage.setAlarm(last);
+    }
+    return decision;
+  }
+
+  override async alarm(): Promise<void> {
+    await this.ctx.storage.deleteAll();
+    // The object may count again before it is evicted.
+    createLimitHitsTable(this.ctx.storage.sql);
   }
 }

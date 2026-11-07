@@ -92,6 +92,10 @@ test("GET /device/config", () => {
   matchesFixture("device-config.json", deviceConfig(env, "alex"));
 });
 
+test("GET /device/config on the hosted Worker: the hosted limits", () => {
+  matchesFixture("device-config-hosted.json", deviceConfig({ HOSTED: "on", GITHUB_TOKEN: "ghu_x" } as Env, "octocat"));
+});
+
 test("an alert's push payload", () => {
   const alert = {
     kind: "review_requested" as const, repo: "acme/app" as RepoFullName, number: 7,

@@ -27,13 +27,15 @@ import { parseDelivery, verifySignature } from "./webhook";
 import { writeToGitHub } from "./write";
 import { busyAnswer, clientRefOf } from "./write-receipts";
 
-import { Installation, SignIn, UserAccount } from "./account";
+import { Installation, IpLimit, SignIn, UserAccount } from "./account";
 import {
   authenticate, hostedAccountConfig, hostedMode, publicHostedRoute, servicesOf, userEnv,
 } from "./hosted";
-import { OPEN_SYNC_MS, syncInstallations } from "./installations";
+import { syncInstallations } from "./installations";
+import { pairingLimitAnswer, personLimitAnswer, reportedLimitsOf } from "./limit-enforcement";
+import { durationOf, LimitName } from "./limits";
 
-export { AiJobs, Installation, PrIndex, SignIn, UserAccount };
+export { AiJobs, Installation, IpLimit, PrIndex, SignIn, UserAccount };
 
 const PULL_REQUEST_PATH = /^\/prs\/([\w.-]+)\/([\w.-]+)\/(\d+)\/(diff|detail|summary|write|key-lines|rewrite|ask)$/;
 /** GraphQL's `Int`: a bigger number is no PR, and GitHub would refuse the query for it. */
@@ -67,6 +69,10 @@ async function pairRoute(request: Request, env: Env): Promise<Response> {
   const secret = deviceSecretOf(request.headers.get("Authorization"));
   if (!secret) {
     return errorAnswer(401, "unauthorized", "send the app's device secret as the bearer");
+  }
+  const limited = await pairingLimitAnswer(request, env);
+  if (limited) {
+    return limited;
   }
   const body = await request.json().catch(() => null) as { code?: unknown } | null;
   const code = normalizePairingCode(body?.code);
@@ -106,6 +112,7 @@ function choiceOf(
 
 async function configRoute(env: Env, context: ExecutionContext, extra: object = {}): Promise<Response> {
   aiConfig(env, context);
+  reportedLimitsOf(env, (promise) => context.waitUntil(promise));
   const login = await githubLogin(env).catch(() => null);
   return Response.json({ ...deviceConfig(env, login), ...extra }, { headers: { "Cache-Control": "no-store" } });
 }
@@ -161,6 +168,13 @@ async function write(repo: RepoFullName, number: number, request: Request, env: 
       return (await liveDetail(repo, number, env)).response;
     }
   }
+  const limited = await personLimitAnswer(env, [LimitName.WritesPerMinute, LimitName.WritesPerHour], receipt);
+  if (limited) {
+    if (receipt) {
+      await prIndex(env).finishWrite(receipt, false, Date.now());
+    }
+    return limited;
+  }
   const failure = await writeToGitHub(repo, number, input, env);
   if (receipt) {
     await prIndex(env).finishWrite(receipt, failure === null, Date.now());
@@ -181,6 +195,10 @@ async function aiAnswer(job: AiJob, isRetry: boolean, env: Env): Promise<Respons
   const stored = await env.DIFFS.get(key);
   if (stored) {
     return new Response(stored.body, { headers: { "Content-Type": "application/json" } });
+  }
+  const limited = await personLimitAnswer(env, [LimitName.AiJobsPerHour], key);
+  if (limited) {
+    return limited;
   }
   await aiJobs(env).enqueue(job, isSet(env.SIGNED_IN_USER_ID) ? env.SIGNED_IN_USER_ID : null);
   return Response.json({ status: "working" }, { status: 202 });
@@ -227,6 +245,14 @@ async function askRoute(
     const claim = receipt ? await prIndex(env).claimWrite(receipt, Date.now()) : "go";
     if (claim === "busy") {
       return busyAnswer();
+    }
+    const limited = claim === "go"
+      ? await personLimitAnswer(env, [LimitName.AskQuestionsPerHour, LimitName.AskQuestionsPerDay], receipt) : null;
+    if (limited) {
+      if (receipt) {
+        await prIndex(env).finishWrite(receipt, false, Date.now());
+      }
+      return limited;
     }
     if (claim === "go") {
       await ask(repo, number, input, chosen.choice, env);
@@ -475,7 +501,8 @@ async function serveHosted(
   if (isConfig) {
     // An app open: the person's installations are read again when the last read is ten minutes old.
     context.waitUntil(syncInstallations(services.account(auth.session.userId), services.installation, services.fetch,
-      Date.now(), OPEN_SYNC_MS).catch((error: unknown) => console.error("installation sync failed", error)));
+      Date.now(), durationOf(services.limits, LimitName.InstallationSyncOnOpenMinutes))
+      .catch((error: unknown) => console.error("installation sync failed", error)));
     return configRoute(auth.env, context, hostedAccountConfig(auth.session));
   }
   return serveAuthorized(request, auth.env, context);

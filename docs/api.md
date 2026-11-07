@@ -134,8 +134,11 @@ Auth: a paired secret or `APP_TOKEN`. `Cache-Control: no-store`. The app reads i
 | `login` | the GitHub login the Worker acts as; `null` if GitHub could not be asked | "Your PRs", and whose review a row shows |
 | `orgs` | `GITHUB_ORGS`, comma-separated; absent when unset | The PR filter's default selection |
 | `ai.features.<feature>` | one entry per AI feature that is on (`key_lines`, `rewrite`, `ask`); `ai` is absent when none is | The model picker: `default` is what runs when the app sends no choice; `allowed` is every model and effort it may send ([AI model choice](#ai-model-choice)) |
+| `limits` | always: each limit in force on this Worker, by name, in the unit its name ends with; `null` is off ([Limits](#limits)) | Explains a `429 limit_reached` |
 
-In the example, `rewrite` and `ask` are shortened: each lists the same `allowed` entries as `key_lines`. A key the app
+The example leaves out `limits`; [`device-config.json`](fixtures/device-config.json) and
+[`device-config-hosted.json`](fixtures/device-config-hosted.json) show it for each mode. In the example, `rewrite`
+and `ask` are shortened: each lists the same `allowed` entries as `key_lines`. A key the app
 does not know is ignored; a feature the Worker does not send is off. Routes for a feature that is off
 answer `404 {"error": "<feature> is not set up on this Worker."}`. Answers: `200` · `401`.
 
@@ -233,6 +236,68 @@ so answers made then are still served. An answer made before then has no `model`
 So a question at another model or effort than the PR's current session starts a new session, and the chat the app
 shows is that new one; the earlier conversation is no longer shown. `GET …/ask` reports the session's `model` and
 `effort` beside `costCents`.
+
+## Limits
+
+Every limit is a `LIMIT_*` var: a whole number in the limit's unit, or `off` where the table allows it. Unset or
+empty, a limit takes its default for the Worker's mode. A self-hosted Worker's defaults keep its behaviour from before
+limits existed: no per-person counts, no retention sweep. Implemented in `worker/src/limits.ts`; `GET /device/config`
+shows each limit in force under `limits`.
+
+A var the Worker cannot use does not stop anything. The default serves, and the problem is logged once per isolate in
+`/events` as `limits_config_error` (`{"problems": [{"variable", "value", "reason"}]}`).
+
+**Per IP**, counted in an `IpLimit` object per IP hash (hosted) or the index (self-hosted). `off` allowed.
+
+| Limit | Var | Hosted | Self-hosted | Counts |
+|---|---|---|---|---|
+| `sign_in_starts_per_ip_per_minute` | `LIMIT_SIGN_IN_STARTS_PER_IP_PER_MINUTE` | 10 | n/a | `GET /auth/github/start` |
+| `sign_in_finishes_per_ip_per_minute` | `LIMIT_SIGN_IN_FINISHES_PER_IP_PER_MINUTE` | 10 | n/a | `POST /auth/github/finish` |
+| `pairing_attempts_per_ip_per_hour` | `LIMIT_PAIRING_ATTEMPTS_PER_IP_PER_HOUR` | n/a | 30 | `POST /device/pair` |
+
+**Per person**, counted in the person's own `PrIndex`. `off` allowed.
+
+| Limit | Var | Hosted | Self-hosted | Counts |
+|---|---|---|---|---|
+| `writes_per_minute` | `LIMIT_WRITES_PER_MINUTE` | 20 | off | `POST …/write`: reviews, comments, merges, description edits |
+| `writes_per_hour` | `LIMIT_WRITES_PER_HOUR` | 200 | off | The same |
+| `ask_questions_per_hour` | `LIMIT_ASK_QUESTIONS_PER_HOUR` | 30 | off | `POST …/ask` |
+| `ask_questions_per_day` | `LIMIT_ASK_QUESTIONS_PER_DAY` | 150 | off | The same |
+| `ai_jobs_per_hour` | `LIMIT_AI_JOBS_PER_HOUR` | 60 | off | A key lines or rewrite request that starts a job; a stored answer counts nothing |
+
+**Sizes and intervals.**
+
+| Limit | Var | Hosted | Self-hosted | What it sets |
+|---|---|---|---|---|
+| `ask_session_budget_cents` | `LIMIT_ASK_SESSION_BUDGET_CENTS` | 200 | 200 | The list-price spend at which Anthropic stops one PR's Ask session |
+| `github_reserve_percent` | `LIMIT_GITHUB_RESERVE_PERCENT` | 10 | 10 | The share of a token's hour that background reads leave alone (0 to 90) |
+| `github_reserve_minimum` | `LIMIT_GITHUB_RESERVE_MINIMUM` | 100 | 100 | The least of a token's requests that background reads leave alone |
+| `indexed_pull_requests_max` | `LIMIT_INDEXED_PULL_REQUESTS_MAX` | 500 | off | PRs one index holds; a new PR past it waits (`limit_reached` in `/events`). `off` allowed |
+| `indexed_repos_max` | `LIMIT_INDEXED_REPOS_MAX` | 3000 | 3000 | Repos in `GET /repos` |
+| `closed_pull_request_retention_days` | `LIMIT_CLOSED_PULL_REQUEST_RETENTION_DAYS` | 30 | off | How long R2 keeps the diffs, details, AI answers and Ask record of a PR no longer on the list. `off` allowed |
+| `poll_interval_minutes` | `LIMIT_POLL_INTERVAL_MINUTES` | 10 | n/a | Each person's background poll and token refresh |
+| `installation_sync_hours` | `LIMIT_INSTALLATION_SYNC_HOURS` | 6 | n/a | How often the poll reads the person's installations again |
+| `installation_sync_on_open_minutes` | `LIMIT_INSTALLATION_SYNC_ON_OPEN_MINUTES` | 10 | n/a | The least time between installation reads on app open |
+| `session_lifetime_days` | `LIMIT_SESSION_LIFETIME_DAYS` | 180 | n/a | A phone's session; after it, the phone signs in again |
+| `sessions_max` | `LIMIT_SESSIONS_MAX` | 20 | n/a | Signed-in phones per person; the oldest session goes first |
+| `sign_in_minutes` | `LIMIT_SIGN_IN_MINUTES` | 10 | n/a | From `/auth/github/start` to GitHub's callback |
+| `sign_in_code_minutes` | `LIMIT_SIGN_IN_CODE_MINUTES` | 5 | n/a | The one-time code `/auth/github/finish` takes |
+
+**Past a limit**, the route answers `429` with `Retry-After` and `Cache-Control: no-store`:
+
+```json
+{ "error": { "code": "limit_reached", "message": "writes_per_minute reached; try again in 41 s",
+  "limit": "writes_per_minute", "retry_after": 41 } }
+```
+
+`retry_after` is in seconds: when the oldest counted request leaves the window. A refused request counts toward no
+limit. A write or question sent again with the same `client_ref` (the outbox's retry) is the request already counted:
+it never counts twice, and passes a limit it passed the first time. A refused write keeps no receipt, so the outbox can
+send it again after `retry_after`. Polling a key lines or rewrite answer counts the job once.
+
+**Retention.** Once a day, each index's tick deletes the R2 objects of each PR no longer on its list whose newest object
+is older than `closed_pull_request_retention_days` (`retention_swept` or `retention_failed` in `/events`). A PR on the
+list keeps everything.
 
 ## Quick jump
 
@@ -405,7 +470,7 @@ session may catch the HTTPS callback.
 | 401 | `signed_out` | GitHub no longer honours the person's tokens: they revoked the App, a refresh was refused, or 6 months passed with no refresh | Shows Sign in again |
 | 503 | `github_unavailable` | GitHub could not be asked for a fresh token | Retries later |
 | 503 | `not_configured` | `HOSTED=on` without everything it needs | Shows the Worker is down |
-| 429 | `rate_limited` | `/auth/github/start` or `/auth/github/finish` more than 10 times a minute from one IP | Waits a minute |
+| 429 | `limit_reached` | A [limit](#limits): sign-in from one IP, or one person's writes, questions or AI jobs. `limit` names it; `retry_after` says when to try again | Waits `retry_after` |
 
 `GET /device/config` answers a `signed_out` session with `200` too. On the hosted Worker it adds:
 
@@ -460,15 +525,17 @@ request with the secret answers `401 unauthorized`.
   a new 12-byte IV per seal, associated data `prhub:user:<id>:access` or `:refresh`, stored as
   `v1.<key id>.<iv>.<ciphertext>` (base64url). No token goes to the phone, R2, a log or `/events`.
 - `TOKEN_ENCRYPTION_KEY` is `<key id>:<base64 of 32 random bytes>`, comma-separated: the first key seals, every key
-  opens. To rotate, put a new key first and keep the old one after it; each account is sealed again with the new key
-  when its token is next read.
+  opens. To rotate, put a new key first and keep the old one after it. Each signed-in account's poll seals its
+  tokens and Anthropic key again with the new key, and records `token_keys` in the person's `/events` (`current`,
+  `resealed`, and `stale`: values still on a key that is gone). The runbook is in
+  [hosted-deploy.md](hosted-deploy.md#rotating-the-token-key).
 - The access token (8 hours) is refreshed 5 minutes before it expires, and when GitHub answers `401` to it. One refresh
   runs at a time per person; requests during it wait for its answer. GitHub kills the old pair as it answers.
 - `bad_refresh_token`, a refresh token past its 6 months, or `github_app_authorization` `revoked` on `/github/webhook`
   signs the person out everywhere: tokens dropped, `account.state` `signed_out`, the alert above. A refresh that fails
   any other way keeps the person signed in.
-- Each account's alarm runs every 10 minutes while signed in: it refreshes when due and ticks the person's PR index,
-  which keeps the refresh token alive. The one-minute cron does nothing on the hosted Worker.
+- Each account's alarm runs every `poll_interval_minutes` (10) while signed in: it refreshes when due and ticks the
+  person's PR index, which keeps the refresh token alive. The one-minute cron does nothing on the hosted Worker.
 
 ### Per person
 
@@ -483,15 +550,16 @@ Every delivery is signed with the App's webhook secret (`WEBHOOK_SECRET`); a bad
 nothing. Each installation has an `Installation` object named `installation:<id>` that knows its members and which of
 its repos each one can see. Who sees what comes only from each person's own token, never an installation token:
 
-- **Joining.** At sign-in, on app open (`GET /device/config`) when the last read is 10 minutes old, and every 6 hours
-  from the account's alarm, the Worker reads `GET /user/installations` and `GET /user/installations/{id}/repositories`
-  with the person's token. They join each installation listed, with exactly the repos listed, and leave the ones no
+- **Joining.** At sign-in, on app open (`GET /device/config`) when the last read is `installation_sync_on_open_minutes`
+  old, and every `installation_sync_hours` from the account's alarm, the Worker reads `GET /user/installations` and
+  `GET /user/installations/{id}/repositories` with the person's token. They join each installation listed, with exactly the repos listed, and leave the ones no
   longer listed. A partial answer changes nothing.
 - **`installation`.** `created`, `new_permissions_accepted` and `unsuspend` record the repos it names, and read the
-  installations of the person who acted, if they have signed in. `suspend` routes nothing until `unsuspend`. `deleted`
-  forgets the installation.
+  installations of the person who acted, if they have signed in. `suspend` routes nothing until `unsuspend`, and
+  drops each member's rows of the installation's repos at once; after `unsuspend` the poll reads them again.
+  `deleted` drops the same rows and forgets the installation.
 - **`installation_repositories`.** `added` records the repos and reads the actor's installations again; `removed`
-  forgets the repos, so nobody is routed to them. Each member's poll drops the rows their token can no longer read.
+  forgets the repos, so nobody is routed to them, and drops each member's rows of them at once.
 - **`pull_request`, `pull_request_review`, `pull_request_review_comment`, `pull_request_review_thread`,
   `issue_comment` (on a PR).** Marked in the index of each member whose list has the repo, `involved` when they wrote
   the PR or are asked to review it. A PR an index does not hold, with the person not involved, costs nothing.
@@ -507,14 +575,16 @@ their token cannot read.
 ### Rate limits
 
 - **GitHub, per token.** Every GitHub call reads `x-ratelimit-remaining`, `-limit`, `-reset` and `retry-after`. When
-  under a tenth of the hour (at least 100) is left, the person's poll and webhook reads wait for the reset; their own
+  under the reserve (`github_reserve_percent` of the hour, at least `github_reserve_minimum`; a tenth and 100 by
+  default) is left, the person's poll and webhook reads wait for the reset; their own
   requests still go. When none is left, or GitHub sends `retry-after` or `429` (a secondary limit; a minute when it
   gives no time), every call for that token answers `429` with `retry-after` until then, without reaching GitHub.
   Each backoff is in `/events` once as `rate_limited` (`kind` `low`, `primary` or `secondary`, `until`, `remaining`,
   `limit`). Each hosted poll records its cost as `polled` (`calls`, `remaining`, `limit`). The same applies to a
   self-hosted Worker's token.
-- **Sign-in, per IP.** `/auth/github/start` and `/auth/github/finish` answer `429 rate_limited` past 10 a minute from
-  one IP each (the `AUTH_RATE_LIMIT` binding; unset, no limit).
+- **Sign-in, per IP.** `/auth/github/start` and `/auth/github/finish` answer `429 limit_reached` past
+  `sign_in_starts_per_ip_per_minute` and `sign_in_finishes_per_ip_per_minute` ([Limits](#limits)). Each IP is
+  counted by its SHA-256 in an `IpLimit` object, which deletes itself when its last count expires.
 
 ### Configuration
 
@@ -528,10 +598,11 @@ their token cannot read.
 | `APPLE_APP_ID` | var | `<team id>.<bundle id>` for the association file; unset, it answers 404 |
 | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` | var, secret | Installation tokens for Ask: read only, one repo, minted only after the person's own token read the PR. Unset: Ask stays off for everyone. PKCS#8 |
 | `AI_DEFAULTS` and the other AI vars | var | As above; they apply to each person's own key |
+| `LIMIT_*` | var | [Limits](#limits), at the hosted defaults when unset |
 | `APNS_*` | | Push straight to APNs with Jai's key, as on his Worker |
 
 Bindings: `DIFFS`, `PR_INDEX`, `AI_JOBS` as above, plus `USER_ACCOUNTS` (class `UserAccount`), `SIGN_INS` (class
-`SignIn`) and `INSTALLATIONS` (class `Installation`), all SQLite-backed (`new_sqlite_classes`), and optionally
-`AUTH_RATE_LIMIT`, a rate-limiting binding. `HOSTED=on` without the client ID, client secret, token key or any of the
-three bindings answers `503 not_configured` on every route but `/`, rather than act as a self-hosted Worker. The
+`SignIn`), `INSTALLATIONS` (class `Installation`) and `IP_LIMITS` (class `IpLimit`), all SQLite-backed
+(`new_sqlite_classes`). `HOSTED=on` without the client ID, client secret, token key or any of the four bindings answers
+`503 not_configured` on every route but `/`, rather than act as a self-hosted Worker. The
 template is `deploy/hosted/wrangler.template.jsonc`.

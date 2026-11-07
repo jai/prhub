@@ -180,10 +180,6 @@ export interface InstallationApi {
   route(target: DeliveryTarget, now: number): unknown;
 }
 
-/** At sign-in; then every `SYNC_MS` from the account's alarm, and on app open when the last one is `OPEN_SYNC_MS` old. */
-export const SYNC_MS = 6 * 3_600_000;
-export const OPEN_SYNC_MS = 10 * 60_000;
-
 /**
  * Reads the person's installations with their own token, joins each one with the repos they can see there, and leaves
  * the ones they no longer reach. False when it did not run: claimed too recently, signed out, or GitHub did not answer.

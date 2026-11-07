@@ -45,6 +45,12 @@ test("a Worker with only a GitHub token serves the PR list and nothing more", ()
   assert.deepEqual(deviceConfig(env({ GITHUB_TOKEN: "t" }), "alex"), {
     features: { ask_ai: false, key_lines: false, rewrite: false, feedback: false, push: false, webhooks: false },
     login: "alex",
+    limits: {
+      pairing_attempts_per_ip_per_hour: 30, writes_per_minute: null, writes_per_hour: null, ask_questions_per_hour: null,
+      ask_questions_per_day: null, ai_jobs_per_hour: null, ask_session_budget_cents: 200, github_reserve_percent: 10,
+      github_reserve_minimum: 100, indexed_pull_requests_max: null, indexed_repos_max: 3_000,
+      closed_pull_request_retention_days: null,
+    },
   });
 });
 

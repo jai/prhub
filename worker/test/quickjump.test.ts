@@ -7,7 +7,7 @@ import { relayBody, sendDirect, SYNC_WAKE } from "../src/apns.ts";
 import type { Env } from "../src/env.ts";
 import { pullRequestSummary, summaryOf } from "../src/github.ts";
 import {
-  buildRepoIndex, fetchRepoIndex, isRepoIndex, MAX_REPOS, ownersOf, rankRepos, type RepoIndex,
+  buildRepoIndex, fetchRepoIndex, isRepoIndex, ownersOf, rankRepos, type RepoIndex,
 } from "../src/repos.ts";
 
 const env = (vars: Partial<Env>) => ({ GITHUB_TOKEN: "t", ...vars }) as Env;
@@ -146,7 +146,7 @@ test("the repo index lists each repo once, with its owners, newest push first wh
   const index = buildRepoIndex([
     repoNode("acme/api", "2026-11-01T00:00:00Z"), repoNode("jai/notes", "2026-11-05T00:00:00Z"),
     repoNode("Acme/API", "2026-11-01T00:00:00Z"), repoNode("acme/old", null, { isArchived: true }),
-  ], new Map([["jai/notes", 3]]), NOW);
+  ], new Map([["jai/notes", 3]]), NOW, 3_000);
   assert.equal(index.repos.length, 3);
   assert.deepEqual(new Set(index.owners), new Set(["Acme", "acme", "jai"]));
   assert.deepEqual(index.repos[0], {
@@ -157,19 +157,20 @@ test("the repo index lists each repo once, with its owners, newest push first wh
   assert.equal(index.truncated, false);
   assert.ok(isRepoIndex(index));
   assert.ok(!isRepoIndex({ repos: [] }));
-  const many = Array.from({ length: MAX_REPOS + 2 }, (_, n) =>
+  const max = 50;
+  const many = Array.from({ length: max + 2 }, (_, n) =>
     repoNode(`acme/r${n}`, new Date(NOW - n * 1_000).toISOString()));
-  const cut = buildRepoIndex(many, new Map(), NOW);
-  assert.equal(cut.repos.length, MAX_REPOS);
+  const cut = buildRepoIndex(many, new Map(), NOW, max);
+  assert.equal(cut.repos.length, max);
   assert.equal(cut.truncated, true);
-  assert.equal(cut.repos.at(-1)?.nameWithOwner, `acme/r${MAX_REPOS - 1}`);
+  assert.equal(cut.repos.at(-1)?.nameWithOwner, `acme/r${max - 1}`);
 });
 
 test("repos rank by the user's list, then recent work, then last push, archived last", () => {
   const index: RepoIndex = buildRepoIndex([
     repoNode("acme/quiet", "2026-11-06T00:00:00Z"), repoNode("acme/busy", "2026-10-01T00:00:00Z"),
     repoNode("acme/listed", "2026-09-01T00:00:00Z"), repoNode("acme/gone", "2026-11-07T00:00:00Z", { isArchived: true }),
-  ], new Map([["acme/busy", 9], ["acme/gone", 50]]), NOW);
+  ], new Map([["acme/busy", 9], ["acme/gone", 50]]), NOW, 3_000);
   const ranked = rankRepos(index, new Map([["acme/listed", 2]]));
   assert.deepEqual(ranked.repos.map((repo) => repo.nameWithOwner), ["acme/listed", "acme/busy", "acme/quiet", "acme/gone"]);
   assert.equal(ranked.repos[0].listed, 2);

@@ -238,10 +238,17 @@ Easiest first. 6b goes first, because everything else needs a signed-in person. 
    - The onboarding choice, the authentication session, PKCE, the install prompt and the keychain connection.
    - Delete Account in Settings, and the signed-out push.
    - The person's own Anthropic key in Settings (`PUT` and `DELETE /account/anthropic-key`, `account.anthropic_key`).
-4. **6e: encryption, deletion, privacy and limits.** Medium, about 2 days. Parallel with 6c.
-   - Key rotation, data retention and installation clean-up.
-   - Per-person rate limits and AI budgets.
-   - The privacy policy, App Store privacy answers and review notes.
+4. **6e: encryption, deletion, privacy and limits** (built, 2026-11-07). [api.md, "Limits"](../api.md#limits).
+   - Every limit is a `LIMIT_*` var with a default per mode, in `/device/config` as `limits`; past one, `429
+     limit_reached` names it and says when to retry. Sign-in per IP moved from a rate-limiting binding to `IpLimit`.
+   - Per person: writes, Ask questions and AI jobs, counted in the person's index, a `client_ref` retry counted once.
+     Ask's session budget, the index sizes, the poll and sync intervals and session lifetimes are limits too.
+   - A removed repo, or a suspended or deleted installation, drops each member's rows at once.
+   - Key rotation: each poll seals values again with the new key and reports `token_keys` in `/events`; the runbook is
+     in [hosted-deploy.md](../hosted-deploy.md#rotating-the-token-key).
+   - Retention: R2 objects of PRs off the list go after 30 days. Delete Account also drops the person's AI jobs.
+   - The hosted privacy policy: [privacy/hosted.md](../privacy/hosted.md). Left: App Store privacy answers and review
+     notes.
 5. **6c: the multi-tenant Worker** (done, 2026-11-07).
    - `Installation` per installation (`installation:<id>`): members and the repos each sees, from the person's own
      token at sign-in, on app open (10-minute gap) and every 6 hours. Pull request, comment, check suite and status
@@ -254,8 +261,7 @@ Easiest first. 6b goes first, because everything else needs a signed-in person. 
      the App, read only, for one repo, after the person's token read the PR. AI answers, Ask records and `AiJobs` are
      per person.
    - `deploy/hosted/wrangler.template.jsonc` and [hosted-deploy.md](../hosted-deploy.md).
-   - Left: measure the poll's real cost once people use it; drop rows of a deleted or suspended installation at once
-     rather than at the next poll (6e); per-person write and Ask rate limits (6e).
+   - Left: measure the poll's real cost once people use it.
 
 ## Creating the App
 

@@ -2,6 +2,7 @@
 // filters by name on the phone and a PR number then opens directly.
 import { type Env, isSet } from "./env.ts";
 import { postGraphql } from "./github.ts";
+import { countOf, LimitName, limitsOf } from "./limits.ts";
 
 export const REPOS_KEY = "repos/index.json";
 /** Older than this, the next request answers the copy it has and reads GitHub again behind it. */
@@ -10,8 +11,6 @@ export const REPOS_STALE_MS = 6 * 60 * 60_000;
 export const REPOS_FORCED_GAP_MS = 5 * 60_000;
 /** A stale copy's background read is not tried again sooner than this, so a failing GitHub is not asked every request. */
 export const REPOS_RETRY_GAP_MS = 2 * 60_000;
-/** Enough for anyone's orgs; a token that sees more gets the most recently pushed this many, and `truncated`. */
-export const MAX_REPOS = 3_000;
 /** How far back the relevance hint looks, and how many of the user's PRs it counts at most. */
 const RECENT_DAYS = 90;
 const RECENT_LIMIT = 500;
@@ -93,10 +92,18 @@ export function ownersOf(env: Pick<Env, "GITHUB_ORGS">): string[] {
   return isSet(env.GITHUB_ORGS) ? env.GITHUB_ORGS.split(",").map((owner) => owner.trim()).filter(Boolean) : [];
 }
 
+/**
+ * The most repos the index keeps (`indexed_repos_max`): a token that sees more gets the most recently pushed this many,
+ * and `truncated`.
+ */
+export function maxReposOf(env: Env): number {
+  return countOf(limitsOf(env), LimitName.IndexedReposMax);
+}
+
 export async function fetchRepoNodes(env: Env): Promise<RepoNode[]> {
   const owners = ownersOf(env);
   // One page past the cap, so a cut is known to be one.
-  const limit = MAX_REPOS + 1;
+  const limit = maxReposOf(env) + 1;
   if (owners.length === 0) {
     return pages(async (after) => (await partialGraphql<{ viewer: { repositories: Connection } }>(
       VIEWER_REPOS, { after }, env)).viewer.repositories, limit);
@@ -130,19 +137,21 @@ export async function fetchRecentCounts(env: Env, now: number): Promise<Map<stri
 }
 
 /** Most recently pushed first when cut; each repo once, though two owners' lists name it. */
-export function buildRepoIndex(nodes: RepoNode[], recent: ReadonlyMap<string, number>, now: number): RepoIndex {
+export function buildRepoIndex(
+  nodes: RepoNode[], recent: ReadonlyMap<string, number>, now: number, maxRepos: number,
+): RepoIndex {
   const unique = new Map<string, RepoNode>();
   for (const node of nodes) {
     unique.set(node.nameWithOwner.toLowerCase(), node);
   }
   const sorted = [...unique.values()].sort((a, b) => (b.pushedAt ?? "").localeCompare(a.pushedAt ?? ""));
-  const kept = sorted.slice(0, MAX_REPOS);
+  const kept = sorted.slice(0, maxRepos);
   const repos = kept.map((node) => ({
     nameWithOwner: node.nameWithOwner, name: node.name, archived: node.isArchived, pushedAt: node.pushedAt,
     openPrs: node.pullRequests.totalCount, recentPrs: recent.get(node.nameWithOwner) ?? 0, listed: 0,
   }));
   const owners = [...new Set(repos.map((repo) => repo.nameWithOwner.split("/")[0]))].sort((a, b) => a.localeCompare(b));
-  return { repos, owners, updatedAt: new Date(now).toISOString(), truncated: sorted.length > MAX_REPOS };
+  return { repos, owners, updatedAt: new Date(now).toISOString(), truncated: sorted.length > maxRepos };
 }
 
 export async function fetchRepoIndex(env: Env, now: number): Promise<RepoIndex> {
@@ -150,7 +159,7 @@ export async function fetchRepoIndex(env: Env, now: number): Promise<RepoIndex> 
     fetchRepoNodes(env),
     fetchRecentCounts(env, now).catch(() => new Map<string, number>()),
   ]);
-  return buildRepoIndex(nodes, recent, now);
+  return buildRepoIndex(nodes, recent, now, maxReposOf(env));
 }
 
 /**

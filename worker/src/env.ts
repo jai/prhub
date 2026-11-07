@@ -1,13 +1,15 @@
-import type { Installation, SignIn, UserAccount } from "./account";
+import type { Installation, IpLimit, SignIn, UserAccount } from "./account";
 import type { AiJobs } from "./ai-jobs";
 import type { PrIndex } from "./pr-index";
+import type { LimitVars } from "./limits";
 import type { RateLimitState } from "./rate-limit";
 
 /**
  * Jai's Worker sets everything here. A self-hosted one (docs/api.md) needs only `GITHUB_TOKEN` and its
- * bindings; every other name is optional, and the feature it serves is off without it (`GET /device/config`).
+ * bindings; every other name is optional, and the feature it serves is off without it (`GET /device/config`). The
+ * `LIMIT_*` vars set the limits (`limits.ts`).
  */
-export interface Env {
+export interface Env extends LimitVars {
   /** Whose PRs these are. Unset: read once from the token (`githubLogin`). */
   GITHUB_LOGIN?: string;
   /** A GitHub token that acts as that person: Jai's `gh` login, or a self-hoster's fine-grained PAT. */
@@ -101,8 +103,8 @@ export interface Env {
   SIGN_INS?: DurableObjectNamespace<SignIn>;
   /** One per App installation, named `installation:<id>`: who can see which of its repos (`installation-core.ts`). */
   INSTALLATIONS?: DurableObjectNamespace<Installation>;
-  /** Per-IP limit on `/auth/github/start` and `/auth/github/finish` (a rate-limiting binding). Unset: no limit. */
-  AUTH_RATE_LIMIT?: RateLimit;
+  /** One per client IP, named `ip:<SHA-256 of the IP>`: the per-IP sign-in limits (`limits.ts`). */
+  IP_LIMITS?: DurableObjectNamespace<IpLimit>;
   /** Set by the Worker on the env it acts with for one signed-in person (`userEnv`); never a var. */
   SIGNED_IN_USER_ID?: string;
   /** Set by the PR index on the env a background run reads with (`rate-limit.ts`); never a var. */

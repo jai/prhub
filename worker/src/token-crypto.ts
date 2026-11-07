@@ -65,6 +65,12 @@ export async function sealToken(keyring: Keyring, plaintext: string, associated:
   return [VERSION, keyring.current, base64UrlOf(iv), base64UrlOf(new Uint8Array(sealed))].join(".");
 }
 
+/** The id of the key that sealed a value; null for one that is not `v1.<key id>.…`. */
+export function keyIdOf(sealed: string): string | null {
+  const [version, keyId] = sealed.split(".");
+  return version === VERSION && keyId !== undefined && KEY_ID.test(keyId) ? keyId : null;
+}
+
 /**
  * The token, and whether it was sealed with an older key and should be sealed again. Null when it is not one of ours:
  * an unknown key id, a changed byte, or associated data for someone or something else.

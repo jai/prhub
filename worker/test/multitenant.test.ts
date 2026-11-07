@@ -11,6 +11,7 @@ import { aiJobs, type Env, prIndex, scopedKey } from "../src/env.ts";
 import { authenticate, canSeeWith, userEnv } from "../src/hosted.ts";
 import { parseRepoFullName, parseSha, type RepoFullName } from "../src/ids.ts";
 import { parseAppDelivery } from "../src/installations.ts";
+import { gitHubReserveOf, parseLimits, WorkerMode } from "../src/limits.ts";
 import { backoffOf, newRateLimitState, observe, stops } from "../src/rate-limit.ts";
 import {
   ASK_RESOURCES, bearer, deliver, type FakeUser, hostedWorld, ORIGIN, signIn, type World,
@@ -19,6 +20,7 @@ import {
 const ALICE: FakeUser = { id: 1001, login: "alice" };
 const BOB: FakeUser = { id: 2002, login: "bob" };
 const SHA = "a".repeat(40);
+const RESERVE = gitHubReserveOf(parseLimits({}, WorkerMode.Hosted));
 const repo = (name: string) => parseRepoFullName(name) as RepoFullName;
 
 /**
@@ -112,7 +114,10 @@ test("a repo added to an installation reaches a member after their token says th
   assert.deepEqual(marks(world, ALICE), ["mark:acme/new#7:false", "mark:acme/new#7:false"], "known now: no second ask");
 });
 
-test("a removed repo, a suspended or a deleted installation routes nothing", async () => {
+const drops = (world: World, user: FakeUser) =>
+  world.indexes.get(String(user.id))?.calls.filter((call) => call.startsWith("drop:")) ?? [];
+
+test("a removed repo, a suspended or a deleted installation routes nothing, and drops its rows at once", async () => {
   const { world } = await twoOrgs();
   world.github.installations.set(11, { account: "acme", repos: ["acme/secret"] });
   await deliver(world, "installation_repositories", {
@@ -122,10 +127,14 @@ test("a removed repo, a suspended or a deleted installation routes nothing", asy
   await deliver(world, "pull_request", pullRequest(11, "acme/api"));
   await runChecks(world);
   assert.deepEqual(marks(world, ALICE), []);
+  assert.deepEqual(drops(world, ALICE), ["drop:acme/api"]);
+  assert.deepEqual(drops(world, BOB), [], "Bob is no member of acme");
 
   await deliver(world, "installation", { action: "suspend", installation: { id: 33, account: { login: "initech" } } });
   await deliver(world, "pull_request", pullRequest(33, "initech/shared"));
   assert.deepEqual([...marks(world, ALICE), ...marks(world, BOB)], []);
+  assert.deepEqual(drops(world, ALICE).at(-1), "drop:initech/private,initech/shared");
+  assert.deepEqual(drops(world, BOB), ["drop:initech/private,initech/shared"]);
   await deliver(world, "installation", { action: "unsuspend", installation: { id: 33, account: { login: "initech" } } });
   await deliver(world, "pull_request", pullRequest(33, "initech/shared"));
   assert.equal([...marks(world, ALICE), ...marks(world, BOB)].length, 2);
@@ -134,6 +143,7 @@ test("a removed repo, a suspended or a deleted installation routes nothing", asy
   await deliver(world, "pull_request", pullRequest(22, "globex/web"));
   await runChecks(world);
   assert.deepEqual(marks(world, BOB), ["mark:initech/shared#7:false"]);
+  assert.deepEqual(drops(world, BOB).at(-1), "drop:globex/web");
 });
 
 test("check suites and statuses mark the PRs at their head, for members who see the repo", async () => {
@@ -172,6 +182,11 @@ test("deleting Alice takes her out of every installation and leaves Bob as he wa
   assert.equal(aliceIndex?.calls.length, before, "no delivery reaches, or makes again, a deleted index");
   assert.deepEqual(marks(world, BOB), ["mark:initech/shared#7:false"]);
   assert.deepEqual(world.deleted, ["1001"], "only Alice's R2 prefix");
+  assert.deepEqual(world.forgottenJobs, ["1001"], "no queued AI job of hers runs, or stores an answer, after");
+  assert.equal(world.stores.get("1001")?.map.size, 0, "her account holds nothing");
+  for (const store of world.installationStores.values()) {
+    assert.deepEqual([...store.map.keys()].filter((key) => key.includes("1001")), [], "no installation names her");
+  }
   const auth = await authenticate(new Request(`${ORIGIN}/prs`, bearer(bob)), world.workerEnv, world.services);
   assert.ok("env" in auth && auth.env.GITHUB_LOGIN === "bob");
   assert.ok(world.stores.get("2002")?.map.has("account"));
@@ -180,15 +195,15 @@ test("deleting Alice takes her out of every installation and leaves Bob as he wa
 test("the person's token decides in doubt: signed out is no, GitHub away or rate limited is ask again", async () => {
   const { world } = await twoOrgs();
   const account = world.services.account("1001");
-  assert.equal(await canSeeWith(account, repo("acme/api"), world.github.fetch, world.clock.now), true);
-  assert.equal(await canSeeWith(account, repo("acme/secret"), world.github.fetch, world.clock.now), false);
+  assert.equal(await canSeeWith(account, repo("acme/api"), world.github.fetch, world.clock.now, RESERVE), true);
+  assert.equal(await canSeeWith(account, repo("acme/secret"), world.github.fetch, world.clock.now, RESERVE), false);
   world.github.headers = { "x-ratelimit-remaining": "0", "x-ratelimit-limit": "5000", "x-ratelimit-reset": "9999999999" };
   const limited = async () => new Response("{}", { status: 403, headers: world.github.headers });
-  assert.equal(await canSeeWith(account, repo("acme/secret"), limited, world.clock.now), null);
+  assert.equal(await canSeeWith(account, repo("acme/secret"), limited, world.clock.now, RESERVE), null);
   const away = async () => new Response("", { status: 502 });
-  assert.equal(await canSeeWith(account, repo("acme/secret"), away, world.clock.now), null);
+  assert.equal(await canSeeWith(account, repo("acme/secret"), away, world.clock.now, RESERVE), null);
   await account.signOutEverywhere("revoked");
-  assert.equal(await canSeeWith(account, repo("acme/api"), world.github.fetch, world.clock.now), false);
+  assert.equal(await canSeeWith(account, repo("acme/api"), world.github.fetch, world.clock.now, RESERVE), false);
 });
 
 // --- Isolation of everything a person holds -------------------------------------------------------------------------
@@ -278,21 +293,38 @@ test("signing out of the last phone drops the Anthropic key with the tokens", as
 
 // --- Rate limits ----------------------------------------------------------------------------------------------------
 
-test("sign-in start and finish are limited per IP", async () => {
-  const world = hostedWorld();
-  world.anthropic.limit = 2;
+test("sign-in start and finish are limited per IP, each by its own LIMIT_ var, with the limit and wait named", async () => {
+  const world = hostedWorld({
+    LIMIT_SIGN_IN_STARTS_PER_IP_PER_MINUTE: "2", LIMIT_SIGN_IN_FINISHES_PER_IP_PER_MINUTE: "3",
+  });
   const start = (ip: string) => world.route("/auth/github/start?state=x", { headers: { "CF-Connecting-IP": ip } });
   assert.equal((await start("203.0.113.1")).status, 400);
   assert.equal((await start("203.0.113.1")).status, 400);
   const third = await start("203.0.113.1");
   assert.equal(third.status, 429);
-  assert.equal((await third.json() as { error: { code: string } }).error.code, "rate_limited");
+  assert.equal(third.headers.get("Retry-After"), "60");
+  assert.deepEqual((await third.json() as { error: object }).error, {
+    code: "limit_reached", message: "sign_in_starts_per_ip_per_minute reached; try again in 60 s",
+    limit: "sign_in_starts_per_ip_per_minute", retry_after: 60,
+  });
   assert.equal((await start("203.0.113.2")).status, 400, "another IP has its own count");
   const finish = () => world.route("/auth/github/finish", { method: "POST", headers: { "CF-Connecting-IP": "203.0.113.1" } });
-  await finish();
-  await finish();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    assert.equal((await finish()).status, 400);
+  }
   assert.equal((await finish()).status, 429);
   assert.equal(world.pending.size, 0);
+  world.clock.now += 60_000;
+  assert.equal((await start("203.0.113.1")).status, 400, "the window passes");
+  assert.ok([...world.ipCounts.keys()].every((key) => /^[0-9a-f]{64}$/.test(key)), "an IP is counted by its hash");
+});
+
+test("a per-IP limit set to off counts nothing", async () => {
+  const world = hostedWorld({ LIMIT_SIGN_IN_STARTS_PER_IP_PER_MINUTE: "off" });
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    assert.equal((await world.route("/auth/github/start?state=x")).status, 400);
+  }
+  assert.equal(world.ipCounts.size, 0);
 });
 
 const limitHeaders = (remaining: number, reset = 2_000_000_000, extra: Record<string, string> = {}) => ({
@@ -302,25 +334,25 @@ const limitHeaders = (remaining: number, reset = 2_000_000_000, extra: Record<st
 test("GitHub's rate-limit headers become a backoff: low, none left, or retry-after", () => {
   const now = 1_900_000_000_000;
   const answer = (status: number, headers: Record<string, string>) => new Response(null, { status, headers });
-  assert.equal(backoffOf(answer(200, limitHeaders(4_000)), now), null);
-  assert.deepEqual(backoffOf(answer(200, limitHeaders(400, 1_900_000_900)), now), { kind: "low", until: 1_900_000_900_000 });
-  assert.deepEqual(backoffOf(answer(200, limitHeaders(400)), now), { kind: "low", until: now + 3_600_000 },
+  assert.equal(backoffOf(answer(200, limitHeaders(4_000)), now, RESERVE), null);
+  assert.deepEqual(backoffOf(answer(200, limitHeaders(400, 1_900_000_900)), now, RESERVE), { kind: "low", until: 1_900_000_900_000 });
+  assert.deepEqual(backoffOf(answer(200, limitHeaders(400)), now, RESERVE), { kind: "low", until: now + 3_600_000 },
     "never past GitHub's hour");
-  assert.deepEqual(backoffOf(answer(200, limitHeaders(99, 1_900_000_100)), now), { kind: "low", until: 1_900_000_100_000 });
-  assert.deepEqual(backoffOf(answer(403, limitHeaders(0, 1_900_000_100)), now),
+  assert.deepEqual(backoffOf(answer(200, limitHeaders(99, 1_900_000_100)), now, RESERVE), { kind: "low", until: 1_900_000_100_000 });
+  assert.deepEqual(backoffOf(answer(403, limitHeaders(0, 1_900_000_100)), now, RESERVE),
     { kind: "primary", until: 1_900_000_100_000 });
-  assert.deepEqual(backoffOf(answer(403, limitHeaders(3_000, 1_900_000_100, { "retry-after": "30" })), now),
+  assert.deepEqual(backoffOf(answer(403, limitHeaders(3_000, 1_900_000_100, { "retry-after": "30" })), now, RESERVE),
     { kind: "secondary", until: now + 30_000 });
-  assert.deepEqual(backoffOf(answer(429, {}), now), { kind: "secondary", until: now + 60_000 });
-  assert.equal(backoffOf(answer(403, {}), now), null, "a plain 403 is a permission, not a limit");
-  assert.equal(backoffOf(answer(404, limitHeaders(4_999)), now), null);
+  assert.deepEqual(backoffOf(answer(429, {}), now, RESERVE), { kind: "secondary", until: now + 60_000 });
+  assert.equal(backoffOf(answer(403, {}), now, RESERVE), null, "a plain 403 is a permission, not a limit");
+  assert.equal(backoffOf(answer(404, limitHeaders(4_999)), now, RESERVE), null);
 });
 
 test("a run keeps its calls and the strictest backoff; low stops only background reads", () => {
   const now = 1_900_000_000_000;
   const state = newRateLimitState();
-  observe(state, new Response(null, { headers: limitHeaders(4_000) }), now);
-  observe(state, new Response(null, { headers: limitHeaders(300, 1_900_000_500) }), now);
+  observe(state, new Response(null, { headers: limitHeaders(4_000) }), now, RESERVE);
+  observe(state, new Response(null, { headers: limitHeaders(300, 1_900_000_500) }), now, RESERVE);
   assert.equal(state.calls, 2);
   assert.equal(state.remaining, 300);
   assert.deepEqual(state.backoff, { kind: "low", until: 1_900_000_500_000 });

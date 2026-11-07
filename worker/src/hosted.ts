@@ -11,17 +11,20 @@ import { bodyOf, parseFinishInput, parseSender } from "./boundary.ts";
 import { type Env, isSet } from "./env.ts";
 import type { RepoFullName, Sha } from "./ids.ts";
 import { type InstallationApi, parseAppDelivery, syncInstallations } from "./installations.ts";
+import type { LimitCheck, LimitDecision } from "./limit-counter.ts";
+import {
+  durationOf, gitHubReserveOf, type GitHubReserve, LimitName, limitReachedAnswer, type Limits, limitsOf, rateWindowOf,
+  type RateLimitName,
+} from "./limits.ts";
 import { authorizeUrl, exchangeCode, type Fetch, type OAuthApp, readUser } from "./oauth.ts";
-import { deviceSecretOf, fingerprintOf } from "./pairing.ts";
+import { deviceSecretOf, fingerprintOf, sha256Hex } from "./pairing.ts";
 import { backoffOf } from "./rate-limit.ts";
 import {
   isPkceChallenge, type Keyring, parseKeyring, pkceChallengeOf, randomToken,
 } from "./token-crypto.ts";
 import { verifySignature } from "./webhook.ts";
 import { checkAnthropicKey, createAskResources } from "./ask-setup.ts";
-
-/** A sign-in has this long between `/auth/github/start` and GitHub's callback. */
-export const SIGN_IN_MS = 10 * 60_000;
+import type { IpLimit } from "./account.ts";
 
 export type HostedMode = { kind: "off" } | { kind: "on"; app: OAuthApp } | { kind: "misconfigured"; missing: string[] };
 
@@ -37,6 +40,7 @@ export function hostedMode(env: Env): HostedMode {
     ["USER_ACCOUNTS", env.USER_ACCOUNTS !== undefined],
     ["SIGN_INS", env.SIGN_INS !== undefined],
     ["INSTALLATIONS", env.INSTALLATIONS !== undefined],
+    ["IP_LIMITS", env.IP_LIMITS !== undefined],
   ].flatMap(([name, isThere]) => isThere ? [] : [name as string]);
   return missing.length > 0 ? { kind: "misconfigured", missing } : { kind: "on", app: oauthAppOf(env) };
 }
@@ -106,8 +110,11 @@ export interface HostedServices {
   installation(id: string): InstallationApi;
   /** Deletes the person's R2 objects (`users/<id>/`). */
   deleteStored(userId: string): Promise<void>;
-  /** The per-IP limit on sign-in (`AUTH_RATE_LIMIT`): false when this key is over it. */
-  allow(key: string): Promise<boolean>;
+  /** Drops the person's queued AI jobs, so none runs, or stores an answer, after Delete Account. */
+  forgetJobs(userId: string): Promise<void>;
+  /** One request against a client IP's counts (`IpLimit`); `ipHash` is the SHA-256 of the IP, never the IP. */
+  limitIp(ipHash: string, checks: LimitCheck[], key: string, now: number): Promise<LimitDecision>;
+  limits: Limits;
   anthropic: AnthropicApi;
   fetch: Fetch;
   now(): number;
@@ -132,6 +139,8 @@ export interface UserIndexApi {
   signedOut(reason: SignedOutReason): unknown;
   forgetDevices(): unknown;
   deleteEverything(): unknown;
+  dropRepos(repos: string[]): unknown;
+  record(kind: string, detail: Record<string, unknown>): unknown;
 }
 
 /** Kept by `SignIn` from start to callback. The app's state and challenge go back to it; the verifier never leaves. */
@@ -169,7 +178,7 @@ export function installationOf(env: Env, id: string): InstallationApi {
  * person; null when GitHub could not say (down, or asking the token to wait), so the question is asked again.
  */
 export async function canSeeWith(
-  account: Pick<AccountApi, "accessToken">, repo: RepoFullName, fetcher: Fetch, now: number,
+  account: Pick<AccountApi, "accessToken">, repo: RepoFullName, fetcher: Fetch, now: number, reserve: GitHubReserve,
 ): Promise<boolean | null> {
   const answer = await account.accessToken();
   if (answer.kind !== "ok") {
@@ -183,7 +192,7 @@ export async function canSeeWith(
   } catch {
     return null;
   }
-  const backoff = backoffOf(response, now);
+  const backoff = backoffOf(response, now, reserve);
   if (backoff && backoff.kind !== "low" && !response.ok) {
     return null;
   }
@@ -194,7 +203,8 @@ export async function canSeeWith(
 }
 
 export function canSee(env: Env, userId: string, repo: RepoFullName): Promise<boolean | null> {
-  return canSeeWith(accountOf(env, userId), repo, (input, init) => fetch(input, init), Date.now());
+  return canSeeWith(accountOf(env, userId), repo, (input, init) => fetch(input, init), Date.now(),
+    gitHubReserveOf(limitsOf(env)));
 }
 
 /** The real services: the Worker's bindings. */
@@ -211,7 +221,12 @@ export function servicesOf(env: Env): HostedServices {
     index: (userId) => userIndex(env, userId),
     installation: (id) => installationOf(env, id),
     deleteStored: (userId) => deletePrefix(env.DIFFS, `users/${userId}/`),
-    allow: async (key) => env.AUTH_RATE_LIMIT ? (await env.AUTH_RATE_LIMIT.limit({ key })).success : true,
+    forgetJobs: (userId) => env.AI_JOBS.get(env.AI_JOBS.idFromName(userObjectName(userId))).forget(),
+    limitIp: (ipHash, checks, key, now) => {
+      const namespace = env.IP_LIMITS as DurableObjectNamespace<IpLimit>;
+      return namespace.get(namespace.idFromName(`ip:${ipHash}`)).consume(checks, key, now);
+    },
+    limits: limitsOf(env),
     anthropic: { check: checkAnthropicKey, provisionAsk: createAskResources },
     fetch: (input, init) => fetch(input, init),
     now: () => Date.now(),
@@ -291,7 +306,7 @@ export async function startRoute(request: Request, services: HostedServices, app
   const redirectUri = `${url.origin}/auth/github/callback`;
   await services.signIns.begin(id, {
     app_state: appState, app_challenge: appChallenge, github_verifier: githubVerifier, redirect_uri: redirectUri,
-    expires_at: services.now() + SIGN_IN_MS,
+    expires_at: services.now() + durationOf(services.limits, LimitName.SignInMinutes),
   });
   return new Response(null, {
     status: 302,
@@ -408,6 +423,7 @@ export async function deleteAccountRoute(request: Request, services: HostedServi
   const account = services.account(session.userId);
   const installations = await account.installationIds();
   const { revoked } = await account.deleteAccount();
+  await services.forgetJobs(session.userId);
   // Out of every installation first-hand, so no delivery reaches the index being deleted, or makes it again.
   for (const id of installations) {
     await services.installation(id).leave(session.userId);
@@ -526,11 +542,15 @@ export async function anthropicKeyRoute(request: Request, env: Env, services: Ho
   return Response.json({ anthropic_key: true, ask_ai: ask !== null }, { headers: { "Cache-Control": "no-store" } });
 }
 
-/** Sign-in routes a client may call at will, limited per IP: 429 past the limit. */
-async function limited(request: Request, services: HostedServices, route: string): Promise<Response | null> {
-  const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
-  return await services.allow(`${route}:${ip}`) ? null
-    : errorAnswer(429, "rate_limited", "too many sign-in attempts; wait a minute");
+/** Sign-in routes a client may call at will, limited per IP: `429 limit_reached` past the limit. */
+async function limited(request: Request, services: HostedServices, name: RateLimitName): Promise<Response | null> {
+  const window = rateWindowOf(services.limits, name);
+  if (!window) {
+    return null;
+  }
+  const ipHash = await sha256Hex(request.headers.get("CF-Connecting-IP") ?? "unknown");
+  const decision = await services.limitIp(ipHash, [{ name, window }], randomToken(), services.now());
+  return decision.allowed ? null : limitReachedAnswer(decision.name, decision.retryAfterMs);
 }
 
 /** `/.well-known/apple-app-site-association`: lets the app catch `/auth/github/done` as its HTTPS callback. */
@@ -549,9 +569,10 @@ export function publicHostedRoute(
   request: Request, env: Env, services: HostedServices, app: OAuthApp, waitUntil: (promise: Promise<unknown>) => void,
 ): Promise<Response> | null {
   const { pathname } = new URL(request.url);
-  if ((pathname === "/auth/github/start" && request.method === "GET")
-    || (pathname === "/auth/github/finish" && request.method === "POST")) {
-    return limited(request, services, pathname)
+  const limit = pathname === "/auth/github/start" && request.method === "GET" ? LimitName.SignInStartsPerIpPerMinute
+    : pathname === "/auth/github/finish" && request.method === "POST" ? LimitName.SignInFinishesPerIpPerMinute : null;
+  if (limit) {
+    return limited(request, services, limit)
       .then((answer) => answer ?? openRoute(request, env, services, app, waitUntil) as Promise<Response>);
   }
   return openRoute(request, env, services, app, waitUntil);
