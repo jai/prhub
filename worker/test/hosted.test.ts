@@ -1,24 +1,16 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
-import { AccountCore, type KeyValueStore, REFRESH_MARGIN_MS, type SignedOutReason, userIdOf } from "../src/account-core.ts";
+import { NO_AI, REFRESH_MARGIN_MS, userIdOf } from "../src/account-core.ts";
 import { deviceConfig } from "../src/config.ts";
-import { type Env, scopedKey } from "../src/env.ts";
-import {
-  authenticate, type HostedServices, hostedAccountConfig, hostedMode, type PendingSignIn, publicHostedRoute,
-  type UserIndexApi, userEnv,
-} from "../src/hosted.ts";
-import type { OAuthApp } from "../src/oauth.ts";
+import { scopedKey } from "../src/env.ts";
+import { authenticate, hostedAccountConfig, hostedMode, userEnv } from "../src/hosted.ts";
 import {
   base64UrlOf, openToken, parseKeyring, pkceChallengeOf, randomToken, sealToken,
 } from "../src/token-crypto.ts";
-
-const env = (vars: Partial<Env>) => vars as Env;
-const keyOf = (fill: number) => Buffer.alloc(32, fill).toString("base64");
-const KEY = `k1:${keyOf(1)}`;
-const APP: OAuthApp = { clientId: "Iv23test", clientSecret: "client-secret" };
-const ORIGIN = "https://prhub.example.workers.dev";
-const HOUR = 3_600_000;
+import {
+  APP, APP_STATE, APP_VERIFIER, bearer, callback, env, HOUR, hostedWorld, KEY, keyOf, ORIGIN, signIn, startSignIn,
+} from "./hosted-world.ts";
 
 // --- Encryption -----------------------------------------------------------------------------------------------------
 
@@ -72,175 +64,6 @@ test("PKCE S256 is base64url of the verifier's SHA-256, unpadded", async () => {
   assert.equal(await pkceChallengeOf(verifier), createHash("sha256").update(verifier).digest("base64url"));
   assert.equal(randomToken().length, 43);
 });
-
-// --- A GitHub that answers like the real one ------------------------------------------------------------------------
-
-interface GitHubCall { method: string; url: string; form: URLSearchParams | null; headers: Headers }
-
-class FakeGitHub {
-  calls: GitHubCall[] = [];
-  /** The challenge the Worker's authorize URL carried, which the code exchange must match. */
-  challenge = "";
-  issued = 0;
-  liveRefresh = "";
-  refusal: string | null = null;
-  user = { id: 4242, login: "octocat" };
-
-  readonly fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const url = String(input);
-    const method = init?.method ?? "GET";
-    const form = typeof init?.body === "string" && url.includes("/login/oauth/") ? new URLSearchParams(init.body) : null;
-    this.calls.push({ method, url, form, headers: new Headers(init?.headers) });
-    if (url === "https://github.com/login/oauth/access_token") {
-      if (this.refusal) {
-        return Response.json({ error: this.refusal });
-      }
-      if (form?.get("grant_type") === "refresh_token") {
-        return form.get("refresh_token") === this.liveRefresh ? Response.json(this.pair())
-          : Response.json({ error: "bad_refresh_token" });
-      }
-      const isMatch = form?.get("code") === "gh-code"
-        && await pkceChallengeOf(form.get("code_verifier") ?? "") === this.challenge;
-      return isMatch ? Response.json(this.pair()) : Response.json({ error: "bad_verification_code" });
-    }
-    if (url === "https://api.github.com/user") {
-      return Response.json(this.user);
-    }
-    if (url.startsWith("https://api.github.com/applications/") && method === "DELETE") {
-      return new Response(null, { status: 204 });
-    }
-    return new Response("not found", { status: 404 });
-  };
-
-  refreshCalls(): number {
-    return this.calls.filter((call) => call.form?.get("grant_type") === "refresh_token").length;
-  }
-
-  private pair() {
-    this.issued += 1;
-    this.liveRefresh = `ghr_${this.issued}`;
-    return {
-      access_token: `ghu_${this.issued}`, expires_in: 28_800, refresh_token: this.liveRefresh,
-      refresh_token_expires_in: 15_897_600, scope: "", token_type: "bearer",
-    };
-  }
-}
-
-class MapStore implements KeyValueStore {
-  readonly map = new Map<string, unknown>();
-  async get<T>(key: string): Promise<T | undefined> {
-    return structuredClone(this.map.get(key)) as T | undefined;
-  }
-  async put<T>(key: string, value: T): Promise<void> {
-    this.map.set(key, structuredClone(value));
-  }
-  async deleteAll(): Promise<void> {
-    this.map.clear();
-  }
-}
-
-class FakeIndex implements UserIndexApi {
-  calls: string[] = [];
-  bindUser(userId: number) { this.calls.push(`bind:${userId}`); }
-  tick() { this.calls.push("tick"); }
-  signedOut(reason: SignedOutReason) { this.calls.push(`signed_out:${reason}`); }
-  forgetDevices() { this.calls.push("forget_devices"); }
-  deleteEverything() { this.calls.push("delete"); }
-}
-
-function hostedWorld() {
-  const github = new FakeGitHub();
-  const clock = { now: Date.parse("2026-11-07T00:00:00Z") };
-  const stores = new Map<string, MapStore>();
-  const accounts = new Map<string, AccountCore>();
-  const indexes = new Map<string, FakeIndex>();
-  const pending = new Map<string, PendingSignIn>();
-  const deleted: string[] = [];
-  const signedOut: SignedOutReason[] = [];
-  const index = (userId: string) => indexes.get(userId) ?? indexes.set(userId, new FakeIndex()).get(userId) as FakeIndex;
-  const account = (userId: string) => {
-    if (!accounts.has(userId)) {
-      const store = new MapStore();
-      stores.set(userId, store);
-      accounts.set(userId, new AccountCore({
-        store, keyring: () => parseKeyring(KEY), app: APP, fetch: github.fetch, now: () => clock.now,
-        onSignedOut: async (reason) => {
-          signedOut.push(reason);
-          await index(userId).signedOut(reason);
-        },
-      }));
-    }
-    return accounts.get(userId) as AccountCore;
-  };
-  const services: HostedServices = {
-    account,
-    signIns: {
-      begin: async (id, record) => {
-        pending.set(id, record);
-      },
-      take: async (id) => {
-        const record = pending.get(id) ?? null;
-        pending.delete(id);
-        return record;
-      },
-    },
-    index,
-    deleteStored: async (userId) => {
-      deleted.push(userId);
-    },
-    fetch: github.fetch,
-    now: () => clock.now,
-  };
-  const workerEnv = env({
-    HOSTED: "on", GITHUB_APP_CLIENT_ID: APP.clientId, GITHUB_APP_CLIENT_SECRET: APP.clientSecret,
-    TOKEN_ENCRYPTION_KEY: KEY, WEBHOOK_SECRET: "hook-secret", APPLE_APP_ID: "TEAMID.com.example.prhub",
-    ANTHROPIC_API_KEY: "sk-test", USER_ACCOUNTS: {} as Env["USER_ACCOUNTS"], SIGN_INS: {} as Env["SIGN_INS"],
-  });
-  const waited: Promise<unknown>[] = [];
-  const route = async (path: string, init: RequestInit = {}) => {
-    const answer = publicHostedRoute(new Request(`${ORIGIN}${path}`, init), workerEnv, services, APP,
-      (promise) => waited.push(promise));
-    assert.ok(answer, `${path} is a hosted route`);
-    return answer;
-  };
-  return { github, clock, stores, accounts, indexes, pending, deleted, signedOut, services, workerEnv, route, waited };
-}
-
-type World = ReturnType<typeof hostedWorld>;
-
-const APP_STATE = "app-state-0123456789";
-const APP_VERIFIER = "v".repeat(20) + randomToken();
-
-async function startSignIn(world: World, verifier = APP_VERIFIER): Promise<URL> {
-  const challenge = await pkceChallengeOf(verifier);
-  const start = await world.route(`/auth/github/start?${new URLSearchParams({
-    state: APP_STATE, code_challenge: challenge, code_challenge_method: "S256",
-  })}`);
-  assert.equal(start.status, 302);
-  const authorize = new URL(start.headers.get("Location") ?? "");
-  world.github.challenge = authorize.searchParams.get("code_challenge") ?? "";
-  return authorize;
-}
-
-async function callback(world: World, params: Record<string, string>): Promise<URL> {
-  const answer = await world.route(`/auth/github/callback?${new URLSearchParams(params)}`);
-  assert.equal(answer.status, 302);
-  return new URL(answer.headers.get("Location") ?? "");
-}
-
-/** Start, GitHub's callback and the app's finish: the session secret. */
-async function signIn(world: World): Promise<string> {
-  const authorize = await startSignIn(world);
-  const done = await callback(world, { code: "gh-code", state: authorize.searchParams.get("state") ?? "" });
-  const finish = await world.route("/auth/github/finish", {
-    method: "POST", body: JSON.stringify({ code: done.searchParams.get("code"), code_verifier: APP_VERIFIER }),
-  });
-  assert.equal(finish.status, 200);
-  const { secret } = await finish.json() as { secret: string };
-  return secret;
-}
-
-const bearer = (secret: string) => ({ headers: { Authorization: `Bearer ${secret}` } });
 
 // --- Sign-in --------------------------------------------------------------------------------------------------------
 
@@ -368,14 +191,14 @@ test("a token near its 8 hours is refreshed first, once for every request at the
   const world = hostedWorld();
   await signIn(world);
   const account = world.services.account("4242");
-  assert.deepEqual(await account.accessToken(), { kind: "ok", token: "ghu_1", login: "octocat", userId: "4242" });
+  assert.deepEqual(await account.accessToken(), { kind: "ok", token: "ghu_1", login: "octocat", userId: "4242", ai: NO_AI });
   assert.equal(world.github.refreshCalls(), 0);
   world.clock.now += 8 * HOUR - REFRESH_MARGIN_MS + 1;
   const answers = await Promise.all([account.accessToken(), account.accessToken(), account.accessToken()]);
   assert.equal(world.github.refreshCalls(), 1, "two refreshes at once would sign the person out");
   assert.ok(answers.every((answer) => answer.kind === "ok" && answer.token === "ghu_2"));
   assert.equal(world.github.calls.at(-1)?.form?.get("refresh_token"), "ghr_1");
-  assert.deepEqual(await account.accessToken(), { kind: "ok", token: "ghu_2", login: "octocat", userId: "4242" });
+  assert.deepEqual(await account.accessToken(), { kind: "ok", token: "ghu_2", login: "octocat", userId: "4242", ai: NO_AI });
 });
 
 test("a 401 refreshes once; a token another request already replaced is just handed over", async () => {
@@ -385,7 +208,7 @@ test("a 401 refreshes once; a token another request already replaced is just han
   assert.equal((await account.tokenAfterUnauthorized("ghu_1")).kind, "ok");
   assert.equal(world.github.refreshCalls(), 1);
   const again = await account.tokenAfterUnauthorized("ghu_1");
-  assert.deepEqual(again, { kind: "ok", token: "ghu_2", login: "octocat", userId: "4242" });
+  assert.deepEqual(again, { kind: "ok", token: "ghu_2", login: "octocat", userId: "4242", ai: NO_AI });
   assert.equal(world.github.refreshCalls(), 1);
 });
 
@@ -403,7 +226,8 @@ test("a refused refresh signs the person out everywhere and asks the phones to s
   assert.equal((await auth.answer.json() as { error: { code: string } }).error.code, "signed_out");
   assert.ok(auth.session);
   assert.deepEqual(hostedAccountConfig(auth.session), {
-    hosted: true, account: { state: "signed_out", login: "octocat", user_id: "4242", reason: "revoked" },
+    hosted: true,
+    account: { state: "signed_out", login: "octocat", user_id: "4242", anthropic_key: false, reason: "revoked" },
   });
   assert.equal(JSON.stringify([...world.stores.get("4242")?.map.values() ?? []]).includes("v1.k1"), false,
     "the sealed tokens are gone");
@@ -498,7 +322,7 @@ test("hosted mode is off unless HOSTED is on, and serves nothing when it is on b
   assert.deepEqual(hostedMode(env({ GITHUB_TOKEN: "t", GITHUB_APP_CLIENT_ID: "x", HOSTED: "" })), { kind: "off" });
   assert.deepEqual(hostedMode(env({ HOSTED: "on", GITHUB_APP_CLIENT_ID: "x" })), {
     kind: "misconfigured",
-    missing: ["GITHUB_APP_CLIENT_SECRET", "TOKEN_ENCRYPTION_KEY", "USER_ACCOUNTS", "SIGN_INS"],
+    missing: ["GITHUB_APP_CLIENT_SECRET", "TOKEN_ENCRYPTION_KEY", "USER_ACCOUNTS", "SIGN_INS", "INSTALLATIONS"],
   });
   assert.equal(hostedMode(hostedWorld().workerEnv).kind, "on");
 });

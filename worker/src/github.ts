@@ -1,5 +1,6 @@
 import { type Env, githubLogin, isSet } from "./env.ts";
 import { renewAfterUnauthorized } from "./hosted.ts";
+import { backoffOf, heldBackoff, holdBackoff, observe, stops, waitAnswer } from "./rate-limit.ts";
 import {
   parseSha, prId, type PrId, repoOf, type RepoFullName, repoParts, type Revision, revisionOf, type Sha, shaOf,
 } from "./ids.ts";
@@ -264,13 +265,29 @@ export function contextsOf(number: number): string {
 
 /**
  * Every GitHub call. On the hosted Worker a 401 refreshes the person's token once (`renewAfterUnauthorized`) and the
- * call goes again with the new one; a self-hosted Worker's token is the operator's to replace.
+ * call goes again with the new one; a self-hosted Worker's token is the operator's to replace. Each answer's rate-limit
+ * headers are kept (`rate-limit.ts`): while GitHub asks a token to wait, its calls answer 429 without going, and a
+ * background run (`GITHUB_RATE` set) also stops when the token's hour runs low.
  */
 async function github(path: string, env: Env, accept: string, init: RequestInit = {}): Promise<Response> {
-  const send = (token: string) => fetch(`https://api.github.com${path}`, {
-    ...init,
-    headers: { Accept: accept, Authorization: `Bearer ${token}`, "User-Agent": "pr-viewer" },
-  });
+  const key = isSet(env.SIGNED_IN_USER_ID) ? `user:${env.SIGNED_IN_USER_ID}` : "self";
+  const started = Date.now();
+  const held = heldBackoff(key, started);
+  if (held && stops(held, started, env.GITHUB_RATE !== undefined)) {
+    return waitAnswer(held.until, started);
+  }
+  const send = async (token: string) => {
+    const response = await fetch(`https://api.github.com${path}`, {
+      ...init,
+      headers: { Accept: accept, Authorization: `Bearer ${token}`, "User-Agent": "pr-viewer" },
+    });
+    const now = Date.now();
+    if (env.GITHUB_RATE) {
+      observe(env.GITHUB_RATE, response, now);
+    }
+    holdBackoff(key, backoffOf(response, now));
+    return response;
+  };
   const response = await send(env.GITHUB_TOKEN);
   if (response.status !== 401 || !isSet(env.SIGNED_IN_USER_ID)) {
     return response;

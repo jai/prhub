@@ -1,7 +1,8 @@
 # GitHub App: hosted PRHub
 
-Status: 2026-11-07. 6a (this plan, the manifest) and 6b (sign-in and token refresh on the Worker) are built. The App
-does not exist yet, and the hosted Worker is not deployed. Jai creates the App with `deploy/github-app/create.py`
+Status: 2026-11-07. 6a (this plan, the manifest), 6b (sign-in and token refresh on the Worker) and 6c (the
+multi-tenant Worker: webhook routing, rate limits, bring-your-own Anthropic key, the hosted deploy config) are built.
+The App does not exist yet, and the hosted Worker is not deployed ([hosted-deploy.md](../hosted-deploy.md)). Jai creates the App with `deploy/github-app/create.py`
 ("Creating the App" below). Self-hosting stays as `docs/plans/distribution.md` describes.
 
 ## Goal
@@ -204,7 +205,8 @@ The callback URL choice:
 
 ## AI cost controls
 
-Key lines, rewrites and Ask run on Jai's Anthropic key in the hosted Worker, so every person's use is Jai's bill.
+Built in 6c: AI on the hosted Worker runs only on a key the person gives (`PUT /account/anthropic-key`), so nobody's
+use is Jai's bill, and Jai's key is never set there. The list below is for a later choice to run AI on Jai's key.
 
 - AI is off by default per person. Jai turns it on from an allowlist var until there is a price or a quota.
 - A monthly budget per person, in the user object. Key-line runs, rewrites and Ask sessions each count against it.
@@ -213,7 +215,6 @@ Key lines, rewrites and Ask run on Jai's Anthropic key in the hosted Worker, so 
 - Key lines are preloaded only for PRs awaiting the person's review and only within the diff size cap. Other context
   sizes run on request, as today.
 - A Worker var turns all AI off at once. The Anthropic workspace for the hosted Worker has its own spend limit.
-- Later, a person may bring their own Anthropic key, stored encrypted like a GitHub token.
 
 ## Work, in order
 
@@ -229,21 +230,29 @@ Easiest first. 6b goes first, because everything else needs a signed-in person. 
      before expiry and on a 401, sign-out everywhere on `bad_refresh_token`, and a 10-minute alarm that refreshes and
      ticks the person's index.
    - Every GitHub call for a signed-in person uses their token (`userEnv`); their `PrIndex` is `user:<id>` and their
-     R2 keys are under `users/<id>/`. AI features stay off on the hosted Worker until 6e.
-   - Left for 6c: webhook routing by installation (pull request events are dropped meanwhile), installation tokens
-     for Ask, `GET /user/installations`, rate-limit backoff, and the hosted `wrangler` config.
+     R2 keys are under `users/<id>/`.
 3. **6d: Sign in with GitHub in the app.** Medium, about 2 days. Parallel with 6c, after 6b's contract.
    - The onboarding choice, the authentication session, PKCE, the install prompt and the keychain connection.
    - Delete Account in Settings, and the signed-out push.
+   - The person's own Anthropic key in Settings (`PUT` and `DELETE /account/anthropic-key`, `account.anthropic_key`).
 4. **6e: encryption, deletion, privacy and limits.** Medium, about 2 days. Parallel with 6c.
    - Key rotation, data retention and installation clean-up.
    - Per-person rate limits and AI budgets.
    - The privacy policy, App Store privacy answers and review notes.
-5. **6c: the multi-tenant Worker.** Large, about 4 to 5 days. Serial after 6b.
-   - Pass a per-person GitHub context through the code where it reads `env.GITHUB_TOKEN` and `GITHUB_LOGIN` today.
-   - Name objects by user id, replace the cron with per-person alarms, and add the installation objects and webhook
-     routing.
-   - Use installation tokens for Ask, and measure the poll's rate-limit cost per person.
+5. **6c: the multi-tenant Worker** (done, 2026-11-07).
+   - `Installation` per installation (`installation:<id>`): members and the repos each sees, from the person's own
+     token at sign-in, on app open (10-minute gap) and every 6 hours. Pull request, comment, check suite and status
+     deliveries go only to members who see the repo; one in doubt is asked with their token first. `installation` and
+     `installation_repositories` keep repos and suspension. Delete Account leaves every installation.
+   - Per-person alarms are the backstop (10 minutes); no cron. Rate limits per token (`rate-limit.ts`): background
+     reads stop under a tenth of the hour, everything stops on `retry-after` or none left, both in `/events`; each
+     hosted poll's cost is in `/events` as `polled`. Sign-in start and finish are limited per IP.
+   - Bring-your-own Anthropic key, sealed; Ask's resources made in the person's org; Ask's checkout token minted by
+     the App, read only, for one repo, after the person's token read the PR. AI answers, Ask records and `AiJobs` are
+     per person.
+   - `deploy/hosted/wrangler.template.jsonc` and [hosted-deploy.md](../hosted-deploy.md).
+   - Left: measure the poll's real cost once people use it; drop rows of a deleted or suspended installation at once
+     rather than at the next poll (6e); per-person write and Ask rate limits (6e).
 
 ## Creating the App
 

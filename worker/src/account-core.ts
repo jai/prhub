@@ -47,6 +47,22 @@ const AccountSchema = z.object({
 
 type AccountRecord = z.infer<typeof AccountSchema>;
 
+/**
+ * Kept apart from the account record, under keys of their own, so a refresh or a sign-in that writes the record back
+ * never undoes a key set, or a sync done, while it waited on GitHub.
+ */
+const AiSchema = z.object({
+  /** The person's own Anthropic key, sealed as the tokens are. */
+  anthropic_key: z.string(),
+  /** Ask's agent, environment and vault in the person's Anthropic org, made when they gave the key. */
+  ask: z.object({
+    agent_id: z.string(), environment_id: z.string(), vault_id: z.string(), credential_id: z.string(),
+  }).nullable(),
+});
+
+/** The installations the person's token reached at the last sync (`installations.ts`), and when one was claimed. */
+const InstallationsSchema = z.object({ ids: z.array(z.string()), synced_at: z.number() });
+
 /** The slice of `DurableObjectStorage` the account uses; a test passes a Map. */
 export interface KeyValueStore {
   get<T>(key: string): Promise<T | undefined>;
@@ -65,9 +81,25 @@ export interface AccountDeps {
   onSignedOut: (reason: SignedOutReason) => Promise<void>;
 }
 
+/** Ask's resources in the person's own Anthropic org (`ask-setup.ts`). Ids, not secrets. */
+export interface AskResources {
+  agent_id: string;
+  environment_id: string;
+  vault_id: string;
+  credential_id: string;
+}
+
+/** The person's own AI settings: their Anthropic key, opened, and Ask's resources in their org. */
+export interface UserAi {
+  anthropicKey: string | null;
+  ask: AskResources | null;
+}
+
+export const NO_AI: UserAi = { anthropicKey: null, ask: null };
+
 /** A token to act with, or why there is none: signed out (sign in again) or GitHub could not be asked (try later). */
 export type TokenAnswer =
-  | { kind: "ok"; token: string; login: string; userId: string }
+  | { kind: "ok"; token: string; login: string; userId: string; ai: UserAi }
   | { kind: "signed_out" }
   | { kind: "unavailable" };
 
@@ -76,9 +108,23 @@ export interface SessionInfo {
   login: string;
   state: "signed_in" | "signed_out";
   reason: SignedOutReason | null;
+  /** Whether the person gave their own Anthropic key. The key itself never leaves the account. */
+  hasAnthropicKey: boolean;
 }
 
 const ACCOUNT = "account";
+const AI = "ai";
+const INSTALLATIONS = "installations";
+/** Signing out drops every token and key the account holds, so none is kept for someone with no phone signed in. */
+function signedOut(record: AccountRecord, reason: SignedOutReason): AccountRecord {
+  return { ...record, state: "signed_out", signed_out_reason: reason, tokens: null, handoffs: [] };
+}
+/** The person's Anthropic key: 20 to 300 URL-safe characters. Anthropic says whether it works. */
+const ANTHROPIC_KEY = /^[A-Za-z0-9_-]{20,300}$/;
+
+export function isAnthropicKeyShape(key: unknown): key is string {
+  return typeof key === "string" && ANTHROPIC_KEY.test(key);
+}
 
 export class AccountCore {
   readonly #deps: AccountDeps;
@@ -147,6 +193,7 @@ export class AccountCore {
     }
     return {
       userId: String(record.user_id), login: record.login, state: record.state, reason: record.signed_out_reason,
+      hasAnthropicKey: (await this.#readAi()) !== null,
     };
   }
 
@@ -189,7 +236,8 @@ export class AccountCore {
     if (!record || record.state === "signed_out") {
       return;
     }
-    await this.#write({ ...record, state: "signed_out", signed_out_reason: reason, tokens: null, handoffs: [] });
+    await this.#write(signedOut(record, reason));
+    await this.#deps.store.put(AI, null);
     await this.#deps.onSignedOut(reason)
       .catch((error: unknown) => console.error("sign-in-again push failed", error));
   }
@@ -205,9 +253,10 @@ export class AccountCore {
     }
     record.sessions = record.sessions.filter((session) => !timingSafeEqual(session.fingerprint, fingerprint));
     const isLast = record.sessions.length === 0;
-    await this.#write(isLast
-      ? { ...record, state: "signed_out", signed_out_reason: "signed_out", tokens: null, handoffs: [] }
-      : record);
+    await this.#write(isLast ? signedOut(record, "signed_out") : record);
+    if (isLast) {
+      await this.#deps.store.put(AI, null);
+    }
     return isLast;
   }
 
@@ -224,6 +273,54 @@ export class AccountCore {
     }
     await this.#deps.store.deleteAll();
     return { revoked };
+  }
+
+  /**
+   * The person's own Anthropic key, sealed, with Ask's resources in their org; null drops both. Signed-in only: false
+   * when the account is signed out or gone.
+   */
+  async setAnthropicKey(key: string | null, ask: AskResources | null): Promise<boolean> {
+    const record = await this.#read();
+    if (!record || record.state !== "signed_in") {
+      return false;
+    }
+    const keyring = await this.#deps.keyring();
+    if (key !== null && !keyring) {
+      throw new Error("TOKEN_ENCRYPTION_KEY is missing or malformed");
+    }
+    await this.#deps.store.put(AI, key !== null && keyring
+      ? { anthropic_key: await sealToken(keyring, key, associatedData(record.user_id, "anthropic")), ask } : null);
+    return true;
+  }
+
+  async installationIds(): Promise<string[]> {
+    return (await this.#readInstallations()).ids;
+  }
+
+  /** Whether a sync of the person's installations may run now: not within `gapMs` of the last. Claimed in one turn. */
+  async claimInstallationSync(now: number, gapMs: number): Promise<boolean> {
+    const held = await this.#readInstallations();
+    if (!(await this.isSignedIn()) || now - held.synced_at < gapMs) {
+      return false;
+    }
+    await this.#deps.store.put(INSTALLATIONS, { ...held, synced_at: now });
+    return true;
+  }
+
+  async setInstallations(ids: string[], now: number): Promise<void> {
+    if (await this.#read()) {
+      await this.#deps.store.put(INSTALLATIONS, { ids, synced_at: now });
+    }
+  }
+
+  async #readInstallations(): Promise<z.infer<typeof InstallationsSchema>> {
+    const parsed = InstallationsSchema.safeParse(await this.#deps.store.get(INSTALLATIONS));
+    return parsed.success ? parsed.data : { ids: [], synced_at: 0 };
+  }
+
+  async #readAi(): Promise<z.infer<typeof AiSchema> | null> {
+    const parsed = AiSchema.safeParse(await this.#deps.store.get(AI));
+    return parsed.success ? parsed.data : null;
   }
 
   #refreshOnce(stale: string | null): Promise<TokenAnswer> {
@@ -273,7 +370,10 @@ export class AccountCore {
     }
     const tokens = await this.#seal(record.user_id, outcome.grant, now);
     await this.#write({ ...record, tokens });
-    return { kind: "ok", token: outcome.grant.access_token, login: record.login, userId: String(record.user_id) };
+    return {
+      kind: "ok", token: outcome.grant.access_token, login: record.login, userId: String(record.user_id),
+      ai: keyring ? await this.#ai(record, keyring) : NO_AI,
+    };
   }
 
   /** The access token as held, sealed again with the current key when an older one sealed it. */
@@ -290,7 +390,25 @@ export class AccountCore {
     if (access.isStale) {
       await this.#reseal(record, keyring);
     }
-    return { kind: "ok", token: access.plaintext, login: record.login, userId: String(record.user_id) };
+    return {
+      kind: "ok", token: access.plaintext, login: record.login, userId: String(record.user_id),
+      ai: await this.#ai(record, keyring),
+    };
+  }
+
+  /** The Anthropic key opened, or no AI when there is none or it does not open (never sent anywhere then). */
+  async #ai(record: AccountRecord, keyring: Keyring): Promise<UserAi> {
+    const ai = await this.#readAi();
+    if (!ai) {
+      return NO_AI;
+    }
+    const opened = await openToken(keyring, ai.anthropic_key, associatedData(record.user_id, "anthropic"));
+    if (opened?.isStale) {
+      await this.#deps.store.put(AI, {
+        ...ai, anthropic_key: await sealToken(keyring, opened.plaintext, associatedData(record.user_id, "anthropic")),
+      });
+    }
+    return opened ? { anthropicKey: opened.plaintext, ask: ai.ask } : NO_AI;
   }
 
   async #reseal(record: AccountRecord, keyring: Keyring): Promise<void> {
@@ -338,7 +456,7 @@ export class AccountCore {
   }
 }
 
-/** Whose token and which: a sealed value moved to another person or field fails to open. */
-export function associatedData(userId: number, kind: "access" | "refresh"): string {
+/** Whose secret and which: a sealed value moved to another person or field fails to open. */
+export function associatedData(userId: number, kind: "access" | "refresh" | "anthropic"): string {
   return `prhub:user:${userId}:${kind}`;
 }

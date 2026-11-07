@@ -1,8 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { askPrompt, chatOf, QUESTION } from "./ask-chat";
+import { askPrompt, askRecordKey, chatOf, QUESTION } from "./ask-chat";
 import type { AskChat, AskInput } from "./ask-chat";
 import { type Env, isSet } from "./env";
 import { prId, type RepoFullName } from "./ids";
+import { askRepoToken, InstallationTokenRefused } from "./app-token";
 import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models";
 
 /**
@@ -10,8 +11,11 @@ import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models";
  * The session holds the conversation and a checkout, and sessions last until deleted, so this keeps only which one is
  * this PR's. A repo is fixed for a session's life; its GitHub token isn't, and each question brings a fresh one. On Jai's
  * Worker that is minted by the Ask GitHub App, read only across every repo it is installed on. A self-hosted Worker
- * has no App: its own PAT goes instead, `ASK_GITHUB_TOKEN` (read only) or else `GITHUB_TOKEN`. The same token is
- * `GH_TOKEN` in the vault, for GitHub's API.
+ * has no App: its own PAT goes instead, `ASK_GITHUB_TOKEN` (read only) or else `GITHUB_TOKEN`. On the hosted Worker
+ * the PRHub App mints it, read only and for this one repo, after the person's own token has read the PR: an
+ * installation token reaches repos the person may not, so it is never minted for one they can't see. The same token is
+ * `GH_TOKEN` in the vault, for GitHub's API. A hosted person's sessions run in their own Anthropic org, on their key, and
+ * which session is a PR's is kept under their R2 prefix.
  *
  * A session's model and effort are fixed when it starts (an `agent_with_overrides`); Managed Agents can't change them
  * per message. So a question asked at another model or effort than the session's starts a new session, and the chat
@@ -39,62 +43,10 @@ function client(env: Env): Anthropic {
   return new Anthropic({ apiKey: isSet(env.ASK_ANTHROPIC_API_KEY) ? env.ASK_ANTHROPIC_API_KEY : env.ANTHROPIC_API_KEY });
 }
 
-function recordKey(repo: RepoFullName, number: number): string {
-  return `ask/${repo}/${number}.json`;
-}
 
 async function readRecord(repo: RepoFullName, number: number, env: Env): Promise<AskRecord | null> {
-  const stored = await env.DIFFS.get(recordKey(repo, number));
+  const stored = await env.DIFFS.get(askRecordKey(repo, number, env));
   return stored ? await stored.json<AskRecord>() : null;
-}
-
-function base64url(data: ArrayBuffer | string): string {
-  const bytes = typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data);
-  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-async function appJwt(env: Env): Promise<string> {
-  const der = Uint8Array.from(atob((env.ASK_GITHUB_APP_KEY ?? "").replace(/-----[^-]+-----|\s/g, "")), (c) => c.charCodeAt(0));
-  const key = await crypto.subtle.importKey(
-    "pkcs8", der, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"],
-  );
-  const now = Math.floor(Date.now() / 1000);
-  const body = `${base64url('{"alg":"RS256","typ":"JWT"}')}.${
-    base64url(JSON.stringify({ iat: now - 30, exp: now + 500, iss: env.ASK_GITHUB_APP_ID }))}`;
-  return `${body}.${base64url(await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(body)))}`;
-}
-
-/** The App path when its id and key are set; a PAT otherwise. */
-function repoToken(repo: RepoFullName, env: Env): Promise<string> {
-  if (isSet(env.ASK_GITHUB_APP_ID) && isSet(env.ASK_GITHUB_APP_KEY)) {
-    return appRepoToken(repo, env);
-  }
-  return Promise.resolve(isSet(env.ASK_GITHUB_TOKEN) ? env.ASK_GITHUB_TOKEN : env.GITHUB_TOKEN);
-}
-
-/** Read access for an hour to the repos the Ask GitHub App is on: all the agent can do on GitHub, whatever it is told to try. */
-async function appRepoToken(repo: RepoFullName, env: Env): Promise<string> {
-  const headers = {
-    Accept: "application/vnd.github+json", Authorization: `Bearer ${await appJwt(env)}`, "User-Agent": "pr-viewer",
-  };
-  const installation = await fetch(`https://api.github.com/repos/${repo}/installation`, { headers });
-  if (!installation.ok) {
-    throw new AskRefused(`The AI can't read ${repo}: the Ask GitHub App isn't installed there.`);
-  }
-  const { id } = await installation.json<{ id: number }>();
-  const minted = await fetch(`https://api.github.com/app/installations/${id}/access_tokens`, {
-    method: "POST", headers,
-    body: JSON.stringify({
-      permissions: {
-        contents: "read", pull_requests: "read", issues: "read", checks: "read", actions: "read", statuses: "read",
-        metadata: "read",
-      },
-    }),
-  });
-  if (!minted.ok) {
-    throw new AskRefused(`GitHub wouldn't give the AI read access to ${repo} (${minted.status}).`);
-  }
-  return (await minted.json<{ token: string }>()).token;
 }
 
 async function startSession(
@@ -125,7 +77,9 @@ async function startSession(
  * lasts an hour.
  */
 async function liveRecord(repo: RepoFullName, number: number, head: string, choice: ModelChoice, env: Env): Promise<AskRecord> {
-  const token = await repoToken(repo, env);
+  const token = await askRepoToken(repo, number, env).catch((error: unknown) => {
+    throw error instanceof InstallationTokenRefused ? new AskRefused(error.message) : error;
+  });
   await client(env).beta.vaults.credentials.update(env.ASK_CREDENTIAL_ID!, {
     vault_id: env.ASK_VAULT_ID!, auth: { type: "environment_variable", secret_value: token },
   });
@@ -167,5 +121,5 @@ export async function ask(repo: RepoFullName, number: number, input: AskInput, c
   await client(env).beta.sessions.events.send(record.session, {
     events: [{ type: "user.message", content: [{ type: "text", text: askPrompt(input, record.head) }] }],
   });
-  await env.DIFFS.put(recordKey(repo, number), JSON.stringify({ ...record, head: input.head }));
+  await env.DIFFS.put(askRecordKey(repo, number, env), JSON.stringify({ ...record, head: input.head }));
 }

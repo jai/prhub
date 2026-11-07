@@ -3,16 +3,22 @@
  * GitHub App. A person signs in with GitHub, and every read and write for them goes with their own user access token.
  * Off unless `HOSTED` is `on`; a self-hosted Worker never reaches anything here.
  */
-import type { AccountCore, SessionInfo, SignedOutReason, TokenAnswer } from "./account-core.ts";
-import { userIdOf } from "./account-core.ts";
+import type {
+  AccountCore, AskResources, SessionInfo, SignedOutReason, TokenAnswer, UserAi,
+} from "./account-core.ts";
+import { isAnthropicKeyShape, NO_AI, userIdOf } from "./account-core.ts";
 import { bodyOf, parseFinishInput, parseSender } from "./boundary.ts";
 import { type Env, isSet } from "./env.ts";
+import type { RepoFullName, Sha } from "./ids.ts";
+import { type InstallationApi, parseAppDelivery, syncInstallations } from "./installations.ts";
 import { authorizeUrl, exchangeCode, type Fetch, type OAuthApp, readUser } from "./oauth.ts";
 import { deviceSecretOf, fingerprintOf } from "./pairing.ts";
+import { backoffOf } from "./rate-limit.ts";
 import {
   isPkceChallenge, type Keyring, parseKeyring, pkceChallengeOf, randomToken,
 } from "./token-crypto.ts";
 import { verifySignature } from "./webhook.ts";
+import { checkAnthropicKey, createAskResources } from "./ask-setup.ts";
 
 /** A sign-in has this long between `/auth/github/start` and GitHub's callback. */
 export const SIGN_IN_MS = 10 * 60_000;
@@ -30,6 +36,7 @@ export function hostedMode(env: Env): HostedMode {
     ["TOKEN_ENCRYPTION_KEY", isSet(env.TOKEN_ENCRYPTION_KEY)],
     ["USER_ACCOUNTS", env.USER_ACCOUNTS !== undefined],
     ["SIGN_INS", env.SIGN_INS !== undefined],
+    ["INSTALLATIONS", env.INSTALLATIONS !== undefined],
   ].flatMap(([name, isThere]) => isThere ? [] : [name as string]);
   return missing.length > 0 ? { kind: "misconfigured", missing } : { kind: "on", app: oauthAppOf(env) };
 }
@@ -49,11 +56,20 @@ export function keyringOf(env: Env): Promise<Keyring | null> {
   return parsedKeyring.keyring;
 }
 
+/** Whether the Worker can mint installation tokens: the App's id and private key. Ask on the hosted Worker needs it. */
+export function canMintInstallationTokens(env: Env): boolean {
+  return isSet(env.GITHUB_APP_ID) && isSet(env.GITHUB_APP_PRIVATE_KEY);
+}
+
 /**
  * The Worker as it acts for one signed-in person: their token and login, their objects (`user:<id>`), their R2 prefix.
- * The features that would spend Jai's Anthropic key, or serve only Jai, stay off until 6c and 6e decide them.
+ * AI runs only on the person's own Anthropic key: key lines and rewrites once they gave it, Ask once Ask's resources
+ * exist in their org and the Worker can mint installation tokens. Never on the Worker's own key, and Feedback, the
+ * relay and Linear, which serve only Jai, stay off.
  */
-export function userEnv(env: Env, user: { userId: string; login: string; token: string }): Env {
+export function userEnv(env: Env, user: { userId: string; login: string; token: string; ai?: UserAi }): Env {
+  const ai = user.ai ?? NO_AI;
+  const ask = ai.anthropicKey !== null && canMintInstallationTokens(env) ? ai.ask : null;
   return {
     ...env,
     GITHUB_TOKEN: user.token,
@@ -63,12 +79,19 @@ export function userEnv(env: Env, user: { userId: string; login: string; token: 
     APP_TOKEN: undefined,
     HUB_TOKEN: undefined,
     WEBHOOK_SECRET: undefined,
-    ANTHROPIC_API_KEY: undefined,
+    ANTHROPIC_API_KEY: ai.anthropicKey ?? undefined,
     ASK_ANTHROPIC_API_KEY: undefined,
-    ASK_AGENT_ID: undefined,
+    ASK_AGENT_ID: ask?.agent_id,
+    ASK_ENVIRONMENT_ID: ask?.environment_id,
+    ASK_VAULT_ID: ask?.vault_id,
+    ASK_CREDENTIAL_ID: ask?.credential_id,
+    ASK_GITHUB_APP_ID: undefined,
+    ASK_GITHUB_APP_KEY: undefined,
+    ASK_GITHUB_TOKEN: undefined,
     FEEDBACK_AGENT_ID: undefined,
     AGENT_PAGER_URL: undefined,
     LINEAR_API_KEY: undefined,
+    GITHUB_RATE: undefined,
   };
 }
 
@@ -80,20 +103,32 @@ export interface HostedServices {
     take(id: string): Promise<PendingSignIn | null>;
   };
   index(userId: string): UserIndexApi;
+  installation(id: string): InstallationApi;
   /** Deletes the person's R2 objects (`users/<id>/`). */
   deleteStored(userId: string): Promise<void>;
+  /** The per-IP limit on sign-in (`AUTH_RATE_LIMIT`): false when this key is over it. */
+  allow(key: string): Promise<boolean>;
+  anthropic: AnthropicApi;
   fetch: Fetch;
   now(): number;
 }
 
+/** Anthropic, for a person's own key: whether it works, and Ask's resources made in their org (`ask-setup.ts`). */
+export interface AnthropicApi {
+  check(key: string): Promise<"ok" | "invalid" | "unavailable">;
+  provisionAsk(key: string, login: string): Promise<AskResources>;
+}
+
 export type AccountApi = Pick<AccountCore,
   "signIn" | "finish" | "session" | "accessToken" | "tokenAfterUnauthorized" | "signOutEverywhere" | "signOut"
-  | "deleteAccount">;
+  | "deleteAccount" | "setAnthropicKey" | "installationIds" | "claimInstallationSync" | "setInstallations">;
 
-/** The part of a person's `PrIndex` sign-in touches. */
+/** The part of a person's `PrIndex` the hosted routes and installations touch. */
 export interface UserIndexApi {
   bindUser(userId: number): unknown;
   tick(now: number): unknown;
+  mark(repo: RepoFullName, number: number, involved: boolean): unknown;
+  markHead(repo: RepoFullName, sha: Sha): unknown;
   signedOut(reason: SignedOutReason): unknown;
   forgetDevices(): unknown;
   deleteEverything(): unknown;
@@ -123,6 +158,45 @@ export function accountOf(env: Env, userId: string): AccountApi {
   return namespace.get(namespace.idFromName(userObjectName(userId))) as unknown as AccountApi;
 }
 
+/** An installation's object, named `installation:<id>`. */
+export function installationOf(env: Env, id: string): InstallationApi {
+  const namespace = env.INSTALLATIONS as DurableObjectNamespace;
+  return namespace.get(namespace.idFromName(`installation:${id}`)) as unknown as InstallationApi;
+}
+
+/**
+ * Whether the person's own token can read the repo: `GET /repos/{repo}`. False for no (404, 403) and for a signed-out
+ * person; null when GitHub could not say (down, or asking the token to wait), so the question is asked again.
+ */
+export async function canSeeWith(
+  account: Pick<AccountApi, "accessToken">, repo: RepoFullName, fetcher: Fetch, now: number,
+): Promise<boolean | null> {
+  const answer = await account.accessToken();
+  if (answer.kind !== "ok") {
+    return answer.kind === "signed_out" ? false : null;
+  }
+  let response: Response;
+  try {
+    response = await fetcher(`https://api.github.com/repos/${repo}`, {
+      headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${answer.token}`, "User-Agent": "pr-viewer" },
+    });
+  } catch {
+    return null;
+  }
+  const backoff = backoffOf(response, now);
+  if (backoff && backoff.kind !== "low" && !response.ok) {
+    return null;
+  }
+  if (response.ok) {
+    return true;
+  }
+  return response.status === 404 || response.status === 403 ? false : null;
+}
+
+export function canSee(env: Env, userId: string, repo: RepoFullName): Promise<boolean | null> {
+  return canSeeWith(accountOf(env, userId), repo, (input, init) => fetch(input, init), Date.now());
+}
+
 /** The real services: the Worker's bindings. */
 export function servicesOf(env: Env): HostedServices {
   const signIn = (id: string) => {
@@ -135,7 +209,10 @@ export function servicesOf(env: Env): HostedServices {
     account: (userId) => accountOf(env, userId),
     signIns: { begin: (id, pending) => signIn(id).begin(pending), take: (id) => signIn(id).take() },
     index: (userId) => userIndex(env, userId),
+    installation: (id) => installationOf(env, id),
     deleteStored: (userId) => deletePrefix(env.DIFFS, `users/${userId}/`),
+    allow: async (key) => env.AUTH_RATE_LIMIT ? (await env.AUTH_RATE_LIMIT.limit({ key })).success : true,
+    anthropic: { check: checkAnthropicKey, provisionAsk: createAskResources },
     fetch: (input, init) => fetch(input, init),
     now: () => Date.now(),
   };
@@ -267,6 +344,7 @@ export async function callbackRoute(
   const index = services.index(userId);
   waitUntil((async () => {
     await index.bindUser(user.id);
+    await syncInstallations(services.account(userId), services.installation, services.fetch, services.now(), 0);
     await index.tick(services.now());
   })().catch((error: unknown) => console.error("sign-in: first sync failed", error)));
   return Response.redirect(doneUrl(url.origin, { code: handoff, state: pending.app_state }), 302);
@@ -327,17 +405,27 @@ export async function deleteAccountRoute(request: Request, services: HostedServi
   if (!session) {
     return errorAnswer(401, "unauthorized", "send the session secret as the bearer");
   }
-  const { revoked } = await services.account(session.userId).deleteAccount();
+  const account = services.account(session.userId);
+  const installations = await account.installationIds();
+  const { revoked } = await account.deleteAccount();
+  // Out of every installation first-hand, so no delivery reaches the index being deleted, or makes it again.
+  for (const id of installations) {
+    await services.installation(id).leave(session.userId);
+  }
   await services.index(session.userId).deleteEverything();
   await services.deleteStored(session.userId);
   return Response.json({ deleted: true, github_revoked: revoked }, { headers: { "Cache-Control": "no-store" } });
 }
 
 /**
- * `POST /github/webhook` on the hosted Worker. `github_app_authorization` `revoked` signs the person out everywhere.
- * Pull request events are taken and dropped until 6c routes them per installation; the poll covers them meanwhile.
+ * `POST /github/webhook` on the hosted Worker (docs/api.md, "Webhook routing"). `github_app_authorization` `revoked`
+ * signs the person out everywhere. `installation` and `installation_repositories` keep each installation's repos and
+ * suspension, and send the person who acted to read their installations again. Pull request, comment, check suite and
+ * status events go to the installation, which marks them in the index of each member who can see the repo.
  */
-export async function hostedWebhook(request: Request, env: Env, services: HostedServices): Promise<Response> {
+export async function hostedWebhook(
+  request: Request, env: Env, services: HostedServices, waitUntil: (promise: Promise<unknown>) => void,
+): Promise<Response> {
   if (!isSet(env.WEBHOOK_SECRET)) {
     return new Response("not found\n", { status: 404 });
   }
@@ -345,19 +433,104 @@ export async function hostedWebhook(request: Request, env: Env, services: Hosted
   if (!(await verifySignature(body, request.headers.get("X-Hub-Signature-256"), env.WEBHOOK_SECRET))) {
     return new Response("unauthenticated\n", { status: 401 });
   }
-  if (request.headers.get("X-GitHub-Event") === "github_app_authorization") {
-    let payload: unknown = null;
-    try {
-      payload = JSON.parse(new TextDecoder().decode(body));
-    } catch {
-      // Not JSON: nothing to act on.
-    }
+  const event = request.headers.get("X-GitHub-Event");
+  let payload: unknown = null;
+  try {
+    payload = JSON.parse(new TextDecoder().decode(body));
+  } catch {
+    // Not JSON: nothing to act on.
+  }
+  if (event === "github_app_authorization") {
     const delivery = parseSender(payload);
     if (delivery?.action === "revoked") {
       await services.account(String(delivery.sender.id)).signOutEverywhere("revoked");
     }
+    return new Response(null, { status: 202 });
+  }
+  const delivery = parseAppDelivery(event, payload);
+  if (!delivery) {
+    return new Response(null, { status: 202 });
+  }
+  const installation = services.installation(delivery.installationId);
+  const now = services.now();
+  const syncSender = (senderId: number | null) => {
+    if (senderId !== null) {
+      waitUntil(syncInstallations(services.account(String(senderId)), services.installation, services.fetch, now, 0)
+        .catch((error: unknown) => console.error("installation sync failed", error)));
+    }
+  };
+  if (delivery.kind === "target") {
+    await installation.route(delivery.target, now);
+  } else if (delivery.kind === "installation_repositories") {
+    if (delivery.removed.length > 0) {
+      await installation.reposRemoved(delivery.removed);
+    }
+    if (delivery.added.length > 0) {
+      await installation.reposAdded(delivery.added, now);
+      syncSender(delivery.senderId);
+    }
+  } else if (delivery.action === "deleted") {
+    await installation.forget();
+  } else if (delivery.action === "suspend") {
+    await installation.setSuspended(true);
+  } else {
+    if (delivery.action === "unsuspend") {
+      await installation.setSuspended(false);
+    }
+    await installation.reposAdded(delivery.repos, now);
+    syncSender(delivery.senderId);
   }
   return new Response(null, { status: 202 });
+}
+
+/**
+ * `PUT /account/anthropic-key` with `{"key": "…"}`, and `DELETE /account/anthropic-key`: the person's own Anthropic key,
+ * on which their key lines, rewrites and Ask run. Anthropic must accept it first; Ask's agent, environment and vault are
+ * then made in their org when this Worker can serve Ask. Sealed at rest, never answered back.
+ */
+export async function anthropicKeyRoute(request: Request, env: Env, services: HostedServices): Promise<Response> {
+  const session = await sessionOf(request, services);
+  if (!session) {
+    return errorAnswer(401, "unauthorized", "sign in with GitHub");
+  }
+  if (session.state !== "signed_in") {
+    return errorAnswer(401, "signed_out", "sign in with GitHub again");
+  }
+  const account = services.account(session.userId);
+  if (request.method === "DELETE") {
+    await account.setAnthropicKey(null, null);
+    return new Response(null, { status: 204 });
+  }
+  const body = (await bodyOf(request))?.value as { key?: unknown } | undefined;
+  const key = typeof body?.key === "string" ? body.key.trim() : null;
+  if (!isAnthropicKeyShape(key)) {
+    return errorAnswer(400, "validation_error", "key must be an Anthropic API key");
+  }
+  const checked = await services.anthropic.check(key);
+  if (checked !== "ok") {
+    return checked === "invalid" ? errorAnswer(422, "anthropic_key_invalid", "Anthropic did not accept this key")
+      : errorAnswer(503, "anthropic_unavailable", "Anthropic could not be asked; try again");
+  }
+  let ask: AskResources | null = null;
+  if (canMintInstallationTokens(env)) {
+    try {
+      ask = await services.anthropic.provisionAsk(key, session.login);
+    } catch (error) {
+      // The key works for key lines and rewrites; Ask stays off until it is given again.
+      console.error("Ask setup failed", error instanceof Error ? error.name : "unknown");
+    }
+  }
+  if (!(await account.setAnthropicKey(key, ask))) {
+    return errorAnswer(401, "signed_out", "sign in with GitHub again");
+  }
+  return Response.json({ anthropic_key: true, ask_ai: ask !== null }, { headers: { "Cache-Control": "no-store" } });
+}
+
+/** Sign-in routes a client may call at will, limited per IP: 429 past the limit. */
+async function limited(request: Request, services: HostedServices, route: string): Promise<Response | null> {
+  const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  return await services.allow(`${route}:${ip}`) ? null
+    : errorAnswer(429, "rate_limited", "too many sign-in attempts; wait a minute");
 }
 
 /** `/.well-known/apple-app-site-association`: lets the app catch `/auth/github/done` as its HTTPS callback. */
@@ -373,6 +546,18 @@ export function associationRoute(env: Env): Response {
  * that act with the Worker's own token (pairing, the webhook App's setup, the hub's states) are not served.
  */
 export function publicHostedRoute(
+  request: Request, env: Env, services: HostedServices, app: OAuthApp, waitUntil: (promise: Promise<unknown>) => void,
+): Promise<Response> | null {
+  const { pathname } = new URL(request.url);
+  if ((pathname === "/auth/github/start" && request.method === "GET")
+    || (pathname === "/auth/github/finish" && request.method === "POST")) {
+    return limited(request, services, pathname)
+      .then((answer) => answer ?? openRoute(request, env, services, app, waitUntil) as Promise<Response>);
+  }
+  return openRoute(request, env, services, app, waitUntil);
+}
+
+function openRoute(
   request: Request, env: Env, services: HostedServices, app: OAuthApp, waitUntil: (promise: Promise<unknown>) => void,
 ): Promise<Response> | null {
   const { pathname } = new URL(request.url);
@@ -399,7 +584,10 @@ export function publicHostedRoute(
     return deleteAccountRoute(request, services);
   }
   if (pathname === "/github/webhook" && method === "POST") {
-    return hostedWebhook(request, env, services);
+    return hostedWebhook(request, env, services, waitUntil);
+  }
+  if (pathname === "/account/anthropic-key" && (method === "PUT" || method === "DELETE")) {
+    return anthropicKeyRoute(request, env, services);
   }
   if (["/device/pair", "/github/setup", "/github/callback", "/github/app-credentials", "/prs/states"]
     .includes(pathname)) {
@@ -430,12 +618,12 @@ export async function authenticate(
     : { answer: errorAnswer(503, "github_unavailable", "GitHub could not be asked; try again"), session };
 }
 
-/** What `GET /device/config` adds on the hosted Worker. */
+/** What `GET /device/config` adds on the hosted Worker. Whether a key is set, never the key. */
 export function hostedAccountConfig(session: SessionInfo): object {
   return {
     hosted: true,
     account: {
-      state: session.state, login: session.login, user_id: session.userId,
+      state: session.state, login: session.login, user_id: session.userId, anthropic_key: session.hasAnthropicKey,
       ...(session.state === "signed_out" ? { reason: session.reason } : {}),
     },
   };

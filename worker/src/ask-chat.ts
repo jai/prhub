@@ -1,5 +1,11 @@
 /** What Jai asks about a PR and what comes back, as the phone shows it. Nothing here calls anything. */
-import type { Sha } from "./ids.ts";
+import { type Env, scopedKey } from "./env.ts";
+import type { RepoFullName, Sha } from "./ids.ts";
+
+/** Where a PR's Ask session is named: under `users/<id>/` for a hosted person, so nobody else's chat can find it. */
+export function askRecordKey(repo: RepoFullName, number: number, env: Pick<Env, "SIGNED_IN_USER_ID">): string {
+  return scopedKey(env, `ask/${repo}/${number}.json`);
+}
 
 export interface AskAnchor {
   path: string;

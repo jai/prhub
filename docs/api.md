@@ -353,7 +353,8 @@ payload on its own topic, and until it routes `pr_alert` a tap opens the app's d
 
 `HOSTED=on` makes the Worker the hosted PRHub (`https://prhub.jai-f89.workers.dev`), which everyone signs in to with
 the PRHub GitHub App ([plans/github-app.md](plans/github-app.md)). Code: `worker/src/hosted.ts`, `account-core.ts`,
-`account.ts`, `oauth.ts`, `token-crypto.ts`. Off, nothing here exists and the Worker is the self-hosted one above.
+`account.ts`, `oauth.ts`, `token-crypto.ts`, `installation-core.ts`, `installations.ts`, `rate-limit.ts`. Off, nothing
+here exists and the Worker is the self-hosted one above. Deploying it: [hosted-deploy.md](hosted-deploy.md).
 
 ### Flow
 
@@ -404,16 +405,19 @@ session may catch the HTTPS callback.
 | 401 | `signed_out` | GitHub no longer honours the person's tokens: they revoked the App, a refresh was refused, or 6 months passed with no refresh | Shows Sign in again |
 | 503 | `github_unavailable` | GitHub could not be asked for a fresh token | Retries later |
 | 503 | `not_configured` | `HOSTED=on` without everything it needs | Shows the Worker is down |
+| 429 | `rate_limited` | `/auth/github/start` or `/auth/github/finish` more than 10 times a minute from one IP | Waits a minute |
 
 `GET /device/config` answers a `signed_out` session with `200` too. On the hosted Worker it adds:
 
 ```json
-{ "hosted": true, "account": { "state": "signed_in", "login": "octocat", "user_id": "4242" } }
+{ "hosted": true, "account": { "state": "signed_in", "login": "octocat", "user_id": "4242", "anthropic_key": false } }
 ```
 
 `account.state` is `signed_in` or `signed_out`; a signed-out account adds `reason`: `revoked`, `refresh_expired` or
-`signed_out`. Settings shows Delete Account when `hosted` is true. Key lines, Rewrite, Ask and Feedback are off on
-the hosted Worker until per-person AI budgets exist (6e).
+`signed_out`. `account.anthropic_key` says whether the person gave their own Anthropic key; the key itself is never
+answered. Settings shows Delete Account when `hosted` is true. On the hosted Worker AI runs only on the person's own
+key: `features.key_lines` and `features.rewrite` are on once they gave it, and `features.ask_ai` once Ask's resources
+were made in their org ([`PUT /account/anthropic-key`](#put-accountanthropic-key)). Feedback is always off.
 
 When GitHub stops honouring the tokens, the Worker sends each registered phone an alert once: title `PRHub`, body
 `Sign in with GitHub again to keep your pull requests up to date.`, payload `"reason": "signed_out"`, collapse id
@@ -425,11 +429,28 @@ Auth: the session secret, signed in or not. Ends this phone's session; `204`. Ot
 last session ends, the Worker drops the person's tokens and push registrations, so it holds no token for someone with
 no phone signed in.
 
+### `PUT /account/anthropic-key`
+
+Auth: a signed-in session. Body `{"key": "<Anthropic API key>"}`. The Worker asks Anthropic whether the key works (one
+`GET /v1/models`), then, when it holds the App's private key, makes Ask's agent, environment and vault in the key's org
+(what `npm run ask-agent` makes for a self-hosted Worker). It keeps the key sealed like the tokens (associated data
+`prhub:user:<id>:anthropic`) and never answers it back. Key lines, rewrites and Ask then run on it, as the person:
+their GitHub token, their R2 prefix, their `AiJobs`, and AI answers kept under `users/<id>/ai/…`.
+
+`200 {"anthropic_key": true, "ask_ai": true}`; `ask_ai` is false when the Worker cannot mint installation tokens or
+Ask's resources could not be made (key lines and rewrites still work). `400 validation_error` for a key that is not
+20–300 URL-safe characters, `422 anthropic_key_invalid` when Anthropic refuses it, `503 anthropic_unavailable` when it
+could not be asked, `401` as on every route. Giving a key again replaces the key and makes Ask's resources again.
+
+`DELETE /account/anthropic-key`: `204`; AI is off for the person again. Signing out of the last phone, being signed out
+by GitHub, and Delete Account drop the key too.
+
 ### `DELETE /account`
 
 Auth: the session secret, signed in or not. App Review guideline 5.1.1(v). The Worker revokes PRHub's authorization on
 GitHub (`DELETE /applications/{client_id}/grant`, which also revokes every token it issued), then deletes the account,
-the person's PR index and every R2 object under `users/<user id>/`. `200 {"deleted": true, "github_revoked": true}`;
+the person's PR index and every R2 object under `users/<user id>/`, and takes them out of every installation, so no
+later webhook reaches them. `200 {"deleted": true, "github_revoked": true}`;
 `github_revoked` is false when GitHub could not take the revoke, and the data is deleted all the same. The next
 request with the secret answers `401 unauthorized`.
 
@@ -451,11 +472,49 @@ request with the secret answers `401 unauthorized`.
 
 ### Per person
 
-- The PR index is `PrIndex` named `user:<id>`, bound to the account at sign-in. Its reads and writes use the person's
-  token and login; R2 keys go under `users/<id>/`.
-- Pull request webhooks are accepted and dropped until installations route them (6c); the 10-minute poll and each app
-  open cover them.
+- The PR index is `PrIndex` named `user:<id>`, bound to the account at sign-in, and `AiJobs` is named the same. Their
+  reads and writes use the person's token and login; R2 keys go under `users/<id>/` (rows' diffs and details, the repo
+  index, AI answers, Ask's session record). Nothing one person holds is named so another's request can reach it.
 - Pairing, `/github/setup`, `/github/callback`, `/github/app-credentials` and `/prs/states` answer `404`.
+
+### Webhook routing
+
+Every delivery is signed with the App's webhook secret (`WEBHOOK_SECRET`); a bad signature answers `401` and touches
+nothing. Each installation has an `Installation` object named `installation:<id>` that knows its members and which of
+its repos each one can see. Who sees what comes only from each person's own token, never an installation token:
+
+- **Joining.** At sign-in, on app open (`GET /device/config`) when the last read is 10 minutes old, and every 6 hours
+  from the account's alarm, the Worker reads `GET /user/installations` and `GET /user/installations/{id}/repositories`
+  with the person's token. They join each installation listed, with exactly the repos listed, and leave the ones no
+  longer listed. A partial answer changes nothing.
+- **`installation`.** `created`, `new_permissions_accepted` and `unsuspend` record the repos it names, and read the
+  installations of the person who acted, if they have signed in. `suspend` routes nothing until `unsuspend`. `deleted`
+  forgets the installation.
+- **`installation_repositories`.** `added` records the repos and reads the actor's installations again; `removed`
+  forgets the repos, so nobody is routed to them. Each member's poll drops the rows their token can no longer read.
+- **`pull_request`, `pull_request_review`, `pull_request_review_comment`, `pull_request_review_thread`,
+  `issue_comment` (on a PR).** Marked in the index of each member whose list has the repo, `involved` when they wrote
+  the PR or are asked to review it. A PR an index does not hold, with the person not involved, costs nothing.
+- **`check_suite`, `status`.** The PRs each such member's index holds at that head are read again.
+- **In doubt.** A member is in doubt about a repo the installation gained, or a delivery named first, after their list
+  was read. The delivery waits in the installation while their own token is asked (`GET /repos/{repo}`): yes delivers
+  it and is kept; no drops it and is kept until the repo is added again; no answer (GitHub away, or rate limited) is
+  asked twice more, then the delivery is left to their poll. Signed out counts as no.
+
+The index reads GitHub only with the person's token, so even a mark that reached the wrong index could show nothing
+their token cannot read.
+
+### Rate limits
+
+- **GitHub, per token.** Every GitHub call reads `x-ratelimit-remaining`, `-limit`, `-reset` and `retry-after`. When
+  under a tenth of the hour (at least 100) is left, the person's poll and webhook reads wait for the reset; their own
+  requests still go. When none is left, or GitHub sends `retry-after` or `429` (a secondary limit; a minute when it
+  gives no time), every call for that token answers `429` with `retry-after` until then, without reaching GitHub.
+  Each backoff is in `/events` once as `rate_limited` (`kind` `low`, `primary` or `secondary`, `until`, `remaining`,
+  `limit`). Each hosted poll records its cost as `polled` (`calls`, `remaining`, `limit`). The same applies to a
+  self-hosted Worker's token.
+- **Sign-in, per IP.** `/auth/github/start` and `/auth/github/finish` answer `429 rate_limited` past 10 a minute from
+  one IP each (the `AUTH_RATE_LIMIT` binding; unset, no limit).
 
 ### Configuration
 
@@ -467,9 +526,12 @@ request with the secret answers `401 unauthorized`.
 | `TOKEN_ENCRYPTION_KEY` | secret | The keyring above; `k1:$(openssl rand -base64 32)` to start |
 | `WEBHOOK_SECRET` | secret | The App's webhook secret; unset, `/github/webhook` answers 404 |
 | `APPLE_APP_ID` | var | `<team id>.<bundle id>` for the association file; unset, it answers 404 |
-| `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` | var, secret | Installation tokens for Ask (6c); sign-in needs neither |
+| `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` | var, secret | Installation tokens for Ask: read only, one repo, minted only after the person's own token read the PR. Unset: Ask stays off for everyone. PKCS#8 |
+| `AI_DEFAULTS` and the other AI vars | var | As above; they apply to each person's own key |
 | `APNS_*` | | Push straight to APNs with Jai's key, as on his Worker |
 
-Bindings: `DIFFS`, `PR_INDEX`, `AI_JOBS` as above, plus `USER_ACCOUNTS` (class `UserAccount`) and `SIGN_INS` (class
-`SignIn`), both SQLite-backed (`new_sqlite_classes`). `HOSTED=on` without the client ID, client secret, token key or
-either binding answers `503 not_configured` on every route but `/`, rather than act as a self-hosted Worker.
+Bindings: `DIFFS`, `PR_INDEX`, `AI_JOBS` as above, plus `USER_ACCOUNTS` (class `UserAccount`), `SIGN_INS` (class
+`SignIn`) and `INSTALLATIONS` (class `Installation`), all SQLite-backed (`new_sqlite_classes`), and optionally
+`AUTH_RATE_LIMIT`, a rate-limiting binding. `HOSTED=on` without the client ID, client secret, token key or any of the
+three bindings answers `503 not_configured` on every route but `/`, rather than act as a self-hosted Worker. The
+template is `deploy/hosted/wrangler.template.jsonc`.

@@ -20,6 +20,7 @@ import {
   type Sha,
 } from "./ids";
 import { putVersioned, storeDiff } from "./versioned";
+import { newRateLimitState } from "./rate-limit";
 import { DEFAULT_CONTEXT } from "./key-lines";
 
 const BUSY_WINDOW_MS = 3_000;
@@ -141,6 +142,21 @@ export class PrIndex extends DurableObject<Env> {
     await this.ensureAlarm(BUSY_WINDOW_MS);
   }
 
+  /** A check suite or a status on a commit: each held PR at that head is read again, for its checks. */
+  async markHead(repo: RepoFullName, sha: Sha): Promise<void> {
+    const held = this.sql.exec<{ id: string; repo: string; number: number }>(
+      "SELECT id, repo, number FROM pull_requests WHERE repo = ? AND head = ?", repo, sha).toArray();
+    for (const row of held) {
+      const ref = refOf(row);
+      if (ref) {
+        this.markDirty(ref.id, ref.repo, ref.number);
+      }
+    }
+    if (held.length > 0) {
+      await this.ensureAlarm(BUSY_WINDOW_MS);
+    }
+  }
+
   override async alarm(): Promise<void> {
     const marked = this.sql.exec<{ id: string; repo: string; number: number; generation: number }>(
       "SELECT id, repo, number, generation FROM dirty LIMIT ?", READS_PER_PASS).toArray();
@@ -156,6 +172,12 @@ export class PrIndex extends DurableObject<Env> {
       // A hosted person signed out: nothing is read until they sign in again and their account ticks this index.
       return;
     }
+    const waitUntil = this.rateLimitedUntil(Date.now());
+    if (waitUntil !== null) {
+      // GitHub asked this token to wait, or its hour runs low: what is marked keeps until the reset.
+      await this.ctx.storage.setAlarm(waitUntil);
+      return;
+    }
     if (dirty.length > 0) {
       const asked = new Set(this.sql.exec<{ id: string }>(
         "SELECT id FROM pull_requests WHERE list IN ('review', 'reviewed')").toArray().map((row) => row.id));
@@ -165,7 +187,8 @@ export class PrIndex extends DurableObject<Env> {
       } catch (error) {
         // Not thrown: Cloudflare would retry it later and later, and new work would wait behind that retry.
         this.addEvent("read_failed", { error: String(error) });
-        await this.ctx.storage.setAlarm(Date.now() + READ_RETRY_MS);
+        this.noteRateLimit(env);
+        await this.ctx.storage.setAlarm(this.rateLimitedUntil(Date.now()) ?? Date.now() + READ_RETRY_MS);
         return;
       }
       const alerts: Promise<unknown>[] = [];
@@ -184,8 +207,9 @@ export class PrIndex extends DurableObject<Env> {
     }
     await this.storeDiffs(env);
     await this.queueKeyLines(env);
+    this.noteRateLimit(env);
     if (this.exists("dirty") || this.exists("pending")) {
-      await this.ctx.storage.setAlarm(Date.now() + 250);
+      await this.ctx.storage.setAlarm(this.rateLimitedUntil(Date.now()) ?? Date.now() + 250);
     }
   }
 
@@ -195,12 +219,20 @@ export class PrIndex extends DurableObject<Env> {
     if (!env) {
       return;
     }
-    try {
-      await this.compareWithGitHub(env);
-      this.setMeta("synced_at", now);
-      await this.queueKeyLines(env);
-    } catch (error) {
-      this.addEvent("poll_failed", { error: String(error) });
+    if (this.rateLimitedUntil(now) === null) {
+      try {
+        await this.compareWithGitHub(env);
+        this.setMeta("synced_at", now);
+        await this.queueKeyLines(env);
+      } catch (error) {
+        this.addEvent("poll_failed", { error: String(error) });
+      }
+      this.noteRateLimit(env);
+      if (isSet(env.SIGNED_IN_USER_ID) && env.GITHUB_RATE) {
+        // What one poll costs a hosted person's hour (docs/plans/github-app.md, "Tokens"): a tenth of it is the target.
+        const { calls, remaining, limit } = env.GITHUB_RATE;
+        this.addEvent("polled", { calls, remaining, limit });
+      }
     }
     this.sql.exec("DELETE FROM alerts WHERE at < ?", now - ALERTS_KEPT_MS);
     await this.pushIfDue(now);
@@ -439,7 +471,7 @@ export class PrIndex extends DurableObject<Env> {
       }
       await aiJobs(env).enqueue({
         kind: "key_lines", repo: ref.repo, number: ref.number, head, context: DEFAULT_CONTEXT, choice: aiConfigOf(env).defaults.key_lines,
-      });
+      }, isSet(env.SIGNED_IN_USER_ID) ? env.SIGNED_IN_USER_ID : null);
     }
   }
 
@@ -552,14 +584,34 @@ export class PrIndex extends DurableObject<Env> {
   private async actingEnv(): Promise<Env | null> {
     const userId = this.meta("user_id");
     if (!userId) {
-      return this.env;
+      return { ...this.env, GITHUB_RATE: newRateLimitState() };
     }
     try {
-      return await actingEnvFor(this.env, String(userId));
+      const env = await actingEnvFor(this.env, String(userId));
+      return env && { ...env, GITHUB_RATE: newRateLimitState() };
     } catch (error) {
       this.addEvent("token_failed", { error: String(error) });
       return null;
     }
+  }
+
+  /** When background reads may go again; null when they may now. */
+  private rateLimitedUntil(now: number): number | null {
+    const until = this.meta("rate_limited_until");
+    return until > now ? until : null;
+  }
+
+  /** A backoff this run's answers called for, kept for the next runs and said once in `/events` (`rate_limited`). */
+  private noteRateLimit(env: Env): void {
+    const backoff = env.GITHUB_RATE?.backoff;
+    if (!backoff || backoff.until <= Date.now() || backoff.until <= this.meta("rate_limited_until")) {
+      return;
+    }
+    this.setMeta("rate_limited_until", backoff.until);
+    this.addEvent("rate_limited", {
+      kind: backoff.kind, until: new Date(backoff.until).toISOString(), remaining: env.GITHUB_RATE?.remaining ?? null,
+      limit: env.GITHUB_RATE?.limit ?? null,
+    });
   }
 
   private meta(key: string): number {

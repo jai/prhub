@@ -1,6 +1,7 @@
-import type { SignIn, UserAccount } from "./account";
+import type { Installation, SignIn, UserAccount } from "./account";
 import type { AiJobs } from "./ai-jobs";
 import type { PrIndex } from "./pr-index";
+import type { RateLimitState } from "./rate-limit";
 
 /**
  * Jai's Worker sets everything here. A self-hosted one (docs/api.md) needs only `GITHUB_TOKEN` and its
@@ -81,12 +82,15 @@ export interface Env {
   /**
    * Hosted mode (`hosted.ts`, docs/api.md "Hosted sign-in"): `on` makes this the one Worker everyone signs in to with
    * the PRHub GitHub App, and `GITHUB_TOKEN` goes unused. It also needs the App's client ID and secret, the token key
-   * and the two bindings below; without any of them the Worker answers 503 rather than act as a self-hosted one.
+   * and the three bindings below; without any of them the Worker answers 503 rather than act as a self-hosted one.
    */
   HOSTED?: string;
   GITHUB_APP_CLIENT_ID?: string;
   GITHUB_APP_CLIENT_SECRET?: string;
-  /** The App's id and PKCS#8 key, for installation tokens (Ask, 6c). Sign-in needs neither. */
+  /**
+   * The App's id and PKCS#8 key, for installation tokens: Ask's read-only checkout of one repo, for a person who gave
+   * their own Anthropic key. Sign-in and webhook routing need neither.
+   */
   GITHUB_APP_ID?: string;
   GITHUB_APP_PRIVATE_KEY?: string;
   /** `<key id>:<base64 of 32 bytes>`, comma-separated, the sealing key first (`token-crypto.ts`). */
@@ -95,8 +99,14 @@ export interface Env {
   APPLE_APP_ID?: string;
   USER_ACCOUNTS?: DurableObjectNamespace<UserAccount>;
   SIGN_INS?: DurableObjectNamespace<SignIn>;
+  /** One per App installation, named `installation:<id>`: who can see which of its repos (`installation-core.ts`). */
+  INSTALLATIONS?: DurableObjectNamespace<Installation>;
+  /** Per-IP limit on `/auth/github/start` and `/auth/github/finish` (a rate-limiting binding). Unset: no limit. */
+  AUTH_RATE_LIMIT?: RateLimit;
   /** Set by the Worker on the env it acts with for one signed-in person (`userEnv`); never a var. */
   SIGNED_IN_USER_ID?: string;
+  /** Set by the PR index on the env a background run reads with (`rate-limit.ts`); never a var. */
+  GITHUB_RATE?: RateLimitState;
   DIFFS: R2Bucket;
   PR_INDEX: DurableObjectNamespace<PrIndex>;
   AI_JOBS: DurableObjectNamespace<AiJobs>;

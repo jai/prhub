@@ -1,12 +1,13 @@
 // PRHub's Worker: the PRs its owner should look at, each one's diff, and word to the phone when they change.
 // Contract: docs/api.md.
 import { statesRoute } from "./pr-states";
-import { AiJobs, type AiJob, aiKey } from "./ai-jobs";
+import { AiJobs, type AiJob } from "./ai-jobs";
 import { ask, askChat, AskRefused } from "./ask";
 import { bodyOf, parseAskInput } from "./boundary";
 import { eventRoute, registerRoute, unpairRoute } from "./devices";
 import { aiConfigOf, askConfigured, deviceConfig, feedbackConfigured } from "./config";
 import { aiJobs, type Env, githubLogin, isSet, prIndex, scopedKey } from "./env";
+import { aiStoreKey } from "./ai-run";
 import { detailVersionOf, fetchDiff, liveDiff, mergedPullRequests, pullRequestSummary, readPullRequests } from "./github";
 import { parseRepoFullName, parseSha, prId, type RepoFullName } from "./ids";
 import {
@@ -26,12 +27,13 @@ import { parseDelivery, verifySignature } from "./webhook";
 import { writeToGitHub } from "./write";
 import { busyAnswer, clientRefOf } from "./write-receipts";
 
-import { SignIn, UserAccount } from "./account";
+import { Installation, SignIn, UserAccount } from "./account";
 import {
   authenticate, hostedAccountConfig, hostedMode, publicHostedRoute, servicesOf, userEnv,
 } from "./hosted";
+import { OPEN_SYNC_MS, syncInstallations } from "./installations";
 
-export { AiJobs, PrIndex, SignIn, UserAccount };
+export { AiJobs, Installation, PrIndex, SignIn, UserAccount };
 
 const PULL_REQUEST_PATH = /^\/prs\/([\w.-]+)\/([\w.-]+)\/(\d+)\/(diff|detail|summary|write|key-lines|rewrite|ask)$/;
 /** GraphQL's `Int`: a bigger number is no PR, and GitHub would refuse the query for it. */
@@ -172,7 +174,7 @@ async function write(repo: RepoFullName, number: number, request: Request, env: 
 
 /** The answer if it is there, and 202 while the job runs. A model call outlasts any one request. */
 async function aiAnswer(job: AiJob, isRetry: boolean, env: Env): Promise<Response> {
-  const key = aiKey(job);
+  const key = aiStoreKey(job, env);
   if (isRetry) {
     await env.DIFFS.delete(key);
   }
@@ -180,7 +182,7 @@ async function aiAnswer(job: AiJob, isRetry: boolean, env: Env): Promise<Respons
   if (stored) {
     return new Response(stored.body, { headers: { "Content-Type": "application/json" } });
   }
-  await aiJobs(env).enqueue(job);
+  await aiJobs(env).enqueue(job, isSet(env.SIGNED_IN_USER_ID) ? env.SIGNED_IN_USER_ID : null);
   return Response.json({ status: "working" }, { status: 202 });
 }
 
@@ -470,8 +472,13 @@ async function serveHosted(
       ? configRoute(userEnv(env, { ...session, token: "" }), context, hostedAccountConfig(session))
       : auth.answer;
   }
-  return isConfig ? configRoute(auth.env, context, hostedAccountConfig(auth.session))
-    : serveAuthorized(request, auth.env, context);
+  if (isConfig) {
+    // An app open: the person's installations are read again when the last read is ten minutes old.
+    context.waitUntil(syncInstallations(services.account(auth.session.userId), services.installation, services.fetch,
+      Date.now(), OPEN_SYNC_MS).catch((error: unknown) => console.error("installation sync failed", error)));
+    return configRoute(auth.env, context, hostedAccountConfig(auth.session));
+  }
+  return serveAuthorized(request, auth.env, context);
 }
 
 export default {
