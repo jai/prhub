@@ -3,7 +3,10 @@
 This policy covers PRHub, an iPhone app for reviewing GitHub pull requests (PRs), and the push relay that Jai Govindani
 runs for it.
 
-PRHub sends your data only to a backend that you deploy and control: a pr-worker in your own Cloudflare account. Jai
+If you sign in with GitHub, you use the hosted PRHub service instead, and
+[its privacy policy](docs/privacy/hosted.md) applies.
+
+With your own Worker, PRHub sends your data only to a backend that you deploy and control: a pr-worker in your own Cloudflare account. Jai
 does not receive your GitHub token, your PRs or your Anthropic API key. PRHub has no analytics, no tracking, no ads and
 no accounts with Jai.
 
