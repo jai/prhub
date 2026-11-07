@@ -1,0 +1,44 @@
+// The hosted PRHub Worker (docs/hosted-deploy.md): one Worker on Jai's personal Cloudflare account that everyone signs
+// in to with the PRHub GitHub App. Render it to wrangler.jsonc beside it (gitignored) by filling each placeholder, then
+// `npx wrangler@4 deploy --config deploy/hosted/wrangler.jsonc` from the repo root. Contract: docs/api.md, "Hosted
+// sign-in" and "Webhook routing". Secrets are never here: `wrangler secret put` (the runbook lists them).
+{
+  "name": "prhub",
+  "account_id": "__CLOUDFLARE_ACCOUNT_ID__",
+  "main": "../../worker/src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  // No cron: each person's account polls every 10 minutes (an alarm), and webhooks bring changes within seconds.
+  "vars": {
+    "HOSTED": "on",
+    // From the App's settings page: its App ID (installation tokens for Ask) and its client ID (`Iv…`, sign-in).
+    "GITHUB_APP_ID": "__GITHUB_APP_ID__",
+    "GITHUB_APP_CLIENT_ID": "__GITHUB_APP_CLIENT_ID__",
+    // The app that may catch the sign-in callback (`/.well-known/apple-app-site-association`).
+    "APPLE_APP_ID": "K2P9X73SPT.com.jaigovindani.prreview",
+    // Push straight to APNs with Jai's key; APNS_KEY_P8 is a secret.
+    "APNS_BUNDLE_ID": "com.jaigovindani.prreview",
+    "APNS_TEAM_ID": "K2P9X73SPT",
+    "APNS_KEY_ID": "__APNS_KEY_ID__",
+    // AI runs only on each person's own Anthropic key. Defaults from docs/plans/ai-model-eval.md.
+    "AI_DEFAULTS": "key_lines=claude-opus-5-5:high,ask=claude-haiku-5-5:high"
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "PR_INDEX", "class_name": "PrIndex" },
+      { "name": "AI_JOBS", "class_name": "AiJobs" },
+      { "name": "USER_ACCOUNTS", "class_name": "UserAccount" },
+      { "name": "SIGN_INS", "class_name": "SignIn" },
+      { "name": "INSTALLATIONS", "class_name": "Installation" }
+    ]
+  },
+  "migrations": [
+    { "tag": "pr-index-v1", "new_sqlite_classes": ["PrIndex"] },
+    { "tag": "ai-jobs-v1", "new_sqlite_classes": ["AiJobs"] },
+    { "tag": "hosted-v1", "new_sqlite_classes": ["UserAccount", "SignIn", "Installation"] }
+  ],
+  // Sign-in start and finish, per IP: 10 a minute each.
+  "ratelimits": [{ "name": "AUTH_RATE_LIMIT", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }],
+  "r2_buckets": [{ "binding": "DIFFS", "bucket_name": "prhub-hosted" }]
+}

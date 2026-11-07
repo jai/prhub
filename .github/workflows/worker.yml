@@ -50,6 +50,14 @@ jobs:
               wrangler.template.jsonc > wrangler.jsonc
       - name: wrangler deploy --dry-run
         run: npx wrangler deploy --dry-run --outdir dist --config ../deploy/wrangler.jsonc
+      - name: Render the hosted template with placeholder values
+        working-directory: deploy/hosted
+        run: |
+          sed -e 's/__CLOUDFLARE_ACCOUNT_ID__/00000000000000000000000000000000/' \
+              -e 's/__[A-Z0-9_]*__//g' \
+              wrangler.template.jsonc > wrangler.jsonc
+      - name: wrangler deploy --dry-run (hosted)
+        run: npx wrangler deploy --dry-run --outdir dist-hosted --config ../deploy/hosted/wrangler.jsonc
 
   relay:
     runs-on: ubuntu-latest
