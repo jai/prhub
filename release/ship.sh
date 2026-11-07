@@ -5,7 +5,8 @@
 # checks the IPA for production APNs, uploads, sets What to Test, waits for the build to be VALID, adds it to the
 # TestFlight group PRHUB_TESTFLIGHT_GROUP (the public link's) and submits it for Beta App Review unless an earlier build
 # is still waiting for or in review (Apple reviews one at a time; submit the later one once that is approved:
-# `swift release/testflight.swift <key> submit <version> <build>`). Prints `SHIPPED PRHub build <n>` or `SHIP FAILED: …`.
+# `swift release/testflight.swift <key> submit <version> <build>`). With PRHUB_SUBMIT=NO it never submits: the build goes
+# to the group and to internal testers only. Prints `SHIPPED PRHub build <n>` or `SHIP FAILED: …`.
 #
 # Needs, in the environment: ASC_KEY_PATH (an App Store Connect API key, .p8, with the App Manager role), ASC_KEY_ID,
 # ASC_ISSUER_ID and PRHUB_TESTFLIGHT_GROUP; and a Mac whose Xcode can sign for the team in project.yml. Signing needs a
@@ -67,5 +68,9 @@ done
 [[ $state == VALID ]] || { echo "SHIP FAILED: PRHub build $build is still ${state:-missing} after 30 minutes"; exit 1; }
 "${asc[@]}" add-to-group "$version" "$build" "$PRHUB_TESTFLIGHT_GROUP" \
     || { echo "SHIP FAILED: adding build $build to the TestFlight group"; exit 1; }
-"${asc[@]}" submit "$version" "$build" || { echo "SHIP FAILED: Beta App Review submission of build $build"; exit 1; }
+if [[ ${PRHUB_SUBMIT:-YES} == NO ]]; then
+    echo "build $build not submitted for Beta App Review: PRHUB_SUBMIT=NO"
+else
+    "${asc[@]}" submit "$version" "$build" || { echo "SHIP FAILED: Beta App Review submission of build $build"; exit 1; }
+fi
 echo "SHIPPED PRHub build $build"
