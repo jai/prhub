@@ -1,7 +1,7 @@
 /**
  * Every fixed set of words the Worker sends about a PR, in one place. Rows, details, `/prs/states` and the stored
- * statuses are typed with these, so a new word is a change here and nowhere else. The four PR sets are the Pager
- * Worker's (`worker/src/threads.ts`), which the app already decodes; `test/vocab.test.ts` pins them to it.
+ * statuses are typed with these, so a new word is a change here and nowhere else. The four PR sets are also Agent
+ * Pager's own Worker's, which the app decodes; Jai's deploy checks the two still match.
  */
 
 /** GitHub's own state of a PR, a draft as a draft. */
