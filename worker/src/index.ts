@@ -6,7 +6,7 @@ import { ask, askChat, AskRefused } from "./ask";
 import { bodyOf, parseAskInput } from "./boundary";
 import { eventRoute, registerRoute, unpairRoute } from "./devices";
 import { aiConfigOf, askConfigured, deviceConfig, feedbackConfigured } from "./config";
-import { aiJobs, type Env, githubLogin, isSet, prIndex } from "./env";
+import { aiJobs, type Env, githubLogin, isSet, prIndex, scopedKey } from "./env";
 import { detailVersionOf, fetchDiff, liveDiff, mergedPullRequests, pullRequestSummary, readPullRequests } from "./github";
 import { parseRepoFullName, parseSha, prId, type RepoFullName } from "./ids";
 import {
@@ -26,7 +26,12 @@ import { parseDelivery, verifySignature } from "./webhook";
 import { writeToGitHub } from "./write";
 import { busyAnswer, clientRefOf } from "./write-receipts";
 
-export { AiJobs, PrIndex };
+import { SignIn, UserAccount } from "./account";
+import {
+  authenticate, hostedAccountConfig, hostedMode, publicHostedRoute, servicesOf, userEnv,
+} from "./hosted";
+
+export { AiJobs, PrIndex, SignIn, UserAccount };
 
 const PULL_REQUEST_PATH = /^\/prs\/([\w.-]+)\/([\w.-]+)\/(\d+)\/(diff|detail|summary|write|key-lines|rewrite|ask)$/;
 /** GraphQL's `Int`: a bigger number is no PR, and GitHub would refuse the query for it. */
@@ -97,10 +102,10 @@ function choiceOf(
   return result.ok ? result : { ok: false as const, answer: errorAnswer(400, "invalid_model_choice", result.error) };
 }
 
-async function configRoute(env: Env, context: ExecutionContext): Promise<Response> {
+async function configRoute(env: Env, context: ExecutionContext, extra: object = {}): Promise<Response> {
   aiConfig(env, context);
   const login = await githubLogin(env).catch(() => null);
-  return Response.json(deviceConfig(env, login), { headers: { "Cache-Control": "no-store" } });
+  return Response.json({ ...deviceConfig(env, login), ...extra }, { headers: { "Cache-Control": "no-store" } });
 }
 
 function notConfigured(what: string): Response {
@@ -300,14 +305,14 @@ async function summaryRoute(repo: RepoFullName, number: number, env: Env): Promi
 }
 
 async function storedRepoIndex(env: Env): Promise<RepoIndex | null> {
-  const stored = await env.DIFFS.get(REPOS_KEY);
+  const stored = await env.DIFFS.get(scopedKey(env, REPOS_KEY));
   const value: unknown = stored ? await stored.json().catch(() => null) : null;
   return isRepoIndex(value) ? value : null;
 }
 
 async function refreshRepoIndex(env: Env, now: number): Promise<RepoIndex> {
   const index = await fetchRepoIndex(env, now);
-  await env.DIFFS.put(REPOS_KEY, JSON.stringify(index), { httpMetadata: { contentType: "application/json" } });
+  await env.DIFFS.put(scopedKey(env, REPOS_KEY), JSON.stringify(index), { httpMetadata: { contentType: "application/json" } });
   return index;
 }
 
@@ -371,13 +376,13 @@ function pullRequestRoute(
     const revision = params.get("revision");
     const load = () => liveDiff(repo, pr, env);
     return revision && VERSION.test(revision)
-      ? serveVersioned(env.DIFFS, diffKey(repo, pr, revision), revision, "text/plain", load, waitUntil)
+      ? serveVersioned(env.DIFFS, scopedKey(env, diffKey(repo, pr, revision)), revision, "text/plain", load, waitUntil)
       : fetchDiff(repo, pr, env);
   }
   const version = params.get("version");
   const load = () => liveDetail(repo, pr, env);
   return version && VERSION.test(version)
-    ? serveVersioned(env.DIFFS, detailKey(repo, pr, version), version, "application/json", load, waitUntil)
+    ? serveVersioned(env.DIFFS, scopedKey(env, detailKey(repo, pr, version)), version, "application/json", load, waitUntil)
     : load().then((live) => live.response);
 }
 
@@ -402,11 +407,87 @@ async function deviceRoute(
   return null;
 }
 
+/** Every route behind a bearer, for whoever `env` acts as: the operator, or one signed-in hosted person. */
+async function serveAuthorized(request: Request, env: Env, context: ExecutionContext): Promise<Response> {
+  const { pathname, searchParams } = new URL(request.url);
+  if (pathname === "/prs/merged") {
+    const kind = searchParams.get("of") === "reviewed" ? "reviewed" : "mine";
+    return Response.json({ prs: await mergedPullRequests(env, kind) });
+  }
+  if (pathname === "/prs") {
+    return Response.json(await prIndex(env).rows());
+  }
+  if (pathname === "/repos" && request.method === "GET") {
+    return reposRoute(searchParams, env, context);
+  }
+  if (pathname === "/tick" && request.method === "POST") {
+    await prIndex(env).tick(Date.now());
+    return new Response(null, { status: 204 });
+  }
+  if (pathname === "/push-state") {
+    return Response.json(await prIndex(env).pushState());
+  }
+  if (pathname === "/events") {
+    return Response.json(await prIndex(env).events(Number(searchParams.get("limit")) || 200));
+  }
+  if (pathname === "/github/app-credentials" && request.method === "POST") {
+    const stored = await env.DIFFS.get("setup/github-app.json");
+    await env.DIFFS.delete("setup/github-app.json");
+    return stored ? new Response(stored.body) : new Response("none\n", { status: 404 });
+  }
+  const device = await deviceRoute(pathname, request, env, context);
+  if (device) {
+    return device;
+  }
+  const feedback = FEEDBACK_PATH.exec(pathname);
+  if (feedback) {
+    return feedbackConfigured(env) ? feedbackRoute(feedback[1], request, env) : notConfigured("Feedback");
+  }
+  const pullRequest = PULL_REQUEST_PATH.exec(pathname);
+  if (pullRequest) {
+    return pullRequestRoute(pullRequest, searchParams, request, env, context);
+  }
+  return new Response("not found\n", { status: 404 });
+}
+
+/**
+ * The hosted Worker (`hosted.ts`): sign-in routes, then every other route with the signed-in person's session, acting
+ * with their token. `GET /device/config` answers a signed-out session too, with `account.state`, so the app can say why.
+ */
+async function serveHosted(
+  request: Request, env: Env, context: ExecutionContext, app: { clientId: string; clientSecret: string },
+): Promise<Response> {
+  const services = servicesOf(env);
+  const open = publicHostedRoute(request, env, services, app, (promise) => context.waitUntil(promise));
+  if (open) {
+    return open;
+  }
+  const isConfig = new URL(request.url).pathname === "/device/config" && request.method === "GET";
+  const auth = await authenticate(request, env, services);
+  if ("answer" in auth) {
+    const session = auth.session;
+    return isConfig && session
+      ? configRoute(userEnv(env, { ...session, token: "" }), context, hostedAccountConfig(session))
+      : auth.answer;
+  }
+  return isConfig ? configRoute(auth.env, context, hostedAccountConfig(auth.session))
+    : serveAuthorized(request, auth.env, context);
+}
+
 export default {
   async fetch(request: Request, env: Env, context: ExecutionContext): Promise<Response> {
     const { pathname, searchParams } = new URL(request.url);
     if (pathname === "/") {
       return new Response("hello world\n");
+    }
+    const hosted = hostedMode(env);
+    if (hosted.kind === "misconfigured") {
+      console.error("HOSTED=on without", hosted.missing);
+      return Response.json({ error: { code: "not_configured", message: "This Worker's hosted mode is not set up." } },
+        { status: 503 });
+    }
+    if (hosted.kind === "on") {
+      return serveHosted(request, env, context, hosted.app);
     }
     if (pathname === "/github/webhook" && request.method === "POST") {
       return receiveWebhook(request, env);
@@ -427,47 +508,13 @@ export default {
     if (!(await isAuthorized(request, env))) {
       return new Response("unauthorized\n", { status: 401 });
     }
-    if (pathname === "/prs/merged") {
-      const kind = searchParams.get("of") === "reviewed" ? "reviewed" : "mine";
-      return Response.json({ prs: await mergedPullRequests(env, kind) });
-    }
-    if (pathname === "/prs") {
-      return Response.json(await prIndex(env).rows());
-    }
-    if (pathname === "/repos" && request.method === "GET") {
-      return reposRoute(searchParams, env, context);
-    }
-    if (pathname === "/tick" && request.method === "POST") {
-      await prIndex(env).tick(Date.now());
-      return new Response(null, { status: 204 });
-    }
-    if (pathname === "/push-state") {
-      return Response.json(await prIndex(env).pushState());
-    }
-    if (pathname === "/events") {
-      return Response.json(await prIndex(env).events(Number(searchParams.get("limit")) || 200));
-    }
-    if (pathname === "/github/app-credentials" && request.method === "POST") {
-      const stored = await env.DIFFS.get("setup/github-app.json");
-      await env.DIFFS.delete("setup/github-app.json");
-      return stored ? new Response(stored.body) : new Response("none\n", { status: 404 });
-    }
-    const device = await deviceRoute(pathname, request, env, context);
-    if (device) {
-      return device;
-    }
-    const feedback = FEEDBACK_PATH.exec(pathname);
-    if (feedback) {
-      return feedbackConfigured(env) ? feedbackRoute(feedback[1], request, env) : notConfigured("Feedback");
-    }
-    const pullRequest = PULL_REQUEST_PATH.exec(pathname);
-    if (pullRequest) {
-      return pullRequestRoute(pullRequest, searchParams, request, env, context);
-    }
-    return new Response("not found\n", { status: 404 });
+    return serveAuthorized(request, env, context);
   },
 
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
-    await prIndex(env).tick(controller.scheduledTime);
+    // Hosted: each person's account ticks their own index (`UserAccount.alarm`); there is no one person to poll for.
+    if (hostedMode(env).kind === "off") {
+      await prIndex(env).tick(controller.scheduledTime);
+    }
   },
 };

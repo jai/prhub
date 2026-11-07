@@ -1,4 +1,5 @@
 import { type Env, githubLogin, isSet } from "./env.ts";
+import { renewAfterUnauthorized } from "./hosted.ts";
 import {
   parseSha, prId, type PrId, repoOf, type RepoFullName, repoParts, type Revision, revisionOf, type Sha, shaOf,
 } from "./ids.ts";
@@ -261,11 +262,21 @@ export function contextsOf(number: number): string {
   } } } } } }`;
 }
 
-function github(path: string, env: Env, accept: string, init: RequestInit = {}): Promise<Response> {
-  return fetch(`https://api.github.com${path}`, {
+/**
+ * Every GitHub call. On the hosted Worker a 401 refreshes the person's token once (`renewAfterUnauthorized`) and the
+ * call goes again with the new one; a self-hosted Worker's token is the operator's to replace.
+ */
+async function github(path: string, env: Env, accept: string, init: RequestInit = {}): Promise<Response> {
+  const send = (token: string) => fetch(`https://api.github.com${path}`, {
     ...init,
-    headers: { Accept: accept, Authorization: `Bearer ${env.GITHUB_TOKEN}`, "User-Agent": "pr-viewer" },
+    headers: { Accept: accept, Authorization: `Bearer ${token}`, "User-Agent": "pr-viewer" },
   });
+  const response = await send(env.GITHUB_TOKEN);
+  if (response.status !== 401 || !isSet(env.SIGNED_IN_USER_ID)) {
+    return response;
+  }
+  const renewed = await renewAfterUnauthorized(env);
+  return renewed ? send(renewed) : response;
 }
 
 export function sendToGitHub(method: string, path: string, body: object, env: Env): Promise<Response> {

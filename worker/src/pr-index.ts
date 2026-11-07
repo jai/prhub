@@ -6,7 +6,9 @@ import {
   type ApnsHost, apnsJwt, type PushMessage, pushMode, sendDirect, sendViaPager, sendViaRelay, SYNC_WAKE,
 } from "./apns";
 import { aiConfigOf } from "./config";
-import { aiJobs, type Env, isSet } from "./env";
+import { aiJobs, type Env, isSet, scopedKey } from "./env";
+import { actingEnvFor } from "./hosted";
+import type { SignedOutReason } from "./account-core";
 import { type PairingRecord, pairingKey, parsePairingRecord } from "./pairing";
 import {
   detailVersionOf, liveDiff, type OpenRowStatus, type PullRequest, type PullRequestRef, readPullRequests, type RowStatus,
@@ -21,6 +23,12 @@ import { putVersioned, storeDiff } from "./versioned";
 import { DEFAULT_CONTEXT } from "./key-lines";
 
 const BUSY_WINDOW_MS = 3_000;
+/** The push that asks a hosted person to sign in again; the app shows Sign in with GitHub when it opens. */
+const SIGN_IN_AGAIN: PushMessage = {
+  pushType: "alert", priority: 10, collapseId: "prhub-sign-in", lifetimeSeconds: 7 * 86_400,
+  payload: { aps: { alert: { title: "PRHub", body: "Sign in with GitHub again to keep your pull requests up to date." } },
+    reason: "signed_out" },
+};
 const READS_PER_PASS = 5;
 /** A failed read tries again this soon, every time: GitHub's outage, or a token being replaced, ends. */
 const READ_RETRY_MS = 30_000;
@@ -77,6 +85,11 @@ export class PrIndex extends DurableObject<Env> {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    this.createTables();
+  }
+
+  /** The schema, and each column added since: run on every start, and again after `deleteEverything`. */
+  private createTables(): void {
     this.sql.exec(`
       DROP TABLE IF EXISTS prs;
       CREATE TABLE IF NOT EXISTS pull_requests (id TEXT PRIMARY KEY, repo TEXT, number INTEGER, title TEXT, head TEXT,
@@ -138,12 +151,17 @@ export class PrIndex extends DurableObject<Env> {
       }
       return ref ? [{ ...ref, generation: row.generation }] : [];
     });
+    const env = await this.actingEnv();
+    if (!env) {
+      // A hosted person signed out: nothing is read until they sign in again and their account ticks this index.
+      return;
+    }
     if (dirty.length > 0) {
       const asked = new Set(this.sql.exec<{ id: string }>(
         "SELECT id FROM pull_requests WHERE list IN ('review', 'reviewed')").toArray().map((row) => row.id));
       let read: Awaited<ReturnType<typeof readPullRequests>>;
       try {
-        read = await readPullRequests(dirty, this.env, asked);
+        read = await readPullRequests(dirty, env, asked);
       } catch (error) {
         // Not thrown: Cloudflare would retry it later and later, and new work would wait behind that retry.
         this.addEvent("read_failed", { error: String(error) });
@@ -156,7 +174,7 @@ export class PrIndex extends DurableObject<Env> {
         if (pr?.status) {
           const listed: Listed = { ...pr, status: pr.status };
           alerts.push(...this.alertsOn(listed));
-          await this.store(listed);
+          await this.store(listed, env);
         } else {
           this.remove(id);
         }
@@ -164,8 +182,8 @@ export class PrIndex extends DurableObject<Env> {
       }
       await Promise.all(alerts);
     }
-    await this.storeDiffs();
-    await this.queueKeyLines();
+    await this.storeDiffs(env);
+    await this.queueKeyLines(env);
     if (this.exists("dirty") || this.exists("pending")) {
       await this.ctx.storage.setAlarm(Date.now() + 250);
     }
@@ -173,10 +191,14 @@ export class PrIndex extends DurableObject<Env> {
 
   /** Every minute: the safety net, because GitHub does not retry a failed delivery and personal repos send none. */
   async tick(now: number): Promise<void> {
+    const env = await this.actingEnv();
+    if (!env) {
+      return;
+    }
     try {
-      await this.compareWithGitHub();
+      await this.compareWithGitHub(env);
       this.setMeta("synced_at", now);
-      await this.queueKeyLines();
+      await this.queueKeyLines(env);
     } catch (error) {
       this.addEvent("poll_failed", { error: String(error) });
     }
@@ -184,8 +206,8 @@ export class PrIndex extends DurableObject<Env> {
     await this.pushIfDue(now);
   }
 
-  private async compareWithGitHub(): Promise<void> {
-    const listings = await searchListings(this.env);
+  private async compareWithGitHub(env: Env): Promise<void> {
+    const listings = await searchListings(env);
     const held = this.sql.exec<{ id: string; repo: string; number: number; version: string; status: string | null }>(
       "SELECT id, repo, number, version, status FROM pull_requests").toArray();
     const isCurrentShape = this.meta("row_shape") >= ROW_SHAPE;
@@ -375,9 +397,9 @@ export class PrIndex extends DurableObject<Env> {
    * The detail first: a row the phone can see always has one to fetch. Its version comes from what it says, because
    * GitHub does not move `updatedAt` for everything, resolving a thread among them, and the phone keeps each version.
    */
-  private async store(pr: Listed): Promise<void> {
+  private async store(pr: Listed, env: Env): Promise<void> {
     const detailVersion = await detailVersionOf(pr);
-    await putVersioned(this.env.DIFFS, detailKey(pr.repo, pr.number, detailVersion), detailVersion,
+    await putVersioned(env.DIFFS, scopedKey(env, detailKey(pr.repo, pr.number, detailVersion)), detailVersion,
       JSON.stringify(pr.detail), "application/json");
     const id = prId(pr.repo, pr.number);
     const held = this.sql.exec<{ detail_version: string | null }>(
@@ -399,8 +421,8 @@ export class PrIndex extends DurableObject<Env> {
   }
 
   /** One job per new head of a PR waiting on Jai. `AiJobs` runs it, so this mirror never waits on a model. */
-  private async queueKeyLines(): Promise<void> {
-    if (!isSet(this.env.ANTHROPIC_API_KEY)) {
+  private async queueKeyLines(env: Env): Promise<void> {
+    if (!isSet(env.ANTHROPIC_API_KEY)) {
       return;
     }
     const due = this.sql.exec<{ id: string; repo: string; number: number; head: string }>(`SELECT id, repo, number, head
@@ -415,8 +437,8 @@ export class PrIndex extends DurableObject<Env> {
       if (!head || !ref) {
         continue;
       }
-      await aiJobs(this.env).enqueue({
-        kind: "key_lines", repo: ref.repo, number: ref.number, head, context: DEFAULT_CONTEXT, choice: aiConfigOf(this.env).defaults.key_lines,
+      await aiJobs(env).enqueue({
+        kind: "key_lines", repo: ref.repo, number: ref.number, head, context: DEFAULT_CONTEXT, choice: aiConfigOf(env).defaults.key_lines,
       });
     }
   }
@@ -436,14 +458,14 @@ export class PrIndex extends DurableObject<Env> {
    * Oldest try first, so a PR that keeps failing cannot starve the rest. A diff read after the head moved stays pending:
    * the index reads the PR again, and the row moves to the new revision.
    */
-  private async storeDiffs(): Promise<void> {
+  private async storeDiffs(env: Env): Promise<void> {
     const pending = this.sql.exec<{ id: string; repo: string; number: number; revision: string }>(`SELECT id, repo,
       number, revision FROM pull_requests WHERE diff_state = 'pending' AND diff_tried_at < ?
       ORDER BY diff_tried_at LIMIT ?`, Date.now() - 60_000, DIFFS_PER_PASS).toArray();
     await Promise.all(pending.map(async ({ id, repo, number, revision }) => {
       this.sql.exec("UPDATE pull_requests SET diff_tried_at = ? WHERE id = ?", Date.now(), id);
-      const state = await storeDiff(this.env.DIFFS, diffKey(repo, number, revision), revision,
-        () => liveDiff(repo, number, this.env));
+      const state = await storeDiff(env.DIFFS, scopedKey(env, diffKey(repo, number, revision)), revision,
+        () => liveDiff(repo, number, env));
       this.sql.exec("UPDATE pull_requests SET diff_state = ? WHERE id = ? AND revision = ?", state, id, revision);
     }));
   }
@@ -495,6 +517,49 @@ export class PrIndex extends DurableObject<Env> {
       }
     }
     return delivered;
+  }
+
+  /**
+   * Hosted mode: this index is one signed-in person's (`user:<id>`). Kept here because an object does not know its own
+   * name, and its alarm must find their token.
+   */
+  bindUser(userId: number): void {
+    this.setMeta("user_id", userId);
+  }
+
+  /** GitHub stopped honouring the person's tokens: ask each phone to sign in again (docs/api.md, "Hosted sign-in"). */
+  async signedOut(reason: SignedOutReason): Promise<void> {
+    await this.sendToDevices(SIGN_IN_AGAIN, "signed_out", { reason });
+  }
+
+  /** The person's last phone signed out: no push goes anywhere until one signs in and registers again. */
+  forgetDevices(): void {
+    this.sql.exec("DELETE FROM devices");
+  }
+
+  /** Delete Account: every row, device, event and alarm of this person's index. */
+  async deleteEverything(): Promise<void> {
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
+    // This object may serve the same id again before it is evicted: a person who deletes and signs in again.
+    this.createTables();
+  }
+
+  /**
+   * The Worker as this index acts with it: the deployment's own env on a self-hosted Worker, the bound person's on the
+   * hosted one. Null when that person has no token to act with.
+   */
+  private async actingEnv(): Promise<Env | null> {
+    const userId = this.meta("user_id");
+    if (!userId) {
+      return this.env;
+    }
+    try {
+      return await actingEnvFor(this.env, String(userId));
+    } catch (error) {
+      this.addEvent("token_failed", { error: String(error) });
+      return null;
+    }
   }
 
   private meta(key: string): number {

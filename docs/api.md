@@ -13,6 +13,9 @@ into each person's own Cloudflare account and acting on GitHub with their own to
 - **Push** goes through Jai's relay ([push-relay.md](push-relay.md)) when `PUSH_RELAY_URL` and `PUSH_RELAY_KEY` are set;
   the relay's topic is PRHub's bundle ID.
 
+The hosted Worker, which everyone signs in to with GitHub, is the same code with `HOSTED=on`:
+[Hosted sign-in](#hosted-sign-in).
+
 Every other route (`/prs`, `/prs/merged`, `/prs/{owner}/{repo}/{n}/…`, `/repos`, `/device/register`, `/device/event`,
 `/push-state`, `/events`) takes either bearer. Quick jump and alerts are below.
 
@@ -345,3 +348,128 @@ under APNs' and the relay's 4096 bytes):
 does not know. PRHub must ask for alert permission (`.alert`, `.sound`) to show these; today it registers for the silent
 wake only, and its `didReceiveRemoteNotification` ignores anything but `pr_sync`. Jai's Agent Pager app gets the same
 payload on its own topic, and until it routes `pr_alert` a tap opens the app's default tab.
+
+## Hosted sign-in
+
+`HOSTED=on` makes the Worker the hosted PRHub (`https://prhub.jai-f89.workers.dev`), which everyone signs in to with
+the PRHub GitHub App ([plans/github-app.md](plans/github-app.md)). Code: `worker/src/hosted.ts`, `account-core.ts`,
+`account.ts`, `oauth.ts`, `token-crypto.ts`. Off, nothing here exists and the Worker is the self-hosted one above.
+
+### Flow
+
+The app makes a random `state` (16–256 of `A-Z a-z 0-9 . _ ~ -`) and a PKCE verifier (RFC 7636), keeps both in
+memory, and opens an `ASWebAuthenticationSession` with the callback `.https(host: "<worker host>", path:
+"/auth/github/done")`.
+
+1. `GET /auth/github/start?state=<app state>&code_challenge=<S256 of the verifier>&code_challenge_method=S256`. The
+   Worker keeps the app's state and challenge for 10 minutes under a state of its own, makes a second PKCE pair for
+   GitHub, and answers `302` to `https://github.com/login/oauth/authorize` with `redirect_uri`
+   `https://<worker>/auth/github/callback`. `400 validation_error` for a bad state or challenge, or a method other
+   than `S256`.
+2. GitHub redirects the browser to `GET /auth/github/callback?code&state`. The Worker takes the sign-in (once), trades
+   the code with its own verifier, reads `GET /user`, keeps the tokens sealed in the person's account, and answers
+   `302` to `/auth/github/done?code=<one-time code>&state=<app state>`. The session catches that URL; the app checks
+   `state`.
+3. `POST /auth/github/finish` with `{"code": "<one-time code>", "code_verifier": "<the app's verifier>"}`.
+   `200 {"secret": "<user id>.<43 characters>", "login": "octocat", "user_id": "4242"}`, `Cache-Control: no-store`.
+   The secret is the bearer for every other route, as a paired device secret is on a self-hosted Worker; keep it in
+   the keychain with the Worker URL. The code works once, within 5 minutes, and only with the verifier whose S256
+   went to `start`: a wrong verifier spends it.
+
+Neither GitHub's code nor any secret reaches the app in a URL: the one-time code is useless without the verifier,
+which never leaves the app.
+
+`/auth/github/done` errors carry `error` (and `state` when the Worker knows it), and the app shows Sign in again:
+
+| `error` | When |
+|---|---|
+| `access_denied` | The person cancelled on GitHub |
+| `sign_in_expired` | Unknown, used or 10-minute-old sign-in; no `state` |
+| `github_refused` | GitHub refused the code, or sent another error |
+| `github_unavailable` | GitHub could not be asked for the tokens or the user |
+
+`/auth/github/callback` with no `state` (GitHub's "request user authorization during installation", from an install
+on github.com) answers a page that says PRHub is installed and links `prhub://`; nothing is traded.
+`/auth/github/done` opened in a browser answers a page that says to return to PRHub.
+`GET /.well-known/apple-app-site-association` answers `{"webcredentials": {"apps": ["<APPLE_APP_ID>"]}}`, so the
+session may catch the HTTPS callback.
+
+### Errors on every other route
+
+`{"error": {"code", "message"}}`, `Cache-Control: no-store`:
+
+| Status | `code` | When | The app |
+|---|---|---|---|
+| 401 | `unauthorized` | No bearer, or none this Worker minted (signed out on this phone, or the account deleted) | Shows Sign in with GitHub |
+| 401 | `signed_out` | GitHub no longer honours the person's tokens: they revoked the App, a refresh was refused, or 6 months passed with no refresh | Shows Sign in again |
+| 503 | `github_unavailable` | GitHub could not be asked for a fresh token | Retries later |
+| 503 | `not_configured` | `HOSTED=on` without everything it needs | Shows the Worker is down |
+
+`GET /device/config` answers a `signed_out` session with `200` too. On the hosted Worker it adds:
+
+```json
+{ "hosted": true, "account": { "state": "signed_in", "login": "octocat", "user_id": "4242" } }
+```
+
+`account.state` is `signed_in` or `signed_out`; a signed-out account adds `reason`: `revoked`, `refresh_expired` or
+`signed_out`. Settings shows Delete Account when `hosted` is true. Key lines, Rewrite, Ask and Feedback are off on
+the hosted Worker until per-person AI budgets exist (6e).
+
+When GitHub stops honouring the tokens, the Worker sends each registered phone an alert once: title `PRHub`, body
+`Sign in with GitHub again to keep your pull requests up to date.`, payload `"reason": "signed_out"`, collapse id
+`prhub-sign-in`.
+
+### `POST /auth/signout`
+
+Auth: the session secret, signed in or not. Ends this phone's session; `204`. Other phones stay signed in. When the
+last session ends, the Worker drops the person's tokens and push registrations, so it holds no token for someone with
+no phone signed in.
+
+### `DELETE /account`
+
+Auth: the session secret, signed in or not. App Review guideline 5.1.1(v). The Worker revokes PRHub's authorization on
+GitHub (`DELETE /applications/{client_id}/grant`, which also revokes every token it issued), then deletes the account,
+the person's PR index and every R2 object under `users/<user id>/`. `200 {"deleted": true, "github_revoked": true}`;
+`github_revoked` is false when GitHub could not take the revoke, and the data is deleted all the same. The next
+request with the secret answers `401 unauthorized`.
+
+### Tokens
+
+- A person's tokens live in their account object, `UserAccount` named `user:<GitHub user id>`, sealed with AES-256-GCM:
+  a new 12-byte IV per seal, associated data `prhub:user:<id>:access` or `:refresh`, stored as
+  `v1.<key id>.<iv>.<ciphertext>` (base64url). No token goes to the phone, R2, a log or `/events`.
+- `TOKEN_ENCRYPTION_KEY` is `<key id>:<base64 of 32 random bytes>`, comma-separated: the first key seals, every key
+  opens. To rotate, put a new key first and keep the old one after it; each account is sealed again with the new key
+  when its token is next read.
+- The access token (8 hours) is refreshed 5 minutes before it expires, and when GitHub answers `401` to it. One refresh
+  runs at a time per person; requests during it wait for its answer. GitHub kills the old pair as it answers.
+- `bad_refresh_token`, a refresh token past its 6 months, or `github_app_authorization` `revoked` on `/github/webhook`
+  signs the person out everywhere: tokens dropped, `account.state` `signed_out`, the alert above. A refresh that fails
+  any other way keeps the person signed in.
+- Each account's alarm runs every 10 minutes while signed in: it refreshes when due and ticks the person's PR index,
+  which keeps the refresh token alive. The one-minute cron does nothing on the hosted Worker.
+
+### Per person
+
+- The PR index is `PrIndex` named `user:<id>`, bound to the account at sign-in. Its reads and writes use the person's
+  token and login; R2 keys go under `users/<id>/`.
+- Pull request webhooks are accepted and dropped until installations route them (6c); the 10-minute poll and each app
+  open cover them.
+- Pairing, `/github/setup`, `/github/callback`, `/github/app-credentials` and `/prs/states` answer `404`.
+
+### Configuration
+
+| Name | Kind | Value |
+|---|---|---|
+| `HOSTED` | var | `on` |
+| `GITHUB_APP_CLIENT_ID` | var | The App's client ID (`Iv…`), not its App ID |
+| `GITHUB_APP_CLIENT_SECRET` | secret | The App's client secret |
+| `TOKEN_ENCRYPTION_KEY` | secret | The keyring above; `k1:$(openssl rand -base64 32)` to start |
+| `WEBHOOK_SECRET` | secret | The App's webhook secret; unset, `/github/webhook` answers 404 |
+| `APPLE_APP_ID` | var | `<team id>.<bundle id>` for the association file; unset, it answers 404 |
+| `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` | var, secret | Installation tokens for Ask (6c); sign-in needs neither |
+| `APNS_*` | | Push straight to APNs with Jai's key, as on his Worker |
+
+Bindings: `DIFFS`, `PR_INDEX`, `AI_JOBS` as above, plus `USER_ACCOUNTS` (class `UserAccount`) and `SIGN_INS` (class
+`SignIn`), both SQLite-backed (`new_sqlite_classes`). `HOSTED=on` without the client ID, client secret, token key or
+either binding answers `503 not_configured` on every route but `/`, rather than act as a self-hosted Worker.

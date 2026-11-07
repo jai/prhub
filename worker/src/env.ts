@@ -1,3 +1,4 @@
+import type { SignIn, UserAccount } from "./account";
 import type { AiJobs } from "./ai-jobs";
 import type { PrIndex } from "./pr-index";
 
@@ -77,6 +78,25 @@ export interface Env {
   REVIEW_SLA_WEEKDAYS?: string;
   /** Where the PR index lives, as a Durable Object location hint (`apac` for Jai). Unset: wherever it is first used. */
   PR_INDEX_LOCATION?: string;
+  /**
+   * Hosted mode (`hosted.ts`, docs/api.md "Hosted sign-in"): `on` makes this the one Worker everyone signs in to with
+   * the PRHub GitHub App, and `GITHUB_TOKEN` goes unused. It also needs the App's client ID and secret, the token key
+   * and the two bindings below; without any of them the Worker answers 503 rather than act as a self-hosted one.
+   */
+  HOSTED?: string;
+  GITHUB_APP_CLIENT_ID?: string;
+  GITHUB_APP_CLIENT_SECRET?: string;
+  /** The App's id and PKCS#8 key, for installation tokens (Ask, 6c). Sign-in needs neither. */
+  GITHUB_APP_ID?: string;
+  GITHUB_APP_PRIVATE_KEY?: string;
+  /** `<key id>:<base64 of 32 bytes>`, comma-separated, the sealing key first (`token-crypto.ts`). */
+  TOKEN_ENCRYPTION_KEY?: string;
+  /** `<team id>.<bundle id>` for `/.well-known/apple-app-site-association`, so the app can catch the callback. */
+  APPLE_APP_ID?: string;
+  USER_ACCOUNTS?: DurableObjectNamespace<UserAccount>;
+  SIGN_INS?: DurableObjectNamespace<SignIn>;
+  /** Set by the Worker on the env it acts with for one signed-in person (`userEnv`); never a var. */
+  SIGNED_IN_USER_ID?: string;
   DIFFS: R2Bucket;
   PR_INDEX: DurableObjectNamespace<PrIndex>;
   AI_JOBS: DurableObjectNamespace<AiJobs>;
@@ -88,11 +108,20 @@ export function isSet(value: string | undefined): value is string {
 }
 
 /**
- * Each Worker serves one person, so one index and one job queue. Jai's are named by his login, as they always were; a
- * self-hosted Worker's by a fixed name, so they don't wait on reading the login.
+ * A self-hosted Worker serves one person, so one index and one job queue. Jai's are named by his login, as they always
+ * were; a self-hosted Worker's by a fixed name, so they don't wait on reading the login. On the hosted Worker each
+ * signed-in person has their own, named by their GitHub user id, which never changes.
  */
 function objectName(env: Env): string {
+  if (isSet(env.SIGNED_IN_USER_ID)) {
+    return `user:${env.SIGNED_IN_USER_ID}`;
+  }
   return isSet(env.GITHUB_LOGIN) ? env.GITHUB_LOGIN : "self";
+}
+
+/** An R2 key as this env keeps it: under `users/<id>/` for a hosted person, so Delete Account can find it all. */
+export function scopedKey(env: Pick<Env, "SIGNED_IN_USER_ID">, key: string): string {
+  return isSet(env.SIGNED_IN_USER_ID) ? `users/${env.SIGNED_IN_USER_ID}/${key}` : key;
 }
 
 export function aiJobs(env: Env): DurableObjectStub<AiJobs> {

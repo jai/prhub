@@ -177,3 +177,47 @@ export function parseAiJob(stored: string): AiJob | null {
     return null;
   }
 }
+
+// --- Hosted sign-in (hosted.ts, account.ts) -------------------------------------------------------------------------
+
+/** What GitHub's token endpoint answers with a pair: `expires_in` and the refresh token are absent when tokens never expire. */
+export interface TokenGrant {
+  access_token: string;
+  expires_in: number | null;
+  refresh_token: string | null;
+  refresh_token_expires_in: number | null;
+}
+
+/** GitHub's token endpoint, which answers `200` with `{error}` as often as with tokens. */
+export const parseTokenGrant = parser<TokenGrant>(z.object({
+  access_token: z.string().min(1).max(512),
+  expires_in: z.number().int().positive().nullish().transform((value) => value ?? null),
+  refresh_token: z.string().min(1).max(512).nullish().transform((value) => value ?? null),
+  refresh_token_expires_in: z.number().int().positive().nullish().transform((value) => value ?? null),
+}));
+
+/** `{error}` from the token endpoint: `bad_refresh_token`, `bad_verification_code`, `incorrect_client_credentials`… */
+export const parseOAuthError = parser<{ error: string }>(z.object({ error: z.string().min(1).max(100) }));
+
+export interface GitHubUser {
+  id: number;
+  login: string;
+}
+
+/** `GET /user`: the id names the person for good; the login can change. */
+export const parseGitHubUser = parser<GitHubUser>(z.object({
+  id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  login: z.string().regex(/^[A-Za-z0-9-]{1,39}$/),
+}));
+
+/** `POST /auth/github/finish`: the one-time code from the callback, and the PKCE verifier the app made. */
+export const parseFinishInput = parser<{ code: string; code_verifier: string }>(z.object({
+  code: z.string().min(1).max(200),
+  code_verifier: z.string().regex(/^[A-Za-z0-9._~-]{43,128}$/),
+}));
+
+/** A webhook delivery that names a person: `github_app_authorization` names who revoked the App. */
+export const parseSender = parser<{ action: string | null; sender: { id: number } }>(z.object({
+  action: z.string().nullish().transform((value) => value ?? null),
+  sender: z.object({ id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }),
+}));

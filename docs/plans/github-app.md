@@ -1,7 +1,8 @@
 # GitHub App: hosted PRHub
 
-Status: plan, 2026-11-07 (step 6a). Nothing is built and the App does not exist yet. Jai creates it with
-`deploy/github-app/create.py` ("Creating the App" below). Self-hosting stays as `docs/plans/distribution.md` describes.
+Status: 2026-11-07. 6a (this plan, the manifest) and 6b (sign-in and token refresh on the Worker) are built. The App
+does not exist yet, and the hosted Worker is not deployed. Jai creates the App with `deploy/github-app/create.py`
+("Creating the App" below). Self-hosting stays as `docs/plans/distribution.md` describes.
 
 ## Goal
 
@@ -12,7 +13,7 @@ pairing with a self-hosted Worker for people who want their data on their own ac
 ## Architecture
 
 - **One Worker, `prhub`, on Jai's personal Cloudflare account** (`Jai@govindani.com's Account`), at
-  `https://prhub.<account>.workers.dev` until a custom domain is chosen. It runs the `worker/` code. Hosted mode is on
+  `https://prhub.jai-f89.workers.dev` until a custom domain is chosen. It runs the `worker/` code. Hosted mode is on
   when the App's secrets are set, the same rule every optional feature in that Worker follows. It needs the Workers
   Paid plan.
 - **One Durable Object per person, named `user:<GitHub user id>`.** A login can change, and the id cannot. It holds what
@@ -129,15 +130,20 @@ protection treat them as they treat the same action on the web.
 
 ## Sign-in in the app
 
+The contract is [api.md, "Hosted sign-in"](../api.md#hosted-sign-in).
+
 1. The person taps Sign in with GitHub. The app makes a random `state` and a PKCE verifier, and keeps both in memory.
 2. The app opens `ASWebAuthenticationSession` (iOS 17.4 or later) on
-   `https://github.com/login/oauth/authorize?client_id=…&redirect_uri=https://<worker>/auth/github/callback&state=…&code_challenge=…&code_challenge_method=S256`,
-   with the callback `.https(host: "<worker host>", path: "/auth/github/callback")`.
-3. GitHub asks the person to authorize PRHub, then redirects to the callback. The session catches that redirect inside
-   the app, so the code does not reach the Worker by that route.
-4. The app checks `state`, then sends `POST /auth/github/token` with `{code, code_verifier}`.
-5. The Worker trades them, with its client secret, at `https://github.com/login/oauth/access_token`. It reads
-   `GET /user` for the id and login, stores the encrypted tokens in `user:<id>`, and answers with the session secret.
+   `https://<worker>/auth/github/start?state=…&code_challenge=…&code_challenge_method=S256`, with the callback
+   `.https(host: "<worker host>", path: "/auth/github/done")`.
+3. The Worker keeps the app's state and challenge under a state of its own and redirects to GitHub's authorize page
+   with a PKCE challenge of its own and `redirect_uri` `https://<worker>/auth/github/callback`.
+4. GitHub asks the person to authorize PRHub and redirects to the callback. The Worker trades the code with its own
+   verifier and its client secret, reads `GET /user`, stores the encrypted tokens in `user:<id>`, and redirects to
+   `/auth/github/done?code=<one-time code>&state=<app state>`. The session catches that redirect inside the app.
+5. The app checks `state`, then sends `POST /auth/github/finish` with `{code, code_verifier}`. The Worker checks the
+   verifier against the app's challenge and answers with the session secret. The one-time code alone is useless, so
+   nothing secret travels in a URL.
 6. The app keeps the session secret and the Worker URL in the keychain and reads `GET /device/config`.
 7. With no installation on an owner the person cares about, the app shows Install PRHub on GitHub, which opens
    `https://github.com/apps/<slug>/installations/new` in a second session. When it closes, the app reads the
@@ -145,8 +151,8 @@ protection treat them as they treat the same action on the web.
 
 The callback URL choice:
 
-- **An HTTPS callback on the Worker's own host.** Only an app with that host in its associated domains
-  (`webcredentials:<host>`) can catch it. The Worker serves `/.well-known/apple-app-site-association`. Any app can
+- **An HTTPS callback on the Worker's own host** (`/auth/github/done`). Only an app with that host in its associated
+  domains (`webcredentials:<host>`) can catch it. The Worker serves `/.well-known/apple-app-site-association`. Any app can
   claim a custom scheme such as `prhub://`, and GitHub always shows its account picker for one.
 - **The callback route also serves a page.** `request_oauth_on_install` sends a person who installed from github.com
   to the callback with a code and no app waiting. The page says the App is installed and offers Open PRHub. It does
@@ -214,11 +220,18 @@ Key lines, rewrites and Ask run on Jai's Anthropic key in the hosted Worker, so 
 Easiest first. 6b goes first, because everything else needs a signed-in person. 6d and 6e then run beside 6c.
 
 1. **6a: this plan and the App manifest** (done). `deploy/github-app/manifest.json`, `deploy/github-app/create.py`.
-2. **6b: sign-in and refresh on the Worker.** Medium, about 2 days. Serial, first.
-   - `POST /auth/github/token`, the callback page and the association file.
-   - The user object storing encrypted tokens, refreshing them one at a time, and minting session secrets.
-   - `DELETE /account`, and the `github_app_authorization` event.
-   - The contract in `docs/`, so 6d can start against it.
+2. **6b: sign-in and refresh on the Worker** (done, 2026-11-07).
+   - `HOSTED=on` with the App's client ID and secret, `TOKEN_ENCRYPTION_KEY` and the `USER_ACCOUNTS` and `SIGN_INS`
+     Durable Objects. Self-hosted mode is unchanged.
+   - `/auth/github/start`, `/auth/github/callback`, `/auth/github/done`, `POST /auth/github/finish`,
+     `POST /auth/signout`, `DELETE /account`, the association file and the `github_app_authorization` event.
+   - `UserAccount` per person: tokens sealed with AES-256-GCM and a rotating keyring, one refresh at a time, 5 minutes
+     before expiry and on a 401, sign-out everywhere on `bad_refresh_token`, and a 10-minute alarm that refreshes and
+     ticks the person's index.
+   - Every GitHub call for a signed-in person uses their token (`userEnv`); their `PrIndex` is `user:<id>` and their
+     R2 keys are under `users/<id>/`. AI features stay off on the hosted Worker until 6e.
+   - Left for 6c: webhook routing by installation (pull request events are dropped meanwhile), installation tokens
+     for Ask, `GET /user/installations`, rate-limit backoff, and the hosted `wrangler` config.
 3. **6d: Sign in with GitHub in the app.** Medium, about 2 days. Parallel with 6c, after 6b's contract.
    - The onboarding choice, the authentication session, PKCE, the install prompt and the keychain connection.
    - Delete Account in Settings, and the signed-out push.
@@ -243,10 +256,11 @@ proposes `PRHub App` (shown on GitHub as `prhub-app`), and the form lets Jai cha
 1. On a Mac where Jai is signed in to github.com as `jai`, from the repo root:
 
    ```sh
-   python3 -I deploy/github-app/create.py --worker https://prhub.<account>.workers.dev
+   python3 -I deploy/github-app/create.py
    ```
 
-   Use the custom domain instead, if one is chosen by then. `--dry-run` prints the manifest.
+   The manifest names `https://prhub.jai-f89.workers.dev`. Pass `--worker https://<custom domain>` instead if one is
+   chosen by then. `--dry-run` prints the manifest.
 2. The browser opens GitHub's Create GitHub App form with everything filled in. Click **Create GitHub App**. The
    script then writes the credentials to `tmp/github-app/prhub-app.json`, mode 0600, and prints which fields came back.
 3. On the App's settings page:
@@ -257,10 +271,11 @@ proposes `PRHub App` (shown on GitHub as `prhub-app`), and the form lets Jai cha
 4. Store the credentials in the operator's password manager as one item titled `PRHub GitHub App`: App ID, client
    ID, client secret, webhook secret, and the private key as a file.
 5. Delete `tmp/github-app/prhub-app.json`. Never commit any of it.
-6. In 6b the same values become the hosted Worker's settings: `GITHUB_APP_ID` and `GITHUB_APP_CLIENT_ID` as vars, and
-   `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY` and `WEBHOOK_SECRET` as secrets (`wrangler secret put`). GitHub
-   gives the key as PKCS#1, and Web Crypto needs PKCS#8 (`openssl pkcs8 -topk8 -nocrypt`), as for `ASK_GITHUB_APP_KEY`.
-   6b adds `TOKEN_ENCRYPTION_KEY`, a new random 32-byte key stored in the same password-manager item.
+6. The same values become the hosted Worker's settings ([api.md](../api.md#configuration-1)): `HOSTED=on`,
+   `GITHUB_APP_ID` and `GITHUB_APP_CLIENT_ID` as vars, and `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY` and
+   `WEBHOOK_SECRET` as secrets (`wrangler secret put`). GitHub gives the key as PKCS#1, and Web Crypto needs PKCS#8
+   (`openssl pkcs8 -topk8 -nocrypt`), as for `ASK_GITHUB_APP_KEY`. `TOKEN_ENCRYPTION_KEY` is `k1:` and a new random
+   32-byte key in base64 (`openssl rand -base64 32`), stored in the same password-manager item.
 
 The webhook URL fails until the hosted Worker is deployed. GitHub records the failed deliveries and changes nothing.
 
