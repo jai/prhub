@@ -70,12 +70,7 @@ final class PRHubDiffFontUITests: XCTestCase {
     }
 
     private func openDiff(font: String?, appearance: XCUIDevice.Appearance) {
-        app.terminate()
-        XCUIDevice.shared.appearance = appearance
-        // The Simulator takes a moment to change its appearance; an app launched before then starts in the old one.
-        RunLoop.current.run(until: Date.now.addingTimeInterval(1))
-        app.launchArguments = ["-PRHubPaired"] + (font.map { ["-prkit.diffFont", $0] } ?? [])
-        app.launch()
+        app.launch(["-PRHubPaired"] + (font.map { ["-prkit.diffFont", $0] } ?? []), appearance: appearance)
         let row = app.staticTexts["Show a retry button when checkout fails"]
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.tap()

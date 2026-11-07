@@ -1,6 +1,7 @@
 #if DEBUG
 import Foundation
 import PRKit
+import SwiftUI
 import Synchronization
 
 /// Debug builds only: the launch arguments the UI tests use to put PRHub on screen with no Worker.
@@ -16,8 +17,20 @@ import Synchronization
 ///   PR whose one file is longer than the screen, for the diff's bars.
 ///
 /// Every one starts at the default diff font, whatever an earlier run chose in Settings; `-prkit.diffFont face:size`
-/// sets one for the run.
+/// sets one for the run. `-PRHubAppearance dark` (or `light`) sets the run's appearance whatever the Simulator's is: on
+/// CI's Simulator `XCUIDevice.shared.appearance` left everything light, so every "dark" picture came out light.
 enum PRHubScreenshots {
+    static let appearanceKey = "PRHubAppearance"
+
+    /// The appearance `-PRHubAppearance` asks for; nil follows the system.
+    static func colorScheme(_ defaults: UserDefaults = .standard) -> ColorScheme? {
+        switch defaults.string(forKey: appearanceKey) {
+        case "dark": .dark
+        case "light": .light
+        default: nil
+        }
+    }
+
     @MainActor static func environment() -> PRHubEnvironment? {
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains(where: { $0.hasPrefix("-PRHub") }) {

@@ -24,11 +24,11 @@ final class PRHubScreenshotTests: XCTestCase {
     }
 
     private func launch(_ look: Look, _ arguments: [String]) {
-        XCUIDevice.shared.appearance = look == .dark ? .dark : .light
-        app.terminate()
-        app.launchArguments = arguments + (look == .largeText
-            ? ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"] : [])
-        app.launch()
+        app.launch(
+            arguments + (look == .largeText
+                ? ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"] : []),
+            appearance: look == .dark ? .dark : .light
+        )
     }
 
     private func pictures(_ look: Look) throws {

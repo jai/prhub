@@ -14,11 +14,21 @@ struct PRHubApp: App {
         #endif
     }()
 
+    /// `-PRHubAppearance dark` or `light`: the UI tests' pictures in the look they name. Debug only.
+    private static let screenshotColorScheme: ColorScheme? = {
+        #if DEBUG
+        PRHubScreenshots.colorScheme()
+        #else
+        nil
+        #endif
+    }()
+
     var body: some Scene {
         WindowGroup {
             root
                 // DESIGN.md's icon style, for every symbol in the app.
                 .symbolVariant(DesignTokens.iconVariant)
+                .preferredColorScheme(Self.screenshotColorScheme)
         }
     }
 

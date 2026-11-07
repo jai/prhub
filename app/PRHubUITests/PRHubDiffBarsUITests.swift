@@ -45,12 +45,7 @@ final class PRHubDiffBarsUITests: XCTestCase {
     }
 
     private func openLongDiff(_ appearance: XCUIDevice.Appearance) {
-        app.terminate()
-        XCUIDevice.shared.appearance = appearance
-        // The Simulator takes a moment to change its appearance; an app launched before then starts in the old one.
-        RunLoop.current.run(until: Date.now.addingTimeInterval(1))
-        app.launchArguments = ["-PRHubPaired", "-PRHubLongDiff"]
-        app.launch()
+        app.launch(["-PRHubPaired", "-PRHubLongDiff"], appearance: appearance)
         let row = app.staticTexts["Give the deploy team access to staging"]
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.tap()
