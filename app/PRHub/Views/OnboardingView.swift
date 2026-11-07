@@ -1,12 +1,18 @@
 import SwiftUI
 
-/// PRHub's first screen, while it has no pr-worker (docs/api.md, "Pairing"): scan the QR code the Worker's
-/// `npm run pair` printed, paste its setup link, or type the address and code apart. Opening the link itself lands
-/// here too (`PRHubRootView`). Everything happens in place: the camera opens in its block, the status arrives under
-/// the blocks, and a failure says what to do next. With `trySamples`, a last block offers the app on sample PRs, for
-/// anyone with no pr-worker yet.
+/// PRHub's first screen, while it has no Worker. The build decides which ways in it offers (`PRHubBuild`):
+/// - Sign in with GitHub, on the hosted Worker (docs/api.md, "Hosted sign-in").
+/// - Connect your own Worker (docs/api.md, "Pairing"): scan the QR code the Worker's `npm run pair` printed, paste its
+///   setup link, or type the address and code apart. Opening the link itself lands here too (`PRHubRootView`). Beside
+///   Sign in with GitHub it folds under one row.
+/// - With `trySamples`, a last block offers the app on sample PRs, for anyone just looking, App Review included.
+///
+/// Everything happens in place: the camera opens in its block, a status arrives under the button it is about, and a
+/// failure says what to do next.
 struct OnboardingView: View {
     let connection: WorkerConnection
+    /// Sign in with GitHub (`PRHubEnvironment.signIn`).
+    var signIn: () -> Void = {}
     /// PRHub's "Try with sample PRs" (`PRHubSamples.swift`).
     var trySamples: (() -> Void)?
     @State private var link = ""
@@ -22,15 +28,50 @@ struct OnboardingView: View {
     }
 
     private static let manualFold = "manual"
+    private static let ownWorkerFold = "own-worker"
+
+    private var build: PRHubBuild { connection.build }
+
+    /// Sign-in's own status goes under its button; pairing's under the Worker's blocks.
+    private var isSignInStatus: Bool {
+        switch connection.phase {
+        case .working(.signingIn), .signInFailed: true
+        default: false
+        }
+    }
+
+    private var showsStatus: Bool {
+        if case .signInFailed(.cancelled) = connection.phase {
+            return false
+        }
+        return connection.phase != .idle
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
                 header
-                scanBlock
-                pasteBlock
-                manualBlock
-                if connection.phase != .idle {
+                if build.signInWithGitHub {
+                    signInBlock
+                    if showsStatus, isSignInStatus {
+                        statusBlock
+                            .transition(.fold)
+                    }
+                }
+                if build.selfHosted {
+                    if build.signInWithGitHub {
+                        ownWorkerRow
+                    }
+                    if !build.signInWithGitHub || opened.isFlipped(Self.ownWorkerFold) {
+                        Group {
+                            scanBlock
+                            pasteBlock
+                            manualBlock
+                        }
+                        .transition(.fold)
+                    }
+                }
+                if showsStatus, !isSignInStatus {
                     statusBlock
                         .transition(.fold)
                 }
@@ -50,17 +91,46 @@ struct OnboardingView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Connect PRHub to your pr-worker")
+            Text(build.signInWithGitHub ? "Review pull requests on your phone" : "Connect PRHub to your pr-worker")
                 .font(.appTitle3.weight(.semibold))
                 .accessibilityAddTraits(.isHeader)
-            Text("When your agent set up your pr-worker from github.com/jai/prhub, it printed a setup link and a QR "
-                 + "code. Scan the code or paste the link to connect this phone. For a new one, run npm run pair "
-                 + "there again.")
+            Text(build.signInWithGitHub
+                 ? "PRHub lists the PRs waiting on you, and lets you read the diff, comment, approve and merge."
+                 : "When your agent set up your pr-worker from github.com/jai/prhub, it printed a setup link and a "
+                    + "QR code. Scan the code or paste the link to connect this phone. For a new one, run npm run "
+                    + "pair there again.")
                 .font(.appFootnote)
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 16)
+    }
+
+    // MARK: - Sign in with GitHub
+
+    private var signInBlock: some View {
+        block(nil) {
+            SignInWithGitHubButton(isWorking: connection.phase == .working(.signingIn), action: signIn)
+            Text("PRHub reads your PRs through the PRHub GitHub App, with your own GitHub access. Each org needs the "
+                 + "App installed once, by an owner.")
+                .font(.appFootnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - Your own Worker
+
+    private var ownWorkerRow: some View {
+        block(nil) {
+            FoldRow(
+                title: "Connect your own Worker", isOpen: opened.isFlipped(Self.ownWorkerFold),
+                identifier: "onboardingOwnWorker"
+            ) {
+                opened.toggle(Self.ownWorkerFold)
+            }
+        }
+        .padding(.top, 16)
     }
 
     // MARK: - Scan
@@ -142,20 +212,12 @@ struct OnboardingView: View {
 
     private var manualBlock: some View {
         block(nil) {
-            Button {
+            FoldRow(
+                title: "Enter the address and code instead", isOpen: opened.isFlipped(Self.manualFold),
+                identifier: "onboardingManual"
+            ) {
                 opened.toggle(Self.manualFold)
-            } label: {
-                HStack {
-                    Text("Enter the address and code instead")
-                        .font(.appFootnote.weight(.semibold))
-                    Spacer()
-                    Image(systemName: "chevron.down")
-                        .rotationEffect(.degrees(opened.isFlipped(Self.manualFold) ? 180 : 0))
-                }
-                .contentShape(.rect)
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("onboardingManual")
             if opened.isFlipped(Self.manualFold) {
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("pr-review.example.workers.dev", text: $worker)
@@ -179,7 +241,7 @@ struct OnboardingView: View {
     // MARK: - Samples
 
     private func samplesBlock(_ trySamples: @escaping () -> Void) -> some View {
-        block("No pr-worker yet?") {
+        block(build.signInWithGitHub ? "Just looking?" : "No pr-worker yet?") {
             Text("Look around PRHub with sample PRs in made-up repos. Nothing reaches GitHub.")
                 .font(.appFootnote)
                 .foregroundStyle(.secondary)
@@ -208,6 +270,11 @@ struct OnboardingView: View {
                 failureLabel(failure.message)
             case .failed(let error):
                 failureLabel(error.message)
+            case .signInFailed(let error):
+                failureLabel(error.message ?? "")
+            case .selfHostedOff:
+                failureLabel("This build of PRHub doesn't connect to self-hosted Workers. Sign in with GitHub "
+                             + "instead.")
             }
         }
     }
@@ -229,6 +296,8 @@ struct OnboardingView: View {
         switch step {
         case .pairing:
             "Pairing with your pr-worker…"
+        case .signingIn:
+            "Signing in with GitHub…"
         }
     }
 
@@ -266,5 +335,59 @@ private extension View {
             .autocorrectionDisabled()
             .textFieldStyle(.roundedBorder)
         #endif
+    }
+}
+
+/// A row that folds what is under it in and out, its chevron turning: "Connect your own Worker", "Enter the address and
+/// code instead".
+private struct FoldRow: View {
+    let title: String
+    let isOpen: Bool
+    let identifier: String
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            HStack {
+                Text(title)
+                    .font(.appFootnote.weight(.semibold))
+                Spacer()
+                Image(systemName: "chevron.down")
+                    .rotationEffect(.degrees(isOpen ? 180 : 0))
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(identifier)
+        .accessibilityValue(isOpen ? "Open" : "Closed")
+    }
+}
+
+/// Sign in with GitHub: the screen's one primary action, the width of its block, with the work in place of its words
+/// while the sheet and the first config run.
+struct SignInWithGitHubButton: View {
+    let isWorking: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Label("Sign in with GitHub", systemImage: "person.crop.circle")
+                    .labelStyle(.iconText)
+                    .opacity(isWorking ? 0 : 1)
+                if isWorking {
+                    ProgressView()
+                        .tint(.white)
+                        .transition(.opacity)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Space.xs)
+        }
+        .buttonStyle(PRButtonStyle(.primary))
+        .disabled(isWorking)
+        .animation(AppMotion.swap, value: isWorking)
+        .accessibilityIdentifier("onboardingSignIn")
+        .accessibilityLabel(isWorking ? "Signing in with GitHub" : "Sign in with GitHub")
     }
 }

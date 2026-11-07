@@ -1,7 +1,9 @@
 import XCTest
 
 /// Pictures of every screen in light, dark and the largest accessibility text, over the sample PRs: onboarding, the
-/// list, a PR, its diff on a key line, and Settings. Each is an attachment, and a PNG in `SCREENSHOTS_DIR` when the
+/// list, a PR, its diff on a key line, and Settings; then Sign in with GitHub's screens over the fake hosted Worker:
+/// onboarding with every way in, a refused sign-in, the account's Settings with and without a key, Delete Account,
+/// Sign in again and the empty list. Each is an attachment, and a PNG in `SCREENSHOTS_DIR` when the
 /// run sets it (`TEST_RUNNER_SCREENSHOTS_DIR` on xcodebuild's command line).
 @MainActor
 final class PRHubScreenshotTests: XCTestCase {
@@ -31,7 +33,7 @@ final class PRHubScreenshotTests: XCTestCase {
 
     private func pictures(_ look: Look) throws {
         launch(look, ["-PRHubFirstRun"])
-        XCTAssertTrue(app.buttons["onboardingScan"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["onboardingSignIn"].waitForExistence(timeout: 10))
         try picture("1-onboarding", look)
 
         launch(look, ["-PRHubPaired"])
@@ -51,6 +53,60 @@ final class PRHubScreenshotTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["prhub-worker-host"].waitForExistence(timeout: 10)
             || app.descendants(matching: .any)["prhub-worker-host"].waitForExistence(timeout: 5))
         try picture("5-settings", look)
+
+        try hostedPictures(look)
+    }
+
+    private func hostedPictures(_ look: Look) throws {
+        launch(look, ["-PRHubFirstRun", "-PRHubSelfHosted", "YES"])
+        let ownWorker = app.buttons["onboardingOwnWorker"]
+        XCTAssertTrue(ownWorker.waitForExistence(timeout: 10))
+        ownWorker.tap()
+        XCTAssertTrue(app.buttons["onboardingScan"].waitForExistence(timeout: 5))
+        try picture("6-onboarding-every-way-in", look)
+
+        launch(look, ["-PRHubFirstRun", "-PRHubSignInDenied"])
+        app.buttons["onboardingSignIn"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["onboardingStatus"].waitForExistence(timeout: 5))
+        try picture("7-sign-in-refused", look)
+
+        launch(look, ["-PRHubHosted", "-PRHubSettings", "-PRHubAnthropicKey"])
+        XCTAssertTrue(app.descendants(matching: .any)["prhub-account-login"].waitForExistence(timeout: 10))
+        XCTAssertTrue(scroll(to: app.descendants(matching: .any)["prhub-anthropic-key-set"]))
+        try picture("8-account-key-set", look)
+
+        launch(look, ["-PRHubHosted", "-PRHubSettings"])
+        XCTAssertTrue(app.descendants(matching: .any)["prhub-account-login"].waitForExistence(timeout: 10))
+        XCTAssertTrue(scroll(to: app.secureTextFields["prhub-anthropic-key-field"]))
+        try picture("9-account-no-key", look)
+        let delete = app.buttons["prhub-delete-account"]
+        XCTAssertTrue(scroll(to: delete))
+        app.collectionViews.firstMatch.swipeUp()
+        try picture("10-account-bottom", look)
+        delete.tap()
+        XCTAssertTrue(app.buttons["prhub-delete-account-confirm"].waitForExistence(timeout: 5))
+        try picture("11-delete-account", look)
+
+        launch(look, ["-PRHubHosted", "-PRHubSignedOut"])
+        XCTAssertTrue(app.descendants(matching: .any)["signedOutReason"].waitForExistence(timeout: 10))
+        try picture("12-sign-in-again", look)
+
+        launch(look, ["-PRHubHosted", "-PRHubHostedEmpty"])
+        // The offer of review alerts comes first: the fake Worker pushes.
+        let notNow = app.buttons["Not now"]
+        if notNow.waitForExistence(timeout: 5) {
+            notNow.tap()
+        }
+        XCTAssertTrue(app.descendants(matching: .any)["pr-empty-hint-link"].waitForExistence(timeout: 10))
+        try picture("13-empty-list", look)
+    }
+
+    /// Settings' rows past the screen are made only once scrolled to.
+    private func scroll(to element: XCUIElement) -> Bool {
+        for _ in 0..<8 where !(element.exists && element.isHittable) {
+            app.collectionViews.firstMatch.swipeUp(velocity: .slow)
+        }
+        return element.exists
     }
 
     private func picture(_ step: String, _ look: Look) throws {

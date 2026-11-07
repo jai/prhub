@@ -130,7 +130,8 @@ struct PRHubTests {
             ),
             fetchConfig: { config }, forgetSecret: { forgotten.with { $0 += 1 } },
             unpair: { unpaired.with { $0 += 1 } },
-            defaults: defaults
+            defaults: defaults,
+            build: PRHubBuild(hostedURL: nil, signInWithGitHub: false, selfHosted: true, samples: true)
         )
     }
 

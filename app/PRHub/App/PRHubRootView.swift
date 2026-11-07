@@ -1,21 +1,24 @@
 import SwiftUI
 
-/// PRHub's window: the onboarding screen until a pr-worker is paired, then the PRs and Settings. "Try with sample PRs"
-/// shows the same tabs over the samples, until Settings' "Connect your own Worker". A setup link opened from anywhere
-/// arrives here.
+/// PRHub's window: onboarding until the phone is signed in with GitHub or paired with a pr-worker, then the PRs and
+/// Settings, or Sign in again once the hosted Worker says GitHub signed the person out. "Try with sample PRs" shows the
+/// same tabs over the samples, until Settings' way back. A setup link opened from anywhere arrives here.
 struct PRHubRootView: View {
     let environment: PRHubEnvironment
     @Environment(\.scenePhase) private var scenePhase
 
     private enum Screen {
-        case onboarding, samples, tabs
+        case onboarding, samples, signedOut, tabs
     }
 
     private var screen: Screen {
         if environment.sample != nil {
             return .samples
         }
-        return environment.connection.showsOnboarding ? .onboarding : .tabs
+        if environment.connection.showsOnboarding {
+            return .onboarding
+        }
+        return environment.connection.needsSignInAgain ? .signedOut : .tabs
     }
 
     var body: some View {
@@ -23,7 +26,14 @@ struct PRHubRootView: View {
         Group {
             switch screen {
             case .onboarding:
-                OnboardingView(connection: connection, trySamples: { environment.startSample() })
+                OnboardingView(
+                    connection: connection,
+                    signIn: { Task { await environment.signIn() } },
+                    trySamples: connection.build.samples ? { environment.startSample() } : nil
+                )
+                .transition(.opacity)
+            case .signedOut:
+                SignedOutView(environment: environment)
                     .transition(.opacity)
             case .samples:
                 if let sample = environment.sample {
@@ -64,6 +74,12 @@ struct PRHubRootView: View {
             }
         }
         // Just paired: the first list, and the push token if the Worker pushes.
+        .onChange(of: connection.needsSignInAgain) { wasSignedOut, isSignedOut in
+            // Signed in again: the list, as after a first sign-in.
+            if wasSignedOut, !isSignedOut, connection.isPaired {
+                Task { await environment.prs.refresh(.foreground) }
+            }
+        }
         .onChange(of: connection.showsOnboarding) { _, isShowing in
             if !isShowing {
                 Task {

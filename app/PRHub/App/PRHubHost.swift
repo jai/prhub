@@ -23,7 +23,7 @@ final class PRHubPRHost: PRKitHost {
     }
 
     /// What the PR screens follow of a Worker's config: its features, its `orgs` as the filter's default (else every
-    /// owner), and its login.
+    /// owner), its login, and on the hosted Worker the empty list's pointer to installing the GitHub App.
     static func configuration(_ config: DeviceConfig?) -> PRKitConfiguration {
         let all: [PRKitConfiguration.Feature: DeviceFeature] = [
             .askAI: .askAI, .keyLines: .keyLines, .rewrite: .rewrite, .push: .push,
@@ -31,9 +31,20 @@ final class PRHubPRHost: PRKitHost {
         return PRKitConfiguration(
             features: Set(all.filter { config?.isOn($0.value) == true }.keys),
             orgDefault: .following(orgs: config?.orgs),
-            login: config?.login
+            login: config?.login,
+            emptyHint: config?.hosted == true ? installHint : nil
         )
     }
+
+    /// The hosted Worker sees only repos where the PRHub App is installed, so an empty list most often means none is.
+    // TODO: name the orgs without the App once `GET /device/config` says which (docs/plans/github-app.md, step 7).
+    static let installHint = PREmptyHint(
+        title: "No PRs yet",
+        message: "PRHub sees pull requests in orgs and accounts where the PRHub GitHub App is installed. An org owner "
+            + "installs it; a member can ask for it.",
+        linkTitle: "Install PRHub App on your orgs",
+        link: PRHubBuild.appInstallURL
+    )
 
     var outbox: (any PRKitOutbox)? { nil }
     var apnsEnvironment: String { APNSEnvironment.current() }
@@ -44,9 +55,12 @@ final class PRHubPRHost: PRKitHost {
 }
 
 extension PRViewerAccess {
-    /// The paired pr-worker, with this phone's device secret as the bearer.
-    static func paired(endpoint: WorkerEndpoint, secret: @escaping @Sendable () throws -> String) -> PRViewerAccess {
-        PRViewerAccess(baseURL: { endpoint.url }, bearer: { try secret() }, discard: {})
+    /// The paired pr-worker or the hosted Worker, with this phone's secret as the bearer. `refused` hears each `401`.
+    static func paired(
+        endpoint: WorkerEndpoint, secret: @escaping @Sendable () throws -> String,
+        refused: @escaping @Sendable () async -> Void = {}
+    ) -> PRViewerAccess {
+        PRViewerAccess(baseURL: { endpoint.url }, bearer: { try secret() }, discard: refused)
     }
 }
 
@@ -54,11 +68,6 @@ extension PRViewerClient {
     /// A client over the app's transport, which waits for a network while someone is looking at the app.
     init(access: PRViewerAccess) {
         self.init(access: access, isInForeground: { await appIsInForeground() })
-    }
-
-    /// `GET /device/config`: what the pr-worker serves (docs/api.md).
-    func deviceConfig() async throws -> DeviceConfig {
-        try await read("device/config", as: DeviceConfig.self)
     }
 
     /// `DELETE /device/pair`: the Worker forgets this secret. `204`.

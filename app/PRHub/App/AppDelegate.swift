@@ -39,6 +39,13 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
+        if PRHubNotificationDelegate.isSignedOut(userInfo) {
+            Task {
+                await PRHubEnvironment.shared.signedOutByGitHub()
+                completionHandler(.newData)
+            }
+            return
+        }
         guard PRPush(userInfo: userInfo) == .sync else {
             completionHandler(.noData)
             return

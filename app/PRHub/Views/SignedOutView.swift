@@ -1,0 +1,95 @@
+import SwiftUI
+
+/// Sign in again: the hosted Worker says GitHub no longer honours this person's tokens (`account.state` `signed_out`, a
+/// `401 signed_out`, or the `signed_out` push). Why, in one line; Sign in with GitHub, whose status arrives under it;
+/// and Sign out, which forgets the account on this phone. The PRs stay on the phone until one of the two.
+struct SignedOutView: View {
+    let environment: PRHubEnvironment
+    @State private var signingOut = false
+
+    private var connection: WorkerConnection { environment.connection }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Space.sm) {
+                VStack(alignment: .leading, spacing: Space.sm) {
+                    Text("Sign in to GitHub again")
+                        .font(.appTitle3.weight(.semibold))
+                        .accessibilityAddTraits(.isHeader)
+                    Text(Self.words(reason: connection.config?.account?.reason))
+                        .font(.appFootnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("signedOutReason")
+                }
+                .padding(.horizontal, Space.lg)
+                .padding(.bottom, Space.lg)
+
+                VStack(alignment: .leading, spacing: Space.md) {
+                    SignInWithGitHubButton(isWorking: connection.phase == .working(.signingIn)) {
+                        Task { await environment.signIn() }
+                    }
+                    if case .signInFailed(let error) = connection.phase, let message = error.message {
+                        Label {
+                            Text(message)
+                                .font(.appFootnote)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: AppIcon.problem.rawValue)
+                                .foregroundStyle(Color("ToneBad"))
+                        }
+                        .labelStyle(.iconText)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("signedOutStatus")
+                        .transition(.fold)
+                    }
+                    if let login = connection.config?.account?.login {
+                        Text("Signed in as \(login) until GitHub stopped answering for you.")
+                            .font(.appCaption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(Space.lg)
+                .background(HomePalette.cardBackground)
+
+                VStack(alignment: .leading, spacing: Space.md) {
+                    Text("Signing out forgets your account and its PRs on this phone.")
+                        .font(.appFootnote)
+                        .foregroundStyle(.secondary)
+                    Button("Sign out") {
+                        signingOut = true
+                        Task {
+                            await environment.signOut()
+                            signingOut = false
+                        }
+                    }
+                    .buttonStyle(PRButtonStyle(.secondary))
+                    .disabled(signingOut)
+                    .accessibilityIdentifier("signedOutSignOut")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(Space.lg)
+                .background(HomePalette.cardBackground)
+                .padding(.top, Space.xl)
+            }
+            .padding(.vertical, Space.xl)
+            .animation(AppMotion.fold, value: connection.phase)
+        }
+        .background(HomePalette.screenBackground)
+        .readableContentWidth()
+        .disabled(connection.isWorking)
+    }
+
+    /// `account.reason`, as the person would say it.
+    static func words(reason: String?) -> String {
+        switch reason {
+        case "revoked":
+            "PRHub's access was removed on GitHub. Sign in to give it back, and your PRs pick up where they left off."
+        case "refresh_expired":
+            "It's been six months since PRHub last reached GitHub for you, so GitHub asks you to sign in again."
+        default:
+            "GitHub signed PRHub out. Sign in again to keep your pull requests up to date."
+        }
+    }
+}

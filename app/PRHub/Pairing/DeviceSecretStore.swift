@@ -88,6 +88,26 @@ struct DeviceSecretStore: Sendable {
         }
     }
 
+    /// Keeps a secret the Worker made: the hosted Worker's session secret (`POST /auth/github/finish`), in the same item
+    /// and class as a device secret, so every request carries it the same way.
+    func save(_ secret: String) throws {
+        let data = Data(secret.utf8)
+        let update = SecItemUpdate(baseQuery as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if update == errSecSuccess {
+            return
+        }
+        guard update == errSecItemNotFound else {
+            throw Failure.keychain(update)
+        }
+        var attributes = baseQuery
+        attributes[kSecValueData as String] = data
+        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        let status = SecItemAdd(attributes as CFDictionary, nil)
+        guard status == errSecSuccess else {
+            throw Failure.keychain(status)
+        }
+    }
+
     /// Removes the item: test cleanup, and Disconnect (`WorkerConnection.disconnect`), after which the next pairing is
     /// a new device.
     func delete() throws {

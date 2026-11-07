@@ -85,6 +85,8 @@ struct DevicePairing: Sendable {
 
     enum Step: Equatable, Sendable {
         case pairing
+        /// Sign in with GitHub, from the sheet to the first config.
+        case signingIn
     }
 
     func run(_ link: SetupLink) async throws(PairingError) {

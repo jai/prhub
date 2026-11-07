@@ -34,8 +34,9 @@ jai\.g@
 EOF
 )
 
-# Allowed values: removed from a line before the patterns are tried.
-allowed='https://(agent-pager-relay|prhub)\.jai-f89\.workers\.dev'
+# Allowed values: removed from a line before the patterns are tried. The hosted Worker's bare host is the app's build
+# setting (app/Config/PRHub.xcconfig).
+allowed='https://(agent-pager-relay|prhub)\.jai-f89\.workers\.dev|\bprhub\.jai-f89\.workers\.dev'
 
 files=$(find "$@" \( -name .git -o -name node_modules -o -name .build -o -name DerivedData -o -name build -o -name tmp \) -prune -o \
   -type f ! -name package-lock.json ! -name Package.resolved ! -path ./scripts/scrub.sh ! -path scripts/scrub.sh -print)

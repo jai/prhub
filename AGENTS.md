@@ -29,6 +29,14 @@ pairing the phone, and troubleshooting.
   `DESIGN.md`'s tokens: never write a colour, size or symbol in Swift; change DESIGN.md and run `make -C app design`.
   PRKit is public API for other apps: a change to `PRKitHost`, `PRKitController` or `PRKitConfiguration` is a
   breaking change for them, so it needs a new minor version tag.
+- App build options live in `app/Config/PRHub.xcconfig` and reach the app through Info.plist (`PRHubBuild`):
+  `PRHUB_HOSTED_HOST` (the hosted Worker: Sign in with GitHub, its HTTPS callback and the `webcredentials`
+  associated domain; a custom domain is this one line), and onboarding's ways in, `YES` or `NO`:
+  `PRHUB_SIGN_IN_GITHUB` (default `YES`), `PRHUB_SELF_HOSTED` (default `NO`: no "Connect your own Worker", and a
+  `prhub://setup` link says self-hosted Workers aren't enabled; a Worker paired before keeps working) and
+  `PRHUB_SAMPLES` (default `YES`; App Review needs it). A Debug build takes each as a launch argument for the UI tests
+  (`-PRHubSelfHosted YES`); `-PRHubFirstRun` and `-PRHubHosted` run against a fake hosted Worker
+  (`app/PRHub/Debug/PRHubScreenshots.swift`).
 - Public repo: run `scripts/scrub.sh` before every push. It fails on a private name, id, host or token. Test data
   uses made-up names (`acme`, `octocat`).
 - Jai's own deployments (his Worker and the relay) build from a pinned ref of this repo with private config kept

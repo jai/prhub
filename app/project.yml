@@ -27,6 +27,10 @@ targets:
   PRHub:
     type: application
     platform: iOS
+    # PRHub's build options: the hosted Worker's host and onboarding's ways in (app/README.md).
+    configFiles:
+      Debug: Config/PRHub.xcconfig
+      Release: Config/PRHub.xcconfig
     sources:
       - path: PRHub
         excludes:
@@ -51,6 +55,11 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: setup
             CFBundleURLSchemes: [prhub]
+        # Config/PRHub.xcconfig: the hosted Worker, and which ways in onboarding offers.
+        PRHubHostedHost: $(PRHUB_HOSTED_HOST)
+        PRHubSignInWithGitHub: $(PRHUB_SIGN_IN_GITHUB)
+        PRHubSelfHosted: $(PRHUB_SELF_HOSTED)
+        PRHubSamples: $(PRHUB_SAMPLES)
         NSCameraUsageDescription: PRHub uses the camera to scan the setup code your pr-worker printed.
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
@@ -64,11 +73,14 @@ targets:
         UIBackgroundModes:
           - remote-notification
     # Generated too: XcodeGen rewrites this file on every `generate`, so the keys live here. Push, for the silent wake;
-    # the app's own keychain group, for the device secret and the Worker URL.
+    # the app's own keychain group, for the device secret and the Worker URL; the hosted Worker's host, so the sign-in
+    # session may catch its HTTPS callback (`/auth/github/done`).
     entitlements:
       path: PRHub/PRHub.entitlements
       properties:
         aps-environment: development
+        com.apple.developer.associated-domains:
+          - webcredentials:$(PRHUB_HOSTED_HOST)
         keychain-access-groups:
           - $(AppIdentifierPrefix)com.jaigovindani.prreview
     settings:

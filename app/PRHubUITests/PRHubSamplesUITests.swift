@@ -49,11 +49,12 @@ final class PRHubSamplesUITests: XCTestCase {
         let connect = app.buttons["prhub-connect-own-worker"]
         XCTAssertTrue(connect.waitForExistence(timeout: 5))
         connect.tap()
-        XCTAssertTrue(app.buttons["onboardingScan"].waitForExistence(timeout: 5), "back on onboarding")
+        XCTAssertTrue(app.buttons["onboardingSignIn"].waitForExistence(timeout: 5), "back on onboarding")
     }
 
+    /// In a build that pairs with self-hosted Workers (`PRHUB_SELF_HOSTED`), which this build is not.
     func testAPairingCodeThatIsRefusedSaysSo() {
-        app.launchArguments = ["-PRHubFirstRun"]
+        app.launchArguments = ["-PRHubFirstRun", "-PRHubSelfHosted", "YES", "-PRHubSignInWithGitHub", "NO"]
         app.launch()
         let field = app.textFields["onboardingLinkField"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))

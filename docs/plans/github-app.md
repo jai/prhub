@@ -231,7 +231,10 @@ Easiest first. 6b goes first, because everything else needs a signed-in person. 
      ticks the person's index.
    - Every GitHub call for a signed-in person uses their token (`userEnv`); their `PrIndex` is `user:<id>` and their
      R2 keys are under `users/<id>/`.
-3. **6d: Sign in with GitHub in the app.** Medium, about 2 days. Parallel with 6c, after 6b's contract.
+3. **6d: Sign in with GitHub in the app** (built, 2026-11-07; not released until the hosted Worker is deployed).
+   Onboarding's ways in are build flags (`app/Config/PRHub.xcconfig`): Sign in with GitHub and the samples on,
+   self-hosted pairing off. `/device/config` does not yet say which orgs lack the App, so Settings and the empty list
+   link to the App's install page for every org.
    - The onboarding choice, the authentication session, PKCE, the install prompt and the keychain connection.
    - Delete Account in Settings, and the signed-out push.
    - The person's own Anthropic key in Settings (`PUT` and `DELETE /account/anthropic-key`, `account.anthropic_key`).

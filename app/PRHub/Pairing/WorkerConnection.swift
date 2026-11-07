@@ -1,7 +1,9 @@
 import Foundation
 import Observation
 
-/// PRHub's pr-worker (docs/api.md, "Pairing"): whether it has one, what that Worker serves, and the pairing in between.
+/// PRHub's Worker: whether it has one, what that Worker serves, and the way in: pairing with a self-hosted pr-worker
+/// (docs/api.md, "Pairing") or Sign in with GitHub on the hosted one ("Hosted sign-in"). Both end the same way: a Worker
+/// URL and a bearer in the Keychain.
 @MainActor
 @Observable
 final class WorkerConnection {
@@ -10,6 +12,29 @@ final class WorkerConnection {
         case working(DevicePairing.Step)
         case invalidLink(SetupLink.Failure)
         case failed(PairingError)
+        case signInFailed(SignInError)
+        /// A setup link in a build without self-hosted Workers (`PRHubBuild.selfHosted`).
+        case selfHostedOff
+    }
+
+    /// What a finished sign-in means for what the phone holds.
+    enum SignInOutcome: Equatable {
+        case samePerson
+        /// Another GitHub account than the one before: nothing of the last one's may stay.
+        case newPerson
+    }
+
+    /// The hosted Worker's routes, from the sign-in sheet to Delete Account. Errors are `SignInError` from `signIn`
+    /// and `AccountClient.Failure` from the rest.
+    struct Hosted: Sendable {
+        var worker: URL
+        var signIn: @MainActor @Sendable () async throws -> SignInResult
+        /// Keeps the session secret where the device secret goes.
+        var saveSecret: @Sendable (String) throws -> Void
+        var signOut: @Sendable () async throws -> Void
+        var deleteAccount: @Sendable () async throws -> Void
+        var setAnthropicKey: @Sendable (String) async throws -> Void
+        var removeAnthropicKey: @Sendable () async throws -> Void
     }
 
     /// The paired Worker's host; `nil` until a setup link has paired it.
@@ -19,6 +44,10 @@ final class WorkerConnection {
     private(set) var phase: Phase = .idle
     /// A setup link opened while a Worker is paired already: its host, for the alert that says so.
     var ignoredLinkHost: String?
+    /// The hosted Worker said this session is signed out: the `signed_out` push, a `401 signed_out`, or the config's
+    /// `account.state`. The next config read sets it again.
+    private(set) var isSignedOutOfGitHub = false
+    let build: PRHubBuild
 
     @ObservationIgnored private let endpoint: WorkerEndpoint
     @ObservationIgnored private let pairing: DevicePairing
@@ -28,6 +57,7 @@ final class WorkerConnection {
     /// outlive: its record goes when another device pairs.
     @ObservationIgnored private let unpair: (@Sendable () async -> Void)?
     @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored let hosted: Hosted?
 
     static let configKey = "deviceConfig"
 
@@ -35,8 +65,10 @@ final class WorkerConnection {
         endpoint: WorkerEndpoint, pairing: DevicePairing,
         fetchConfig: @escaping @Sendable () async throws -> DeviceConfig,
         forgetSecret: @escaping @Sendable () throws -> Void, unpair: (@Sendable () async -> Void)? = nil,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard, build: PRHubBuild = .current, hosted: Hosted? = nil
     ) {
+        self.build = build
+        self.hosted = hosted
         self.endpoint = endpoint
         self.pairing = pairing
         self.fetchConfig = fetchConfig
@@ -47,6 +79,7 @@ final class WorkerConnection {
         config = defaults.data(forKey: Self.configKey).flatMap {
             try? JSONDecoder().decode(DeviceConfig.self, from: $0)
         }
+        isSignedOutOfGitHub = config?.account?.state == .signedOut
     }
 
     /// Once a setup link has paired it.
@@ -56,6 +89,22 @@ final class WorkerConnection {
 
     var showsOnboarding: Bool {
         host == nil
+    }
+
+    /// Signed in with GitHub on the hosted Worker, as its config says or, before the first read, as its URL does.
+    var isHosted: Bool {
+        guard isPaired else {
+            return false
+        }
+        if config?.hosted == true {
+            return true
+        }
+        return hosted.map { endpoint.url == $0.worker } ?? false
+    }
+
+    /// The hosted Worker no longer acts for this person: the app shows Sign in again.
+    var needsSignInAgain: Bool {
+        isHosted && isSignedOutOfGitHub
     }
 
     var isWorking: Bool {
@@ -100,11 +149,19 @@ final class WorkerConnection {
         guard !isWorking else {
             return
         }
+        guard build.selfHosted else {
+            phase = .selfHostedOff
+            return
+        }
         Task { await connect(link) }
     }
 
     func connect(_ link: SetupLink) async {
         guard !isWorking else {
+            return
+        }
+        guard build.selfHosted else {
+            phase = .selfHostedOff
             return
         }
         phase = .working(.pairing)
@@ -128,11 +185,143 @@ final class WorkerConnection {
     }
 
     private func readConfig() async {
-        guard let fresh = try? await fetchConfig() else {
+        let fresh: DeviceConfig
+        do {
+            fresh = try await fetchConfig()
+        } catch AccountClient.Failure.server(let code, 401) where isHosted {
+            sessionRefused(code: code)
+            return
+        } catch {
             return
         }
         config = fresh
+        isSignedOutOfGitHub = fresh.account?.state == .signedOut
         defaults.set(try? JSONEncoder().encode(fresh), forKey: Self.configKey)
+    }
+
+    /// A `401` from the hosted Worker. `signed_out`: GitHub no longer honours the person's tokens, and Sign in again
+    /// shows. Any other: the Worker no longer knows this session (signed out on this phone elsewhere, or the account
+    /// deleted), so the phone forgets it and shows Sign in with GitHub.
+    private func sessionRefused(code: String?) {
+        if code == "signed_out" {
+            isSignedOutOfGitHub = true
+        } else if forget() {
+            phase = .signInFailed(.sessionEnded)
+        }
+    }
+
+    /// The `signed_out` push, or a `401` on any route: what the Worker says now decides.
+    func checkSession() async {
+        guard isHosted else {
+            return
+        }
+        await readConfig()
+    }
+
+    /// The `signed_out` push: Sign in again at once, before the config confirms it.
+    func signedOutByGitHub() async {
+        guard isHosted else {
+            return
+        }
+        isSignedOutOfGitHub = true
+        await readConfig()
+    }
+
+    // MARK: - Hosted
+
+    /// Sign in with GitHub: the sheet, `finish`, the session secret and the Worker URL kept, then the first config.
+    /// From onboarding, or from Sign in again, whose old session is ended once the new one is kept.
+    func signIn() async -> SignInOutcome? {
+        guard let hosted, build.signInWithGitHub, !isWorking else {
+            return nil
+        }
+        phase = .working(.signingIn)
+        let previousUser = isPaired ? config?.account?.userId : nil
+        let result: SignInResult
+        do {
+            result = try await hosted.signIn()
+        } catch {
+            let error = error as? SignInError ?? .unreachable
+            phase = error == .cancelled ? .idle : .signInFailed(error)
+            return nil
+        }
+        if isPaired {
+            try? await hosted.signOut()
+        }
+        do {
+            try hosted.saveSecret(result.secret)
+            try endpoint.save(hosted.worker)
+        } catch {
+            phase = .signInFailed(.keychain)
+            return nil
+        }
+        await readConfig()
+        isSignedOutOfGitHub = config?.account?.state == .signedOut
+        host = hosted.worker.host()
+        phase = .idle
+        return previousUser.map { $0 == result.userId ? .samePerson : .newPerson } ?? .samePerson
+    }
+
+    /// Settings' Sign out, and Sign in again's: the Worker ends this session where it can; the phone forgets it.
+    func signOut() async {
+        try? await hosted?.signOut()
+        forget()
+    }
+
+    /// Settings' Delete Account. A session the Worker no longer knows has nothing left to delete.
+    func deleteAccount() async throws(AccountActionError) {
+        guard let hosted else {
+            return
+        }
+        do {
+            try await hosted.deleteAccount()
+        } catch {
+            let error = AccountActionError(error as? AccountClient.Failure ?? .transport)
+            guard error == .signedOut else {
+                throw error
+            }
+        }
+        forget()
+    }
+
+    /// Settings' Anthropic key: kept on the Worker, never on the phone; the config then says which AI is on.
+    func setAnthropicKey(_ key: String) async throws(AccountActionError) {
+        try await accountAction { try await $0.setAnthropicKey(key) }
+    }
+
+    func removeAnthropicKey() async throws(AccountActionError) {
+        try await accountAction { try await $0.removeAnthropicKey() }
+    }
+
+    private func accountAction(_ action: (Hosted) async throws -> Void) async throws(AccountActionError) {
+        guard let hosted else {
+            return
+        }
+        do {
+            try await action(hosted)
+        } catch {
+            let error = AccountActionError(error as? AccountClient.Failure ?? .transport)
+            await readConfig()
+            throw error
+        }
+        await readConfig()
+    }
+
+    /// The phone forgets the Worker, its config and the bearer. False when the Keychain could not be changed.
+    @discardableResult private func forget() -> Bool {
+        do {
+            try endpoint.clear()
+            try forgetSecret()
+        } catch {
+            phase = .failed(.keychain)
+            return false
+        }
+        defaults.removeObject(forKey: Self.configKey)
+        config = nil
+        host = nil
+        isSignedOutOfGitHub = false
+        phase = .idle
+        return true
     }
 
     /// Settings' Disconnect: tells the Worker to forget this phone's secret where it can, then forgets the Worker, its
@@ -141,16 +330,6 @@ final class WorkerConnection {
         if host != nil {
             await unpair?()
         }
-        do {
-            try endpoint.clear()
-            try forgetSecret()
-        } catch {
-            phase = .failed(.keychain)
-            return
-        }
-        defaults.removeObject(forKey: Self.configKey)
-        config = nil
-        host = nil
-        phase = .idle
+        forget()
     }
 }

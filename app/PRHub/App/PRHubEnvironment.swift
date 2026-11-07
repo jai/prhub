@@ -1,8 +1,9 @@
 import Foundation
 import Observation
 
-/// PRHub's composition root: the PR screens, the pr-worker they talk to, and the pairing in between. Every request goes
-/// to the URL the setup link gave, with this phone's device secret as the bearer (docs/api.md).
+/// PRHub's composition root: the PR screens, the Worker they talk to, and the way in between. Every request goes to the
+/// URL the setup link or Sign in with GitHub gave, with this phone's device secret or session secret as the bearer
+/// (docs/api.md).
 @MainActor
 @Observable
 final class PRHubEnvironment {
@@ -20,20 +21,35 @@ final class PRHubEnvironment {
     /// Review alerts: whether they may show, and the one offer to turn them on.
     let alertPermission: PRHubAlertPermission
     /// Set as the notification center's delegate at launch (`AppDelegate`), which holds it weakly.
-    @ObservationIgnored private(set) lazy var notificationDelegate = PRHubNotificationDelegate { [weak self] ref in
-        self?.openAlert(ref)
-    }
+    @ObservationIgnored private(set) lazy var notificationDelegate = PRHubNotificationDelegate(
+        open: { [weak self] ref in self?.openAlert(ref) },
+        signedOut: { [weak self] in
+            guard let self else {
+                return
+            }
+            Task { await self.signedOutByGitHub() }
+        }
+    )
 
     init(
         endpoint: WorkerEndpoint, secrets: DeviceSecretStore, defaults: UserDefaults = .standard,
-        alertPermission: PRHubAlertPermission = PRHubAlertPermission()
+        alertPermission: PRHubAlertPermission = PRHubAlertPermission(), build: PRHubBuild = .current,
+        authenticate: @escaping Authenticate = WebSignIn.live
     ) {
         self.alertPermission = alertPermission
+        let refusals = SessionRefusals()
         let host = PRHubPRHost(
-            access: .paired(endpoint: endpoint, secret: { try secrets.loadOrCreate() }), samples: nil
+            access: .paired(endpoint: endpoint, secret: { try secrets.loadOrCreate() }, refused: {
+                await refusals.check()
+            }),
+            samples: nil
         )
         prs = PRKitController(host: host)
-        connection = Self.makeConnection(endpoint: endpoint, secrets: secrets, client: prs.client, defaults: defaults)
+        connection = Self.makeConnection(
+            endpoint: endpoint, secrets: secrets, defaults: defaults, build: build, authenticate: authenticate,
+            unpair: { [client = prs.client] in try? await client.unpair() }
+        )
+        refusals.connection = connection
         navigation = PRHubNavigation(pullRequests: prs)
         isSample = false
         let connection = connection
@@ -55,9 +71,12 @@ final class PRHubEnvironment {
     }
 
     /// Pairing posts the code to the setup link's Worker once, and never retries: a code is single use. A pr-worker
-    /// admits the secret at once; the first config read follows (`WorkerConnection.connect`).
+    /// admits the secret at once; the first config read follows (`WorkerConnection.connect`). Sign in with GitHub
+    /// goes to the build's hosted Worker (`PRHubBuild.hostedURL`), and keeps the session secret where the device
+    /// secret goes.
     static func makeConnection(
-        endpoint: WorkerEndpoint, secrets: DeviceSecretStore, client: PRViewerClient, defaults: UserDefaults
+        endpoint: WorkerEndpoint, secrets: DeviceSecretStore, defaults: UserDefaults, build: PRHubBuild,
+        authenticate: @escaping Authenticate, unpair: (@Sendable () async -> Void)? = nil
     ) -> WorkerConnection {
         let pairing = DevicePairing(
             pair: { worker, code in
@@ -65,12 +84,16 @@ final class PRHubEnvironment {
             },
             save: { try endpoint.save($0) }
         )
+        let account = AccountClient(worker: { endpoint.url }, bearer: { try secrets.loadOrCreate() })
         return WorkerConnection(
             endpoint: endpoint, pairing: pairing,
-            fetchConfig: { try await client.deviceConfig() },
+            fetchConfig: { try await account.deviceConfig() },
             forgetSecret: { try secrets.delete() },
-            unpair: { try? await client.unpair() },
-            defaults: defaults
+            unpair: unpair,
+            defaults: defaults, build: build,
+            hosted: build.hostedURL.map { worker in
+                .live(worker: worker, account: account, authenticate: authenticate, secrets: secrets)
+            }
         )
     }
 
@@ -90,6 +113,37 @@ final class PRHubEnvironment {
     /// the next Worker starts from nothing.
     func disconnect() async {
         await connection.disconnect()
+        forgetLocalData()
+    }
+
+    /// Sign in with GitHub, from onboarding or Sign in again. Another account than the last one starts from nothing.
+    func signIn() async {
+        guard let outcome = await connection.signIn() else {
+            return
+        }
+        if outcome == .newPerson {
+            prs.forgetEverything()
+        }
+    }
+
+    /// Settings' Sign out, or Sign in again's: the session ends, and the phone forgets every PR it mirrored.
+    func signOut() async {
+        await connection.signOut()
+        forgetLocalData()
+    }
+
+    /// Settings' Delete Account: the Worker deletes the account and revokes PRHub on GitHub; the phone forgets it all.
+    func deleteAccount() async throws(AccountActionError) {
+        try await connection.deleteAccount()
+        forgetLocalData()
+    }
+
+    /// The `signed_out` push.
+    func signedOutByGitHub() async {
+        await connection.signedOutByGitHub()
+    }
+
+    private func forgetLocalData() {
         guard !connection.isPaired else {
             return
         }
@@ -121,8 +175,44 @@ final class PRHubEnvironment {
             return
         }
         await connection.refreshConfig()
+        guard !connection.needsSignInAgain else {
+            return
+        }
         // The sync sends this launch's push token too, when the Worker pushes.
         await prs.refresh(.foreground)
         await offerAlertsIfDue()
+    }
+}
+
+/// The PR screens' `401`s, to the connection: on the hosted Worker one means signed out, or a session it forgot.
+@MainActor
+final class SessionRefusals {
+    weak var connection: WorkerConnection?
+
+    func check() async {
+        await connection?.checkSession()
+    }
+}
+
+extension WorkerConnection.Hosted {
+    /// The hosted Worker's routes over `account`, with the app's sign-in sheet.
+    static func live(
+        worker: URL, account: AccountClient, authenticate: @escaping Authenticate, secrets: DeviceSecretStore
+    ) -> Self {
+        var finishing = account
+        // `finish` goes to the hosted Worker whatever the phone saved before.
+        finishing.worker = { worker }
+        let signIn = HostedSignIn(worker: worker, authenticate: authenticate) { [finishing] code, verifier in
+            try await finishing.finish(code: code, verifier: verifier)
+        }
+        return Self(
+            worker: worker,
+            signIn: { try await signIn.run() },
+            saveSecret: { try secrets.save($0) },
+            signOut: { try await account.signOut() },
+            deleteAccount: { _ = try await account.deleteAccount() },
+            setAnthropicKey: { _ = try await account.setAnthropicKey($0) },
+            removeAnthropicKey: { try await account.removeAnthropicKey() }
+        )
     }
 }

@@ -3,18 +3,33 @@ import Observation
 import UserNotifications
 
 /// PRHub's notification delegate: a pr-worker alert shows while the app is in front, and its tap opens the PR
-/// (docs/api.md, "Alerts"). Nonisolated: the system names no thread for these calls.
+/// (docs/api.md, "Alerts"). The hosted Worker's `signed_out` alert shows Sign in again, whether it arrives in front or
+/// is tapped. Nonisolated: the system names no thread for these calls.
 final class PRHubNotificationDelegate: NSObject, UNUserNotificationCenterDelegate, Sendable {
     private let open: @MainActor @Sendable (PullRequestRef) -> Void
+    private let signedOut: @MainActor @Sendable () -> Void
 
-    init(open: @escaping @MainActor @Sendable (PullRequestRef) -> Void) {
+    init(
+        open: @escaping @MainActor @Sendable (PullRequestRef) -> Void,
+        signedOut: @escaping @MainActor @Sendable () -> Void = {}
+    ) {
         self.open = open
+        self.signedOut = signedOut
+    }
+
+    /// `reason: signed_out` (docs/api.md, "Errors on every other route").
+    static func isSignedOut(_ userInfo: [AnyHashable: Any]) -> Bool {
+        userInfo["reason"] as? String == "signed_out"
     }
 
     func userNotificationCenter(
         _ center: UNUserNotificationCenter, willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        if Self.isSignedOut(notification.request.content.userInfo) {
+            let signedOut = signedOut
+            Task { @MainActor in signedOut() }
+        }
         completionHandler([.banner, .sound, .list])
     }
 
@@ -22,7 +37,12 @@ final class PRHubNotificationDelegate: NSObject, UNUserNotificationCenterDelegat
         _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let ref = PRPush(userInfo: response.notification.request.content.userInfo)?.openedPullRequest
+        let userInfo = response.notification.request.content.userInfo
+        if Self.isSignedOut(userInfo) {
+            let signedOut = signedOut
+            Task { @MainActor in signedOut() }
+        }
+        let ref = PRPush(userInfo: userInfo)?.openedPullRequest
         let action = response.actionIdentifier
         // Not Sendable, but only ever called once, on the main actor.
         nonisolated(unsafe) let done = completionHandler

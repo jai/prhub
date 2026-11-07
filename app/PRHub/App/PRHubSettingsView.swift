@@ -3,13 +3,17 @@ import SwiftUI
 import UIKit
 #endif
 
-/// PRHub's one other screen: the pr-worker it is paired with, what that Worker serves (`GET /device/config`), the
-/// version, and Disconnect. Over the samples: what they are, and the way to connect a Worker of one's own.
+/// PRHub's one other screen. Signed in with GitHub: the account, the GitHub App's installs, the person's own
+/// Anthropic key, Sign out and Delete Account. Paired with a pr-worker: that Worker, what it serves
+/// (`GET /device/config`) and Disconnect. Over the samples: what they are, and the way back to onboarding. The version
+/// always.
 struct PRHubSettingsView: View {
     let environment: PRHubEnvironment
     /// Back from the samples to onboarding; nil over a paired Worker.
     var endSample: (() -> Void)?
     @State private var confirmsDisconnect = false
+    @State private var confirmsDelete = false
+    @State private var signingOut = false
 
     private var connection: WorkerConnection { environment.connection }
 
@@ -18,6 +22,8 @@ struct PRHubSettingsView: View {
             Form {
                 if let endSample {
                     samplesSection(endSample)
+                } else if connection.isHosted {
+                    accountSections
                 } else {
                     workerSections
                 }
@@ -26,6 +32,11 @@ struct PRHubSettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .sheet(isPresented: $confirmsDelete) {
+                DeleteAccountSheet(login: connection.config?.account?.login) {
+                    try await environment.deleteAccount()
+                }
+            }
         }
     }
 
@@ -33,13 +44,62 @@ struct PRHubSettingsView: View {
         Section {
             Text("You're looking at sample PRs in made-up repos. Nothing you do here reaches GitHub.")
                 .accessibilityIdentifier("prhub-samples-explained")
-            Button("Connect your own Worker", systemImage: "link") { endSample() }
+            Button(
+                connection.build.signInWithGitHub ? "Sign in with GitHub" : "Connect your own Worker",
+                systemImage: connection.build.signInWithGitHub ? "person.crop.circle" : "link"
+            ) { endSample() }
                 .accessibilityIdentifier("prhub-connect-own-worker")
         } header: {
             Text("Sample PRs")
         } footer: {
-            Text("PRHub shows your own PRs through a pr-worker that you deploy to your Cloudflare account. "
-                 + "The guide is at github.com/jai/prhub.")
+            Text(connection.build.signInWithGitHub
+                 ? "Sign in with GitHub to see your own PRs."
+                 : "PRHub shows your own PRs through a pr-worker that you deploy to your Cloudflare account. "
+                    + "The guide is at github.com/jai/prhub.")
+        }
+    }
+
+    // MARK: - Signed in with GitHub
+
+    @ViewBuilder private var accountSections: some View {
+        let account = connection.config?.account
+        Section("GitHub") {
+            LabeledContent("Signed in as", value: account?.login ?? connection.config?.login ?? "…")
+                .accessibilityIdentifier("prhub-account-login")
+            if let config = connection.config, config.isOn(.push) {
+                reviewAlertsRow
+            }
+        }
+        Section {
+            Link(destination: PRHubBuild.appInstallURL) {
+                Label("Install PRHub App on your orgs", systemImage: "building.2")
+            }
+            .accessibilityIdentifier("prhub-install-app")
+        } header: {
+            Text("Organizations")
+        } footer: {
+            // TODO: list the orgs without the App once `GET /device/config` names them (docs/plans/github-app.md).
+            Text("PRHub sees PRs only where the PRHub GitHub App is installed. An org owner installs it; a member "
+                 + "can ask for it on the same page.")
+        }
+        AnthropicKeySection(connection: connection)
+        Section {
+            Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right") {
+                signingOut = true
+                Task {
+                    await environment.signOut()
+                    signingOut = false
+                }
+            }
+            .disabled(signingOut)
+            .accessibilityIdentifier("prhub-sign-out")
+            Button("Delete account", systemImage: AppIcon.delete.rawValue, role: .destructive) {
+                confirmsDelete = true
+            }
+            .accessibilityIdentifier("prhub-delete-account")
+        } footer: {
+            Text("Sign out forgets your PRs on this phone. Delete account also deletes everything PRHub keeps for "
+                 + "you and removes its access on GitHub.")
         }
     }
 

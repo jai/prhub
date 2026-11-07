@@ -92,13 +92,16 @@ find the object's contract and put each element in its named part. If the elemen
 
 | Feature | Where | Drawn by |
 |---|---|---|
-| Connect to a pr-worker | first run, until a setup link pairs it | `OnboardingView`, `SetupCodeScanner` |
+| Sign in with GitHub | first run, on the hosted Worker | `OnboardingView`, `SignInWithGitHubButton` |
+| Sign in again | GitHub signed the person out | `SignedOutView` |
+| Connect to a pr-worker | first run, when the build allows it (`PRHUB_SELF_HOSTED`), under "Connect your own Worker" | `OnboardingView`, `SetupCodeScanner` |
 | Sample PRs | onboarding's "Try with sample PRs" | the PR screens over `PRSampleSet.prHub` |
 | PR list | PRs | `PRsView`, `PrListBlock` |
 | PR description | PRs → a PR | `PRDescriptionView`, `.prCard()`, `PRCommentText` |
 | Ask AI | PRs → a PR → the toolbar, or a line's comment box | `PRAskSheet`, `SessionBubble` |
 | PR diff | PRs → a PR → Diff | `DiffTableView` |
-| Settings | Settings | `PRHubSettingsView` |
+| Settings | Settings; signed in: account, App installs, Anthropic key, Sign out, Delete account | `PRHubSettingsView`, `AnthropicKeySection`, `DeleteAccountSheet` |
+| No PRs yet | PRs, hosted, nothing listed | `PREmptyHint` in `PRsView` |
 | iPad | the phone's tabs, every orientation | the same views; `readableContentWidth()` centres scroll views |
 
 ## Overview

@@ -1,0 +1,11 @@
+// PRHub's build options, read into Info.plist (project.yml) and the entitlements. app/README.md lists them.
+
+// The hosted Worker's host: Sign in with GitHub, its HTTPS callback and the webcredentials associated domain. A custom
+// domain is this one line, with the GitHub App's callback URL and the Worker's route moved to match.
+PRHUB_HOSTED_HOST = prhub.jai-f89.workers.dev
+
+// Which ways in onboarding offers. A paired self-hosted Worker keeps working with PRHUB_SELF_HOSTED off; only new
+// pairings and setup links are refused.
+PRHUB_SIGN_IN_GITHUB = YES
+PRHUB_SELF_HOSTED = NO
+PRHUB_SAMPLES = YES
