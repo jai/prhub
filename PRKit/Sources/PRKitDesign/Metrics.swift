@@ -29,6 +29,8 @@ public enum ChatStyle {
     /// The room a bubble leaves on the other side, so whose it is reads at a glance.
     public static let otherSide: CGFloat = 48
     public static let radius = Radius.lg
+    /// The fade over the page above the field's bar, and the room it leaves over the field.
+    public static let barFade: CGFloat = 14
 }
 
 /// A chip of state words (`StatusChip`).
@@ -37,4 +39,15 @@ public enum ChipStyle {
     public static let vertical: CGFloat = 3
     /// The tint's strength behind the words.
     public static let groundOpacity = 0.15
+}
+
+/// What people write, laid out (`MarkdownText`).
+public enum MarkdownStyle {
+    /// Between a list's marker or checkbox and its words.
+    public static let markerGap: CGFloat = 6
+    /// A nested list's step in, per level.
+    public static let indent: CGFloat = 18
+    /// A quote's words from its bar, and the bar's width.
+    public static let quoteInset: CGFloat = 10
+    public static let quoteBar: CGFloat = 3
 }

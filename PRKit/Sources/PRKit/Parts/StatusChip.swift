@@ -15,9 +15,9 @@ public struct StatusChip: View {
     public var body: some View {
         Text(text)
             .font(.appCaption2.weight(.semibold))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
+            .padding(.horizontal, ChipStyle.horizontal)
+            .padding(.vertical, ChipStyle.vertical)
             .foregroundStyle(tint)
-            .background(tint.opacity(0.15), in: Capsule())
+            .background(tint.opacity(ChipStyle.groundOpacity), in: Capsule())
     }
 }

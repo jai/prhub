@@ -25,8 +25,8 @@ public struct SessionBubble<Accessory: View>: View {
     }
 
     public var body: some View {
-        VStack(alignment: isMine ? .trailing : .leading, spacing: 4) {
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: isMine ? .trailing : .leading, spacing: Space.xs) {
+            VStack(alignment: .leading, spacing: Space.xs) {
                 if let title {
                     Text(title)
                         .font(.appBody.weight(.semibold))
@@ -40,12 +40,11 @@ public struct SessionBubble<Accessory: View>: View {
                 }
             }
             .font(.appCallout)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .foregroundStyle(isMine ? .white : .primary)
+            .padding(ChatStyle.bubbleInsets)
+            .foregroundStyle(isMine ? Color.onAccent : Color.ink)
             .background(
                 isMine ? AnyShapeStyle(.tint) : AnyShapeStyle(.fill.secondary),
-                in: .rect(cornerRadius: 18, style: .continuous)
+                in: .rect(cornerRadius: ChatStyle.radius, style: .continuous)
             )
             if !caption.isEmpty {
                 Text(caption)
@@ -55,7 +54,7 @@ public struct SessionBubble<Accessory: View>: View {
             accessory
         }
         .frame(maxWidth: .infinity, alignment: isMine ? .trailing : .leading)
-        .padding(isMine ? .leading : .trailing, 48)
+        .padding(isMine ? .leading : .trailing, ChatStyle.otherSide)
     }
 
     private var caption: String {

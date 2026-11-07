@@ -53,7 +53,7 @@ struct AnthropicKeySection: View {
                         ZStack {
                             Text("Save key").opacity(isWorking ? 0 : 1)
                             if isWorking {
-                                ProgressView().tint(.white)
+                                ProgressView().tint(Color.onAccent)
                             }
                         }
                     }
@@ -163,7 +163,7 @@ struct DeleteAccountSheet: View {
                         ZStack {
                             Text("Delete account").opacity(isDeleting ? 0 : 1)
                             if isDeleting {
-                                ProgressView().tint(.white)
+                                ProgressView().tint(Color.onAccent)
                             }
                         }
                         .frame(maxWidth: .infinity)

@@ -28,7 +28,7 @@ private struct SidePanel<Panel: View>: ViewModifier {
     func body(content: Content) -> some View {
         content.overlay {
             if isPresented {
-                Color.black.opacity(0.3 * (1 - min(dragged / Self.width, 1)))
+                Color.scrim.opacity(1 - min(dragged / Self.width, 1))
                     .ignoresSafeArea()
                     .transition(.opacity)
                 GeometryReader { proxy in

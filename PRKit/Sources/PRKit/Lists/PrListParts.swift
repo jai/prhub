@@ -165,7 +165,7 @@ public struct PrListNote: View {
 
     public var body: some View {
         let isOpen = folds.isFlipped(id)
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Space.xs) {
             Text(text)
                 .font(.appFootnote)
                 .foregroundStyle(Color.primary)

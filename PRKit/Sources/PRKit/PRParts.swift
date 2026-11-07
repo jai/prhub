@@ -10,7 +10,7 @@ extension View {
             .clipShape(.rect(cornerRadius: PRStyle.cardRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: PRStyle.cardRadius, style: .continuous)
-                    .strokeBorder(Color.line, lineWidth: 0.5)
+                    .strokeBorder(Color.line, lineWidth: PRStyle.hairline)
             )
     }
 }
@@ -37,13 +37,13 @@ public struct PRButtonStyle: ButtonStyle {
             .frame(minHeight: PRStyle.controlHeight)
             .background(background, in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous))
             .contentShape(.rect.inset(by: -6))
-            .opacity(isEnabled ? (configuration.isPressed ? 0.7 : 1) : 0.4)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .opacity(isEnabled ? (configuration.isPressed ? PRStyle.pressedOpacity : 1) : PRStyle.disabledOpacity)
+            .animation(AppMotion.press, value: configuration.isPressed)
     }
 
     private var foreground: AnyShapeStyle {
         switch kind {
-        case .primary: AnyShapeStyle(.white)
+        case .primary: AnyShapeStyle(Color.onAccent)
         case .secondary: AnyShapeStyle(.tint)
         case .plain: AnyShapeStyle(.secondary)
         }
@@ -105,7 +105,7 @@ public struct PRAuthorLine: View {
     public let date: Date?
 
     public var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.sm) {
             PRAvatar(author: author)
             Text(author?.login ?? "ghost")
                 .font(.appFootnote.weight(.semibold))
@@ -169,7 +169,7 @@ public struct InlineComposer: View {
     @State private var posted = 0
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Space.sm) {
             if let context {
                 Text(verbatim: context)
                     .font(.system(size: 12, design: .monospaced))
@@ -181,7 +181,7 @@ public struct InlineComposer: View {
                 .lineLimit(lines)
                 .focused($isFocused)
                 .padding(.horizontal, PRStyle.inset)
-                .padding(.vertical, 8)
+                .padding(.vertical, Space.sm)
                 .background(
                     Color.groundFill,
                     in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous)
@@ -190,7 +190,7 @@ public struct InlineComposer: View {
                     RoundedRectangle(cornerRadius: PRStyle.controlRadius, style: .continuous)
                         .strokeBorder(isFocused ? Color.accentColor : .clear, lineWidth: 1)
                 )
-                .animation(.easeOut(duration: 0.12), value: isFocused)
+                .animation(AppMotion.press, value: isFocused)
                 .accessibilityIdentifier("inline-composer-field")
             if let failure {
                 Text(failure)
@@ -198,7 +198,7 @@ public struct InlineComposer: View {
                     .foregroundStyle(.red)
                     .transition(.fold)
             }
-            HStack(spacing: 8) {
+            HStack(spacing: Space.sm) {
                 if let ask {
                     Button("Ask AI", systemImage: "bubble.left.and.text.bubble.right") { ask(trimmed) }
                         .labelStyle(.iconOnly)
@@ -221,7 +221,7 @@ public struct InlineComposer: View {
                     if isSending {
                         ProgressView()
                             .controlSize(.small)
-                            .tint(.white)
+                            .tint(Color.onAccent)
                     } else {
                         Text(buttonTitle)
                     }
@@ -271,8 +271,8 @@ struct PRNotUpdatedNote: View {
         Text("Couldn't update · Pull to try again")
             .font(.appCaption)
             .foregroundStyle(Color.toneWaiting)
-            .padding(.leading, 16 + PrListGrid.avatar + PrListGrid.gutter)
-            .padding(.bottom, 12)
+            .padding(.leading, Space.lg + PrListGrid.avatar + PrListGrid.gutter)
+            .padding(.bottom, Space.md)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.groundCard)
             .accessibilityIdentifier("pr-not-updated")

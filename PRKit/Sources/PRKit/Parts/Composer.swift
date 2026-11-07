@@ -33,13 +33,12 @@ public struct SessionComposer: View {
     }
 
     public var body: some View {
-        HStack(alignment: .sendButton, spacing: 8) {
+        HStack(alignment: .sendButton, spacing: Space.sm) {
             TextField(placeholder, text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .focused(focused)
                 .lineLimit(1...5)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 9)
+                .padding(ChatStyle.fieldInsets)
                 .glassEffect(in: .rect(cornerRadius: 20, style: .continuous))
                 .submitLabel(.send)
                 .sendsOnReturn {
@@ -87,13 +86,13 @@ private struct ComposerBar: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(.horizontal)
-            .padding(.top, 14)
-            .padding(.bottom, keyboardUp ? 16 : 8)
+            .padding(.top, ChatStyle.barFade)
+            .padding(.bottom, keyboardUp ? Space.lg : Space.sm)
             .background {
                 VStack(spacing: 0) {
                     LinearGradient(colors: [Color.groundPage.opacity(0), Color.groundPage],
                                    startPoint: .top, endPoint: .bottom)
-                        .frame(height: 14)
+                        .frame(height: ChatStyle.barFade)
                     Color.groundPage
                 }
                 .ignoresSafeArea(edges: .bottom)

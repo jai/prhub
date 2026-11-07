@@ -253,10 +253,9 @@ private struct ReadableContentWidth: ViewModifier {
 #endif
 
 #if os(macOS)
-/// How far and how fast a Mac screen moves as it is pushed or returned to.
+/// How far a Mac screen moves as it is pushed or returned to.
 private enum MacScreenMotion {
     static let distance: CGFloat = 60
-    static let animation = Animation.smooth(duration: 0.3)
 }
 
 private struct MacPushedScreen: ViewModifier {
@@ -267,7 +266,7 @@ private struct MacPushedScreen: ViewModifier {
             .offset(x: shown ? 0 : MacScreenMotion.distance)
             .opacity(shown ? 1 : 0)
             .onAppear {
-                withAnimation(MacScreenMotion.animation) {
+                withAnimation(AppMotion.screen) {
                     shown = true
                 }
             }
@@ -291,7 +290,7 @@ private struct MacReturnedScreen: ViewModifier {
                 opacity = 0
                 // On the run loop's next turn: set in the same update, SwiftUI would draw only where it ends.
                 Task { @MainActor in
-                    withAnimation(MacScreenMotion.animation) {
+                    withAnimation(AppMotion.screen) {
                         offset = 0
                         opacity = 1
                     }

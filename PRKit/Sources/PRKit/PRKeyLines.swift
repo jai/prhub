@@ -44,7 +44,7 @@ struct PRKeyLinesList: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: Space.sm) {
                 contextPicker
                 content
             }
@@ -54,7 +54,7 @@ struct PRKeyLinesList: View {
 
     private var contextPicker: some View {
         ScrollView(.horizontal) {
-            HStack(spacing: 8) {
+            HStack(spacing: Space.sm) {
                 ForEach(Self.picks, id: \.context) { pick in
                     Button(pick.title) { session.setContextLines(pick.context) }
                         .buttonStyle(PRButtonStyle(session.contextLines == pick.context ? .primary : .secondary))
@@ -85,7 +85,7 @@ struct PRKeyLinesList: View {
     @ViewBuilder private var content: some View {
         switch session.keyLines {
         case .working:
-            HStack(spacing: 8) {
+            HStack(spacing: Space.sm) {
                 ProgressView()
                     .controlSize(.small)
                 Text("Reading the change…")
@@ -93,7 +93,7 @@ struct PRKeyLinesList: View {
                     .foregroundStyle(.secondary)
             }
         case let .failed(reason):
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: Space.sm) {
                 Text(reason)
                     .font(.appFootnote)
                     .foregroundStyle(Color.toneBad)
@@ -101,7 +101,7 @@ struct PRKeyLinesList: View {
                     .buttonStyle(PRButtonStyle(.secondary))
             }
         case let .ready(lines):
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Space.xs) {
                 ForEach(lines.items) { item in
                     let isSelected = session.selectedKeyLine?.id == item.id
                     Button { session.show(item) } label: { row(item) }
@@ -123,12 +123,12 @@ struct PRKeyLinesList: View {
     }
 
     private func row(_ item: PRKeyLines.Item) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
             Image(systemName: item.symbol)
                 .font(.appCaption)
                 .foregroundStyle(item.kind == "risk" ? Color.toneBad : Color.secondary)
                 .frame(width: 16)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Space.xxs) {
                 Text(verbatim: "\(item.path):\(item.line)")
                     .font(.appCaption.monospaced())
                     .foregroundStyle(.secondary)
@@ -140,7 +140,7 @@ struct PRKeyLinesList: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(8)
+        .padding(Space.sm)
         .contentShape(.rect)
         .accessibilityValue(item.kind)
     }
@@ -187,7 +187,7 @@ struct PRNavigator: View {
     private var filesFoot: some View {
         let changedOnly = session.changedLinesOnly
         let symbol = "line.3.horizontal.decrease.circle"
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: Space.sm) {
             Button("Changed lines only", systemImage: changedOnly ? "\(symbol).fill" : symbol) {
                 session.setChangedLinesOnly(!changedOnly)
             }
@@ -220,7 +220,7 @@ struct PRKeyLineNote: View {
     let close: () -> Void
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
             Image(systemName: item.symbol)
                 .font(.appCaption)
                 .foregroundStyle(item.kind == "risk" ? Color.toneBad : Color.secondary)

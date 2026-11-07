@@ -49,7 +49,7 @@ struct OnboardingView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: Space.sm) {
                 header
                 if build.signInWithGitHub {
                     signInBlock
@@ -79,7 +79,7 @@ struct OnboardingView: View {
                     samplesBlock(trySamples)
                 }
             }
-            .padding(.vertical, 24)
+            .padding(.vertical, Space.xl)
             .animation(AppMotion.fold, value: connection.phase)
             .animation(AppMotion.fold, value: scanner)
         }
@@ -90,7 +90,7 @@ struct OnboardingView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Space.sm) {
             Text(build.signInWithGitHub ? "Review pull requests on your phone" : "Connect PRHub to your pr-worker")
                 .font(.appTitle3.weight(.semibold))
                 .accessibilityAddTraits(.isHeader)
@@ -102,8 +102,8 @@ struct OnboardingView: View {
                 .font(.appFootnote)
                 .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 16)
+        .padding(.horizontal, Space.lg)
+        .padding(.bottom, Space.lg)
     }
 
     // MARK: - Sign in with GitHub
@@ -130,7 +130,7 @@ struct OnboardingView: View {
                 opened.toggle(Self.ownWorkerFold)
             }
         }
-        .padding(.top, 16)
+        .padding(.top, Space.lg)
     }
 
     // MARK: - Scan
@@ -150,7 +150,7 @@ struct OnboardingView: View {
                     Task { await connection.connect(text: payload) }
                 }
                 .frame(height: 280)
-                .clipShape(.rect(cornerRadius: 6))
+                .clipShape(.rect(cornerRadius: Radius.sm))
                 .transition(.fold)
                 #endif
                 Button("Cancel") { scanner = .closed }
@@ -191,7 +191,7 @@ struct OnboardingView: View {
                 .lineLimit(1...4)
                 .plainEntry()
                 .accessibilityIdentifier("onboardingLinkField")
-            HStack(spacing: 8) {
+            HStack(spacing: Space.sm) {
                 PasteButton(payloadType: String.self) { strings in
                     guard let pasted = strings.first else {
                         return
@@ -219,7 +219,7 @@ struct OnboardingView: View {
                 opened.toggle(Self.manualFold)
             }
             if opened.isFlipped(Self.manualFold) {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: Space.sm) {
                     TextField("pr-review.example.workers.dev", text: $worker)
                         .font(.appFootnote.monospaced())
                         .plainEntry(isURL: true)
@@ -259,7 +259,7 @@ struct OnboardingView: View {
             case .idle:
                 EmptyView()
             case .working(let step):
-                HStack(spacing: 12) {
+                HStack(spacing: Space.md) {
                     ProgressView()
                     Text(Self.words(for: step))
                         .font(.appFootnote)
@@ -303,21 +303,21 @@ struct OnboardingView: View {
 
     /// A block on the page's grey, the width of the screen, with its section's title above it.
     private func block(_ title: String?, @ViewBuilder content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Space.sm) {
             if let title {
                 Text(title)
                     .font(.appFootnote.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, Space.lg)
             }
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: Space.md) {
                 content()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
+            .padding(Space.lg)
             .background(Color.groundCard)
         }
-        .padding(.top, title == nil ? 0 : 16)
+        .padding(.top, title == nil ? 0 : Space.lg)
     }
 }
 
@@ -377,7 +377,7 @@ struct SignInWithGitHubButton: View {
                     .opacity(isWorking ? 0 : 1)
                 if isWorking {
                     ProgressView()
-                        .tint(.white)
+                        .tint(Color.onAccent)
                         .transition(.opacity)
                 }
             }

@@ -22,7 +22,7 @@ struct PRThreadCard: View {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(thread.comments.nodes) { comment in
                         Divider()
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: Space.sm) {
                             PRAuthorLine(author: comment.author, date: comment.createdAt)
                             PRCommentText(PRMarkdown.clean(comment.body))
                         }
@@ -39,7 +39,7 @@ struct PRThreadCard: View {
 
     private var header: some View {
         Button(action: onToggle) {
-            HStack(spacing: 8) {
+            HStack(spacing: Space.sm) {
                 PRChevron(isCollapsed: isCollapsed)
                 Text(location)
                     .font(.appCaption.monospaced())
@@ -88,7 +88,7 @@ struct PRThreadCard: View {
                 }
             }
             .buttonStyle(PRButtonStyle(.plain))
-            .padding(.vertical, 4)
+            .padding(.vertical, Space.xs)
             if let failure {
                 Text(failure)
                     .font(.appFootnote)
@@ -140,7 +140,7 @@ struct PRFileList: View {
 
     private func row(_ file: DiffRows.File) -> some View {
         let isViewed = viewed.contains(file.path)
-        return HStack(spacing: 8) {
+        return HStack(spacing: Space.sm) {
             Image(systemName: isViewed ? "checkmark.circle.fill" : "circle")
                 .font(.appFootnote)
                 .foregroundStyle(isViewed ? Color.toneGood : Color.secondary)
@@ -156,7 +156,7 @@ struct PRFileList: View {
                 .font(.appCaption.monospacedDigit())
                 .foregroundStyle(Color.toneBad)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, Space.lg)
         .frame(minHeight: 44)
         .contentShape(.rect)
     }
@@ -168,7 +168,7 @@ struct PRDraftCard: View {
     let remove: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Space.sm) {
             HStack {
                 StatusChip(text: "Pending", tint: .orange)
                 Spacer()

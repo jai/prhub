@@ -20,7 +20,7 @@ extension Color {
     /// Text, and quiet text (meta, a count, what someone did).
     public static var ink: Color { .primary }
     public static var inkQuiet: Color { .secondary }
-    /// Words and spinners on the accent: a primary button, the person's own chat bubble.
+    /// Words and spinners on the accent or a tone: a primary button, a swipe action, the person's own chat bubble.
     public static var onAccent: Color { .white }
 
     /// The page, and a block or box on it. Both, always: `.background` is black on black in dark.

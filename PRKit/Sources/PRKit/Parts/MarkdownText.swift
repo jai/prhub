@@ -45,7 +45,7 @@ public struct MarkdownText: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Space.sm) {
             ForEach(blocks) { block in
                 row(block)
                     .padding(.trailing, block.id == blocks.first?.id ? firstBlockInset : 0)
@@ -67,7 +67,7 @@ public struct MarkdownText: View {
             Group {
                 if let onCheckbox, let index = checkboxes[block.id], let isChecked = Self.checkedState(block) {
                     Button { onCheckbox(index, !isChecked) } label: {
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        HStack(alignment: .firstTextBaseline, spacing: MarkdownStyle.markerGap) {
                             Image(systemName: isChecked ? "checkmark.square.fill" : "square")
                                 .foregroundStyle(isChecked ? Color.accentColor : Color.secondary)
                             // After the box and the space that follows it, so wrapped lines line up with the first.
@@ -81,7 +81,7 @@ public struct MarkdownText: View {
                     .accessibilityValue(isChecked ? "checked" : "unchecked")
                     .accessibilityIdentifier("pr-checkbox-\(index)")
                 } else {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: MarkdownStyle.markerGap) {
                         Text(marker)
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
@@ -89,21 +89,21 @@ public struct MarkdownText: View {
                     }
                 }
             }
-            .padding(.leading, CGFloat(depth - 1) * 18)
+            .padding(.leading, CGFloat(depth - 1) * MarkdownStyle.indent)
         case .code:
             Text(block.content)
                 .font(.appFootnote.monospaced())
-                .padding(8)
+                .padding(Space.sm)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.fill.tertiary, in: .rect(cornerRadius: 8))
+                .background(.fill.tertiary, in: .rect(cornerRadius: Radius.md))
         case .quote:
             Text(block.content)
                 .foregroundStyle(.secondary)
-                .padding(.leading, 10)
+                .padding(.leading, MarkdownStyle.quoteInset)
                 .overlay(alignment: .leading) {
                     Capsule()
                         .fill(.tertiary)
-                        .frame(width: 3)
+                        .frame(width: MarkdownStyle.quoteBar)
                 }
         case .rule:
             Divider()

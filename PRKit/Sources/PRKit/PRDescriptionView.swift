@@ -67,7 +67,7 @@ struct PRDescriptionView: View {
 
     private var page: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 12) {
+            LazyVStack(alignment: .leading, spacing: Space.md) {
                 header
                 PRStatusCard(session: session, detail: detail, folds: folds)
                 actions
@@ -77,7 +77,7 @@ struct PRDescriptionView: View {
                 if !entries.isEmpty {
                     Text("Conversation · \(entries.count)")
                         .font(.appSubheadline.weight(.semibold))
-                        .padding(.top, 8)
+                        .padding(.top, Space.sm)
                 }
                 ForEach(entries) { entry($0) }
             }
@@ -87,8 +87,8 @@ struct PRDescriptionView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            HStack(alignment: .top, spacing: Space.sm) {
                 Text(session.title)
                     .font(.appTitle3.weight(.semibold))
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -142,7 +142,7 @@ struct PRDescriptionView: View {
     }
 
     private var actionButtons: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.sm) {
             if !detail.isAuthor {
                 Button(Action.approve.title) { open(.approve) }
                     .buttonStyle(PRButtonStyle(.primary))
@@ -207,7 +207,7 @@ struct PRDescriptionView: View {
     }
 
     private var descriptionActions: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Space.md) {
             if session.isRewriting {
                 ProgressView()
                     .controlSize(.small)
@@ -247,7 +247,7 @@ struct PRDescriptionView: View {
         let isCollapsed = folds.isFlipped(id)
         return VStack(alignment: .leading, spacing: 0) {
             Button { folds.toggle(id) } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: Space.sm) {
                     PRAuthorLine(author: author, date: date)
                     Spacer(minLength: 4)
                     if let badge = Self.badge(state) {

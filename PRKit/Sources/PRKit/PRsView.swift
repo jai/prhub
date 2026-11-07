@@ -114,7 +114,7 @@ struct PRsView: View {
     var body: some View {
         TabStack(path: $navigation.path) {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 8) {
+                LazyVStack(alignment: .leading, spacing: Space.sm) {
                     if let since = model.staleSince {
                         banner("Last checked GitHub \(since.formatted(.relative(presentation: .named)))")
                     }
@@ -134,8 +134,8 @@ struct PRsView: View {
                             .foregroundStyle(Color.toneBad)
                         }
                         .buttonStyle(.plain)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
+                        .padding(.horizontal, Space.lg)
+                        .padding(.top, Space.sm)
                         .accessibilityHint("Dismisses this")
                         .transition(.fold)
                     }
@@ -148,7 +148,7 @@ struct PRsView: View {
                         banner("Merged PRs didn't load. \(error)")
                     }
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, Space.lg)
             }
             .animation(AppMotion.fold, value: model.rows)
             .animation(AppMotion.fold, value: model.errorMessage)
@@ -219,8 +219,8 @@ struct PRsView: View {
             Text("\(showsMyMerged ? "My merged" : "My PRs") · \(rows(on: .mine).count)").tag(PRListPage.mine)
         }
         .pickerStyle(.segmented)
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .padding(.horizontal, Space.lg)
+        .padding(.top, Space.sm)
         .accessibilityIdentifier("pr-list-page")
     }
 
@@ -233,7 +233,7 @@ struct PRsView: View {
             Text("\(count) repo\(count == 1 ? "" : "s") · Clear")
                 .font(.appCaption)
                 .foregroundStyle(Color.secondary)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, Space.lg)
                 .frame(minHeight: 28)
                 .contentShape(.rect)
         }
@@ -274,8 +274,8 @@ struct PRsView: View {
         Text(text)
             .font(.appCaption)
             .foregroundStyle(Color.toneWaiting)
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
+            .padding(.horizontal, Space.lg)
+            .padding(.top, Space.sm)
     }
 
     /// Rows are `PrListBlock`s, as in Agents → Lists: a tap is a PR link, which `opensPullRequestLinks` pushes here.
@@ -288,8 +288,8 @@ struct PRsView: View {
                     .font(.appFootnote.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
+                    .padding(.horizontal, Space.lg)
+                    .padding(.top, Space.sm)
                     .accessibilityAddTraits(.isHeader)
             case let .row(row):
                 rowView(row)
@@ -352,14 +352,14 @@ private struct PRFilterPanel: View {
                         showsMerged.wrappedValue = true
                     }
                     Divider()
-                        .padding(.vertical, 8)
+                        .padding(.vertical, Space.sm)
                 }
                 heading("Orgs")
                 ForEach(orgs, id: \.self) { org in
                     row(org, isOn: filter.selected.contains(org), id: "pr-filter-org-\(org)") { filter.toggle(org) }
                 }
                 Divider()
-                    .padding(.vertical, 8)
+                    .padding(.vertical, Space.sm)
                 heading("Repos")
                 row("All repos", isOn: filter.repos.isEmpty, id: "pr-filter-all-repos") { filter.showAllRepos() }
                 ForEach(repos, id: \.self) { repo in
@@ -369,7 +369,7 @@ private struct PRFilterPanel: View {
                     ) { filter.toggleRepo(repo) }
                 }
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, Space.md)
         }
         .frame(width: 300, height: 440)
     }
@@ -383,15 +383,15 @@ private struct PRFilterPanel: View {
         Text(title)
             .font(.appCaption)
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 4)
+            .padding(.horizontal, Space.lg)
+            .padding(.bottom, Space.xs)
     }
 
     private func row(
         _ title: String, count: Int? = nil, isOn: Bool, id: String, action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: Space.sm) {
                 Image(systemName: "checkmark")
                     .font(.appCaption.weight(.semibold))
                     .opacity(isOn ? 1 : 0)
@@ -407,7 +407,7 @@ private struct PRFilterPanel: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, Space.lg)
             .frame(minHeight: 40)
             .contentShape(.rect)
         }

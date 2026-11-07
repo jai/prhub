@@ -50,7 +50,7 @@ public struct PrListBlock: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(item.pullRequests.enumerated()), id: \.offset) { index, pullRequest in
                 pullRequestRow(pullRequest)
-                    .padding(.top, index == 0 ? 0 : 16)
+                    .padding(.top, index == 0 ? 0 : Space.lg)
             }
             if item.pullRequests.isEmpty {
                 ticketRow
@@ -58,7 +58,7 @@ public struct PrListBlock: View {
             if let note = item.note {
                 PrListNote(text: note, id: id, folds: folds)
                     .padding(.leading, textColumn)
-                    .padding(.top, 8)
+                    .padding(.top, Space.sm)
                     .opacity(opacity)
             }
             if hasFoot, let ticket = item.ticket {
@@ -66,9 +66,9 @@ public struct PrListBlock: View {
                     .opacity(opacity)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, hasFoot ? 0 : 12)
+        .padding(.horizontal, Space.lg)
+        .padding(.top, Space.md)
+        .padding(.bottom, hasFoot ? 0 : Space.md)
         .backgroundPreferenceValue(TicketLineBounds.self) { bounds in
             GeometryReader { proxy in
                 if let bounds {
@@ -84,7 +84,7 @@ public struct PrListBlock: View {
         let opacity = pullRequest.isDecidedByJai(since: sentAt) ? PrListGrid.fadedOpacity : 1
         return PrListLink(url: pullRequest.url, onOpen: { onOpen(pullRequest) }, content: {
             HStack(alignment: .top, spacing: PrListGrid.gutter) {
-                VStack(spacing: 4) {
+                VStack(spacing: Space.xs) {
                     PrAuthorAvatar(pullRequest: pullRequest)
                         .background(Color.groundCard, in: .circle)
                         .opacity(opacity)
@@ -92,11 +92,11 @@ public struct PrListBlock: View {
                         PrPastSLAMark(due: due, now: now, format: format)
                     }
                 }
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    HStack(alignment: .top, spacing: Space.sm) {
                         title(item.title(of: pullRequest))
                         PrStateIcon(state: pullRequest.listState)
-                            .padding(.vertical, -2)
+                            .padding(.vertical, -Space.xxs)
                     }
                     .opacity(opacity)
                     metaLine(pullRequest)
@@ -149,8 +149,8 @@ public struct PrListBlock: View {
             HStack(alignment: .top, spacing: PrListGrid.gutter) {
                 LinearMark(size: 22)
                     .frame(width: avatarSize, height: avatarSize)
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    HStack(alignment: .top, spacing: Space.sm) {
                         title(item.ticket?.title ?? item.title ?? item.ticket?.key ?? "")
                         if let ticket = item.ticket {
                             LinearStateCircle(ticket: ticket)

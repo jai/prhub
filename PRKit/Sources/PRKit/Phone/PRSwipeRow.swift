@@ -21,9 +21,9 @@ struct PRSwipeRow<Content: View>: View {
                 Button(action: run) {
                     Text(title)
                         .font(.appFootnote.weight(.semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Color.onAccent)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 8)
+                        .padding(.horizontal, Space.sm)
                         .frame(width: Self.width)
                         .frame(maxHeight: .infinity)
                         .background(Color.toneBad)

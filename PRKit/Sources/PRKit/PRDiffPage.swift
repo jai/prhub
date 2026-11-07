@@ -111,7 +111,7 @@ struct PRDiffPage: View {
                     closeComposer()
                 }
             )
-            .padding(8)
+            .padding(Space.sm)
             .background(Color.groundCard)
             .overlay(alignment: .top) { Divider() }
         }
@@ -126,7 +126,7 @@ struct PRDiffPage: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .transition(.fold)
             }
-            HStack(spacing: 8) {
+            HStack(spacing: Space.sm) {
                 if !session.drafts.isEmpty {
                     finishReview
                 }
@@ -138,8 +138,8 @@ struct PRDiffPage: View {
                 panelButton
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 8)
+        .padding(.horizontal, Space.md)
+        .padding(.bottom, Space.sm)
     }
 
     private var finishReview: some View {
@@ -148,8 +148,8 @@ struct PRDiffPage: View {
         } label: {
             Text("Finish · \(session.drafts.count)")
                 .font(.appFootnote.weight(.semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 16)
+                .foregroundStyle(Color.onAccent)
+                .padding(.horizontal, Space.lg)
                 .frame(minHeight: 44)
                 .contentShape(.capsule)
         }

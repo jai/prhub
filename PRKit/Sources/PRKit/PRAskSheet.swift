@@ -23,7 +23,7 @@ struct PRAskSheet: View {
         NavigationStack {
             ScrollViewReader { proxy in
                 ChatScroll {
-                    LazyVStack(alignment: .leading, spacing: 8) {
+                    LazyVStack(alignment: .leading, spacing: Space.sm) {
                         if messages.isEmpty, !isWorking {
                             Text("Ask about this PR. The AI reads the whole repo at this PR's head, and can't change anything.")
                                 .font(.appFootnote)
@@ -33,8 +33,8 @@ struct PRAskSheet: View {
                         ForEach(messages) { message($0).transition(.fold) }
                         status.id(Self.end)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, Space.md)
+                    .padding(.vertical, Space.sm)
                     .animation(AppMotion.fold, value: messages)
                     .animation(AppMotion.fold, value: isWorking)
                 }
@@ -70,7 +70,7 @@ struct PRAskSheet: View {
 
     @ViewBuilder private var status: some View {
         if isWorking {
-            HStack(spacing: 8) {
+            HStack(spacing: Space.sm) {
                 ProgressView().controlSize(.small)
                 Text(session.askChat?.activity ?? "Thinking")
                     .font(.appCaption)
@@ -96,7 +96,7 @@ struct PRAskSheet: View {
     private var composer: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let anchor = session.askAnchor {
-                HStack(spacing: 8) {
+                HStack(spacing: Space.sm) {
                     Text(verbatim: "\(anchor.path):\(anchor.line)")
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundStyle(.secondary)

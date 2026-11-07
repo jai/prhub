@@ -90,7 +90,7 @@ struct PRStatusCard: View {
                             .buttonStyle(PRButtonStyle(.plain))
                     }
                 }
-                .padding(.bottom, 4)
+                .padding(.bottom, Space.xs)
                 .transition(.fold)
             }
         }
@@ -104,7 +104,7 @@ struct PRStatusCard: View {
         case "DISMISSED": Status(AppIcon.reviewDismissed.symbol, .secondary, "Dismissed")
         default: Status(AppIcon.reviewWaiting.symbol, Color.toneWaiting, "Waiting")
         }
-        return HStack(spacing: 8) {
+        return HStack(spacing: Space.sm) {
             PRAvatar(author: .init(login: person.login, avatarUrl: person.avatarUrl))
             Text(person.login)
                 .font(.appCaption)
@@ -118,7 +118,7 @@ struct PRStatusCard: View {
                 .foregroundStyle(state.color)
         }
         .padding(.horizontal, PRStyle.inset)
-        .padding(.vertical, 5)
+        .padding(.vertical, PRStyle.listRowPadding)
     }
 
     private var deciding: [PullRequestDetail.Check] { detail.decidingChecks }
@@ -184,7 +184,7 @@ struct PRStatusCard: View {
     }
 
     private func row(symbol: String, color: Color, text: String, isCollapsed: Bool?) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.sm) {
             Image(systemName: symbol)
                 .foregroundStyle(color)
                 .frame(width: 20)
@@ -223,7 +223,7 @@ struct PRStatusCard: View {
                 PRPlatform.openExternally(url)
             }
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: Space.sm) {
                 Image(systemName: Self.symbol(check.state))
                     .font(.appCaption)
                     .foregroundStyle(Self.color(check.state))
@@ -246,8 +246,8 @@ struct PRStatusCard: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(check.required == false ? check.name : "\(check.name), required")
             .accessibilityValue(check.state)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
+            .padding(.horizontal, PRStyle.inset)
+            .padding(.vertical, PRStyle.listRowPadding)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
