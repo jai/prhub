@@ -30,12 +30,12 @@ final class PRHubSamplesUITests: XCTestCase {
         let approve = app.buttons["Approve"]
         XCTAssertTrue(approve.waitForExistence(timeout: 5))
 
-        app.buttons["Diff"].tap()
+        app.buttons["pr-review-changes"].tap()
         XCTAssertTrue(app.buttons["key-line-position"].waitForExistence(timeout: 5))
         app.buttons["key-line-next"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["key-line-note"].waitForExistence(timeout: 5))
 
-        app.buttons["Description"].tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(approve.waitForExistence(timeout: 5))
         approve.tap()
         let send = app.buttons["inline-composer-send"]

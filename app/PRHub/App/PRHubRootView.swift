@@ -101,6 +101,7 @@ private struct PRHubTabs: View {
         TabView(selection: $navigation.selectedTab) {
             Tab("PRs", systemImage: "arrow.triangle.pull", value: PRHubTab.prs) {
                 PRKitRoot(environment.prs)
+                    .compactWidthForUITests()
             }
             Tab("Settings", systemImage: AppIcon.settings.symbol, value: PRHubTab.settings) {
                 PRHubSettingsView(environment: environment, endSample: endSample)
@@ -114,6 +115,23 @@ private struct PRHubTabs: View {
 }
 
 extension View {
+    /// A Debug run's `-PRHubCompactWidth`: a narrow Split View's size class, which a UI test can't make with the
+    /// window. Set on the window, so the screens a stack pushes have it too.
+    fileprivate func compactWidthForUITests() -> some View {
+        #if DEBUG
+        onAppear {
+            guard PRHubScreenshots.forcesCompactWidth else {
+                return
+            }
+            for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+                scene.windows.forEach { $0.traitOverrides.horizontalSizeClass = .compact }
+            }
+        }
+        #else
+        self
+        #endif
+    }
+
     /// The one offer to turn on review alerts, over the PRs, before the system asks.
     fileprivate func alertsOffer(_ permission: PRHubAlertPermission) -> some View {
         @Bindable var permission = permission

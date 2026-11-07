@@ -74,7 +74,7 @@ final class PRHubDiffFontUITests: XCTestCase {
         let row = app.staticTexts["Show a retry button when checkout fails"]
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.tap()
-        let diff = app.buttons["Diff"]
+        let diff = app.buttons["pr-review-changes"]
         XCTAssertTrue(diff.waitForExistence(timeout: 5))
         diff.tap()
         XCTAssertTrue(app.buttons["file-viewed-0"].waitForExistence(timeout: 5))

@@ -1,7 +1,7 @@
 import XCTest
 
 /// The diff's nav bar and tab bar leave as you scroll down a long file, and nothing can leave them gone with no way out:
-/// folding the file brings them back, so does the status bar, and the edge swipe goes back while they are gone. On
+/// folding the file brings them back, so does the status bar, and the edge swipe goes back to the PR while they are gone. On
 /// `-PRHubLongDiff`, whose first PR has one file longer than the screen. Pictures go to `SCREENSHOTS_DIR` when set.
 @MainActor
 final class PRHubDiffBarsUITests: XCTestCase {
@@ -40,8 +40,8 @@ final class PRHubDiffBarsUITests: XCTestCase {
         hideBars()
         let edge = app.coordinate(withNormalizedOffset: CGVector(dx: 0.005, dy: 0.5))
         edge.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)))
-        let list = app.staticTexts["Show a retry button when checkout fails"]
-        XCTAssertTrue(waitFor { list.exists && list.isHittable }, "back on the PR list")
+        let review = app.buttons["pr-review-changes"]
+        XCTAssertTrue(waitFor { review.exists && review.isHittable }, "back on the PR, not the list")
     }
 
     private func openLongDiff(_ appearance: XCUIDevice.Appearance) {
@@ -49,7 +49,7 @@ final class PRHubDiffBarsUITests: XCTestCase {
         let row = app.staticTexts["Give the deploy team access to staging"]
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.tap()
-        let diff = app.buttons["Diff"]
+        let diff = app.buttons["pr-review-changes"]
         XCTAssertTrue(diff.waitForExistence(timeout: 5))
         diff.tap()
         XCTAssertTrue(app.buttons["file-header-0"].waitForExistence(timeout: 5))

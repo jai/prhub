@@ -14,7 +14,8 @@ import Synchronization
 ///   Settings.
 /// - `-PRHubPaired`: the PRs and Settings over the sample PRs as if paired, every AI feature on. With `-PRHubNoAI` the
 ///   Worker has no model key; with `-PRHubSettings` it opens on Settings; with `-PRHubLongDiff` For review starts with a
-///   PR whose one file is longer than the screen, for the diff's bars.
+///   PR whose one file is longer than the screen, for the diff's bars; with `-PRHubOpen <link>` it opens that PR as a
+///   link would (`…/pull/N/files` on its diff); with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View.
 ///
 /// Every one starts at the default diff font, whatever an earlier run chose in Settings; `-prkit.diffFont face:size`
 /// sets one for the run. `-PRHubAppearance dark` (or `light`) sets the run's appearance whatever the Simulator's is: on
@@ -60,7 +61,15 @@ enum PRHubScreenshots {
         if arguments.contains("-PRHubSettings") {
             environment.navigation.selectedTab = .settings
         }
+        if let index = arguments.firstIndex(of: "-PRHubOpen"), arguments.indices.contains(index + 1) {
+            environment.prs.open(text: arguments[index + 1])
+        }
         return environment
+    }
+
+    /// `-PRHubCompactWidth`: the PRs tab as a narrow Split View or Slide Over has it, on any screen.
+    static var forcesCompactWidth: Bool {
+        ProcessInfo.processInfo.arguments.contains("-PRHubCompactWidth")
     }
 
     @MainActor private static func firstRun() -> PRHubEnvironment {
