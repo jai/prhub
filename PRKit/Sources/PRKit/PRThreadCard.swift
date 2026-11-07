@@ -48,10 +48,10 @@ struct PRThreadCard: View {
                     .truncationMode(.head)
                 Spacer(minLength: 4)
                 if thread.isOutdated == true {
-                    StatusChip(text: "Outdated", tint: .orange)
+                    StatusChip(text: "Outdated", tint: Color.toneWaiting)
                 }
                 if thread.isResolved {
-                    StatusChip(text: "Resolved", tint: .secondary)
+                    StatusChip(text: "Resolved", tint: Color.inkQuiet)
                 }
                 Text("\(thread.comments.nodes.count)")
                     .font(.appCaption)
@@ -92,7 +92,7 @@ struct PRThreadCard: View {
             if let failure {
                 Text(failure)
                     .font(.appFootnote)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color.toneBad)
                     .padding([.horizontal, .bottom], PRStyle.inset)
                     .transition(.fold)
             }
@@ -170,7 +170,7 @@ struct PRDraftCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
             HStack {
-                StatusChip(text: "Pending", tint: .orange)
+                StatusChip(text: "Pending", tint: Color.toneWaiting)
                 Spacer()
                 Button("Delete", role: .destructive, action: remove)
                     .buttonStyle(PRButtonStyle(.plain))

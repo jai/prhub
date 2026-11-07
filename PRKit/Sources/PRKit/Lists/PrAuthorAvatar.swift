@@ -17,7 +17,7 @@ public struct PrAuthorAvatar: View {
         if let initials {
             AsyncImage(
                 url: loadsAvatars ? pullRequest.avatarURL : nil,
-                transaction: Transaction(animation: .easeOut(duration: 0.2))
+                transaction: Transaction(animation: AppMotion.swap)
             ) { phase in
                 if let image = phase.image {
                     image

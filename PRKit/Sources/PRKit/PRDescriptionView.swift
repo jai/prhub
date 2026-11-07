@@ -97,7 +97,7 @@ struct PRDescriptionView: View {
             Text(session.label)
                 .font(.appCaption)
                 .foregroundStyle(.secondary)
-            HStack(spacing: 6) {
+            HStack(spacing: Space.xs) {
                 PRAvatar(author: detail.author)
                 Text("\(detail.author?.login ?? "ghost") wants \(detail.headBranch) in \(detail.base)")
                     .font(.appCaption)
@@ -115,7 +115,7 @@ struct PRDescriptionView: View {
     @ViewBuilder private var labels: some View {
         if !detail.labels.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
+                HStack(spacing: Space.xs) {
                     ForEach(detail.labels) { StatusChip(text: $0.name, tint: Color(githubHex: $0.color)) }
                 }
             }
@@ -123,12 +123,12 @@ struct PRDescriptionView: View {
     }
 
     private var actions: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Space.sm) {
             if !session.drafts.isEmpty {
                 let count = session.drafts.count
                 Text("\(count) pending comment\(count == 1 ? "" : "s") will go with your review")
                     .font(.appFootnote)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color.toneWaiting)
             }
             actionButtons
             if let notice = session.notice {
@@ -146,10 +146,10 @@ struct PRDescriptionView: View {
             if !detail.isAuthor {
                 Button(Action.approve.title) { open(.approve) }
                     .buttonStyle(PRButtonStyle(.primary))
-                    .tint(.green)
+                    .tint(Color.toneGood)
                 Button(Action.requestChanges.title) { open(.requestChanges) }
                     .buttonStyle(PRButtonStyle(.secondary))
-                    .tint(.orange)
+                    .tint(Color.toneBad)
             }
             Button(Action.comment.title) { open(.comment) }
                 .buttonStyle(PRButtonStyle(.secondary))
@@ -273,10 +273,10 @@ struct PRDescriptionView: View {
 
     private static func badge(_ state: String?) -> StatusChip? {
         switch state {
-        case "APPROVED": StatusChip(text: "Approved", tint: .green)
-        case "CHANGES_REQUESTED": StatusChip(text: "Changes requested", tint: .orange)
-        case "DISMISSED": StatusChip(text: "Dismissed", tint: .secondary)
-        case "COMMENTED": StatusChip(text: "Reviewed", tint: .blue)
+        case "APPROVED": StatusChip(text: "Approved", tint: Color.toneGood)
+        case "CHANGES_REQUESTED": StatusChip(text: "Changes requested", tint: Color.toneBad)
+        case "DISMISSED": StatusChip(text: "Dismissed", tint: Color.inkQuiet)
+        case "COMMENTED": StatusChip(text: "Reviewed", tint: Color.inkQuiet)
         default: nil
         }
     }

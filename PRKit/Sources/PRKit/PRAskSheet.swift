@@ -94,11 +94,11 @@ struct PRAskSheet: View {
     }
 
     private var composer: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Space.sm) {
             if let anchor = session.askAnchor {
                 HStack(spacing: Space.sm) {
                     Text(verbatim: "\(anchor.path):\(anchor.line)")
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(.app(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.head)

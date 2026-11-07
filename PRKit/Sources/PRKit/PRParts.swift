@@ -172,7 +172,7 @@ public struct InlineComposer: View {
         VStack(alignment: .leading, spacing: Space.sm) {
             if let context {
                 Text(verbatim: context)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.app(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
             TextField(placeholder, text: $text, axis: .vertical)
@@ -195,7 +195,7 @@ public struct InlineComposer: View {
             if let failure {
                 Text(failure)
                     .font(.appFootnote)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color.toneBad)
                     .transition(.fold)
             }
             HStack(spacing: Space.sm) {

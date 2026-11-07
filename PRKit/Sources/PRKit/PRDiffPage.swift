@@ -118,7 +118,7 @@ struct PRDiffPage: View {
     }
 
     private var controls: some View {
-        VStack(alignment: .trailing, spacing: 6) {
+        VStack(alignment: .trailing, spacing: Space.sm) {
             if let notice = session.notice {
                 Text(notice)
                     .font(.appFootnote)

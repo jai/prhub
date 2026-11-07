@@ -39,7 +39,7 @@ public struct SessionComposer: View {
                 .focused(focused)
                 .lineLimit(1...5)
                 .padding(ChatStyle.fieldInsets)
-                .glassEffect(in: .rect(cornerRadius: 20, style: .continuous))
+                .glassEffect(in: .rect(cornerRadius: ChatStyle.radius, style: .continuous))
                 .submitLabel(.send)
                 .sendsOnReturn {
                     if canSend {

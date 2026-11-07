@@ -13,7 +13,7 @@ public struct TicketLine: View {
     }
 
     public var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Space.sm) {
             LinearMark()
             Text(ticket.key)
                 .fixedSize()
@@ -42,7 +42,7 @@ public struct PullRequestLine: View {
     }
 
     public var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Space.sm) {
             Text(pullRequest.status.reference)
                 .fixedSize()
             if let title = pullRequest.status.title, dynamicTypeSize < .xxLarge {
