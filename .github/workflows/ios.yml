@@ -52,8 +52,11 @@ jobs:
           brew install xcodegen
       - name: Simulator
         run: |
-          runtime=$(xcrun simctl list runtimes -j | jq -r '[.runtimes[] | select(.platform == "iOS" and .isAvailable)] | last | .identifier')
-          type=$(xcrun simctl list devicetypes -j | jq -r '[.devicetypes[] | select(.productFamily == "iPhone")] | last | .identifier')
+          # The newest iOS runtime, and the newest iPhone it supports.
+          json=$(xcrun simctl list runtimes -j)
+          runtime=$(jq -r '[.runtimes[] | select(.platform == "iOS" and .isAvailable)] | last | .identifier' <<<"$json")
+          type=$(jq -r --arg r "$runtime" '.runtimes[] | select(.identifier == $r) | [.supportedDeviceTypes[]
+            | select(.productFamily == "iPhone" and (.name | test("^iPhone [0-9]+$")))] | last | .identifier' <<<"$json")
           echo "runtime $runtime, device $type"
           echo "SIM=$(xcrun simctl create ci "$type" "$runtime")" >> "$GITHUB_ENV"
       - name: Build
