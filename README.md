@@ -53,6 +53,8 @@ Anthropic when the AI features are on. Only push goes through Jai: your Worker s
 relay to Apple. A push carries your phone's push token and the text `pr_sync`, and no PR content. The relay stores no
 push token and no message. It logs each push with your relay key's ID and Apple's answer.
 
+The full policy is in [PRIVACY.md](PRIVACY.md).
+
 ## License
 
 [MIT](LICENSE)
