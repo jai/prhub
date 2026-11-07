@@ -25,10 +25,13 @@ pairing the phone, and troubleshooting.
   real builders send with `docs/fixtures/*.json`; after a deliberate change run `UPDATE_FIXTURES=1 npm test` and
   commit the fixtures with the code.
 - iOS: Swift 6, iOS 26, SwiftUI, Xcode 26. `swift test` for PRKit; `make -C app test` and `make -C app ui-test` for
-  the app on a Simulator, on the sample PRs (`-PRHubFirstRun`, `-PRHubPaired`), with no Worker. Design comes from
-  `DESIGN.md`'s tokens: never write a colour, size or symbol in Swift; change DESIGN.md and run `make -C app design`.
+  the app on a Simulator, on the sample PRs (`-PRHubFirstRun`, `-PRHubPaired`), with no Worker.
   PRKit is public API for other apps: a change to `PRKitHost`, `PRKitController` or `PRKitConfiguration` is a
   breaking change for them, so it needs a new minor version tag.
+- Design: [DESIGN.md](DESIGN.md) is the one design reference for PRKit and PRHub (Agent Pager follows it for PRKit's
+  screens). Build new UI from its tokens and shared parts; its "Making a change" table says which line to edit. Never
+  type a font size, colour, padding, corner or animation in a view: `scripts/design-lint.sh` fails CI on one. Token
+  changes go in DESIGN.md, then `make -C app design`.
 - App build options live in `app/Config/PRHub.xcconfig` and reach the app through Info.plist (`PRHubBuild`):
   `PRHUB_HOSTED_HOST` (the hosted Worker: Sign in with GitHub, its HTTPS callback and the `webcredentials`
   associated domain; a custom domain is this one line), and onboarding's ways in, `YES` or `NO`:
