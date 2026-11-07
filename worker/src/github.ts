@@ -1,14 +1,19 @@
 import { type Env, githubLogin, isSet } from "./env.ts";
+import {
+  parseSha, prId, type PrId, repoOf, type RepoFullName, repoParts, type Revision, revisionOf, type Sha, shaOf,
+} from "./ids.ts";
 import { peopleOf } from "./policy-github.ts";
 import { PEOPLE_FIELDS, type PeopleDecision, type PeopleNode } from "./policy-people.ts";
+import type {
+  CheckState, ChecksSummary, MergeState, OpenList, PolicyState, PullRequestState, ReviewState,
+} from "./vocab.ts";
 
-/** `reviewed`: GitHub dropped the request when Jai answered it. The PR stays where it was until it closes. */
-export type ListKind = "review" | "reviewed" | "mine" | "merged";
+export type { CheckState };
 
 /** What a search says about a PR: enough to tell whether the index is behind. */
 export interface Listing {
-  id: string;
-  repo: string;
+  id: PrId;
+  repo: RepoFullName;
   number: number;
   version: string;
   /** Found only by the search for what Jai reviewed. */
@@ -16,8 +21,8 @@ export interface Listing {
 }
 
 export interface PullRequestRef {
-  id: string;
-  repo: string;
+  id: PrId;
+  repo: RepoFullName;
   number: number;
 }
 
@@ -52,8 +57,6 @@ interface Rollup {
 
 type Context = Rollup["contexts"]["nodes"][number];
 
-export type CheckState = "success" | "failure" | "pending" | "skipped";
-
 export interface Check {
   name: string;
   state: CheckState;
@@ -64,7 +67,7 @@ export interface Check {
 
 /** PolicyBot's status on the head, in its own words. The reasons stay on the page `url` opens. */
 export interface Policy {
-  state: "approved" | "pending" | "disapproved" | "unknown";
+  state: PolicyState;
   description: string | null;
   url: string | null;
   /** GitHub holds the merge for it. */
@@ -82,7 +85,7 @@ export interface Reviewer {
 export interface Detail {
   id: string;
   url: string;
-  state: "open" | "draft" | "merged" | "closed";
+  state: PullRequestState;
   head: string;
   base: string;
   headBranch: string;
@@ -92,8 +95,14 @@ export interface Detail {
   additions: number;
   deletions: number;
   changedFiles: number;
+  /** GitHub's decision, PolicyBot's word for it where a repo has one. Kept for app builds before `review`. */
   reviewDecision: string | null;
+  /** GitHub's raw merge state, which lags a conflict. Kept for app builds before `merge`; read `merge`. */
   mergeState: string;
+  /** Whether GitHub would merge it now, as a row says it (`mergeOf`). */
+  merge: MergeState;
+  /** The review decision, as a row says it. */
+  review: ReviewState;
   mergeMethod: string | null;
   policy: Policy | null;
   reviewers: Reviewer[];
@@ -109,32 +118,56 @@ export interface Detail {
   }[] };
 }
 
-/** What a list row shows, in the vocabulary the app already has for PRs (`CodingThread.PullRequest`). */
-export interface RowStatus {
-  list: ListKind | null;
+interface CommonStatus {
   author: string | null;
-  checks: string;
-  review: string;
-  merge: string;
+  checks: ChecksSummary;
+  review: ReviewState;
+  merge: MergeState;
+  /** Jai's own latest review that counts (`jaiReview`), its state lowercased. */
   jaiReview: string | null;
   jaiReviewedAt: string | null;
-  /** When Jai's review is due: one working day from when he could first see the request (`reviewDueAt`). */
-  reviewDueAt: string | null;
 }
 
+/**
+ * What a list row shows, in the vocabulary the app already has for PRs (`CodingThread.PullRequest`). Each list carries
+ * what is true of it alone: a due time on the review list, a merge time on a merged row.
+ */
+export type RowStatus = CommonStatus & (
+  /** `reviewDueAt`: one working day from when Jai could first see the request (`reviewDueAt`); null without an SLA. */
+  | { list: "review"; reviewDueAt: string | null }
+  | { list: "reviewed" }
+  | { list: "mine" }
+  | { list: "merged"; mergedAt: string | null }
+);
+
+/** A row of `GET /prs`. */
+export type OpenRowStatus = Extract<RowStatus, { list: OpenList }>;
+
 export interface PullRequest {
-  repo: string;
+  repo: RepoFullName;
   number: number;
   title: string;
-  head: string;
+  head: Sha;
   /** Changes with the diff: the head, or the branch it is compared with. A base that only moves on leaves it alone. */
-  revision: string;
+  revision: Revision;
   /** Changes with the detail. A check finishing does not move `updatedAt`, so the checks' overall state is in it. */
   version: string;
   updatedAt: string;
-  list: ListKind | null;
-  status: RowStatus;
+  /** Null when it belongs on none of the lists, and then it has no status. */
+  status: OpenRowStatus | null;
   detail: Detail;
+  /** When review was last asked of the user, for alerts (`alerts.ts`). */
+  requestedAt: string | null;
+}
+
+/**
+ * The version a detail is kept under: the PR's version and a hash of what the detail says, because GitHub does not move
+ * `updatedAt` for everything, resolving a thread among them.
+ */
+export async function detailVersionOf(pr: Pick<PullRequest, "version" | "detail">): Promise<string> {
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(pr.detail)));
+  const digest = Array.from(new Uint8Array(hash).slice(0, 8), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${pr.version}.${digest}`;
 }
 
 interface LatestReview {
@@ -306,7 +339,7 @@ export function listOf(
     reviewRequests: Node["reviewRequests"]; latestReviews: Node["latestReviews"] },
   login: string,
   wasAsked = false,
-): ListKind | null {
+): OpenList | null {
   if (node.state !== "OPEN" || node.isDraft || node.author?.__typename === "Bot") {
     return null;
   }
@@ -319,15 +352,11 @@ export function listOf(
   return wasAsked && jaiReview(node, login) ? "reviewed" : null;
 }
 
-export function revisionOf(head: string, baseBranch: string): string {
-  return `${head}-${baseBranch.replace(/[^\w.-]/g, "_")}`;
-}
-
 const POLICY_BOT = /^policy-b[io]t: /;
-const POLICY_STATES: Record<string, Policy["state"]> = {
+const POLICY_STATES: Record<string, PolicyState> = {
   SUCCESS: "approved", PENDING: "pending", EXPECTED: "pending", FAILURE: "disapproved",
 };
-const POLICY_DECISIONS: Record<Policy["state"], string | null> = {
+const POLICY_DECISIONS: Record<PolicyState, string | null> = {
   approved: "APPROVED", pending: "REVIEW_REQUIRED", disapproved: "CHANGES_REQUESTED", unknown: null,
 };
 
@@ -417,19 +446,19 @@ export function checkOf(context: Context): Check {
   };
 }
 
-const CHECKS: Record<string, string> = {
+const CHECKS: Record<string, ChecksSummary> = {
   SUCCESS: "passing", FAILURE: "failing", ERROR: "failing", PENDING: "pending", EXPECTED: "pending",
 };
-const REVIEWS: Record<string, string> = {
+const REVIEWS: Record<string, ReviewState> = {
   APPROVED: "approved", CHANGES_REQUESTED: "changes_requested", REVIEW_REQUIRED: "required",
 };
-const MERGES: Record<string, string> = {
+const MERGES: Record<string, MergeState> = {
   CLEAN: "clean", HAS_HOOKS: "clean", BEHIND: "behind", BLOCKED: "blocked", DRAFT: "blocked", DIRTY: "conflicting",
   UNSTABLE: "unstable",
 };
 
 /** A PR that conflicts is one whatever GitHub's merge state has got to, and it can lag. */
-export function mergeOf(mergeable: string | null, mergeState: string): string {
+export function mergeOf(mergeable: string | null, mergeState: string): MergeState {
   return mergeable === "CONFLICTING" ? "conflicting" : MERGES[mergeState] ?? "unknown";
 }
 
@@ -439,7 +468,7 @@ export function verdictOf(
     statusCheckRollup: { contexts: { nodes: Context[] } } | null } }[] } },
   people: PeopleDecision | null = null,
 ): {
-  checks: string; review: string; decision: string | null; policy: Policy | null; overall: string | null;
+  checks: ChecksSummary; review: ReviewState; decision: string | null; policy: Policy | null; overall: string | null;
   contexts: Context[];
 } {
   const overall = node.overall.nodes[0]?.commit.statusCheckRollup?.state ?? null;
@@ -453,14 +482,15 @@ export function verdictOf(
   };
 }
 
+/** A row's status on one of the open lists; the due time is kept on the review list alone. */
 export function rowStatus(
-  list: ListKind | null, author: string | null, checks: string, review: string, merge: string,
+  list: OpenList, author: string | null, checks: ChecksSummary, review: ReviewState, merge: MergeState,
   mine?: LatestReview, reviewDueAt: string | null = null,
-): RowStatus {
-  return {
-    list, author, checks, review, merge, jaiReview: mine?.state.toLowerCase() ?? null,
-    jaiReviewedAt: mine?.submittedAt ?? null, reviewDueAt: list === "review" ? reviewDueAt : null,
+): OpenRowStatus {
+  const common = {
+    author, checks, review, merge, jaiReview: mine?.state.toLowerCase() ?? null, jaiReviewedAt: mine?.submittedAt ?? null,
   };
+  return list === "review" ? { list, ...common, reviewDueAt } : { list, ...common };
 }
 
 export interface RequestEvent { createdAt?: string; requestedReviewer?: { login?: string } | null }
@@ -519,30 +549,33 @@ export function reviewDueAt(requestedAt: string | null, week: ReviewWeek | null)
   return new Date(due - offset).toISOString().replace(".000Z", "Z");
 }
 
-function pullRequest(
+/** A PR read from GitHub, as the index stores it and the phone shows it. Rows and the detail share one verdict. */
+export function pullRequest(
   node: Node, login: string, wasAsked: boolean, week: ReviewWeek | null, people: PeopleDecision | null,
 ): PullRequest {
   const { checks, review, decision, policy, overall, contexts } = verdictOf(node, people);
+  const merge = mergeOf(node.mergeable, node.mergeStateStatus);
   const list = listOf(node, login, wasAsked);
+  const requestedAt = reviewRequestedAt(node.requestEvents.nodes, login);
+  const head = shaOf(node.headRefOid);
   return {
-    repo: node.repository.nameWithOwner,
+    repo: repoOf(node.repository.nameWithOwner),
     number: node.number,
     title: node.title,
-    head: node.headRefOid,
-    revision: revisionOf(node.headRefOid, node.baseRefName),
+    head,
+    revision: revisionOf(head, node.baseRefName),
     version: `${node.updatedAt}.${overall ?? "NONE"}`,
     updatedAt: node.updatedAt,
-    list,
-    status: rowStatus(
-      list, node.author?.login ?? null, checks, review, mergeOf(node.mergeable, node.mergeStateStatus),
-      jaiReview(node, login), reviewDueAt(reviewRequestedAt(node.requestEvents.nodes, login), week),
+    status: list && rowStatus(
+      list, node.author?.login ?? null, checks, review, merge, jaiReview(node, login), reviewDueAt(requestedAt, week),
     ),
+    requestedAt,
     detail: {
       id: node.id, url: node.url, state: detailState(node), head: node.headRefOid, base: node.baseRefName,
       headBranch: node.headRefName,
       author: node.author, isAuthor: node.viewerDidAuthor, body: node.body, additions: node.additions,
       deletions: node.deletions, changedFiles: node.changedFiles, reviewDecision: decision,
-      mergeState: node.mergeStateStatus, mergeMethod: node.repository.viewerDefaultMergeMethod, policy,
+      mergeState: node.mergeStateStatus, merge, review, mergeMethod: node.repository.viewerDefaultMergeMethod, policy,
       reviewers: reviewersOf(node),
       viewedFiles: (node.files?.nodes ?? []).filter((file) => file.viewerViewedState === "VIEWED").map((file) => file.path),
       labels: node.labels.nodes, checks: latestChecks(contexts).filter((context) => !isPolicyBot(context)).map(checkOf),
@@ -567,8 +600,8 @@ async function search(q: string, env: Env): Promise<Listing[]> {
     const page: SearchPage = await graphql<SearchPage>(SEARCH_QUERY, { q, n: PAGE_SIZE, after }, env);
     for (const node of page.search.nodes) {
       if (node.author?.__typename !== "Bot") {
-        const repo = node.repository.nameWithOwner;
-        const id = `${repo}#${node.number}`;
+        const repo = repoOf(node.repository.nameWithOwner);
+        const id = prId(repo, node.number);
         const rollup = node.commits.nodes[0]?.commit.statusCheckRollup?.state ?? "NONE";
         found.push({ id, repo, number: node.number, version: `${node.updatedAt}.${rollup}`, reviewedOnly: false });
       }
@@ -582,12 +615,12 @@ async function search(q: string, env: Env): Promise<Listing[]> {
  * Every open PR on a list, by every page: a short answer would read as PRs that have gone. Jai has reviewed far more
  * than his list holds, so what only that search found counts for the rows already held.
  */
-export async function searchListings(env: Env): Promise<Map<string, Listing>> {
+export async function searchListings(env: Env): Promise<Map<PrId, Listing>> {
   const [listed, reviewed] = await Promise.all([
     Promise.all(SEARCHES.map((q) => search(q, env))),
     search(REVIEWED_SEARCH, env),
   ]);
-  const found = new Map<string, Listing>();
+  const found = new Map<PrId, Listing>();
   for (const listing of reviewed) {
     found.set(listing.id, { ...listing, reviewedOnly: true });
   }
@@ -613,14 +646,31 @@ interface MergedNode {
   repository: { nameWithOwner: string };
 }
 
+/** A row of `GET /prs/merged`. */
+export interface MergedRow {
+  repo: RepoFullName;
+  number: number;
+  title: string;
+  head: Sha;
+  revision: Revision;
+  diff: "ready" | "too_large";
+  detail: string;
+  keyLines: null;
+  status: Extract<RowStatus, { list: "merged" }>;
+}
+
 /** A merged PR as a PRs-tab row. Its diff and detail load when it opens, as for any PR named by a link. */
-export function mergedRow(node: MergedNode) {
+export function mergedRow(node: MergedNode): MergedRow {
   const tooLarge = node.changedFiles > 300 || node.additions + node.deletions > 20_000;
+  const head = shaOf(node.headRefOid);
   return {
-    repo: node.repository.nameWithOwner, number: node.number, title: node.title, head: node.headRefOid,
-    revision: revisionOf(node.headRefOid, node.baseRefName), diff: tooLarge ? "too_large" : "ready",
+    repo: repoOf(node.repository.nameWithOwner), number: node.number, title: node.title, head,
+    revision: revisionOf(head, node.baseRefName), diff: tooLarge ? "too_large" : "ready",
     detail: `${node.updatedAt}.MERGED`, keyLines: null,
-    status: { ...rowStatus("merged", node.author?.login ?? null, "none", "none", "unknown"), mergedAt: node.mergedAt },
+    status: {
+      list: "merged", author: node.author?.login ?? null, checks: "none", review: "none", merge: "unknown",
+      jaiReview: null, jaiReviewedAt: null, mergedAt: node.mergedAt,
+    },
   };
 }
 
@@ -631,7 +681,7 @@ export const MERGED_SEARCHES = {
 
 export async function mergedPullRequests(
   env: Env, kind: keyof typeof MERGED_SEARCHES = "mine",
-): Promise<ReturnType<typeof mergedRow>[]> {
+): Promise<MergedRow[]> {
   const data = await graphql<{ search: { nodes: (MergedNode | Record<string, never>)[] } }>(MERGED_QUERY,
     { q: MERGED_SEARCHES[kind], n: MERGED_LIMIT }, env);
   return data.search.nodes.filter((node): node is MergedNode => "number" in node).map(mergedRow)
@@ -640,9 +690,9 @@ export async function mergedPullRequests(
 
 export async function readPullRequests(
   refs: PullRequestRef[], env: Env, asked: ReadonlySet<string> = new Set(),
-): Promise<Map<string, PullRequest | null>> {
+): Promise<Map<PrId, PullRequest | null>> {
   const fields = refs.map((ref, index) => {
-    const [owner, name] = ref.repo.split("/");
+    const { owner, name } = repoParts(ref.repo);
     return `p${index}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) {
       pullRequest(number: ${ref.number}) { ...Fields ${contextsOf(ref.number)} } }`;
   });
@@ -661,6 +711,67 @@ export async function readPullRequests(
   }));
 }
 
+/** A picker row for any PR, open or not (`GET /prs/{owner}/{repo}/{n}/summary`). */
+export interface Summary {
+  repo: RepoFullName;
+  number: number;
+  title: string;
+  state: Detail["state"];
+  author: string | null;
+  updatedAt: string;
+  url: string;
+}
+
+const SUMMARY_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) { pullRequest(number: $number) {
+    number title state isDraft updatedAt url author { login } repository { nameWithOwner }
+  } }
+}`;
+
+interface SummaryNode {
+  number: number; title: string; state: string; isDraft: boolean; updatedAt: string; url: string;
+  author: { login: string } | null; repository: { nameWithOwner: string };
+}
+
+export function summaryOf(node: SummaryNode): Summary {
+  return {
+    repo: repoOf(node.repository.nameWithOwner), number: node.number, title: node.title, state: detailState(node),
+    author: node.author?.login ?? null, updatedAt: node.updatedAt, url: node.url,
+  };
+}
+
+/** Null when GitHub has no such PR the token can see: an unknown repo, an issue's number, or one past the last. */
+export async function pullRequestSummary(repo: RepoFullName, number: number, env: Env): Promise<Summary | null> {
+  const { owner, name } = repoParts(repo);
+  const data = await graphql<{ repository: { pullRequest: SummaryNode | null } | null }>(
+    SUMMARY_QUERY, { owner, name, number }, env);
+  const node = data.repository?.pullRequest;
+  return node ? summaryOf(node) : null;
+}
+
 export function fetchDiff(repo: string, number: number, env: Env): Promise<Response> {
   return github(`/repos/${repo}/pulls/${number}`, env, "application/vnd.github.v3.diff");
+}
+
+/** The revision a PR is at now, from GitHub's REST answer; null when it can't be read. */
+export function revisionFrom(pull: unknown): Revision | null {
+  const { head, base } = (pull ?? {}) as { head?: { sha?: unknown }; base?: { ref?: unknown } };
+  const sha = parseSha(head?.sha);
+  return sha && typeof base?.ref === "string" ? revisionOf(sha, base.ref) : null;
+}
+
+/**
+ * A PR's diff now, and the revision it is of. GitHub's diff carries no commit, so the revision is read just after it:
+ * the same revision as the one a client asked for means the head did not move away from it while the diff was read.
+ */
+export async function liveDiff(
+  repo: string, number: number, env: Env,
+): Promise<{ response: Response; version: Revision | null }> {
+  const response = await fetchDiff(repo, number, env);
+  if (!response.ok && response.status !== 406) {
+    return { response, version: null };
+  }
+  const pull = await getFromGitHub(`/repos/${repo}/pulls/${number}`, env);
+  const version = pull.ok ? revisionFrom(await pull.json().catch(() => null)) : null;
+  return { response, version };
 }

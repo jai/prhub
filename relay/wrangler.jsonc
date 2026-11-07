@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agent-pager-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "vars": {
+    // PRHub's bundle ID (App Store Connect app 6831601628), the only topic a relay key can push to.
+    "APNS_TOPIC": "com.jaigovindani.prreview"
+  },
+  // Secrets (wrangler secret put): RELAY_ADMIN_TOKEN, APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY_P8.
+  "durable_objects": {
+    "bindings": [
+      // One per relay key, named by the key's SHA-256: its record and its rate counters.
+      { "name": "RELAY_KEY", "class_name": "RelayKey" },
+      // One, named "index": the key list for admin reads, and the APNs provider token shared by all isolates.
+      { "name": "KEY_INDEX", "class_name": "KeyIndex" }
+    ]
+  },
+  "migrations": [{ "tag": "relay-v1", "new_sqlite_classes": ["RelayKey", "KeyIndex"] }]
+}

@@ -29,7 +29,7 @@ on GitHub with your own token. Your coding agent deploys it for you.
 Tell your agent:
 
 ```text
-Deploy PRHub's worker by following worker/AGENTS.md in github.com/jai/prhub
+Deploy PRHub's worker by following deploy/AGENTS.md in github.com/jai/prhub
 ```
 
 The agent asks you for each token and key. Then it deploys the Worker, checks each step, and prints a pairing link
@@ -49,6 +49,26 @@ are made up, and nothing that you do with them reaches GitHub.
 
 Open PRHub and scan the QR code that your agent printed. Or open the `prhub://setup?...` link on your iPhone. A
 pairing code works once and expires after 30 minutes. For a new code, ask your agent.
+
+## What's here
+
+- `worker/`: the Worker each person deploys. `deploy/` has its template, `setup.sh` and the agent's deployment guide.
+- `relay/`: the push relay that Jai runs, which forwards silent pushes to Apple ([docs/push-relay.md](docs/push-relay.md)).
+- `docs/`: the Worker's API ([docs/api.md](docs/api.md)), the fixtures the app's tests decode, and plans.
+
+## The app
+
+The iPhone app and PRKit, the Swift package with its PR screens, live in this repo too.
+
+## Build and test
+
+```sh
+(cd worker && npm ci && npm test && npm run typecheck)
+(cd relay && npm ci && npm test && npm run typecheck)
+scripts/scrub.sh    # fails if a private name or value is in the repo
+```
+
+CI runs these on every push and pull request, and a nightly end-to-end check against a test Worker.
 
 ## Privacy
 

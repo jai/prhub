@@ -1,10 +1,10 @@
 // A self-hosted PRHub Worker (worker/). setup.sh renders this into wrangler.jsonc beside it (gitignored), filling
-// each placeholder; deploy with `npx wrangler@4 deploy --config worker/wrangler.jsonc`.
+// each placeholder; deploy with `npx wrangler@4 deploy --config deploy/wrangler.jsonc`.
 // Contract: docs/api.md. An empty var is unset: the feature it serves is off.
 {
   "name": "__WORKER_NAME__",
   "account_id": "__CLOUDFLARE_ACCOUNT_ID__",
-  "main": "src/index.ts",
+  "main": "../worker/src/index.ts",
   "compatibility_date": "2026-09-01",
   "workers_dev": true,
   "observability": { "enabled": true },

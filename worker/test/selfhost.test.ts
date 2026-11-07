@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BUILT_IN_GUIDE, guideSource } from "../src/ai.ts";
-import { pushMode, relayBody, relayOutcome } from "../src/apns.ts";
+import { pushMode, relayBody, relayOutcome, sendViaPager } from "../src/apns.ts";
 import { deviceConfig } from "../src/config.ts";
 import type { Env } from "../src/env.ts";
 import { deviceSecretOf, isPairingRecord, normalizePairingCode, pairingKey, sha256Hex } from "../src/pairing.ts";
@@ -109,4 +109,35 @@ test("the rewrite reads the guide named in GUIDE_REPO, else uses its own", () =>
   assert.equal(guideSource({ GUIDE_REPO: "alex/docs" }), null, "a repo without files is no guide");
   assert.equal(guideSource({ GUIDE_REPO: "not a repo", GUIDE_FILES: "pr.md" }), null);
   assert.ok(BUILT_IN_GUIDE.length > 0);
+});
+
+test("Jai's instance hands every push to his Agent Pager Worker, over the relay and its own key", () => {
+  const pager = { AGENT_PAGER_URL: "https://agent-pager.example", AGENT_PAGER_PUSH_TOKEN: "t".repeat(40) };
+  const relay = { PUSH_RELAY_URL: "https://relay.example", PUSH_RELAY_KEY: "k" };
+  const apns = { APNS_KEY_ID: "k", APNS_TEAM_ID: "t", APNS_KEY_P8: "p", APNS_BUNDLE_ID: "b" };
+  assert.equal(pushMode(env({ ...pager, ...relay, ...apns })), "pager");
+  assert.equal(pushMode(env({ AGENT_PAGER_URL: pager.AGENT_PAGER_URL, ...relay })), "relay");
+});
+
+test("a push to Agent Pager carries the message as it is, and its answer reads as the relay's", async () => {
+  const sent: { url: string; init: RequestInit }[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string, init: RequestInit) => {
+    sent.push({ url, init });
+    return Response.json({ apns_status: 200 });
+  }) as typeof fetch;
+  try {
+    const outcome = await sendViaPager(
+      env({ AGENT_PAGER_URL: "https://agent-pager.example/", AGENT_PAGER_PUSH_TOKEN: "secret" }),
+      { pushType: "alert", priority: 10, collapseId: null, lifetimeSeconds: 60, payload: { aps: {}, reason: "pr_alert" } },
+    );
+    assert.deepEqual(outcome, { status: 200, reason: null });
+    assert.equal(sent[0]?.url, "https://agent-pager.example/pr-push");
+    assert.equal(new Headers(sent[0]?.init.headers).get("authorization"), "Bearer secret");
+    assert.deepEqual(JSON.parse(String(sent[0]?.init.body)), {
+      push_type: "alert", priority: 10, collapse_id: null, lifetime_seconds: 60, payload: { aps: {}, reason: "pr_alert" },
+    });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

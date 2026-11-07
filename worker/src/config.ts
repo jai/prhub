@@ -1,7 +1,8 @@
 import { pushMode } from "./apns.ts";
 import { type Env, isSet } from "./env.ts";
+import { type AiConfig, type AiFeature, type FeatureModels, featureModels, parseAiConfig } from "./models.ts";
 
-/** `GET /device/config` (docs/api/pr-selfhost.md): what this Worker can serve, so the app shows only that. */
+/** `GET /device/config` (docs/api.md): what this Worker can serve, so the app shows only that. */
 export interface DeviceConfig {
   features: {
     ask_ai: boolean;
@@ -15,6 +16,19 @@ export interface DeviceConfig {
   login: string | null;
   /** The owners the app filters to by default, from `GITHUB_ORGS`. Absent when it is unset. */
   orgs?: string[];
+  /** Model and effort per AI feature that is on. Absent when none is. */
+  ai?: { features: Partial<Record<AiFeature, FeatureModels>> };
+}
+
+let parsed: { key: string; config: AiConfig } | null = null;
+
+/** The AI model config, parsed once per isolate and per value of its vars. */
+export function aiConfigOf(env: Pick<Env, "AI_MODELS_ALLOWED" | "AI_EFFORT_MAX" | "AI_DEFAULTS">): AiConfig {
+  const key = JSON.stringify([env.AI_MODELS_ALLOWED, env.AI_EFFORT_MAX, env.AI_DEFAULTS]);
+  if (parsed?.key !== key) {
+    parsed = { key, config: parseAiConfig(env) };
+  }
+  return parsed.config;
 }
 
 export function askConfigured(env: Env): boolean {
@@ -31,9 +45,13 @@ export function feedbackConfigured(env: Env): boolean {
 export function deviceConfig(env: Env, login: string | null): DeviceConfig {
   const model = isSet(env.ANTHROPIC_API_KEY);
   const orgs = (env.GITHUB_ORGS ?? "").split(",").map((org) => org.trim()).filter(Boolean);
+  const ask = askConfigured(env);
+  const on = ([["key_lines", model], ["rewrite", model], ["ask", ask]] as [AiFeature, boolean][])
+    .filter(([, isOn]) => isOn).map(([feature]) => feature);
+  const ai = aiConfigOf(env);
   return {
     features: {
-      ask_ai: askConfigured(env),
+      ask_ai: ask,
       key_lines: model,
       rewrite: model,
       feedback: feedbackConfigured(env),
@@ -42,5 +60,6 @@ export function deviceConfig(env: Env, login: string | null): DeviceConfig {
     },
     login,
     ...(orgs.length > 0 ? { orgs } : {}),
+    ...(on.length > 0 ? { ai: { features: Object.fromEntries(on.map((feature) => [feature, featureModels(ai, feature)])) } } : {}),
   };
 }

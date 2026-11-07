@@ -1,0 +1,933 @@
+{
+ "captured": "2026-11-06T15:51:35.481Z",
+ "policies": {
+  "acme/payments-api@main": "---\npolicy:\n  approval:\n    - or:\n        - dependabot bypass no review required\n        - acme-devops bypass no review required\n        - backend approver approval\n        - backend approver approval without automatic requests\n    - Octo or Mona approval for PR size workflow changes\n  disapproval:\n    requires:\n      organizations: [acme]\n\napproval_rules:\n  - name: Octo or Mona approval for PR size workflow changes\n    description: Require Octo or Mona to approve changes to the PR size enforcement workflow\n    if:\n      changed_files:\n        paths:\n          - ^\\.github/workflows/pr-size-gate\\.yaml$\n    options:\n      allow_author: false\n      invalidate_on_push: true\n    requires:\n      count: 1\n      users: [octocat, monalisa]\n\n  - name: dependabot bypass no review required\n    description: Allow Dependabot PRs to bypass human review requirements\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop)$\n      has_author_in:\n        users: [\"dependabot[bot]\"]\n      only_has_contributors_in:\n        users: [\"dependabot[bot]\", acme-devops, \"acme-merger[bot]\"]\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0\n      conditions:\n        has_valid_signatures: true\n  - name: acme-devops bypass no review required\n    description: Allow acme-devops to bypass review requirements\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop)$\n      has_author_in:\n        users: [acme-devops]\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0  # No review requirements for acme-devops\n      conditions:\n        has_valid_signatures: true\n  - name: backend approver approval\n    description: Require one backend approver for pull requests to protected branches\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop)$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n          - \"^[a-z]+\\\\(deps(-dev)?\\\\)!?:\"\n          - >-\n            ^[Bb]ump \\S+ from v?\\d+(\\.\\d+)*([+-]\\S+)? to v?\\d+(\\.\\d+)*([+-]\\S+)?( in /.*)?$\n          - >-\n            ^[Bb]ump the \\S+ group( across [0-9]+ director(y|ies)| in /\\S+)? with [0-9]+ updates?$\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: true\n        mode: random-users\n        count: 1\n    requires: &approval_requirements_4\n      count: 1\n      users: [user-mae, user-hal, user-rohan, octocat, monalisa]\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n            - pre-commit-check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n  - name: backend approver approval without automatic requests\n    description: Retain the approval requirement without automatically requesting reviewers\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop)$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: false\n    requires: *approval_requirements_4\n",
+  "acme/web-app@main": "---\npolicy:\n  approval:\n    - or:\n        - dependabot bypass no review required\n        - acme-devops bypass no review required\n        - Octo or Mona approval\n        - Octo or Mona approval without automatic requests\n        - and:\n            - or:\n                - Primary reviewer approval\n                - Primary reviewer approval without automatic requests\n            - or:\n                - Secondary reviewer approval\n                - Secondary reviewer approval without automatic requests\n  disapproval:\n    requires:\n      organizations: [acme]\n\napproval_rules:\n  - name: dependabot bypass no review required\n    description: Allow Dependabot PRs to bypass human review requirements\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop)$\n      has_author_in:\n        users: [\"dependabot[bot]\"]\n      only_has_contributors_in:\n        users: [\"dependabot[bot]\", acme-devops, \"acme-merger[bot]\"]\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0\n      conditions:\n        has_valid_signatures: true\n  - name: acme-devops bypass no review required\n    description: Allow acme-devops to bypass review requirements\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop)$\n      has_author_in:\n        users: [acme-devops]\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0 # No review requirements for acme-devops\n      conditions:\n        has_valid_signatures: true\n  - name: Octo or Mona approval\n    description: Require Octo or Mona to approve pull requests\n    if:\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n          - \"^[a-z]+\\\\(deps(-dev)?\\\\)!?:\"\n          - >-\n            ^[Bb]ump \\S+ from v?\\d+(\\.\\d+)*([+-]\\S+)? to v?\\d+(\\.\\d+)*([+-]\\S+)?( in /.*)?$\n          - >-\n            ^[Bb]ump the \\S+ group( across [0-9]+ director(y|ies)| in /\\S+)? with [0-9]+ updates?$\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: true\n        mode: random-users\n        count: 1\n    requires: &approval_requirements_3\n      count: 1\n      users: [octocat, monalisa]\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n            - .github/workflows/playwright-visual-proof.yml\n\n  - name: Primary reviewer approval\n    description: One primary reviewer (Maks or Ayla) approves, paired with one secondary reviewer\n    if:\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n          - \"^[a-z]+\\\\(deps(-dev)?\\\\)!?:\"\n          - >-\n            ^[Bb]ump \\S+ from v?\\d+(\\.\\d+)*([+-]\\S+)? to v?\\d+(\\.\\d+)*([+-]\\S+)?( in /.*)?$\n          - >-\n            ^[Bb]ump the \\S+ group( across [0-9]+ director(y|ies)| in /\\S+)? with [0-9]+ updates?$\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: true\n        mode: random-users\n        count: 1\n    requires: &approval_requirements_4\n      count: 1\n      users: [user-maks, user-ayla]\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n            - .github/workflows/playwright-visual-proof.yml\n  - name: Secondary reviewer approval\n    description: One secondary reviewer (Bada, Fay or Yara) approves, paired with one primary reviewer\n    if:\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n          - \"^[a-z]+\\\\(deps(-dev)?\\\\)!?:\"\n          - >-\n            ^[Bb]ump \\S+ from v?\\d+(\\.\\d+)*([+-]\\S+)? to v?\\d+(\\.\\d+)*([+-]\\S+)?( in /.*)?$\n          - >-\n            ^[Bb]ump the \\S+ group( across [0-9]+ director(y|ies)| in /\\S+)? with [0-9]+ updates?$\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: true\n        mode: random-users\n        count: 1\n    requires: &approval_requirements_5\n      count: 1\n      users: [user-bada, user-fay, user-yara]\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n            - .github/workflows/playwright-visual-proof.yml\n  - name: Octo or Mona approval without automatic requests\n    description: Retain the approval requirement without automatically requesting reviewers\n    if:\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: false\n    requires: *approval_requirements_3\n  - name: Primary reviewer approval without automatic requests\n    description: Retain the approval requirement without automatically requesting reviewers\n    if:\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: false\n    requires: *approval_requirements_4\n  - name: Secondary reviewer approval without automatic requests\n    description: Retain the approval requirement without automatically requesting reviewers\n    if:\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: false\n    requires: *approval_requirements_5\n",
+  "acme/web-app@codex/feature-a": "---\npolicy:\n  approval:\n    - or:\n        - dependabot bypass no review required\n        - acme-devops bypass no review required\n        - Octo or Mona approval\n        - Octo or Mona approval without automatic requests\n        - and:\n            - or:\n                - Primary reviewer approval\n                - Primary reviewer approval without automatic requests\n            - or:\n                - Secondary reviewer approval\n                - Secondary reviewer approval without automatic requests\n  disapproval:\n    requires:\n      organizations: [acme]\n\napproval_rules:\n  - name: dependabot bypass no review required\n    description: Allow Dependabot PRs to bypass human review requirements\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop)$\n      has_author_in:\n        users: [\"dependabot[bot]\"]\n      only_has_contributors_in:\n        users: [\"dependabot[bot]\", acme-devops, \"acme-merger[bot]\"]\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0\n      conditions:\n        has_valid_signatures: true\n  - name: acme-devops bypass no review required\n    description: Allow acme-devops to bypass review requirements\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop)$\n      has_author_in:\n        users: [acme-devops]\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0 # No review requirements for acme-devops\n      conditions:\n        has_valid_signatures: true\n  - name: Octo or Mona approval\n    description: Require Octo or Mona to approve pull requests\n    if:\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n          - \"^[a-z]+\\\\(deps(-dev)?\\\\)!?:\"\n          - >-\n            ^[Bb]ump \\S+ from v?\\d+(\\.\\d+)*([+-]\\S+)? to v?\\d+(\\.\\d+)*([+-]\\S+)?( in /.*)?$\n          - >-\n            ^[Bb]ump the \\S+ group( across [0-9]+ director(y|ies)| in /\\S+)? with [0-9]+ updates?$\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: true\n        mode: random-users\n        count: 1\n    requires: &approval_requirements_3\n      count: 1\n      users: [octocat, monalisa]\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n            - .github/workflows/playwright-visual-proof.yml\n\n  - name: Primary reviewer approval\n    description: One primary reviewer (Maks or Ayla) approves, paired with one secondary reviewer\n    if:\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n          - \"^[a-z]+\\\\(deps(-dev)?\\\\)!?:\"\n          - >-\n            ^[Bb]ump \\S+ from v?\\d+(\\.\\d+)*([+-]\\S+)? to v?\\d+(\\.\\d+)*([+-]\\S+)?( in /.*)?$\n          - >-\n            ^[Bb]ump the \\S+ group( across [0-9]+ director(y|ies)| in /\\S+)? with [0-9]+ updates?$\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: true\n        mode: random-users\n        count: 1\n    requires: &approval_requirements_4\n      count: 1\n      users: [user-maks, user-ayla]\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n            - .github/workflows/playwright-visual-proof.yml\n  - name: Secondary reviewer approval\n    description: One secondary reviewer (Bada, Fay or Yara) approves, paired with one primary reviewer\n    if:\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n          - \"^[a-z]+\\\\(deps(-dev)?\\\\)!?:\"\n          - >-\n            ^[Bb]ump \\S+ from v?\\d+(\\.\\d+)*([+-]\\S+)? to v?\\d+(\\.\\d+)*([+-]\\S+)?( in /.*)?$\n          - >-\n            ^[Bb]ump the \\S+ group( across [0-9]+ director(y|ies)| in /\\S+)? with [0-9]+ updates?$\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: true\n        mode: random-users\n        count: 1\n    requires: &approval_requirements_5\n      count: 1\n      users: [user-bada, user-fay, user-yara]\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n            - .github/workflows/playwright-visual-proof.yml\n  - name: Octo or Mona approval without automatic requests\n    description: Retain the approval requirement without automatically requesting reviewers\n    if:\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: false\n    requires: *approval_requirements_3\n  - name: Primary reviewer approval without automatic requests\n    description: Retain the approval requirement without automatically requesting reviewers\n    if:\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: false\n    requires: *approval_requirements_4\n  - name: Secondary reviewer approval without automatic requests\n    description: Retain the approval requirement without automatically requesting reviewers\n    if:\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: false\n    requires: *approval_requirements_5\n",
+  "acme/infrastructure@main": "---\npolicy:\n  approval:\n    - or:\n        - acme-devops bypass no review required\n        - acme-devops bypass no review and status checks for api scaling\n        - platform engineering or platform leads team approval\n        - platform engineering or platform leads team approval without automatic requests\n  disapproval:\n    requires:\n      organizations: [acme]\n\napproval_rules:\n  - name: acme-devops bypass no review required\n    description: Allow acme-devops to bypass review requirements\n    if:\n      targets_branch:\n        pattern: ^(main|prod)$\n      has_author_in:\n        users: [acme-devops]\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0  # No review requirements for acme-devops\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n\n  - name: acme-devops bypass no review and status checks for api scaling\n    description: Allow acme-devops to bypass review and status checks for api scaling\n    if:\n      targets_branch:\n        pattern: ^(main|prod)$\n      has_author_in:\n        users: [acme-devops]\n      only_changed_files:\n        paths:\n          - cd/k8s/prod/microservices/api-svc/hpa/cpu.yaml\n          - cd/k8s/prod/microservices/transaction/hpa.yaml\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0  # No review requirements for acme-devops\n      conditions:\n        has_valid_signatures: true\n\n  - name: platform engineering or platform leads team approval\n    description: >-\n      Requires 1 approval from Platform Engineering or Platform Engineering Leads\n      for all PRs to main or prod\n    if:\n      targets_branch:\n        pattern: ^(main|prod)$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n          - \"^feat: deploy .+ image \\\\S+$\"\n          - \"^[a-z]+\\\\(deps(-dev)?\\\\)!?:\"\n          - >-\n            ^[Bb]ump \\S+ from v?\\d+(\\.\\d+)*([+-]\\S+)? to v?\\d+(\\.\\d+)*([+-]\\S+)?( in /.*)?$\n          - >-\n            ^[Bb]ump the \\S+ group( across [0-9]+ director(y|ies)| in /\\S+)? with [0-9]+ updates?$\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: true\n        mode: random-users\n        count: 1\n    requires: &approval_requirements_3\n      count: 1\n      teams:\n        - acme/engineering-platform\n        - acme/engineering-platform-leads\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n  - name: platform engineering or platform leads team approval without automatic requests\n    description: >-\n      Retain the approval requirement without automatically requesting reviewers\n    if:\n      targets_branch:\n        pattern: ^(main|prod)$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n          - \"^feat: deploy .+ image \\\\S+$\"\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: false\n    requires: *approval_requirements_3\n",
+  "acme/risk-model@main": "---\npolicy:\n  approval:\n    - or:\n        - dependabot bypass no review required\n        - acme-devops bypass no review required\n        - backend approver approval\n        - backend approver approval without automatic requests\n        - develop branch no review required\n    - Octo or Mona approval for PR size workflow changes\n    - Test jobs pass\n    - Frontend tests pass when dashboard files change\n  disapproval:\n    requires:\n      organizations: [acme]\n\napproval_rules:\n  - name: Octo or Mona approval for PR size workflow changes\n    description: Require Octo or Mona to approve changes to the PR size enforcement workflow\n    if:\n      changed_files:\n        paths:\n          - ^\\.github/workflows/pr-size-gate\\.yaml$\n    options:\n      allow_author: false\n      invalidate_on_push: true\n    requires:\n      count: 1\n      users: [octocat, monalisa]\n\n  - name: Test jobs pass\n    description: Require the test jobs on every pull request to main, including automation pull requests\n    if:\n      targets_branch:\n        pattern: ^main$\n    requires:\n      count: 0\n      conditions:\n        has_status:\n          conclusions: [success]\n          statuses:\n            - unit-tests\n            - integration-tests\n            - Acceptance scenarios\n            - Migration script tests\n\n  - name: Frontend tests pass when dashboard files change\n    description: >-\n      Require the frontend-tests job for pull requests that change the files its workflow\n      watches. That workflow has a paths filter, so it does not run for other pull requests.\n    if:\n      targets_branch:\n        pattern: ^main$\n      changed_files:\n        paths:\n          - ^configuration-dashboard/web/\n          - ^configuration-dashboard/portable/\n          - ^configuration-dashboard/build_portable_viewer\\.py$\n          - ^tests/frontend/\n          - ^\\.github/workflows/configuration-dashboard-frontend\\.yml$\n    requires:\n      count: 0\n      conditions:\n        has_status:\n          conclusions: [success]\n          statuses:\n            - frontend-tests\n\n  - name: dependabot bypass no review required\n    description: Allow Dependabot PRs to bypass human review requirements\n    if:\n      targets_branch:\n        pattern: ^main$\n      has_author_in:\n        users: [\"dependabot[bot]\"]\n      only_has_contributors_in:\n        users: [\"dependabot[bot]\", acme-devops, \"acme-merger[bot]\"]\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0\n      conditions:\n        has_valid_signatures: true\n  - name: acme-devops bypass no review required\n    description: Allow acme-devops to bypass review requirements\n    if:\n      targets_branch:\n        pattern: ^main$\n      has_author_in:\n        users: [acme-devops]\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0  # No review requirements for acme-devops\n      conditions:\n        has_valid_signatures: true\n  - name: backend approver approval\n    description: Require one backend approver for pull requests to main\n    if:\n      targets_branch:\n        pattern: ^main$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n          - \"^[a-z]+\\\\(deps(-dev)?\\\\)!?:\"\n          - >-\n            ^[Bb]ump \\S+ from v?\\d+(\\.\\d+)*([+-]\\S+)? to v?\\d+(\\.\\d+)*([+-]\\S+)?( in /.*)?$\n          - >-\n            ^[Bb]ump the \\S+ group( across [0-9]+ director(y|ies)| in /\\S+)? with [0-9]+ updates?$\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: true\n        mode: random-users\n        count: 1\n    requires: &approval_requirements_4\n      count: 1\n      users: [user-mae, user-hal, user-rohan, octocat, monalisa]\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n            - pre-commit-check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n  - name: develop branch no review required\n    description: |\n      Requires 0 approvals but status checks for PRs to develop branch\n    if:\n      targets_branch:\n        pattern: ^develop$\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0\n      conditions:\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n            - pre-commit-check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n  - name: backend approver approval without automatic requests\n    description: Retain the approval requirement without automatically requesting reviewers\n    if:\n      targets_branch:\n        pattern: ^main$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: false\n    requires: *approval_requirements_4\n",
+  "acme/risk-model@claude/feature-b": "---\npolicy:\n  approval:\n    - or:\n        - dependabot bypass no review required\n        - acme-devops bypass no review required\n        - backend approver approval\n        - backend approver approval without automatic requests\n        - develop branch no review required\n    - Octo or Mona approval for PR size workflow changes\n    - Test jobs pass\n    - Frontend tests pass when dashboard files change\n  disapproval:\n    requires:\n      organizations: [acme]\n\napproval_rules:\n  - name: Octo or Mona approval for PR size workflow changes\n    description: Require Octo or Mona to approve changes to the PR size enforcement workflow\n    if:\n      changed_files:\n        paths:\n          - ^\\.github/workflows/pr-size-gate\\.yaml$\n    options:\n      allow_author: false\n      invalidate_on_push: true\n    requires:\n      count: 1\n      users: [octocat, monalisa]\n\n  - name: Test jobs pass\n    description: Require the test jobs on every pull request to main, including automation pull requests\n    if:\n      targets_branch:\n        pattern: ^main$\n    requires:\n      count: 0\n      conditions:\n        has_status:\n          conclusions: [success]\n          statuses:\n            - unit-tests\n            - integration-tests\n            - Acceptance scenarios\n            - Migration script tests\n\n  - name: Frontend tests pass when dashboard files change\n    description: >-\n      Require the frontend-tests job for pull requests that change the files its workflow\n      watches. That workflow has a paths filter, so it does not run for other pull requests.\n    if:\n      targets_branch:\n        pattern: ^main$\n      changed_files:\n        paths:\n          - ^configuration-dashboard/web/\n          - ^configuration-dashboard/portable/\n          - ^configuration-dashboard/build_portable_viewer\\.py$\n          - ^tests/frontend/\n          - ^\\.github/workflows/configuration-dashboard-frontend\\.yml$\n    requires:\n      count: 0\n      conditions:\n        has_status:\n          conclusions: [success]\n          statuses:\n            - frontend-tests\n\n  - name: dependabot bypass no review required\n    description: Allow Dependabot PRs to bypass human review requirements\n    if:\n      targets_branch:\n        pattern: ^main$\n      has_author_in:\n        users: [\"dependabot[bot]\"]\n      only_has_contributors_in:\n        users: [\"dependabot[bot]\", acme-devops, \"acme-merger[bot]\"]\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0\n      conditions:\n        has_valid_signatures: true\n  - name: acme-devops bypass no review required\n    description: Allow acme-devops to bypass review requirements\n    if:\n      targets_branch:\n        pattern: ^main$\n      has_author_in:\n        users: [acme-devops]\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0  # No review requirements for acme-devops\n      conditions:\n        has_valid_signatures: true\n  - name: backend approver approval\n    description: Require one backend approver for pull requests to main\n    if:\n      targets_branch:\n        pattern: ^main$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n          - \"^[a-z]+\\\\(deps(-dev)?\\\\)!?:\"\n          - >-\n            ^[Bb]ump \\S+ from v?\\d+(\\.\\d+)*([+-]\\S+)? to v?\\d+(\\.\\d+)*([+-]\\S+)?( in /.*)?$\n          - >-\n            ^[Bb]ump the \\S+ group( across [0-9]+ director(y|ies)| in /\\S+)? with [0-9]+ updates?$\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: true\n        mode: random-users\n        count: 1\n    requires: &approval_requirements_4\n      count: 1\n      users: [user-mae, user-hal, user-rohan, octocat, monalisa]\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n            - pre-commit-check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n  - name: develop branch no review required\n    description: |\n      Requires 0 approvals but status checks for PRs to develop branch\n    if:\n      targets_branch:\n        pattern: ^develop$\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0\n      conditions:\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n            - pre-commit-check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n  - name: backend approver approval without automatic requests\n    description: Retain the approval requirement without automatically requesting reviewers\n    if:\n      targets_branch:\n        pattern: ^main$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: false\n    requires: *approval_requirements_4\n",
+  "acme/statements-api@main": "---\npolicy:\n  approval:\n    - or:\n        - dependabot bypass no review required\n        - acme-devops bypass no review required\n        - backend approver approval\n        - backend approver approval without automatic requests\n        - develop branch no review required\n    - Octo or Mona approval for PR size workflow changes\n  disapproval:\n    requires:\n      organizations: [acme]\n\napproval_rules:\n  - name: Octo or Mona approval for PR size workflow changes\n    description: Require Octo or Mona to approve changes to the PR size enforcement workflow\n    if:\n      changed_files:\n        paths:\n          - ^\\.github/workflows/pr-size-gate\\.yaml$\n    options:\n      allow_author: false\n      invalidate_on_push: true\n    requires:\n      count: 1\n      users: [octocat, monalisa]\n\n  - name: dependabot bypass no review required\n    description: Allow Dependabot PRs to bypass human review requirements\n    if:\n      targets_branch:\n        pattern: ^main$\n      has_author_in:\n        users: [\"dependabot[bot]\"]\n      only_has_contributors_in:\n        users: [\"dependabot[bot]\", acme-devops, \"acme-merger[bot]\"]\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0\n      conditions:\n        has_valid_signatures: true\n  - name: acme-devops bypass no review required\n    description: Allow acme-devops to bypass review requirements\n    if:\n      targets_branch:\n        pattern: ^main$\n      has_author_in:\n        users: [acme-devops]\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0  # No review requirements for acme-devops\n      conditions:\n        has_valid_signatures: true\n  - name: backend approver approval\n    description: Require one backend approver for pull requests to main\n    if:\n      targets_branch:\n        pattern: ^main$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n          - \"^[a-z]+\\\\(deps(-dev)?\\\\)!?:\"\n          - >-\n            ^[Bb]ump \\S+ from v?\\d+(\\.\\d+)*([+-]\\S+)? to v?\\d+(\\.\\d+)*([+-]\\S+)?( in /.*)?$\n          - >-\n            ^[Bb]ump the \\S+ group( across [0-9]+ director(y|ies)| in /\\S+)? with [0-9]+ updates?$\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: true\n        mode: random-users\n        count: 1\n    requires: &approval_requirements_4\n      count: 1\n      users: [user-mae, user-hal, user-rohan, octocat, monalisa]\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n            - pre-commit-check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n  - name: develop branch no review required\n    description: |\n      Requires 0 approvals but status checks for PRs to develop branch\n    if:\n      targets_branch:\n        pattern: ^develop$\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0\n      conditions:\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n            - pre-commit-check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n  - name: backend approver approval without automatic requests\n    description: Retain the approval requirement without automatically requesting reviewers\n    if:\n      targets_branch:\n        pattern: ^main$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: false\n    requires: *approval_requirements_4\n",
+  "acme/e2e-tests@master": "---\npolicy:\n  approval:\n    - or:\n        - acme-devops bypass no review required\n        - quality assurance or engineering leads team approval\n        - product team approval for prose test plans\n    - Octo approval for PR size workflow changes\n  disapproval:\n    requires:\n      organizations: [acme]\n\napproval_rules:\n  - name: Octo approval for PR size workflow changes\n    description: Require Octo to approve changes to the PR size enforcement workflow\n    if:\n      changed_files:\n        paths:\n          - ^\\.github/workflows/pr-size-gate\\.yaml$\n    options:\n      allow_author: false\n      invalidate_on_push: true\n    requires:\n      count: 1\n      users: [octocat]\n\n  - name: acme-devops bypass no review required\n    description: Allow acme-devops to bypass review requirements\n    if:\n      targets_branch:\n        pattern: ^(main|master)$\n      has_author_in:\n        users: [acme-devops]\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0  # No review requirements for acme-devops\n      conditions:\n        has_valid_signatures: true\n  - name: quality assurance or engineering leads team approval\n    description: Requires 1 approval from quality assurance or engineering leads for all PRs to main/master\n    if:\n      targets_branch:\n        pattern: ^(main|master)$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: true\n        mode: random-users\n        count: 1\n    requires:\n      count: 1\n      teams:\n        - acme/engineering-leads\n        - acme/engineering-quality-assurance\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n\n  - name: product team approval for prose test plans\n    description: Requires one QA or product approval for prose-only test plan changes\n    if:\n      targets_branch:\n        pattern: ^(main|master)$\n      only_changed_files:\n        paths:\n          - ^specs/.*$\n          - ^tests/.*\\.tests\\.md$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: true\n        mode: random-users\n        count: 1\n    requires:\n      count: 1\n      teams:\n        - acme/engineering-quality-assurance\n        - acme/product\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n",
+  "acme/iam@main": "---\npolicy:\n  approval:\n    - or:\n        - acme-devops bypass no review required\n        - platform approver approval\n        - platform approver approval without automatic requests\n    - Octo or Mona approval for PR size workflow changes\n  disapproval:\n    requires:\n      organizations: [acme]\n\napproval_rules:\n  - name: Octo or Mona approval for PR size workflow changes\n    description: Require Octo or Mona to approve changes to the PR size enforcement workflow\n    if:\n      changed_files:\n        paths:\n          - ^\\.github/workflows/pr-size-gate\\.yaml$\n    options:\n      allow_author: false\n      invalidate_on_push: true\n    requires:\n      count: 1\n      users: [octocat, monalisa]\n\n  - name: acme-devops bypass no review required\n    description: Allow acme-devops to bypass review requirements\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop|prod)$\n      has_author_in:\n        users: [acme-devops]\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0  # No review requirements for acme-devops\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n            - pre-commit-check\n  - name: platform approver approval\n    description: Require one platform approver for pull requests to protected branches\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop|prod)$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n          - \"^[a-z]+\\\\(deps(-dev)?\\\\)!?:\"\n          - >-\n            ^[Bb]ump \\S+ from v?\\d+(\\.\\d+)*([+-]\\S+)? to v?\\d+(\\.\\d+)*([+-]\\S+)?( in /.*)?$\n          - >-\n            ^[Bb]ump the \\S+ group( across [0-9]+ director(y|ies)| in /\\S+)? with [0-9]+ updates?$\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: true\n        mode: random-users\n        count: 1\n    requires: &approval_requirements_3\n      count: 1\n      users: [octocat, monalisa, user-sunny, user-flo]\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n            - pre-commit-check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n  - name: platform approver approval without automatic requests\n    description: Retain the approval requirement without automatically requesting reviewers\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop|prod)$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: false\n    requires: *approval_requirements_3\n",
+  "acme/edge-config@main": "---\npolicy:\n  approval:\n    - or:\n        - acme-devops bypass no review required\n        - platform approver approval\n        - platform approver approval without automatic requests\n    - Octo or Mona approval for PR size workflow changes\n  disapproval:\n    requires:\n      organizations: [acme]\n\napproval_rules:\n  - name: Octo or Mona approval for PR size workflow changes\n    description: Require Octo or Mona to approve changes to the PR size enforcement workflow\n    if:\n      changed_files:\n        paths:\n          - ^\\.github/workflows/pr-size-gate\\.yaml$\n    options:\n      allow_author: false\n      invalidate_on_push: true\n    requires:\n      count: 1\n      users: [octocat, monalisa]\n\n  - name: acme-devops bypass no review required\n    description: Allow acme-devops to bypass review requirements\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop|prod)$\n      has_author_in:\n        users: [acme-devops]\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0  # No review requirements for acme-devops\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n            - pre-commit-check\n  - name: platform approver approval\n    description: Require one platform approver for pull requests to protected branches\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop|prod)$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n          - \"^[a-z]+\\\\(deps(-dev)?\\\\)!?:\"\n          - >-\n            ^[Bb]ump \\S+ from v?\\d+(\\.\\d+)*([+-]\\S+)? to v?\\d+(\\.\\d+)*([+-]\\S+)?( in /.*)?$\n          - >-\n            ^[Bb]ump the \\S+ group( across [0-9]+ director(y|ies)| in /\\S+)? with [0-9]+ updates?$\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: true\n        mode: random-users\n        count: 1\n    requires: &approval_requirements_3\n      count: 1\n      users: [octocat, monalisa, user-sunny, user-flo]\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n            - pre-commit-check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n  - name: platform approver approval without automatic requests\n    description: Retain the approval requirement without automatically requesting reviewers\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop|prod)$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: false\n    requires: *approval_requirements_3\n",
+  "acme/github-config@main": "---\npolicy:\n  approval:\n    - or:\n        - acme-devops bypass no review required\n        - platform approver approval\n        - platform approver approval without automatic requests\n    - Octo or Mona approval for PR size workflow changes\n  disapproval:\n    requires:\n      organizations: [acme]\n\napproval_rules:\n  - name: Octo or Mona approval for PR size workflow changes\n    description: Require Octo or Mona to approve changes to the PR size enforcement workflow\n    if:\n      changed_files:\n        paths:\n          - ^\\.github/workflows/pr-size-gate\\.yaml$\n    options:\n      allow_author: false\n      invalidate_on_push: true\n    requires:\n      count: 1\n      users: [octocat, monalisa]\n\n  - name: acme-devops bypass no review required\n    description: Allow acme-devops to bypass review requirements\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop|prod)$\n      has_author_in:\n        users: [acme-devops]\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0  # No review requirements for acme-devops\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n            - pre-commit-check\n  - name: platform approver approval\n    description: Require one platform approver for pull requests to protected branches\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop|prod)$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n          - \"^[a-z]+\\\\(deps(-dev)?\\\\)!?:\"\n          - >-\n            ^[Bb]ump \\S+ from v?\\d+(\\.\\d+)*([+-]\\S+)? to v?\\d+(\\.\\d+)*([+-]\\S+)?( in /.*)?$\n          - >-\n            ^[Bb]ump the \\S+ group( across [0-9]+ director(y|ies)| in /\\S+)? with [0-9]+ updates?$\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: true\n        mode: random-users\n        count: 1\n    requires: &approval_requirements_3\n      count: 1\n      users: [octocat, monalisa, user-sunny, user-flo]\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n            - pre-commit-check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n  - name: platform approver approval without automatic requests\n    description: Retain the approval requirement without automatically requesting reviewers\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop|prod)$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: false\n    requires: *approval_requirements_3\n",
+  "acme/monitoring@main": "---\npolicy:\n  approval:\n    - or:\n        - acme-devops bypass no review required\n        - platform approver approval\n        - platform approver approval without automatic requests\n    - Octo or Mona approval for PR size workflow changes\n  disapproval:\n    requires:\n      organizations: [acme]\n\napproval_rules:\n  - name: Octo or Mona approval for PR size workflow changes\n    description: Require Octo or Mona to approve changes to the PR size enforcement workflow\n    if:\n      changed_files:\n        paths:\n          - ^\\.github/workflows/pr-size-gate\\.yaml$\n    options:\n      allow_author: false\n      invalidate_on_push: true\n    requires:\n      count: 1\n      users: [octocat, monalisa]\n\n  - name: acme-devops bypass no review required\n    description: Allow acme-devops to bypass review requirements\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop|prod)$\n      has_author_in:\n        users: [acme-devops]\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0  # No review requirements for acme-devops\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n            - pre-commit-check\n  - name: platform approver approval\n    description: Require one platform approver for pull requests to protected branches\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop|prod)$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n          - \"^[a-z]+\\\\(deps(-dev)?\\\\)!?:\"\n          - >-\n            ^[Bb]ump \\S+ from v?\\d+(\\.\\d+)*([+-]\\S+)? to v?\\d+(\\.\\d+)*([+-]\\S+)?( in /.*)?$\n          - >-\n            ^[Bb]ump the \\S+ group( across [0-9]+ director(y|ies)| in /\\S+)? with [0-9]+ updates?$\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: true\n        mode: random-users\n        count: 1\n    requires: &approval_requirements_3\n      count: 1\n      users: [octocat, monalisa, user-sunny, user-flo]\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n            - pre-commit-check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n  - name: platform approver approval without automatic requests\n    description: Retain the approval requirement without automatically requesting reviewers\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop|prod)$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: false\n    requires: *approval_requirements_3\n",
+  "acme/ledger-sync@main": "---\npolicy:\n  approval:\n    - or:\n        - acme-devops bypass no review required\n        - billing integration review pool approval\n        - billing integration review pool approval without automatic requests\n    - Octo or Mona approval for PR size workflow changes\n  disapproval:\n    requires:\n      organizations: [acme]\n\napproval_rules:\n  - name: Octo or Mona approval for PR size workflow changes\n    description: Require Octo or Mona to approve changes to the PR size enforcement workflow\n    if:\n      changed_files:\n        paths:\n          - ^\\.github/workflows/pr-size-gate\\.yaml$\n    options:\n      allow_author: false\n      invalidate_on_push: true\n    requires:\n      count: 1\n      users: [octocat, monalisa]\n\n  - name: acme-devops bypass no review required\n    description: Allow acme-devops to bypass review requirements\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop)$\n      has_author_in:\n        users: [acme-devops]\n    options:\n      allow_author: false\n      invalidate_on_push: false\n    requires:\n      count: 0\n      conditions:\n        has_valid_signatures: true\n  - name: billing integration review pool approval\n    description: >-\n      Requests reviewers and requires 2 approvals from Backend Engineering,\n      Data Engineering, Platform Engineering, or Engineering Leads for PRs to\n      main, master, or develop, except automation sync, release, and\n      dependency update PRs\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop)$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n          - \"^[a-z]+\\\\(deps(-dev)?\\\\)!?:\"\n          - >-\n            ^[Bb]ump \\S+ from v?\\d+(\\.\\d+)*([+-]\\S+)? to v?\\d+(\\.\\d+)*([+-]\\S+)?( in /.*)?$\n          - >-\n            ^[Bb]ump the \\S+ group( across [0-9]+ director(y|ies)| in /\\S+)? with [0-9]+ updates?$\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: true\n        mode: random-users\n    requires: &approval_requirements_3\n      count: 2\n      teams:\n        - acme/data-engineering\n        - acme/engineering-backend\n        - acme/engineering-data\n        - acme/engineering-leads\n        - acme/engineering-platform\n      conditions:\n        has_valid_signatures: true\n        has_status:\n          conclusions: [success]\n          statuses:\n            - Validate PR Title and Description\n            - ai-assistance-disclosure / AI Label Check\n            - pre-commit-check\n        has_workflow_result:\n          conclusions: [success, skipped]\n          workflows:\n            - .github/workflows/pr-size-gate.yaml\n  - name: billing integration review pool approval without automatic requests\n    description: >-\n      Retain the approval requirement without automatically requesting reviewers\n    if:\n      targets_branch:\n        pattern: ^(main|master|develop)$\n      title:\n        not_matches:\n          - \"^ci: synced file\\\\(s\\\\)\"\n          - \"^chore\\\\(deps\\\\): update pinned action SHAs\"\n          - \"^release(?:\\\\([^)]*\\\\))?:\"\n          - ^chore\\([^)]*\\):.*release.*\n    options:\n      allow_author: false\n      invalidate_on_push: false\n      request_review:\n        enabled: false\n    requires: *approval_requirements_3\n"
+ },
+ "cases": [
+  {
+   "ref": "acme/payments-api#1546",
+   "policy": "acme/payments-api@main",
+   "facts": {
+    "base": "main",
+    "title": "fix: Change 1",
+    "author": "acme-agent",
+    "files": [
+     "app/Console/Commands/file4df948.php",
+     "app/Console/Commands/filecdf4ed.php",
+     "app/Http/file74808d.php",
+     "app/dir1/Serialization/file84991b.php",
+     "app/dir1/Serialization/file45650d.php",
+     "app/Services/file635eac.php",
+     "app/Services/file9a93fa.php",
+     "app/Services/file5d045a.php",
+     "app/Services/file31e222.php",
+     "app/Services/filed8308f.php",
+     "app/Services/file29edd2.php",
+     "app/Support/Tracing/filee60bcb.php",
+     "app/Telemetry/filee60bcb.php",
+     "app/Telemetry/file9a4119.php",
+     "app/Telemetry/filefab7cb.php",
+     "app/Telemetry/filedf5b2c.php",
+     "file874ad8.json",
+     "file874ad8.lock",
+     "config/file7d1043.php",
+     "config/file808c8a.php",
+     "tests/Unit/Config/File9899bfTest.php",
+     "tests/Unit/Console/Commands/File5845a3Test.php",
+     "tests/Unit/Console/Commands/File26e001Test.php",
+     "tests/Unit/Services/Filef2b37cTest.php",
+     "tests/Unit/Support/Tracing/File7a0c7fTest.php",
+     "tests/Unit/Telemetry/File5fa391Test.php",
+     "tests/Unit/Telemetry/Filee06079Test.php",
+     "tests/Unit/Telemetry/File7a6b3fTest.php",
+     "tests/Unit/Telemetry/Filed49221Test.php",
+     "tests/Unit/Telemetry/Filee5de7fTest.php",
+     "tests/Unit/Telemetry/File1bed21Test.php"
+    ],
+    "committers": [
+     "acme-agent",
+     "octocat"
+    ],
+    "headAt": "2026-10-29T15:53:26Z",
+    "labels": [
+     "size/XXL",
+     "ai-assisted"
+    ],
+    "reviews": [
+     {
+      "login": "github-actions",
+      "state": "APPROVED",
+      "submittedAt": "2026-10-29T16:01:18Z"
+     }
+    ],
+    "comments": [
+     {
+      "login": "chatgpt-codex-connector",
+      "body": "👍",
+      "createdAt": "2026-10-26T13:37:27Z"
+     }
+    ]
+   },
+   "members": {},
+   "expected": "REVIEW_REQUIRED",
+   "policyBot": "pending: 0/1 rules approved"
+  },
+  {
+   "ref": "acme/web-app#7138",
+   "policy": "acme/web-app@main",
+   "facts": {
+    "base": "main",
+    "title": "fix: Change 2",
+    "author": "user-fay",
+    "files": [
+     "src/app/pages/dir2/pages/dir3/file90a34b.page.html",
+     "src/app/pages/dir2/pages/dir3/file90a34b.page.scss",
+     "src/assets/i18n/file094b0f.json",
+     "src/assets/i18n/file112f73.json",
+     "src/assets/i18n/filefa6af6.json",
+     "src/assets/i18n/file24e2b9.json",
+     "src/assets/icon/filec6bc5e.svg",
+     "tests/integration/web/specs/file14d906.spec.ts"
+    ],
+    "committers": [
+     "user-fay"
+    ],
+    "headAt": "2026-11-06T11:38:55Z",
+    "labels": [
+     "size/L",
+     "ai-assisted"
+    ],
+    "reviews": [
+     {
+      "login": "user-ayla",
+      "state": "APPROVED",
+      "submittedAt": "2026-11-06T14:05:29Z"
+     },
+     {
+      "login": "github-actions",
+      "state": "APPROVED",
+      "submittedAt": "2026-11-06T09:13:30Z"
+     },
+     {
+      "login": "user-maks",
+      "state": "APPROVED",
+      "submittedAt": "2026-11-06T10:13:40Z"
+     }
+    ],
+    "comments": [
+     {
+      "login": "chatgpt-codex-connector",
+      "body": "👍",
+      "createdAt": "2026-11-06T10:12:36Z"
+     }
+    ]
+   },
+   "members": {},
+   "expected": "REVIEW_REQUIRED",
+   "policyBot": "pending: 0/1 rules approved"
+  },
+  {
+   "ref": "acme/web-app#7143",
+   "policy": "acme/web-app@codex/feature-a",
+   "facts": {
+    "base": "codex/feature-a",
+    "title": "feat: Change 3",
+    "author": "user-hal",
+    "files": [
+     "functions/file582681.json",
+     "functions/src/__tests__/api/dir4/fileee32ad.test.ts",
+     "functions/src/__tests__/integration/helpers/file8c4195.ts",
+     "functions/src/__tests__/integration/file39e405.emulator.test.ts",
+     "functions/src/__tests__/triggers/fileade1e6.sender.test.ts",
+     "functions/src/api/ams/config/fileb3ee53.schema.ts",
+     "functions/src/api/ams/services/file656c2b.service.ts",
+     "functions/src/api/dir4/functions/fileee32ad.ts",
+     "functions/src/models/file851adf.model.ts",
+     "functions/src/services/filea56a9c.service.ts",
+     "functions/src/swagger/filefb2ac3.json",
+     "functions/src/triggers/fileade1e6.ts"
+    ],
+    "committers": [
+     "user-hal"
+    ],
+    "headAt": "2026-11-06T11:52:00Z",
+    "labels": [
+     "size/XL",
+     "ai-assisted"
+    ],
+    "reviews": [
+     {
+      "login": "user-ayla",
+      "state": "CHANGES_REQUESTED",
+      "submittedAt": "2026-11-06T14:56:58Z"
+     }
+    ],
+    "comments": [
+     {
+      "login": "chatgpt-codex-connector",
+      "body": "👍",
+      "createdAt": "2026-11-06T11:52:51Z"
+     }
+    ]
+   },
+   "members": {
+    "org:acme:user-ayla": true
+   },
+   "expected": "CHANGES_REQUESTED",
+   "policyBot": "failure: Disapproved by user-ayla"
+  },
+  {
+   "ref": "acme/infrastructure#6407",
+   "policy": "acme/infrastructure@main",
+   "facts": {
+    "base": "main",
+    "title": "feat: Change 4",
+    "author": "acme-agent",
+    "files": [
+     "helm-charts/dir5/file69e273.md",
+     "helm-charts/dir5/templates/file5cf263.yaml",
+     "helm-charts/dir5/templates/file7233fb.yaml"
+    ],
+    "committers": [
+     "acme-agent",
+     "octocat"
+    ],
+    "headAt": "2026-11-05T23:37:08Z",
+    "labels": [
+     "size/S",
+     "ai-assisted"
+    ],
+    "reviews": [
+     {
+      "login": "github-actions",
+      "state": "APPROVED",
+      "submittedAt": "2026-10-26T05:12:36Z"
+     }
+    ],
+    "comments": [
+     {
+      "login": "chatgpt-codex-connector",
+      "body": "👍",
+      "createdAt": "2026-10-26T04:10:50Z"
+     }
+    ]
+   },
+   "members": {
+    "team:acme/engineering-platform:github-actions": false,
+    "team:acme/engineering-platform-leads:github-actions": false,
+    "team:acme/engineering-platform:chatgpt-codex-connector": false,
+    "team:acme/engineering-platform-leads:chatgpt-codex-connector": false
+   },
+   "expected": "REVIEW_REQUIRED",
+   "policyBot": "pending: 0/1 rules approved"
+  },
+  {
+   "ref": "acme/infrastructure#6425",
+   "policy": "acme/infrastructure@main",
+   "facts": {
+    "base": "main",
+    "title": "fix: Change 5",
+    "author": "acme-agent",
+    "files": [
+     "helm-charts/dir5/file69e273.md",
+     "helm-charts/dir5/templates/file5cf263.yaml"
+    ],
+    "committers": [
+     "acme-agent",
+     "octocat"
+    ],
+    "headAt": "2026-11-05T23:37:12Z",
+    "labels": [
+     "size/XS",
+     "ai-assisted"
+    ],
+    "reviews": [
+     {
+      "login": "github-actions",
+      "state": "APPROVED",
+      "submittedAt": "2026-10-26T14:24:25Z"
+     }
+    ],
+    "comments": [
+     {
+      "login": "chatgpt-codex-connector",
+      "body": "👍",
+      "createdAt": "2026-10-26T14:12:35Z"
+     }
+    ]
+   },
+   "members": {
+    "team:acme/engineering-platform:github-actions": false,
+    "team:acme/engineering-platform-leads:github-actions": false,
+    "team:acme/engineering-platform:chatgpt-codex-connector": false,
+    "team:acme/engineering-platform-leads:chatgpt-codex-connector": false
+   },
+   "expected": "REVIEW_REQUIRED",
+   "policyBot": "pending: 0/1 rules approved"
+  },
+  {
+   "ref": "acme/risk-model#701",
+   "policy": "acme/risk-model@main",
+   "facts": {
+    "base": "main",
+    "title": "feat(limits): Change 6",
+    "author": "octocat",
+    "files": [
+     "dir6/libs/file1cd5f7.py",
+     "tests/unit/fileb6b377.py",
+     "tests/unit/file7d6249.py"
+    ],
+    "committers": [
+     "octocat"
+    ],
+    "headAt": "2026-11-06T12:44:07Z",
+    "labels": [
+     "size/M",
+     "ai-assisted"
+    ],
+    "reviews": [],
+    "comments": [
+     {
+      "login": "chatgpt-codex-connector",
+      "body": "👍",
+      "createdAt": "2026-11-06T12:28:17Z"
+     }
+    ]
+   },
+   "members": {},
+   "expected": "REVIEW_REQUIRED",
+   "policyBot": "pending: 1/2 rules approved"
+  },
+  {
+   "ref": "acme/risk-model#702",
+   "policy": "acme/risk-model@claude/feature-b",
+   "facts": {
+    "base": "claude/feature-b",
+    "title": "fix(limits): Change 7",
+    "author": "octocat",
+    "files": [
+     "dir7/libs/filee4c5c6.py",
+     "dir7/libs/file95d3ff.py",
+     "dir7/libs/fileba3143.py",
+     "dir7/libs/file8cf3ae.py",
+     "dir8/file72ad26.schema.json",
+     "docs/dir9/file5a2b9f.md",
+     "docs/dir9/fileb84da2.md",
+     "scripts/dir10/file69e273.md",
+     "scripts/dir10/file622026.py",
+     "scripts/dir10/fileb5eed3.py",
+     "scripts/dir10/file748872.py",
+     "scripts/dir10/file242f51.py",
+     "tests/dir11/features/filebbac0f.feature",
+     "tests/dir11/filef18ac9.py",
+     "tests/unit/dir12/file24e390.py",
+     "tests/unit/file358384.py",
+     "tests/unit/filef3c8dd.py"
+    ],
+    "committers": [
+     "octocat"
+    ],
+    "headAt": "2026-11-06T12:39:05Z",
+    "labels": [
+     "size/L",
+     "ai-assisted"
+    ],
+    "reviews": [],
+    "comments": [
+     {
+      "login": "chatgpt-codex-connector",
+      "body": "👍",
+      "createdAt": "2026-11-06T12:40:19Z"
+     }
+    ]
+   },
+   "members": {},
+   "expected": "REVIEW_REQUIRED",
+   "policyBot": "error: All rules were skipped. At least one rule must match."
+  },
+  {
+   "ref": "acme/risk-model#703",
+   "policy": "acme/risk-model@main",
+   "facts": {
+    "base": "main",
+    "title": "feat(limits): Change 8",
+    "author": "octocat",
+    "files": [
+     "scripts/dir13/file69e273.md",
+     "scripts/dir13/file9174da.py",
+     "scripts/dir13/filee1a00b.py",
+     "scripts/dir13/file6c2825.py",
+     "scripts/dir13/file55c4c7.py",
+     "scripts/dir13/file1c035b.py",
+     "tests/integration/filede819f.py",
+     "tests/unit/filea72419.py"
+    ],
+    "committers": [
+     "octocat"
+    ],
+    "headAt": "2026-11-06T12:41:18Z",
+    "labels": [
+     "size/XXL",
+     "ai-assisted"
+    ],
+    "reviews": [],
+    "comments": [
+     {
+      "login": "chatgpt-codex-connector",
+      "body": "👍",
+      "createdAt": "2026-11-06T12:42:30Z"
+     }
+    ]
+   },
+   "members": {},
+   "expected": "REVIEW_REQUIRED",
+   "policyBot": "pending: 1/2 rules approved"
+  },
+  {
+   "ref": "acme/statements-api#1999",
+   "policy": "acme/statements-api@main",
+   "facts": {
+    "base": "main",
+    "title": "ci: Change 9 (canary)",
+    "author": "acme-agent",
+    "files": [
+     ".github/fileb5086a.json",
+     ".github/workflows/filea94a8f.yaml",
+     ".github/workflows/filecbeb32.yaml",
+     "file31e78f.repo.md"
+    ],
+    "committers": [
+     "acme-agent",
+     "octocat"
+    ],
+    "headAt": "2026-11-05T23:37:24Z",
+    "labels": [
+     "size/M",
+     "ai-assisted"
+    ],
+    "reviews": [
+     {
+      "login": "github-actions",
+      "state": "APPROVED",
+      "submittedAt": "2026-11-05T07:10:25Z"
+     }
+    ],
+    "comments": [
+     {
+      "login": "chatgpt-codex-connector",
+      "body": "👍",
+      "createdAt": "2026-11-05T06:43:53Z"
+     }
+    ]
+   },
+   "members": {},
+   "expected": "REVIEW_REQUIRED",
+   "policyBot": "pending: 0/1 rules approved"
+  },
+  {
+   "ref": "acme/statements-api#2028",
+   "policy": "acme/statements-api@main",
+   "facts": {
+    "base": "main",
+    "title": "fix: Change 10",
+    "author": "octocat",
+    "files": [
+     "dir14/dir15/integrations/file99f25b.py",
+     "dir14/filefa73a2.py"
+    ],
+    "committers": [
+     "octocat"
+    ],
+    "headAt": "2026-11-06T12:54:29Z",
+    "labels": [
+     "size/M",
+     "ai-assisted"
+    ],
+    "reviews": [],
+    "comments": [
+     {
+      "login": "chatgpt-codex-connector",
+      "body": "👍",
+      "createdAt": "2026-11-06T12:10:45Z"
+     }
+    ]
+   },
+   "members": {},
+   "expected": "REVIEW_REQUIRED",
+   "policyBot": "pending: 0/1 rules approved"
+  },
+  {
+   "ref": "acme/e2e-tests#657",
+   "policy": "acme/e2e-tests@master",
+   "facts": {
+    "base": "master",
+    "title": "test: Change 11",
+    "author": "user-tal",
+    "files": [
+     ".github/workflows/filecf3bda.yml",
+     ".gitignore",
+     ".pre-commit-config.yaml",
+     "robot/file69e273.md",
+     "robot/args/filecab9c3.args",
+     "robot/args/file4941cc.args",
+     "robot/fileed2eb3.in",
+     "robot/fileed2eb3.txt",
+     "robot/resources/device/filefcbdc4.resource",
+     "robot/resources/elements/file7b7fcc.resource",
+     "robot/resources/elements/filea37137.resource",
+     "robot/resources/elements/file35b19f.resource",
+     "robot/resources/keywords/file7d1043.resource",
+     "robot/resources/keywords/file61c412.resource",
+     "robot/resources/screens/file6bc18a.resource",
+     "robot/resources/screens/fileb915ae.resource",
+     "robot/scripts/filefaad66.sh",
+     "robot/scripts/filee469d5.py",
+     "robot/tests/android/file1939f2.robot",
+     "robot/tests/android/filed84759.robot",
+     "robot/variables/file94c8c2.yaml",
+     "robot/variables/countries/file8df74d.yaml",
+     "robot/variables/devices/file060add.yaml",
+     "robot/variables/devices/filee3c54d.yaml",
+     "robot/variables/filee87649.py"
+    ],
+    "committers": [
+     "user-tal"
+    ],
+    "headAt": "2026-11-06T13:18:38Z",
+    "labels": [
+     "size/XL",
+     "ai-assisted"
+    ],
+    "reviews": [],
+    "comments": [
+     {
+      "login": "chatgpt-codex-connector",
+      "body": "👍",
+      "createdAt": "2026-11-06T13:03:20Z"
+     }
+    ]
+   },
+   "members": {
+    "team:acme/engineering-leads:chatgpt-codex-connector": false,
+    "team:acme/engineering-quality-assurance:chatgpt-codex-connector": false
+   },
+   "expected": "REVIEW_REQUIRED",
+   "policyBot": "pending: 0/1 rules approved"
+  },
+  {
+   "ref": "acme/iam#233",
+   "policy": "acme/iam@main",
+   "facts": {
+    "base": "main",
+    "title": "feat: Change 12",
+    "author": "user-sunny",
+    "files": [
+     ".github/workflows/file439122.yml",
+     "filebf3042.yaml",
+     "environments/gcp/dir16/production/file754a08.tfvars",
+     "environments/gcp/dir16/production/file90a883.tfvars",
+     "providers/gcp/dir17/file69e273.md",
+     "providers/gcp/dir17/fileb28b7a.tf",
+     "providers/gcp/dir17/filee71003.tf",
+     "providers/gcp/dir17/file75ada9.tf",
+     "providers/gcp/dir17/filebc5af2.tf"
+    ],
+    "committers": [
+     "user-sunny"
+    ],
+    "headAt": "2026-11-03T06:42:31Z",
+    "labels": [
+     "size/L",
+     "ai-assisted"
+    ],
+    "reviews": [
+     {
+      "login": "github-actions",
+      "state": "CHANGES_REQUESTED",
+      "submittedAt": "2026-11-03T11:41:48Z"
+     }
+    ],
+    "comments": []
+   },
+   "members": {
+    "org:acme:github-actions": false
+   },
+   "expected": "REVIEW_REQUIRED",
+   "policyBot": "pending: 0/1 rules approved"
+  },
+  {
+   "ref": "acme/iam#234",
+   "policy": "acme/iam@main",
+   "facts": {
+    "base": "main",
+    "title": "feat: Change 13",
+    "author": "user-sunny",
+    "files": [
+     "file69e273.md",
+     "filebf3042.yaml",
+     "environments/aws/dir16/production/file90a883.tfvars",
+     "modules/aws/dir16/dir18/file69e273.md",
+     "modules/aws/dir16/dir18/fileb28b7a.tf",
+     "modules/aws/dir16/dir18/filee71003.tf",
+     "modules/aws/dir16/dir18/file75ada9.tf",
+     "modules/aws/dir16/dir18/filebc5af2.tf",
+     "providers/aws/dir19/file69e273.md",
+     "providers/aws/dir19/fileb28b7a.tf",
+     "providers/aws/dir19/filed7e351.tf",
+     "providers/aws/dir19/filee90ff2.tf",
+     "providers/aws/dir19/file75ada9.tf",
+     "providers/aws/dir19/filebc5af2.tf"
+    ],
+    "committers": [
+     "user-sunny"
+    ],
+    "headAt": "2026-11-06T06:11:45Z",
+    "labels": [
+     "size/L",
+     "ai-assisted"
+    ],
+    "reviews": [
+     {
+      "login": "github-actions",
+      "state": "APPROVED",
+      "submittedAt": "2026-11-05T11:44:58Z"
+     },
+     {
+      "login": "user-vik",
+      "state": "APPROVED",
+      "submittedAt": "2026-11-06T06:35:23Z"
+     }
+    ],
+    "comments": []
+   },
+   "members": {},
+   "expected": "REVIEW_REQUIRED",
+   "policyBot": "pending: 0/1 rules approved"
+  },
+  {
+   "ref": "acme/edge-config#242",
+   "policy": "acme/edge-config@main",
+   "facts": {
+    "base": "main",
+    "title": "feat: Change 14",
+    "author": "user-sunny",
+    "files": [
+     "terraform/dns/filee51366.tf",
+     "terraform/dir20/file69e273.md",
+     "terraform/dir20/file672e4e.tf",
+     "terraform/dir20/file7b0b73.tf",
+     "terraform/dir20/filea4631d.tf"
+    ],
+    "committers": [
+     "user-sunny"
+    ],
+    "headAt": "2026-11-06T10:46:28Z",
+    "labels": [
+     "size/M",
+     "ai-assisted"
+    ],
+    "reviews": [
+     {
+      "login": "github-actions",
+      "state": "APPROVED",
+      "submittedAt": "2026-11-06T10:55:43Z"
+     },
+     {
+      "login": "user-vik",
+      "state": "APPROVED",
+      "submittedAt": "2026-11-06T12:42:27Z"
+     }
+    ],
+    "comments": [
+     {
+      "login": "chatgpt-codex-connector",
+      "body": "👍",
+      "createdAt": "2026-11-06T10:17:58Z"
+     }
+    ]
+   },
+   "members": {},
+   "expected": "REVIEW_REQUIRED",
+   "policyBot": "pending: 0/1 rules approved"
+  },
+  {
+   "ref": "acme/github-config#619",
+   "policy": "acme/github-config@main",
+   "facts": {
+    "base": "main",
+    "title": "refactor: Change 15",
+    "author": "acme-agent",
+    "files": [
+     "modules/dir21/filea4b9c6.tf",
+     "modules/dir21/fileb28b7a.tf",
+     "modules/dir21/file90f7ff.tf",
+     "modules/dir21/file8763e7.tf",
+     "modules/dir21/file511703.tf"
+    ],
+    "committers": [
+     "acme-agent"
+    ],
+    "headAt": "2026-10-24T09:39:04Z",
+    "labels": [
+     "size/XL",
+     "ai-assisted"
+    ],
+    "reviews": [
+     {
+      "login": "github-actions",
+      "state": "APPROVED",
+      "submittedAt": "2026-10-24T09:48:03Z"
+     },
+     {
+      "login": "octocat",
+      "state": "APPROVED",
+      "submittedAt": "2026-10-24T09:42:59Z"
+     }
+    ],
+    "comments": [
+     {
+      "login": "chatgpt-codex-connector",
+      "body": "👍",
+      "createdAt": "2026-10-24T09:43:04Z"
+     }
+    ]
+   },
+   "members": {},
+   "expected": "APPROVED",
+   "policyBot": "success: All rules are approved"
+  },
+  {
+   "ref": "acme/github-config#636",
+   "policy": "acme/github-config@main",
+   "facts": {
+    "base": "main",
+    "title": "feat: Change 16 (canary)",
+    "author": "acme-agent",
+    "files": [
+     "file9a7a2a.tf"
+    ],
+    "committers": [
+     "acme-agent",
+     "octocat"
+    ],
+    "headAt": "2026-11-04T15:06:12Z",
+    "labels": [
+     "size/S",
+     "ai-assisted"
+    ],
+    "reviews": [
+     {
+      "login": "github-actions",
+      "state": "APPROVED",
+      "submittedAt": "2026-11-04T15:20:44Z"
+     }
+    ],
+    "comments": [
+     {
+      "login": "chatgpt-codex-connector",
+      "body": "👍",
+      "createdAt": "2026-11-04T12:46:35Z"
+     }
+    ]
+   },
+   "members": {},
+   "expected": "REVIEW_REQUIRED",
+   "policyBot": "pending: 0/1 rules approved"
+  },
+  {
+   "ref": "acme/monitoring#755",
+   "policy": "acme/monitoring@main",
+   "facts": {
+    "base": "main",
+    "title": "feat: Change 17",
+    "author": "octocat",
+    "files": [
+     "environments/staging/filed9390b.tfvars"
+    ],
+    "committers": [
+     "octocat"
+    ],
+    "headAt": "2026-11-06T04:18:31Z",
+    "labels": [
+     "size/XS",
+     "ai-assisted",
+     "agent-ignore"
+    ],
+    "reviews": [
+     {
+      "login": "github-actions",
+      "state": "APPROVED",
+      "submittedAt": "2026-11-06T04:49:47Z"
+     }
+    ],
+    "comments": [
+     {
+      "login": "chatgpt-codex-connector",
+      "body": "👍",
+      "createdAt": "2026-11-06T04:21:07Z"
+     }
+    ]
+   },
+   "members": {},
+   "expected": "REVIEW_REQUIRED",
+   "policyBot": "pending: 0/1 rules approved"
+  },
+  {
+   "ref": "acme/ledger-sync#266",
+   "policy": "acme/ledger-sync@main",
+   "facts": {
+    "base": "main",
+    "title": "feat(ledger): Change 18",
+    "author": "user-hugo",
+    "files": [
+     ".env.example",
+     "src/common/interfaces/filedfba7a.interface.ts",
+     "src/config/file0652e4.spec.ts",
+     "src/config/file0652e4.ts",
+     "src/config/file6d361f.schema.spec.ts",
+     "src/config/file6d361f.schema.ts",
+     "src/modules/dir22/file694a9c.records.spec.ts",
+     "src/modules/dir22/file694a9c.records.ts",
+     "src/modules/dir22/file694a9c.types.ts",
+     "src/modules/dir22/records/fileb39f00.spec.ts",
+     "src/modules/dir22/records/file3a85e3.spec.ts",
+     "src/modules/dir22/records/filebaeba7.spec.ts",
+     "src/modules/dir22/records/file6d91a1.spec.ts",
+     "src/modules/dir22/records/filee86256.spec.ts",
+     "src/modules/dir22/records/filee86256.ts",
+     "src/services/dir23/file530cad.service.spec.ts",
+     "src/services/dir23/file530cad.types.ts",
+     "src/services/dir23/file1a5608.parser.spec.ts",
+     "src/services/dir23/file1a5608.parser.ts",
+     "test/file94e954.e2e-spec.ts"
+    ],
+    "committers": [
+     "user-hugo"
+    ],
+    "headAt": "2026-11-06T07:00:12Z",
+    "labels": [
+     "size/XL",
+     "ai-assisted",
+     "ai-review-breaker"
+    ],
+    "reviews": [
+     {
+      "login": "monalisa",
+      "state": "APPROVED",
+      "submittedAt": "2026-10-27T03:44:28Z"
+     },
+     {
+      "login": "user-ayla",
+      "state": "APPROVED",
+      "submittedAt": "2026-10-26T10:51:56Z"
+     },
+     {
+      "login": "github-actions",
+      "state": "APPROVED",
+      "submittedAt": "2026-11-02T03:43:15Z"
+     },
+     {
+      "login": "user-anna",
+      "state": "APPROVED",
+      "submittedAt": "2026-10-22T04:29:58Z"
+     }
+    ],
+    "comments": []
+   },
+   "members": {
+    "team:acme/data-engineering:monalisa": true,
+    "team:acme/data-engineering:user-ayla": false,
+    "team:acme/engineering-backend:user-ayla": false,
+    "team:acme/engineering-data:user-ayla": false,
+    "team:acme/engineering-leads:user-ayla": false,
+    "team:acme/engineering-platform:user-ayla": false,
+    "team:acme/data-engineering:github-actions": false,
+    "team:acme/engineering-backend:github-actions": false,
+    "team:acme/engineering-data:github-actions": false,
+    "team:acme/engineering-leads:github-actions": false,
+    "team:acme/engineering-platform:github-actions": false,
+    "team:acme/data-engineering:user-anna": false,
+    "team:acme/engineering-backend:user-anna": false,
+    "team:acme/engineering-data:user-anna": false,
+    "team:acme/engineering-leads:user-anna": false,
+    "team:acme/engineering-platform:user-anna": false
+   },
+   "expected": "REVIEW_REQUIRED",
+   "policyBot": "pending: 0/1 rules approved"
+  },
+  {
+   "ref": "octocat/agent-instructions#15",
+   "policy": null,
+   "facts": {
+    "base": "main",
+    "title": "feat: Change 19",
+    "author": "octocat",
+    "files": [
+     "mcp/dir24/file69e273.md",
+     "mcp/dir24/file537bac.yaml",
+     "mcp/dir24/file3169d1.py"
+    ],
+    "committers": [
+     "octocat"
+    ],
+    "headAt": "2026-11-06T04:18:38Z",
+    "labels": [],
+    "reviews": [],
+    "comments": [
+     {
+      "login": "chatgpt-codex-connector",
+      "body": "👍",
+      "createdAt": "2026-11-06T04:21:14Z"
+     }
+    ]
+   },
+   "members": {},
+   "expected": null,
+   "policyBot": null
+  },
+  {
+   "ref": "octocat/executor#8",
+   "policy": null,
+   "facts": {
+    "base": "main",
+    "title": "feat: Change 20",
+    "author": "octocat",
+    "files": [
+     "apps/dir25/filee540cd.ts",
+     "apps/dir25/file582681.json",
+     "apps/dir25/file90c5d1.ts",
+     "apps/dir25/file363720.json",
+     "filec5beef.json"
+    ],
+    "committers": [
+     "octocat"
+    ],
+    "headAt": "2026-11-06T04:31:01Z",
+    "labels": [],
+    "reviews": [],
+    "comments": [
+     {
+      "login": "chatgpt-codex-connector",
+      "body": "👍",
+      "createdAt": "2026-11-06T04:21:12Z"
+     }
+    ]
+   },
+   "members": {},
+   "expected": null,
+   "policyBot": null
+  }
+ ]
+}

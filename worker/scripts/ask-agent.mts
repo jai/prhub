@@ -2,7 +2,7 @@
 // Their ids go in the Worker's vars (ASK_AGENT_ID, ASK_ENVIRONMENT_ID, ASK_VAULT_ID, ASK_CREDENTIAL_ID); the key itself
 // is the Worker's ASK_ANTHROPIC_API_KEY, or its ANTHROPIC_API_KEY when that is the same key.
 //
-//   node --experimental-strip-types pr-worker/scripts/ask-agent.mts [--login <github login>]
+//   node --experimental-strip-types worker/scripts/ask-agent.mts [--login <github login>]
 //
 // The agent is told whose review it helps: --login, else the user of GITHUB_TOKEN when that is set. Creates resources
 // every run, so run it once per Worker and keep what it prints.

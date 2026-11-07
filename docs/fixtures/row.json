@@ -1,0 +1,20 @@
+{
+  "repo": "acme/app",
+  "number": 7,
+  "title": "Add the retry to the uploader",
+  "head": "504754b2bc3ce5db892dde980e4bc83b60ff7a68",
+  "revision": "504754b2bc3ce5db892dde980e4bc83b60ff7a68-main",
+  "diff": "ready",
+  "detail": "2026-11-06T09:30:00Z.SUCCESS.39094d629f65d888",
+  "status": {
+    "list": "review",
+    "author": "alex",
+    "checks": "passing",
+    "review": "required",
+    "merge": "blocked",
+    "jaiReview": null,
+    "jaiReviewedAt": null,
+    "reviewDueAt": "2026-11-09T03:00:00Z"
+  },
+  "keyLines": 100
+}

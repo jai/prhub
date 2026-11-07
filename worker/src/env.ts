@@ -2,7 +2,7 @@ import type { AiJobs } from "./ai-jobs";
 import type { PrIndex } from "./pr-index";
 
 /**
- * Jai's Worker sets everything here. A self-hosted one (docs/api/pr-selfhost.md) needs only `GITHUB_TOKEN` and its
+ * Jai's Worker sets everything here. A self-hosted one (docs/api.md) needs only `GITHUB_TOKEN` and its
  * bindings; every other name is optional, and the feature it serves is off without it (`GET /device/config`).
  */
 export interface Env {
@@ -10,8 +10,16 @@ export interface Env {
   GITHUB_LOGIN?: string;
   /** A GitHub token that acts as that person: Jai's `gh` login, or a self-hoster's fine-grained PAT. */
   GITHUB_TOKEN: string;
-  /** Optional: the owners (orgs or users) the app filters to by default, comma-separated. Reported, never enforced. */
+  /**
+   * Optional: the owners (orgs or users) the app filters to by default, comma-separated. The PR list never filters by it;
+   * the repo index (`GET /repos`) lists only these owners' repos when it is set.
+   */
   GITHUB_ORGS?: string;
+  /**
+   * Visible alerts (`alerts.ts`): `review_requested`, `approved`, `changes_requested`, comma-separated, or `off`.
+   * Unset: review requests.
+   */
+  PR_ALERTS?: string;
   /** Jai's app's bearer, from his Pager Worker. Unset on a self-hosted Worker: paired devices only. */
   APP_TOKEN?: string;
   /** The threads hub's, for `POST /prs/states` alone. */
@@ -27,7 +35,13 @@ export interface Env {
   APNS_KEY_ID?: string;
   APNS_TEAM_ID?: string;
   APNS_KEY_P8?: string;
-  /** Push through Jai's relay (docs/api/push-relay.md), for the public PR app. Wins over direct APNs when both are set. */
+  /**
+   * Jai's instance only: pushes go to his Agent Pager Worker (`POST /pr-push`), never to a device, so Agent Pager hears
+   * from one Worker. Wins over the relay and direct APNs.
+   */
+  AGENT_PAGER_URL?: string;
+  AGENT_PAGER_PUSH_TOKEN?: string;
+  /** Push through Jai's relay (docs/push-relay.md), for the public PR app. Wins over direct APNs when both are set. */
   PUSH_RELAY_URL?: string;
   PUSH_RELAY_KEY?: string;
   /** Key lines and rewrites. */
@@ -45,9 +59,13 @@ export interface Env {
   ASK_GITHUB_APP_KEY?: string;
   /** A read-only PAT for the Ask agent, so it never holds the write token. */
   ASK_GITHUB_TOKEN?: string;
-  /** Feedback (`feedback.ts`), Jai's alone, on Ask's key: the builder agent and the self-hosted environment on Borg Cube 04. */
+  /** Feedback (`feedback.ts`), Jai's alone, on Ask's key: the builder agent and a self-hosted environment. */
   FEEDBACK_AGENT_ID?: string;
   FEEDBACK_ENVIRONMENT_ID?: string;
+  /** AI model choice (`models.ts`): allowed models, the effort cap, and each feature's default. Unset: all, high, built in. */
+  AI_MODELS_ALLOWED?: string;
+  AI_EFFORT_MAX?: string;
+  AI_DEFAULTS?: string;
   /** Optional: a rewrite goes on without the ticket when it is not set. */
   LINEAR_API_KEY?: string;
   /** The rewrite's writing guide: `owner/repo@ref` and the comma-separated paths in it. Unset: the built-in guide. */

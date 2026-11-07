@@ -4,7 +4,7 @@
 # Re-runnable: each step finds what an earlier run made and keeps it. In order:
 #   1. checks the tools, the Cloudflare token and the GitHub token;
 #   2. finds or creates the R2 bucket `<worker>-diffs`;
-#   3. renders wrangler.template.jsonc into worker/wrangler.jsonc;
+#   3. renders wrangler.template.jsonc into deploy/wrangler.jsonc;
 #   4. deploys the Worker;
 #   5. sets the secrets that are given: GITHUB_TOKEN, PUSH_RELAY_KEY, ANTHROPIC_API_KEY, ASK_GITHUB_TOKEN;
 #   6. checks the Worker answers;
@@ -29,6 +29,7 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+root="$(cd "$here/.." && pwd)"
 config="$here/wrangler.jsonc"
 
 say() { printf '==> %s\n' "$*" >&2; }
@@ -60,8 +61,8 @@ if [ -n "$PUSH_RELAY_URL" ]; then
   [[ "$PUSH_RELAY_URL" =~ ^https://[^[:space:]/]+/?$ ]] || die "PUSH_RELAY_URL must be https://<host>"
 fi
 
-if [ ! -d "$here/node_modules" ]; then say "installing the Worker's dependencies"; (cd "$here" && npm ci --no-audit --no-fund >&2); fi
-wrangler() { (cd "$here" && npx --yes wrangler@4 "$@"); }
+if [ ! -d "$root/worker/node_modules" ]; then say "installing the Worker's dependencies"; (cd "$root/worker" && npm ci --no-audit --no-fund >&2); fi
+wrangler() { (cd "$root/worker" && npx --yes wrangler@4 "$@"); }
 
 # Cloudflare API call with the token on stdin; prints the body, fails on success:false.
 cf() {
@@ -129,6 +130,6 @@ sleep 5
 say "the Worker answers"
 
 # 7. Pairing link.
-(cd "$here" && node scripts/pair.mjs --worker "$worker_url" --config "$config")
+(cd "$root/worker" && node scripts/pair.mjs --worker "$worker_url" --config "$config")
 
 printf '\nWorker: %s\nGitHub: %s\n' "$worker_url" "$login" >&2

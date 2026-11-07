@@ -1,0 +1,34 @@
+{
+  "name": "PRHub App",
+  "url": "https://github.com/jai/prhub",
+  "description": "Review your GitHub pull requests on your iPhone. PRHub reads the PRs you are asked to review and the ones you wrote, and posts your reviews, comments and merges as you.",
+  "public": true,
+  "hook_attributes": {
+    "url": "https://prhub.TBD.workers.dev/github/webhook",
+    "active": true
+  },
+  "callback_urls": [
+    "https://prhub.TBD.workers.dev/auth/github/callback"
+  ],
+  "request_oauth_on_install": true,
+  "default_permissions": {
+    "metadata": "read",
+    "pull_requests": "write",
+    "contents": "write",
+    "workflows": "write",
+    "checks": "read",
+    "statuses": "read",
+    "issues": "read",
+    "actions": "read",
+    "members": "read"
+  },
+  "default_events": [
+    "pull_request",
+    "pull_request_review",
+    "pull_request_review_comment",
+    "pull_request_review_thread",
+    "issue_comment",
+    "check_suite",
+    "status"
+  ]
+}

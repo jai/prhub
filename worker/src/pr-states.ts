@@ -1,7 +1,9 @@
 import { type Env, githubLogin } from "./env.ts";
 import { contextsOf, detailState, jaiReview, mergeOf, postGraphql, verdictOf } from "./github.ts";
 import { peopleOf } from "./policy-github.ts";
+import { parseRepoFullName, prId, type PrId, type RepoFullName, repoParts } from "./ids.ts";
 import { PEOPLE_FIELDS, type PeopleDecision, type PeopleNode } from "./policy-people.ts";
+import type { ChecksSummary, MergeState, PullRequestState, ReviewState } from "./vocab.ts";
 
 /**
  * What a PR's state is, for PRs on none of Jai's lists too: this Worker is the one reader of it, so a list, a thread
@@ -31,10 +33,10 @@ type StateNode = Parameters<typeof verdictOf>[0] & Parameters<typeof jaiReview>[
 
 export interface PrState {
   title: string;
-  state: string;
-  checks: string;
-  merge: string | null;
-  review: string;
+  state: PullRequestState;
+  checks: ChecksSummary;
+  merge: MergeState | null;
+  review: ReviewState;
   author: string | null;
   author_name: string | null;
   created_at: string;
@@ -66,25 +68,37 @@ export function stateOf(node: StateNode, login: string, people: PeopleDecision |
   };
 }
 
-/** `refs` as the route takes them, or null if that is not what was sent. */
-export function parseRefs(body: unknown): string[] | null {
-  const refs = (body as { refs?: unknown } | null)?.refs;
-  return Array.isArray(refs) && refs.length > 0 && refs.length <= MAX_REFS
-    && refs.every((ref) => typeof ref === "string" && REF.test(ref)) ? refs as string[] : null;
+/** A ref as the route takes it, `owner/name#number`, in its parts; null when it is not one. */
+export function parseRef(ref: unknown): { id: PrId; repo: RepoFullName; number: number } | null {
+  const match = typeof ref === "string" ? REF.exec(ref) : null;
+  const repo = match && parseRepoFullName(`${match[1]}/${match[2]}`);
+  const number = Number(match?.[3]);
+  return repo && Number.isSafeInteger(number) && number > 0 && prId(repo, number) === ref
+    ? { id: prId(repo, number), repo, number } : null;
 }
 
-export function statesQuery(refs: string[]): { query: string; aliases: Map<string, [string, string]> } {
-  const byRepo = new Map<string, string[]>();
-  for (const ref of refs) {
-    const [repo] = ref.split("#");
-    byRepo.set(repo, [...byRepo.get(repo) ?? [], ref]);
+/** `refs` as the route takes them, or null if that is not what was sent. */
+export function parseRefs(body: unknown): PrId[] | null {
+  const refs = (body as { refs?: unknown } | null)?.refs;
+  if (!Array.isArray(refs) || refs.length === 0 || refs.length > MAX_REFS) {
+    return null;
   }
-  const aliases = new Map<string, [string, string]>();
+  const parsed = refs.map(parseRef);
+  return parsed.every((ref) => ref !== null) ? parsed.map((ref) => ref.id) : null;
+}
+
+export function statesQuery(refs: PrId[]): { query: string; aliases: Map<PrId, [string, string]> } {
+  const byRepo = new Map<RepoFullName, { id: PrId; number: number }[]>();
+  for (const ref of refs.map(parseRef)) {
+    if (ref) {
+      byRepo.set(ref.repo, [...byRepo.get(ref.repo) ?? [], ref]);
+    }
+  }
+  const aliases = new Map<PrId, [string, string]>();
   const parts = [...byRepo].map(([repo, named], index) => {
-    const [owner, name] = repo.split("/");
-    const fields = named.map((ref, at) => {
-      aliases.set(ref, [`r${index}`, `p${at}`]);
-      const number = Number(ref.split("#")[1]);
+    const { owner, name } = repoParts(repo);
+    const fields = named.map(({ id, number }, at) => {
+      aliases.set(id, [`r${index}`, `p${at}`]);
       return `p${at}: pullRequest(number: ${number}) { ...State ${contextsOf(number)} }`;
     });
     return `r${index}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { ${fields.join(" ")} }`;
@@ -106,7 +120,7 @@ export interface StatesAnswer {
 
 /** What one query's answer says of each ref. */
 export function statesFrom(
-  answer: GraphqlAnswer, aliases: Map<string, [string, string]>, login: string,
+  answer: GraphqlAnswer, aliases: Map<PrId, [string, string]>, login: string,
   people: ReadonlyMap<string, PeopleDecision | null> = new Map(),
 ): StatesAnswer {
   const missing = new Set((answer.errors ?? []).filter((error) => error.type === "NOT_FOUND")
@@ -127,7 +141,7 @@ export function statesFrom(
 
 export class GitHubFailure extends Error {}
 
-async function ask(refs: string[], env: Env): Promise<StatesAnswer | "refused"> {
+async function ask(refs: PrId[], env: Env): Promise<StatesAnswer | "refused"> {
   const { query, aliases } = statesQuery(refs);
   const response = await postGraphql(query, {}, env);
   if (!response.ok) {
@@ -137,7 +151,7 @@ async function ask(refs: string[], env: Env): Promise<StatesAnswer | "refused"> 
   if (answer.data) {
     const people = new Map(await Promise.all([...aliases].map(async ([ref, [repo, pull]]) => {
       const node = answer.data?.[repo]?.[pull];
-      const decision = node ? await peopleOf(ref.split("#")[0] ?? "", node, env).catch(() => null) : null;
+      const decision = node ? await peopleOf(parseRef(ref)?.repo ?? "", node, env).catch(() => null) : null;
       return [ref, decision] as const;
     })));
     return statesFrom(answer, aliases, await githubLogin(env), people);
@@ -149,7 +163,7 @@ async function ask(refs: string[], env: Env): Promise<StatesAnswer | "refused"> 
 }
 
 /** One PR can spoil a whole query, so a query GitHub refused outright is asked again one PR at a time, once. */
-export async function readStates(refs: string[], env: Env): Promise<StatesAnswer> {
+export async function readStates(refs: PrId[], env: Env): Promise<StatesAnswer> {
   const answer = await ask(refs, env);
   if (answer !== "refused") {
     return answer;

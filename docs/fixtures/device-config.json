@@ -1,0 +1,88 @@
+{
+  "features": {
+    "ask_ai": false,
+    "key_lines": true,
+    "rewrite": true,
+    "feedback": false,
+    "push": true,
+    "webhooks": false
+  },
+  "login": "alex",
+  "orgs": [
+    "acme"
+  ],
+  "ai": {
+    "features": {
+      "key_lines": {
+        "default": {
+          "model": "claude-sonnet-5-5",
+          "effort": "high"
+        },
+        "allowed": [
+          {
+            "model": "claude-haiku-5-5",
+            "label": "Haiku 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          {
+            "model": "claude-sonnet-5-5",
+            "label": "Sonnet 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          {
+            "model": "claude-opus-5-5",
+            "label": "Opus 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        ]
+      },
+      "rewrite": {
+        "default": {
+          "model": "claude-sonnet-5-5",
+          "effort": "high"
+        },
+        "allowed": [
+          {
+            "model": "claude-haiku-5-5",
+            "label": "Haiku 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          {
+            "model": "claude-sonnet-5-5",
+            "label": "Sonnet 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          {
+            "model": "claude-opus-5-5",
+            "label": "Opus 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "repo": "acme/app",
+  "number": 9,
+  "title": "Ship the uploader",
+  "head": "1111111111111111111111111111111111111111",
+  "revision": "1111111111111111111111111111111111111111-main",
+  "diff": "ready",
+  "detail": "2026-11-01T00:05:00Z.MERGED",
+  "keyLines": null,
+  "status": {
+    "list": "merged",
+    "author": "jai",
+    "checks": "none",
+    "review": "none",
+    "merge": "unknown",
+    "jaiReview": null,
+    "jaiReviewedAt": null,
+    "mergedAt": "2026-11-01T00:04:00Z"
+  }
+}

@@ -1,6 +1,6 @@
 # Deploying your own PRHub Worker
 
-What PRHub is and what the Worker costs: [README.md](README.md).
+What PRHub is and what the Worker costs: [README.md](../README.md).
 
 For a coding agent setting up PRHub for its human. PRHub is an iPhone app for reviewing GitHub pull requests. You
 deploy its backend, `worker/`, into your human's Cloudflare account, acting on GitHub with their own token. The app
@@ -110,7 +110,7 @@ made for another resource owner or waits for an org owner's approval.
 export GITHUB_ORGS=<owner>[,<owner>]      # optional: the app's default filter
 export PUSH_RELAY_URL=https://agent-pager-relay.jai-f89.workers.dev; read -rs PUSH_RELAY_KEY && export PUSH_RELAY_KEY   # optional
 read -rs ANTHROPIC_API_KEY && export ANTHROPIC_API_KEY                                        # optional
-worker/setup.sh
+deploy/setup.sh
 ```
 
 Optional settings: `WORKER_NAME` (default `pr-review`), and a review SLA week: `REVIEW_SLA_UTC_OFFSET_HOURS` (`7`),
@@ -118,7 +118,7 @@ Optional settings: `WORKER_NAME` (default `pr-review`), and a review SLA week: `
 human a due time one working day out.
 
 What it does: checks both tokens, finds or creates the R2 bucket `<worker>-diffs`, writes
-`worker/wrangler.jsonc` (gitignored), deploys, sets each secret given (`GITHUB_TOKEN`, `PUSH_RELAY_KEY`,
+`deploy/wrangler.jsonc` (gitignored), deploys, sets each secret given (`GITHUB_TOKEN`, `PUSH_RELAY_KEY`,
 `ANTHROPIC_API_KEY`, `ASK_GITHUB_TOKEN`), checks the Worker, and prints a pairing link. It is safe to run again: a
 secret not given is kept, and a new run prints a new code. Give it the same optional vars each run, because the
 config is rendered again from them.
@@ -141,7 +141,7 @@ replacing the phone.
 
 ```sh
 URL=https://pr-review.<name>.workers.dev
-(cd worker && npm run pair -- --worker $URL --app cli --config wrangler.jsonc)
+(cd worker && npm run pair -- --worker $URL --app cli --config ../deploy/wrangler.jsonc)
 SECRET=$(openssl rand -hex 32)
 auth() { printf 'header = "Authorization: Bearer %s"\n' "$SECRET"; }
 auth | curl -s --config - -H 'content-type: application/json' -d '{"code":"<code it printed>"}' $URL/device/pair | jq .role
@@ -161,7 +161,7 @@ The human installs PRHub from its TestFlight link ([README.md](../README.md#inst
 the QR code in the app. Codes last 30 minutes. Mint another:
 
 ```sh
-(cd worker && npm run pair -- --worker $URL --config wrangler.jsonc)
+(cd worker && npm run pair -- --worker $URL --config ../deploy/wrangler.jsonc)
 ```
 
 A code without `--app` makes that phone the Worker's one device: it replaces every device paired before it.
@@ -180,7 +180,7 @@ vault once, then pass the ids to setup:
 It prints `{"ASK_AGENT_ID": …, "ASK_ENVIRONMENT_ID": …, "ASK_VAULT_ID": …, "ASK_CREDENTIAL_ID": …}`. Export the four,
 and preferably a second, read-only token as `ASK_GITHUB_TOKEN` (a classic token cannot be read only for private
 repos, so this one is fine-grained: Metadata, Pull requests, Contents, Commit statuses, Actions, all Read), so the agent never holds the write token. Without it the agent
-gets `GITHUB_TOKEN`. Run `worker/setup.sh` again.
+gets `GITHUB_TOKEN`. Run `deploy/setup.sh` again.
 
 Check: `/device/config` shows `"ask_ai": true`. Each run of the script creates new resources: run it once.
 
@@ -191,19 +191,19 @@ with the PAT.
 
 ```sh
 STATE=$(openssl rand -hex 16)
-printf '%s' "$STATE" | (cd worker && npx wrangler@4 secret put SETUP_STATE --config wrangler.jsonc)
+printf '%s' "$STATE" | (cd worker && npx wrangler@4 secret put SETUP_STATE --config ../deploy/wrangler.jsonc)
 echo "$URL/github/setup?state=$STATE"
 ```
 
-Set `GITHUB_APP_OWNER` in `worker/wrangler.template.jsonc` to the org first (empty makes it on the
+Set `GITHUB_APP_OWNER` in `deploy/wrangler.template.jsonc` to the org first (empty makes it on the
 human's own account) and `GITHUB_APP_NAME` to a name not taken on GitHub (empty: `<login>-pr-review`), then run
-`worker/setup.sh` again.
+`deploy/setup.sh` again.
 The human opens the printed link, creates the App and installs it on the repos. Then set its webhook secret without
 printing it, and drop what GitHub returned:
 
 ```sh
 cd worker
-B=<worker>-diffs C=wrangler.jsonc
+B=<worker>-diffs C=../deploy/wrangler.jsonc
 npx wrangler@4 r2 object get "$B/setup/github-app.json" --remote --pipe --config $C | jq -j .webhook_secret \
   | npx wrangler@4 secret put WEBHOOK_SECRET --config $C
 npx wrangler@4 r2 object delete "$B/setup/github-app.json" --remote --config $C
@@ -229,7 +229,7 @@ Check: `/device/config` shows `"webhooks": true`, and a comment on a PR shows in
 | Key lines or rewrite answer `404 … not set up` | No `ANTHROPIC_API_KEY` | Re-run setup with it |
 | Ask AI answers `404 … not set up` | The four `ASK_*` ids or the key are missing | Step 7 |
 
-Logs: `cd worker && npx wrangler@4 tail <worker name> --config wrangler.jsonc --format pretty`.
+Logs: `cd worker && npx wrangler@4 tail <worker name> --config ../deploy/wrangler.jsonc --format pretty`.
 
 ## What to tell your human
 

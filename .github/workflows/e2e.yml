@@ -1,0 +1,82 @@
+# End to end against the deployed test Worker and the shared relay: nightly and by hand, never a pull request's check.
+# Secrets live in the protected `e2e` environment: PRHUB_TEST_URL (the test Worker), PRHUB_TEST_SECRET (a device
+# secret paired there with `npm run pair -- --app ci-e2e`) and PRHUB_RELAY_KEY (a relay key issued for this check).
+name: e2e
+
+on:
+  schedule:
+    - cron: "17 20 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e
+  cancel-in-progress: false
+
+env:
+  RELAY_URL: https://agent-pager-relay.jai-f89.workers.dev
+
+jobs:
+  worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: e2e
+    env:
+      URL: ${{ secrets.PRHUB_TEST_URL }}
+      SECRET: ${{ secrets.PRHUB_TEST_SECRET }}
+    steps:
+      - name: The device config
+        run: |
+          get() { printf 'header = "Authorization: Bearer %s"\n' "$SECRET" | curl -sS --fail-with-body --retry 2 --config - "$URL$1"; }
+          get /device/config | jq -e '.login | type == "string" and length > 0' > /dev/null
+          echo "config: $(get /device/config | jq -c '{login, features}')"
+      - name: List PRs, then read one's detail and diff
+        run: |
+          get() { printf 'header = "Authorization: Bearer %s"\n' "$SECRET" | curl -sS --fail-with-body --retry 2 --config - "$URL$1"; }
+          prs=$(get /prs)
+          echo "$prs" | jq -e '.synced_at > 0 and (.prs | type == "array")' > /dev/null
+          echo "rows: $(echo "$prs" | jq '.prs | length')"
+          pr=$(echo "$prs" | jq -r '.prs[0] | select(. != null) | "\(.repo)/\(.number)"')
+          if [ -z "$pr" ]; then
+            echo "::warning::the test Worker lists no PRs; detail and diff not checked"
+            exit 0
+          fi
+          get "/prs/$pr/detail" | jq -e '.merge and .review' > /dev/null
+          code=$(printf 'header = "Authorization: Bearer %s"\n' "$SECRET" | curl -sS --config - -o diff.out -w '%{http_code}' "$URL/prs/$pr/diff")
+          echo "diff: HTTP $code, $(wc -c < diff.out) bytes"
+          test "$code" = 200
+          test -s diff.out
+      - name: The repo index and a PR summary
+        run: |
+          get() { printf 'header = "Authorization: Bearer %s"\n' "$SECRET" | curl -sS --fail-with-body --retry 2 --config - "$URL$1"; }
+          repos=$(get /repos)
+          echo "$repos" | jq -e '(.repos | length) > 0 and (.owners | type == "array")' > /dev/null
+          echo "repos: $(echo "$repos" | jq '.repos | length')"
+          repo=$(echo "$repos" | jq -r '[.repos[] | select(.openPrs > 0)][0].nameWithOwner // empty')
+          [ -n "$repo" ] || { echo "::warning::no repo with an open PR; summary not checked"; exit 0; }
+          prs=$(get /prs)
+          number=$(echo "$prs" | jq -r --arg repo "$repo" '[.prs[] | select(.repo == $repo)][0].number // empty')
+          [ -n "$number" ] || number=1
+          get "/prs/$repo/$number/summary" | jq -e '.repo and .number and .state' > /dev/null \
+            || { code=$(printf 'header = "Authorization: Bearer %s"\n' "$SECRET" | curl -s --config - -o /dev/null -w '%{http_code}' "$URL/prs/$repo/$number/summary"); test "$code" = 404; }
+      - name: No unauthenticated read
+        run: test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/prs")" = 401
+
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: e2e
+    steps:
+      - name: A push to a made-up device comes back as Apple's BadDeviceToken
+        env:
+          KEY: ${{ secrets.PRHUB_RELAY_KEY }}
+        run: |
+          body='{"device_token":"'"$(printf '0%.0s' $(seq 64))"'","apns_env":"sandbox","push_type":"background","priority":5,"payload":{"aps":{"content-available":1},"reason":"pr_sync"}}'
+          answer=$(printf 'header = "Authorization: Bearer %s"\n' "$KEY" | curl -sS --fail-with-body --config - -H 'content-type: application/json' -d "$body" "$RELAY_URL/v1/push")
+          echo "relay: $answer"
+          echo "$answer" | jq -e '.apns_status == 400 and .reason == "BadDeviceToken"' > /dev/null
+      - name: A wrong key is refused
+        run: |
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer rks_wrong' -H 'content-type: application/json' -d '{}' "$RELAY_URL/v1/push")" = 401

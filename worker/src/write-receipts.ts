@@ -1,5 +1,5 @@
 /**
- * The phone's writes arrive at least once: its outbox sends again until it hears back (docs/plans/network.md). Each
+ * The phone's writes arrive at least once: its outbox sends again until it hears back. Each
  * carries a `client_ref`, and its receipt here makes a repeat answer as the first did, without posting twice.
  */
 

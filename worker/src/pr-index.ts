@@ -1,21 +1,40 @@
+import { alarmToSet } from "./alarm";
 import { claimOf, RECEIPT_KEPT_MS, type WriteClaim, type WriteReceipt } from "./write-receipts";
 import { DurableObject } from "cloudflare:workers";
-import { type ApnsHost, apnsJwt, pushMode, sendSilentPush, sendViaRelay } from "./apns";
+import { alertKey, alertKinds, alertMessage, alertsFor, type HeldStatus } from "./alerts";
+import {
+  type ApnsHost, apnsJwt, type PushMessage, pushMode, sendDirect, sendViaPager, sendViaRelay, SYNC_WAKE,
+} from "./apns";
+import { aiConfigOf } from "./config";
 import { aiJobs, type Env, isSet } from "./env";
-import { isPairingRecord, type PairingRecord, pairingKey } from "./pairing";
-import { fetchDiff, type PullRequest, readPullRequests, type RowStatus, searchListings } from "./github";
+import { type PairingRecord, pairingKey, parsePairingRecord } from "./pairing";
+import {
+  detailVersionOf, liveDiff, type OpenRowStatus, type PullRequest, type PullRequestRef, readPullRequests, type RowStatus,
+  searchListings,
+} from "./github";
+import { parseRowStatus } from "./boundary";
+import {
+  type CodeHash, type DeviceToken, type Fingerprint, parseRepoFullName, parseSha, prId, type PrId, type RepoFullName,
+  type Sha,
+} from "./ids";
+import { putVersioned, storeDiff } from "./versioned";
 import { DEFAULT_CONTEXT } from "./key-lines";
 
 const BUSY_WINDOW_MS = 3_000;
 const READS_PER_PASS = 5;
+/** A failed read tries again this soon, every time: GitHub's outage, or a token being replaced, ends. */
+const READ_RETRY_MS = 30_000;
+
 const DIFFS_PER_PASS = 10;
 const PUSH_SPACING_MS = 30 * 60_000;
 const KEPT_EVENTS = 5_000;
+/** An alert's key outlives any re-request worth hushing; a month of them is a few hundred rows. */
+const ALERTS_KEPT_MS = 30 * 86_400_000;
 const KEY_LINES_PER_PASS = 5;
 /** A job that failed, say for want of credit, goes again after this long, so the list heals without being asked. */
 const KEY_LINES_RETRY_MS = 30 * 60_000;
 /** Raise it when what a row or detail holds changes shape: every held PR is then read again, once. */
-const ROW_SHAPE = 7;
+const ROW_SHAPE = 8;
 const LIST_ORDER = "CASE list WHEN 'mine' THEN 1 ELSE 0 END, updated_at DESC";
 
 export function diffKey(repo: string, number: number, revision: string): string {
@@ -25,6 +44,15 @@ export function diffKey(repo: string, number: number, revision: string): string 
 export function detailKey(repo: string, number: number, version: string): string {
   return `${repo}/${number}/detail/${version}.json`;
 }
+
+/** A PR the index holds, as a ref; null for a row whose repo is not `owner/name`, which no route can make. */
+function refOf(row: { repo: string; number: number }): PullRequestRef | null {
+  const repo = parseRepoFullName(row.repo);
+  return repo && { id: prId(repo, row.number), repo, number: row.number };
+}
+
+/** A PR read with a list to go on. */
+type Listed = PullRequest & { status: OpenRowStatus };
 
 export interface Row {
   repo: string;
@@ -59,7 +87,8 @@ export class PrIndex extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, at INTEGER, kind TEXT, detail TEXT);
       CREATE TABLE IF NOT EXISTS writes (ref TEXT PRIMARY KEY, state TEXT, at INTEGER);
       CREATE TABLE IF NOT EXISTS paired (fingerprint TEXT PRIMARY KEY, role TEXT, label TEXT, paired_at INTEGER);
-      CREATE TABLE IF NOT EXISTS spent_codes (code_hash TEXT PRIMARY KEY, at INTEGER);`);
+      CREATE TABLE IF NOT EXISTS spent_codes (code_hash TEXT PRIMARY KEY, at INTEGER);
+      CREATE TABLE IF NOT EXISTS alerts (key TEXT PRIMARY KEY, at INTEGER);`);
     const columns = this.sql.exec<{ name: string }>("PRAGMA table_info(pull_requests)").toArray();
     if (!columns.some(({ name }) => name === "version")) {
       this.sql.exec("ALTER TABLE pull_requests ADD COLUMN version TEXT NOT NULL DEFAULT ''");
@@ -85,13 +114,13 @@ export class PrIndex extends DurableObject<Env> {
       CASE WHEN key_lines_ready = head THEN ${DEFAULT_CONTEXT} END AS keyLines
       FROM pull_requests
       ORDER BY ${LIST_ORDER}`).toArray();
-    const prs = rows.map((row) => ({ ...row, status: row.status ? JSON.parse(row.status) as RowStatus : null }));
+    const prs = rows.map((row) => ({ ...row, status: parseRowStatus(row.status) }));
     return { prs, synced_at: this.meta("synced_at") };
   }
 
   /** A delivery. A PR no list holds and Jai has no part in is dropped here, so it never costs a GitHub read. */
-  async mark(repo: string, number: number, involved: boolean): Promise<void> {
-    const id = `${repo}#${number}`;
+  async mark(repo: RepoFullName, number: number, involved: boolean): Promise<void> {
+    const id = prId(repo, number);
     if (!involved && !this.exists("pull_requests", id)) {
       return;
     }
@@ -100,21 +129,40 @@ export class PrIndex extends DurableObject<Env> {
   }
 
   override async alarm(): Promise<void> {
-    const dirty = this.sql.exec<{ id: string; repo: string; number: number; generation: number }>(
+    const marked = this.sql.exec<{ id: string; repo: string; number: number; generation: number }>(
       "SELECT id, repo, number, generation FROM dirty LIMIT ?", READS_PER_PASS).toArray();
+    const dirty = marked.flatMap((row) => {
+      const ref = refOf(row);
+      if (!ref) {
+        this.sql.exec("DELETE FROM dirty WHERE id = ?", row.id);
+      }
+      return ref ? [{ ...ref, generation: row.generation }] : [];
+    });
     if (dirty.length > 0) {
       const asked = new Set(this.sql.exec<{ id: string }>(
         "SELECT id FROM pull_requests WHERE list IN ('review', 'reviewed')").toArray().map((row) => row.id));
-      const read = await readPullRequests(dirty, this.env, asked);
+      let read: Awaited<ReturnType<typeof readPullRequests>>;
+      try {
+        read = await readPullRequests(dirty, this.env, asked);
+      } catch (error) {
+        // Not thrown: Cloudflare would retry it later and later, and new work would wait behind that retry.
+        this.addEvent("read_failed", { error: String(error) });
+        await this.ctx.storage.setAlarm(Date.now() + READ_RETRY_MS);
+        return;
+      }
+      const alerts: Promise<unknown>[] = [];
       for (const { id, generation } of dirty) {
         const pr = read.get(id);
-        if (pr?.list) {
-          await this.store(pr);
+        if (pr?.status) {
+          const listed: Listed = { ...pr, status: pr.status };
+          alerts.push(...this.alertsOn(listed));
+          await this.store(listed);
         } else {
           this.remove(id);
         }
         this.sql.exec("DELETE FROM dirty WHERE id = ? AND generation = ?", id, generation);
       }
+      await Promise.all(alerts);
     }
     await this.storeDiffs();
     await this.queueKeyLines();
@@ -132,6 +180,7 @@ export class PrIndex extends DurableObject<Env> {
     } catch (error) {
       this.addEvent("poll_failed", { error: String(error) });
     }
+    this.sql.exec("DELETE FROM alerts WHERE at < ?", now - ALERTS_KEPT_MS);
     await this.pushIfDue(now);
   }
 
@@ -140,21 +189,62 @@ export class PrIndex extends DurableObject<Env> {
     const held = this.sql.exec<{ id: string; repo: string; number: number; version: string; status: string | null }>(
       "SELECT id, repo, number, version, status FROM pull_requests").toArray();
     const isCurrentShape = this.meta("row_shape") >= ROW_SHAPE;
-    const versions = new Map(held.map((row) => [row.id, row.status && isCurrentShape ? row.version : null]));
+    const versions = new Map<string, string | null>(
+      held.map((row) => [row.id, row.status && isCurrentShape ? row.version : null]));
     this.setMeta("row_shape", ROW_SHAPE);
     for (const { id, repo, number, version, reviewedOnly } of listings.values()) {
       if (versions.get(id) !== version && (!reviewedOnly || versions.has(id))) {
         this.markDirty(id, repo, number);
       }
     }
-    for (const { id, repo, number } of held) {
-      if (!listings.has(id)) {
-        this.markDirty(id, repo, number);
+    for (const row of held) {
+      const ref = refOf(row);
+      if (ref && !listings.has(ref.id)) {
+        this.markDirty(ref.id, ref.repo, ref.number);
       }
     }
     if (this.exists("dirty") || this.exists("pending")) {
       await this.ensureAlarm(0);
     }
+  }
+
+  /**
+   * The alerts a fresh read calls for, each claimed in storage before any push goes, so the same PR and head never
+   * alerts twice (`alerts.ts`). Read before `store` overwrites what was held.
+   */
+  private alertsOn(pr: Listed): Promise<unknown>[] {
+    const kinds = alertKinds(this.env);
+    if (kinds.size === 0) {
+      return [];
+    }
+    const heldRow = this.sql.exec<{ status: string | null }>(
+      "SELECT status FROM pull_requests WHERE id = ?", prId(pr.repo, pr.number)).toArray()[0];
+    const held: HeldStatus = parseRowStatus(heldRow?.status ?? null);
+    const now = Date.now();
+    const read = { ...pr, list: pr.status.list, review: pr.status.review };
+    return alertsFor(held, read, kinds, now).flatMap((alert) => {
+      const claimed = this.sql.exec(`INSERT INTO alerts (key, at) VALUES (?, ?) ON CONFLICT (key) DO NOTHING
+        RETURNING key`, alertKey(alert), now).toArray().length > 0;
+      // This instance's own record of what it said, under `/events`: never shared with another instance's.
+      const detail = { kind: alert.kind, pr: prId(pr.repo, pr.number), title: alert.title };
+      return claimed ? [this.sendToDevices(alertMessage(alert), "alert", detail)] : [];
+    });
+  }
+
+  /** Whether `GET /repos` may read GitHub now: not when it did within `gapMs`. Claimed in the same turn. */
+  claimRepoRefresh(now: number, gapMs: number): boolean {
+    if (now - this.meta("repos_tried_at") < gapMs) {
+      return false;
+    }
+    this.setMeta("repos_tried_at", now);
+    return true;
+  }
+
+  /** How many of the list's PRs each repo holds: the repo index's liveliest relevance hint. */
+  listedCounts(): Record<string, number> {
+    const rows = this.sql.exec<{ repo: string; n: number }>(
+      "SELECT repo, count(*) AS n FROM pull_requests GROUP BY repo").toArray();
+    return Object.fromEntries(rows.map(({ repo, n }) => [repo, n]));
   }
 
   /** Whether this copy of a write goes to GitHub (`write-receipts.ts`). One that does is marked sending in the same turn. */
@@ -179,11 +269,11 @@ export class PrIndex extends DurableObject<Env> {
   }
 
   /**
-   * A pairing code admits the device secret whose fingerprint this is (docs/api/pr-selfhost.md). The code is spent in
+   * A pairing code admits the device secret whose fingerprint this is (docs/api.md). The code is spent in
    * this object's own storage before anything is awaited, so two requests with it can't both pass. A `device` code
    * replaces every paired device, and the push registrations with them; an `app` code adds one.
    */
-  async pair(codeHash: string, fingerprint: string, now: number): Promise<PairingRecord | null> {
+  async pair(codeHash: CodeHash, fingerprint: Fingerprint, now: number): Promise<PairingRecord | null> {
     // A code lives 30 minutes and its record goes when it is used, so a day of spent hashes is plenty.
     this.sql.exec("DELETE FROM spent_codes WHERE at < ?", now - 86_400_000);
     const claimed = this.sql.exec(`INSERT INTO spent_codes (code_hash, at) VALUES (?, ?)
@@ -192,8 +282,8 @@ export class PrIndex extends DurableObject<Env> {
       return null;
     }
     const stored = await this.env.DIFFS.get(pairingKey(codeHash));
-    const record: unknown = stored ? await stored.json().catch(() => null) : null;
-    if (!isPairingRecord(record) || Date.parse(record.expires_at) <= now) {
+    const record = parsePairingRecord(stored ? await stored.json().catch(() => null) : null);
+    if (!record || Date.parse(record.expires_at) <= now) {
       // A guess spends nothing: the hash of a code nobody minted is forgotten again.
       this.sql.exec("DELETE FROM spent_codes WHERE code_hash = ?", codeHash);
       return null;
@@ -210,16 +300,16 @@ export class PrIndex extends DurableObject<Env> {
     return record;
   }
 
-  isPaired(fingerprint: string): boolean {
+  isPaired(fingerprint: Fingerprint): boolean {
     return this.sql.exec("SELECT 1 FROM paired WHERE fingerprint = ?", fingerprint).toArray().length > 0;
   }
 
-  /** A device forgets itself: its secret stops working here. */
-  unpair(fingerprint: string): void {
+  /** A device forgets itself: its secret stops working everywhere at once, as every request asks `isPaired`. */
+  unpair(fingerprint: Fingerprint): void {
     this.sql.exec("DELETE FROM paired WHERE fingerprint = ?", fingerprint);
   }
 
-  registerDevice(token: string, host: ApnsHost): void {
+  registerDevice(token: DeviceToken, host: ApnsHost): void {
     this.sql.exec(`INSERT INTO devices (token, host) VALUES (?, ?)
       ON CONFLICT (token) DO UPDATE SET host = excluded.host`, token, host);
   }
@@ -263,14 +353,16 @@ export class PrIndex extends DurableObject<Env> {
     return (parameter === undefined ? this.sql.exec(query) : this.sql.exec(query, parameter)).toArray().length > 0;
   }
 
-  private markDirty(id: string, repo: string, number: number): void {
+  private markDirty(id: PrId, repo: RepoFullName, number: number): void {
     this.sql.exec(`INSERT INTO dirty (id, repo, number, generation) VALUES (?, ?, ?, 1)
       ON CONFLICT (id) DO UPDATE SET generation = generation + 1`, id, repo, number);
   }
 
   private async ensureAlarm(delay: number): Promise<void> {
-    if ((await this.ctx.storage.getAlarm()) === null) {
-      await this.ctx.storage.setAlarm(Date.now() + delay);
+    const now = Date.now();
+    const at = alarmToSet(await this.ctx.storage.getAlarm(), now + delay, now);
+    if (at !== null) {
+      await this.ctx.storage.setAlarm(at);
     }
   }
 
@@ -283,13 +375,11 @@ export class PrIndex extends DurableObject<Env> {
    * The detail first: a row the phone can see always has one to fetch. Its version comes from what it says, because
    * GitHub does not move `updatedAt` for everything, resolving a thread among them, and the phone keeps each version.
    */
-  private async store(pr: PullRequest): Promise<void> {
-    const detail = JSON.stringify(pr.detail);
-    const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(detail));
-    const digest = Array.from(new Uint8Array(hash).slice(0, 8), (byte) => byte.toString(16).padStart(2, "0")).join("");
-    const detailVersion = `${pr.version}.${digest}`;
-    await this.env.DIFFS.put(detailKey(pr.repo, pr.number, detailVersion), detail);
-    const id = `${pr.repo}#${pr.number}`;
+  private async store(pr: Listed): Promise<void> {
+    const detailVersion = await detailVersionOf(pr);
+    await putVersioned(this.env.DIFFS, detailKey(pr.repo, pr.number, detailVersion), detailVersion,
+      JSON.stringify(pr.detail), "application/json");
+    const id = prId(pr.repo, pr.number);
     const held = this.sql.exec<{ detail_version: string | null }>(
       "SELECT detail_version FROM pull_requests WHERE id = ?", id).toArray()[0];
     this.sql.exec(`INSERT INTO pull_requests (id, repo, number, title, head, revision, list, updated_at, version,
@@ -301,7 +391,7 @@ export class PrIndex extends DurableObject<Env> {
         diff_state = CASE WHEN revision <> excluded.revision THEN 'pending' ELSE diff_state END,
         diff_tried_at = CASE WHEN revision <> excluded.revision THEN 0 ELSE diff_tried_at END,
         revision = excluded.revision`,
-    id, pr.repo, pr.number, pr.title, pr.head, pr.revision, pr.list, pr.updatedAt, pr.version, detailVersion,
+    id, pr.repo, pr.number, pr.title, pr.head, pr.revision, pr.status.list, pr.updatedAt, pr.version, detailVersion,
     JSON.stringify(pr.status), Date.now());
     if (held?.detail_version !== detailVersion) {
       this.setMeta("changed_at", Date.now());
@@ -317,14 +407,21 @@ export class PrIndex extends DurableObject<Env> {
       FROM pull_requests WHERE list = 'review' AND diff_state = 'ready' AND (COALESCE(key_lines_queued, '') <> head
         OR (COALESCE(key_lines_ready, '') <> head AND COALESCE(key_lines_tried_at, 0) < ?))
       LIMIT ?`, Date.now() - KEY_LINES_RETRY_MS, KEY_LINES_PER_PASS).toArray();
-    for (const { id, repo, number, head } of due) {
-      this.sql.exec("UPDATE pull_requests SET key_lines_queued = ?, key_lines_tried_at = ? WHERE id = ?", head, Date.now(),
-        id);
-      await aiJobs(this.env).enqueue({ kind: "key_lines", repo, number, head, context: DEFAULT_CONTEXT });
+    for (const row of due) {
+      this.sql.exec("UPDATE pull_requests SET key_lines_queued = ?, key_lines_tried_at = ? WHERE id = ?", row.head,
+        Date.now(), row.id);
+      const head = parseSha(row.head);
+      const ref = refOf(row);
+      if (!head || !ref) {
+        continue;
+      }
+      await aiJobs(this.env).enqueue({
+        kind: "key_lines", repo: ref.repo, number: ref.number, head, context: DEFAULT_CONTEXT, choice: aiConfigOf(this.env).defaults.key_lines,
+      });
     }
   }
 
-  keyLinesReady(id: string, head: string): void {
+  keyLinesReady(id: PrId, head: Sha): void {
     this.sql.exec("UPDATE pull_requests SET key_lines_ready = ? WHERE id = ? AND head = ?", head, id, head);
     this.setMeta("changed_at", Date.now());
   }
@@ -335,20 +432,18 @@ export class PrIndex extends DurableObject<Env> {
     }
   }
 
-  /** Oldest try first, so a PR that keeps failing cannot starve the rest. */
+  /**
+   * Oldest try first, so a PR that keeps failing cannot starve the rest. A diff read after the head moved stays pending:
+   * the index reads the PR again, and the row moves to the new revision.
+   */
   private async storeDiffs(): Promise<void> {
     const pending = this.sql.exec<{ id: string; repo: string; number: number; revision: string }>(`SELECT id, repo,
       number, revision FROM pull_requests WHERE diff_state = 'pending' AND diff_tried_at < ?
       ORDER BY diff_tried_at LIMIT ?`, Date.now() - 60_000, DIFFS_PER_PASS).toArray();
     await Promise.all(pending.map(async ({ id, repo, number, revision }) => {
       this.sql.exec("UPDATE pull_requests SET diff_tried_at = ? WHERE id = ?", Date.now(), id);
-      const key = diffKey(repo, number, revision);
-      const stored = await this.env.DIFFS.head(key);
-      const response = stored ? null : await fetchDiff(repo, number, this.env);
-      if (response?.ok) {
-        await this.env.DIFFS.put(key, await response.arrayBuffer(), { httpMetadata: { contentType: "text/plain" } });
-      }
-      const state = stored || response?.ok ? "ready" : response?.status === 406 ? "too_large" : "pending";
+      const state = await storeDiff(this.env.DIFFS, diffKey(repo, number, revision), revision,
+        () => liveDiff(repo, number, this.env));
       this.sql.exec("UPDATE pull_requests SET diff_state = ? WHERE id = ? AND revision = ?", state, id, revision);
     }));
   }
@@ -364,25 +459,42 @@ export class PrIndex extends DurableObject<Env> {
     if (!isDue) {
       return;
     }
+    if (await this.sendToDevices(SYNC_WAKE, "push", {})) {
+      this.setMeta("pushed_at", now);
+    }
+  }
+
+  /**
+   * One message to every production device, each outcome in `/events` under `kind`. Production only: a Simulator
+   * registers on the sandbox host, and its pushes would read as the phone's. True when Apple took it for any device. A
+   * token Apple calls dead is forgotten.
+   */
+  private async sendToDevices(message: PushMessage, kind: string, detail: object): Promise<boolean> {
     const mode = pushMode(this.env);
     if (mode === "none") {
-      return;
+      return false;
     }
-    const seconds = Math.floor(now / 1000);
+    if (mode === "pager") {
+      const { status, reason } = await sendViaPager(this.env, message);
+      this.addEvent(kind, { ...detail, via: "agent-pager", status, reason });
+      return status === 200;
+    }
+    const seconds = Math.floor(Date.now() / 1000);
     const jwt = mode === "apns" ? await apnsJwt(this.env, seconds) : "";
-    // Production only: a Simulator registers on the sandbox host, and its wakes would read as the phone's in `/events`.
     const devices = this.sql.exec<{ token: string; host: ApnsHost }>(
       "SELECT token, host FROM devices WHERE host = 'production'").toArray();
+    let delivered = false;
     for (const { token, host } of devices) {
-      const { status, reason } = mode === "relay" ? await sendViaRelay(token, host, this.env, seconds)
-        : await sendSilentPush(token, host, jwt, this.env, seconds);
-      this.addEvent("push", { status, reason });
+      const { status, reason } = mode === "relay" ? await sendViaRelay(token, host, this.env, seconds, message)
+        : await sendDirect(token, host, jwt, this.env, seconds, message);
+      this.addEvent(kind, { ...detail, status, reason });
       if (status === 200) {
-        this.setMeta("pushed_at", now);
+        delivered = true;
       } else if (status === 410 || reason === "BadDeviceToken" || reason === "Unregistered") {
         this.sql.exec("DELETE FROM devices WHERE token = ?", token);
       }
     }
+    return delivered;
   }
 
   private meta(key: string): number {

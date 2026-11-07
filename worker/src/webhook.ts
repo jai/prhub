@@ -1,6 +1,7 @@
+import { parseRepoFullName, type RepoFullName } from "./ids.ts";
 /** A delivery says a PR may have changed, never what it is now: the index reads GitHub for that. */
 export interface PullRequestMark {
-  repo: string;
+  repo: RepoFullName;
   number: number;
   /** Jai is the author or a requested reviewer, so a PR the index does not hold yet still counts. */
   involved: boolean;
@@ -46,11 +47,12 @@ export function parseDelivery(event: string | null, body: string, login: string)
   }
   const { repository, requested_reviewer: requested, issue, pull_request: pr } = JSON.parse(body) as Payload;
   const number = isComment ? (issue?.pull_request ? issue.number : undefined) : pr?.number;
-  if (!repository?.full_name || !number) {
+  const repo = parseRepoFullName(repository?.full_name);
+  if (!repo || !number) {
     return null;
   }
   return {
-    repo: repository.full_name,
+    repo,
     number,
     involved: pr?.user?.login === login || issue?.user?.login === login || requested?.login === login
       || (pr?.requested_reviewers ?? []).some((reviewer) => reviewer.login === login),

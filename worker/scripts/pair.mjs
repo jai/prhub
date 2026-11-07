@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Mints a one-time pairing code for PRHub, the PR app (docs/api/pr-selfhost.md): puts `pair/<sha256(code)>.json` in the
+// Mints a one-time pairing code for PRHub, the PR app (docs/api.md): puts `pair/<sha256(code)>.json` in the
 // Worker's R2 bucket and prints the setup link the app opens, plus a QR code when `qrencode` is installed. The app then
 // calls POST /device/pair with the code and its own device secret, and the Worker admits it. The code works once and
 // lasts 30 minutes.

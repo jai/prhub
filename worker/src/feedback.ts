@@ -5,7 +5,7 @@ import type { Env } from "./env.ts";
 
 /**
  * Feedback on the app itself, from the app: each piece starts a Managed Agents session on the builder agent, whose tools
- * run on Borg Cube 04 (a self-hosted environment; `builder/` holds the worker). There it changes `jai/agent-pager`,
+ * run in a self-hosted environment. There it changes `jai/agent-pager`,
  * tests, pushes to main and ships a build. A session's events are the conversation; this keeps only the list.
  */
 

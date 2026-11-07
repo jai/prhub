@@ -1,6 +1,7 @@
 import { type Env, isSet } from "./env.ts";
 
-export type ApnsHost = "production" | "sandbox";
+export const APNS_HOSTS = ["production", "sandbox"] as const;
+export type ApnsHost = typeof APNS_HOSTS[number];
 
 const HOSTS: Record<ApnsHost, string> = {
   production: "https://api.push.apple.com",
@@ -9,10 +10,14 @@ const HOSTS: Record<ApnsHost, string> = {
 const PUSH_LIFETIME_SECONDS = 1800;
 const RELAY_TIMEOUT_MS = 10_000;
 
-/** How this Worker pushes: through Jai's relay when it is set, else APNs with its own key, else not at all. */
-export type PushMode = "relay" | "apns" | "none";
+/**
+ * How this Worker pushes: to Jai's Agent Pager Worker when it is set (`pager`: that Worker alone reaches Agent Pager, so
+ * the app hears from one Worker), else through the relay, else APNs with its own key, else not at all.
+ */
+export type PushMode = "pager" | "relay" | "apns" | "none";
 
 export function pushMode(env: Env): PushMode {
+  if (isSet(env.AGENT_PAGER_URL) && isSet(env.AGENT_PAGER_PUSH_TOKEN)) return "pager";
   if (isSet(env.PUSH_RELAY_URL) && isSet(env.PUSH_RELAY_KEY)) return "relay";
   return isSet(env.APNS_KEY_ID) && isSet(env.APNS_TEAM_ID) && isSet(env.APNS_KEY_P8) && isSet(env.APNS_BUNDLE_ID)
     ? "apns" : "none";
@@ -43,33 +48,51 @@ export interface PushOutcome {
   reason: string | null;
 }
 
-const PAYLOAD = { aps: { "content-available": 1 }, reason: "pr_sync" };
-
-/** The silent wake: `reason` is all it carries, because the phone always syncs everything. */
-export async function sendSilentPush(
-  token: string, host: ApnsHost, jwt: string, env: Env, nowSeconds: number,
-): Promise<PushOutcome> {
-  const response = await fetch(`${HOSTS[host]}/3/device/${token}`, {
-    method: "POST",
-    headers: {
-      authorization: `bearer ${jwt}`,
-      "apns-push-type": "background",
-      "apns-priority": "5",
-      "apns-topic": env.APNS_BUNDLE_ID ?? "",
-      "apns-collapse-id": "pr-sync",
-      "apns-expiration": String(nowSeconds + PUSH_LIFETIME_SECONDS),
-    },
-    body: JSON.stringify(PAYLOAD),
-  });
-  const body = response.ok ? null : await response.json().catch(() => null) as { reason?: string } | null;
-  return { status: response.status, reason: body?.reason ?? null };
+/** What one push says and how APNs treats it. The silent wake and the alerts (`alerts.ts`) are both one of these. */
+export interface PushMessage {
+  pushType: "background" | "alert";
+  priority: 5 | 10;
+  collapseId: string | null;
+  lifetimeSeconds: number;
+  payload: { aps: object } & Record<string, unknown>;
 }
 
-/** The relay's request for the same wake (docs/api/push-relay.md). The relay fixes the topic: the PR app's bundle id. */
-export function relayBody(token: string, host: ApnsHost, nowSeconds: number): object {
+/** The silent wake: `reason` is all it carries, because the phone always syncs everything. */
+export const SYNC_WAKE: PushMessage = {
+  pushType: "background", priority: 5, collapseId: "pr-sync", lifetimeSeconds: PUSH_LIFETIME_SECONDS,
+  payload: { aps: { "content-available": 1 }, reason: "pr_sync" },
+};
+
+/** Straight to APNs, with this Worker's own key. */
+export async function sendDirect(
+  token: string, host: ApnsHost, jwt: string, env: Env, nowSeconds: number, message: PushMessage = SYNC_WAKE,
+): Promise<PushOutcome> {
+  const headers: Record<string, string> = {
+    authorization: `bearer ${jwt}`,
+    "apns-push-type": message.pushType,
+    "apns-priority": String(message.priority),
+    "apns-topic": env.APNS_BUNDLE_ID ?? "",
+    "apns-expiration": String(nowSeconds + message.lifetimeSeconds),
+  };
+  if (message.collapseId) {
+    headers["apns-collapse-id"] = message.collapseId;
+  }
+  try {
+    const response = await fetch(`${HOSTS[host]}/3/device/${token}`, {
+      method: "POST", headers, body: JSON.stringify(message.payload),
+    });
+    const body = response.ok ? null : await response.json().catch(() => null) as { reason?: string } | null;
+    return { status: response.status, reason: body?.reason ?? null };
+  } catch {
+    return { status: null, reason: "fetch_error: network" };
+  }
+}
+
+/** The relay's request for the same push (docs/push-relay.md). The relay fixes the topic: the PR app's bundle id. */
+export function relayBody(token: string, host: ApnsHost, nowSeconds: number, message: PushMessage = SYNC_WAKE): object {
   return {
-    device_token: token, apns_env: host, push_type: "background", priority: 5, collapse_id: "pr-sync",
-    expiration: nowSeconds + PUSH_LIFETIME_SECONDS, payload: PAYLOAD,
+    device_token: token, apns_env: host, push_type: message.pushType, priority: message.priority,
+    collapse_id: message.collapseId, expiration: nowSeconds + message.lifetimeSeconds, payload: message.payload,
   };
 }
 
@@ -90,13 +113,37 @@ export function relayOutcome(status: number, body: unknown): PushOutcome {
   return { status: null, reason: answer.apns_status === null && reason ? reason : "relay_bad_response" };
 }
 
+/**
+ * To the Agent Pager Worker's `POST /pr-push`, which sends it to its one device as its own push and logs it. No device
+ * token here: that Worker knows its phone. Never throws.
+ */
+export async function sendViaPager(env: Env, message: PushMessage): Promise<PushOutcome> {
+  try {
+    const response = await fetch(`${(env.AGENT_PAGER_URL ?? "").replace(/\/+$/, "")}/pr-push`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${env.AGENT_PAGER_PUSH_TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        push_type: message.pushType, priority: message.priority, collapse_id: message.collapseId,
+        lifetime_seconds: message.lifetimeSeconds, payload: message.payload,
+      }),
+      signal: AbortSignal.timeout(RELAY_TIMEOUT_MS),
+    });
+    return relayOutcome(response.status, response.status === 200 ? await response.json().catch(() => null) : null);
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "TimeoutError";
+    return { status: null, reason: timedOut ? "fetch_error: timeout" : "fetch_error: network" };
+  }
+}
+
 /** Through the relay. Never throws: a network failure is a reason like any other. */
-export async function sendViaRelay(token: string, host: ApnsHost, env: Env, nowSeconds: number): Promise<PushOutcome> {
+export async function sendViaRelay(
+  token: string, host: ApnsHost, env: Env, nowSeconds: number, message: PushMessage = SYNC_WAKE,
+): Promise<PushOutcome> {
   try {
     const response = await fetch(`${(env.PUSH_RELAY_URL ?? "").replace(/\/+$/, "")}/v1/push`, {
       method: "POST",
       headers: { authorization: `Bearer ${env.PUSH_RELAY_KEY}`, "content-type": "application/json" },
-      body: JSON.stringify(relayBody(token, host, nowSeconds)),
+      body: JSON.stringify(relayBody(token, host, nowSeconds, message)),
       signal: AbortSignal.timeout(RELAY_TIMEOUT_MS),
     });
     return relayOutcome(response.status, response.status === 200 ? await response.json().catch(() => null) : null);

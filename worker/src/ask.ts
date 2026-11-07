@@ -1,7 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { askPrompt, chatOf } from "./ask-chat";
+import { askPrompt, chatOf, QUESTION } from "./ask-chat";
 import type { AskChat, AskInput } from "./ask-chat";
 import { type Env, isSet } from "./env";
+import { prId, type RepoFullName } from "./ids";
+import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models";
 
 /**
  * Asking about a PR: one Managed Agents session per PR, on the agent and environment `scripts/ask-agent.mts` made once.
@@ -10,6 +12,10 @@ import { type Env, isSet } from "./env";
  * Worker that is minted by the Ask GitHub App, read only across every repo it is installed on. A self-hosted Worker
  * has no App: its own PAT goes instead, `ASK_GITHUB_TOKEN` (read only) or else `GITHUB_TOKEN`. The same token is
  * `GH_TOKEN` in the vault, for GitHub's API.
+ *
+ * A session's model and effort are fixed when it starts (an `agent_with_overrides`); Managed Agents can't change them
+ * per message. So a question asked at another model or effort than the session's starts a new session, and the chat
+ * the phone sees is that new one.
  */
 
 /** Hard stop on one PR's spend, at list price, in cents. */
@@ -23,6 +29,8 @@ interface AskRecord {
   resource: string;
   head: string;
   version?: number;
+  /** Absent on a session from before the choice existed: it ran on the agent's own model, Opus 5.5 at medium. */
+  choice?: ModelChoice;
 }
 
 export class AskRefused extends Error {}
@@ -31,11 +39,11 @@ function client(env: Env): Anthropic {
   return new Anthropic({ apiKey: isSet(env.ASK_ANTHROPIC_API_KEY) ? env.ASK_ANTHROPIC_API_KEY : env.ANTHROPIC_API_KEY });
 }
 
-function recordKey(repo: string, number: number): string {
+function recordKey(repo: RepoFullName, number: number): string {
   return `ask/${repo}/${number}.json`;
 }
 
-async function readRecord(repo: string, number: number, env: Env): Promise<AskRecord | null> {
+async function readRecord(repo: RepoFullName, number: number, env: Env): Promise<AskRecord | null> {
   const stored = await env.DIFFS.get(recordKey(repo, number));
   return stored ? await stored.json<AskRecord>() : null;
 }
@@ -57,7 +65,7 @@ async function appJwt(env: Env): Promise<string> {
 }
 
 /** The App path when its id and key are set; a PAT otherwise. */
-function repoToken(repo: string, env: Env): Promise<string> {
+function repoToken(repo: RepoFullName, env: Env): Promise<string> {
   if (isSet(env.ASK_GITHUB_APP_ID) && isSet(env.ASK_GITHUB_APP_KEY)) {
     return appRepoToken(repo, env);
   }
@@ -65,7 +73,7 @@ function repoToken(repo: string, env: Env): Promise<string> {
 }
 
 /** Read access for an hour to the repos the Ask GitHub App is on: all the agent can do on GitHub, whatever it is told to try. */
-async function appRepoToken(repo: string, env: Env): Promise<string> {
+async function appRepoToken(repo: RepoFullName, env: Env): Promise<string> {
   const headers = {
     Accept: "application/vnd.github+json", Authorization: `Bearer ${await appJwt(env)}`, "User-Agent": "pr-viewer",
   };
@@ -89,12 +97,16 @@ async function appRepoToken(repo: string, env: Env): Promise<string> {
   return (await minted.json<{ token: string }>()).token;
 }
 
-async function startSession(repo: string, number: number, head: string, token: string, env: Env): Promise<AskRecord> {
+async function startSession(
+  repo: RepoFullName, number: number, head: string, token: string, choice: ModelChoice, env: Env,
+): Promise<AskRecord> {
   const session = await client(env).beta.sessions.create({
-    agent: env.ASK_AGENT_ID!,
+    agent: {
+      type: "agent_with_overrides", id: env.ASK_AGENT_ID!, model: { id: choice.model, effort: choice.effort },
+    },
     environment_id: env.ASK_ENVIRONMENT_ID!,
     vault_ids: [env.ASK_VAULT_ID!],
-    title: `${repo}#${number}`,
+    title: prId(repo, number),
     budget: { type: "limit", max_list_cost: { amount: SESSION_BUDGET_CENTS, currency: "USD" } },
     resources: [{
       type: "github_repository", url: `https://github.com/${repo}`, authorization_token: token,
@@ -105,17 +117,20 @@ async function startSession(repo: string, number: number, head: string, token: s
   if (!resource) {
     throw new AskRefused("The session started without its repo.");
   }
-  return { session: session.id, resource: resource.id, head, version: RECORD_VERSION };
+  return { session: session.id, resource: resource.id, head, version: RECORD_VERSION, choice };
 }
 
-/** This PR's session with a fresh token, or a new one when it has ended: a repo's token lasts an hour. */
-async function liveRecord(repo: string, number: number, head: string, env: Env): Promise<AskRecord> {
+/**
+ * This PR's session with a fresh token, or a new one when it has ended or runs at another model or effort: a repo's token
+ * lasts an hour.
+ */
+async function liveRecord(repo: RepoFullName, number: number, head: string, choice: ModelChoice, env: Env): Promise<AskRecord> {
   const token = await repoToken(repo, env);
   await client(env).beta.vaults.credentials.update(env.ASK_CREDENTIAL_ID!, {
     vault_id: env.ASK_VAULT_ID!, auth: { type: "environment_variable", secret_value: token },
   });
   const known = await readRecord(repo, number, env);
-  if (known?.version === RECORD_VERSION) {
+  if (known?.version === RECORD_VERSION && sameChoice(known.choice ?? BUILT_IN_DEFAULTS.ask, choice)) {
     const { status } = await client(env).beta.sessions.retrieve(known.session);
     if (status !== "terminated") {
       await client(env).beta.sessions.resources.update(known.resource, {
@@ -124,10 +139,10 @@ async function liveRecord(repo: string, number: number, head: string, env: Env):
       return known;
     }
   }
-  return startSession(repo, number, head, token, env);
+  return startSession(repo, number, head, token, choice, env);
 }
 
-export async function askChat(repo: string, number: number, env: Env): Promise<AskChat> {
+export async function askChat(repo: RepoFullName, number: number, env: Env): Promise<AskChat> {
   const record = await readRecord(repo, number, env);
   if (!record) {
     return chatOf([], null);
@@ -138,12 +153,17 @@ export async function askChat(repo: string, number: number, env: Env): Promise<A
   }
   const session = await client(env).beta.sessions.retrieve(record.session);
   const cost = session.usage?.list_cost?.amount;
-  return chatOf(events as Parameters<typeof chatOf>[0], cost === undefined ? null : Number(cost));
+  const { id: model, effort } = session.agent.model;
+  const level = typeof effort === "string" ? effort : effort?.type;
+  return chatOf(
+    events as Parameters<typeof chatOf>[0], cost === undefined ? null : Number(cost), QUESTION,
+    { model, effort: level ?? null },
+  );
 }
 
 /** Sends the question. The route reads the conversation after, so a repeat that finds this sent reads it too. */
-export async function ask(repo: string, number: number, input: AskInput, env: Env): Promise<void> {
-  const record = await liveRecord(repo, number, input.head, env);
+export async function ask(repo: RepoFullName, number: number, input: AskInput, choice: ModelChoice, env: Env): Promise<void> {
+  const record = await liveRecord(repo, number, input.head, choice, env);
   await client(env).beta.sessions.events.send(record.session, {
     events: [{ type: "user.message", content: [{ type: "text", text: askPrompt(input, record.head) }] }],
   });

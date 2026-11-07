@@ -1,4 +1,5 @@
 /** What Jai asks about a PR and what comes back, as the phone shows it. Nothing here calls anything. */
+import type { Sha } from "./ids.ts";
 
 export interface AskAnchor {
   path: string;
@@ -9,7 +10,7 @@ export interface AskAnchor {
 
 export interface AskInput {
   question: string;
-  head: string;
+  head: Sha;
   anchor: AskAnchor | null;
 }
 
@@ -29,22 +30,15 @@ export interface AskChat {
   /** Why it stopped short of an answer. */
   problem: string | null;
   costCents: number | null;
+  /** The session's model and effort, as the API reports them. Null before the first question. */
+  model: string | null;
+  effort: string | null;
 }
 
-const QUESTION = "\n\nQuestion: ";
+export const QUESTION = "\n\nQuestion: ";
 const ANCHOR = /^Asked about (.+):(\d+) on the (?:new|old) side/m;
-const MAX_QUESTION = 4_000;
 
-export function parseAskInput(body: unknown): AskInput | null {
-  const { question, head, anchor } = (body ?? {}) as Partial<AskInput>;
-  if (typeof question !== "string" || !question.trim() || question.length > MAX_QUESTION
-    || typeof head !== "string" || !/^[0-9a-f]{40}$/.test(head)) {
-    return null;
-  }
-  const isAnchor = anchor && typeof anchor.path === "string" && Number.isInteger(anchor.line)
-    && (anchor.side === "LEFT" || anchor.side === "RIGHT");
-  return { question: question.trim(), head, anchor: isAnchor ? anchor : null };
-}
+export { parseAskInput } from "./boundary.ts";
 
 /** `movedFrom`: the head of the last question. The checkout stays where it was until the agent moves it. */
 export function askPrompt({ question, head, anchor }: AskInput, movedFrom: string | null): string {
@@ -84,7 +78,10 @@ const STOPS: Record<string, string> = {
 };
 
 /** Working from the question until the session goes idle: right after a send it can still read idle from before. */
-export function chatOf(events: SessionEvent[], costCents: number | null, marker = QUESTION): AskChat {
+export function chatOf(
+  events: SessionEvent[], costCents: number | null, marker = QUESTION,
+  run: { model: string; effort: string | null } | null = null,
+): AskChat {
   const messages: AskMessage[] = [];
   let isWorking = false;
   let activity: string | null = null;
@@ -117,5 +114,5 @@ export function chatOf(events: SessionEvent[], costCents: number | null, marker 
       problem = "This chat has ended. The next question starts a new one.";
     }
   }
-  return { messages, isWorking, activity, problem, costCents };
+  return { messages, isWorking, activity, problem, costCents, model: run?.model ?? null, effort: run?.effort ?? null };
 }

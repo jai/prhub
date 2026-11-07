@@ -1,0 +1,84 @@
+{
+  "id": "PR_kwDOAcme7",
+  "url": "https://github.com/acme/app/pull/7",
+  "state": "open",
+  "head": "504754b2bc3ce5db892dde980e4bc83b60ff7a68",
+  "base": "main",
+  "headBranch": "alex/retry",
+  "author": {
+    "__typename": "User",
+    "login": "alex",
+    "avatarUrl": "https://avatars.example/alex",
+    "name": "Alex Doe"
+  },
+  "isAuthor": false,
+  "body": "Retries a failed upload twice.",
+  "additions": 40,
+  "deletions": 6,
+  "changedFiles": 3,
+  "reviewDecision": "REVIEW_REQUIRED",
+  "mergeState": "CLEAN",
+  "merge": "conflicting",
+  "review": "required",
+  "mergeMethod": "SQUASH",
+  "policy": null,
+  "reviewers": [
+    {
+      "login": "sam",
+      "avatarUrl": "https://avatars.example/sam",
+      "state": "COMMENTED"
+    },
+    {
+      "login": "jai",
+      "avatarUrl": "https://avatars.example/jai",
+      "state": "REQUESTED"
+    }
+  ],
+  "viewedFiles": [
+    "src/upload.ts"
+  ],
+  "labels": [
+    {
+      "name": "backend",
+      "color": "0e8a16"
+    }
+  ],
+  "checks": [
+    {
+      "name": "test",
+      "state": "success",
+      "url": "https://github.com/acme/app/actions/runs/1",
+      "required": true
+    }
+  ],
+  "comments": {
+    "nodes": [
+      {
+        "id": "IC_1",
+        "author": {
+          "login": "sam",
+          "avatarUrl": "https://avatars.example/sam"
+        },
+        "body": "Looks right.",
+        "createdAt": "2026-11-06T04:00:00Z"
+      }
+    ]
+  },
+  "reviews": {
+    "nodes": [
+      {
+        "id": "PRR_1",
+        "author": {
+          "login": "sam",
+          "avatarUrl": "https://avatars.example/sam"
+        },
+        "state": "COMMENTED",
+        "body": "",
+        "submittedAt": "2026-11-06T04:00:00Z"
+      }
+    ]
+  },
+  "reviewThreads": {
+    "nodes": []
+  }
+}

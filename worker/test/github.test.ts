@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  checkOf, requiredChecks, detailState, jaiReview, latestChecks, listOf, policyOf, reviewDecisionOf, reviewersOf, revisionOf, rowStatus, mergeOf, mergedRow, reviewDueAt, reviewRequestedAt, reviewWeek } from "../src/github.ts";
+  checkOf, requiredChecks, detailState, jaiReview, latestChecks, listOf, policyOf, reviewDecisionOf, reviewersOf, rowStatus, mergeOf, mergedRow, reviewDueAt, reviewRequestedAt, reviewWeek } from "../src/github.ts";
+import { revisionOf, type Sha } from "../src/ids.ts";
 
-/** Jai's vars in pr-worker/wrangler.jsonc. */
+/** Jai's own review SLA vars. */
 const JAI_WEEK = reviewWeek({ REVIEW_SLA_UTC_OFFSET_HOURS: "7", REVIEW_SLA_HOURS: "9-18", REVIEW_SLA_WEEKDAYS: "1,2,3,4,5" });
 
 const pr = { state: "OPEN", isDraft: false, author: { __typename: "User", login: "someone" },
@@ -151,8 +152,9 @@ test("closed, draft and bot PRs are on neither list", () => {
 });
 
 test("a retarget changes the revision, and a branch name stays safe in a file name", () => {
-  assert.equal(revisionOf("abc", "main"), "abc-main");
-  assert.equal(revisionOf("abc", "feature/one two"), "abc-feature_one_two");
+  const head = "a".repeat(40) as Sha;
+  assert.equal(revisionOf(head, "main"), `${head}-main`);
+  assert.equal(revisionOf(head, "feature/one two"), `${head}-feature_one_two`);
 });
 
 test("check runs and commit statuses read as one shape", () => {
@@ -174,7 +176,7 @@ test("a merge state speaks the app's vocabulary, and anything else reads as noth
   assert.equal(mergeOf("MERGEABLE", "NEW_STATE"), "unknown");
   assert.deepEqual(rowStatus("mine", null, "none", "none", "unknown"),
     { list: "mine", author: null, checks: "none", review: "none", merge: "unknown", jaiReview: null,
-    jaiReviewedAt: null, reviewDueAt: null });
+    jaiReviewedAt: null }, "a due time is the review list's alone");
 });
 
 test("a detail says GitHub's state, a draft as a draft", () => {
@@ -222,7 +224,7 @@ test("the latest request of Jai himself starts the clock; a team's request start
   ];
   assert.equal(reviewRequestedAt(events, "jai"), "2026-11-03T01:00:00Z");
   assert.equal(reviewRequestedAt(events.slice(2), "jai"), null);
-  assert.equal(rowStatus("reviewed", null, "none", "none", "unknown", undefined, "2026-11-06T03:00:00Z").reviewDueAt, null);
+  assert.ok(!("reviewDueAt" in rowStatus("reviewed", null, "none", "none", "unknown", undefined, "2026-11-06T03:00:00Z")));
 });
 
 test("a merged PR is a row of its own list, its diff refused only where GitHub would refuse it", () => {
@@ -235,4 +237,15 @@ test("a merged PR is a row of its own list, its diff refused only where GitHub w
   assert.equal(row.diff, "ready");
   assert.equal(row.detail, "2026-11-01T00:00:00Z.MERGED");
   assert.equal(mergedRow({ ...node, changedFiles: 301 }).diff, "too_large");
+});
+
+test("new work never waits behind a later alarm or a stuck one, and a live earlier one is left alone", async () => {
+  const { alarmToSet } = await import("../src/alarm.ts");
+  const now = 10_000_000;
+  assert.equal(alarmToSet(null, now + 1_000, now), now + 1_000);
+  assert.equal(alarmToSet(now + 500, now + 1_000, now), null);
+  assert.equal(alarmToSet(now - 5_000, now + 1_000, now), null);
+  assert.equal(alarmToSet(now + 60_000, now + 1_000, now), now + 1_000);
+  // Seen live: an alarm 36 minutes past its time, never firing, with 100 PRs waiting.
+  assert.equal(alarmToSet(now - 36 * 60_000, now, now), now);
 });

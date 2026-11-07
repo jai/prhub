@@ -1,7 +1,7 @@
 # PRHub Worker
 
 The backend for [PRHub](../README.md), deployed to your own Cloudflare account. To deploy it, have your coding agent
-follow [AGENTS.md](AGENTS.md), the deployment guide.
+follow [deploy/AGENTS.md](../deploy/AGENTS.md), the deployment guide.
 
 ## What it does
 
@@ -25,8 +25,10 @@ follow [AGENTS.md](AGENTS.md), the deployment guide.
 
 ```sh
 npm ci
-node --test test/
+npm test            # node:test, including the contract test that checks docs/fixtures/
+npm run typecheck
 ```
 
-`setup.sh` renders `wrangler.template.jsonc` into `wrangler.jsonc` (gitignored) and deploys it. The API is in
-[docs/api.md](../docs/api.md).
+After a deliberate change to what the Worker sends, `UPDATE_FIXTURES=1 npm test` rewrites `docs/fixtures/`, which
+PRKit's tests decode; commit both. `deploy/setup.sh` renders `deploy/wrangler.template.jsonc` into
+`deploy/wrangler.jsonc` (gitignored) and deploys it. The API is in [docs/api.md](../docs/api.md).

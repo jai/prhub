@@ -1,0 +1,16 @@
+{
+  "aps": {
+    "alert": {
+      "title": "Review requested: acme/app#7",
+      "body": "Add the retry to the uploader"
+    },
+    "sound": "default",
+    "thread-id": "pr:acme/app#7"
+  },
+  "reason": "pr_alert",
+  "kind": "review_requested",
+  "pr": {
+    "repo": "acme/app",
+    "number": 7
+  }
+}

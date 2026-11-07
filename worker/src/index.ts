@@ -1,29 +1,37 @@
-// The PR viewer's Worker: the PRs Jai should look at, each one's diff, and word to the phone when they change.
-// docs/plans/pr-viewer.md.
+// PRHub's Worker: the PRs its owner should look at, each one's diff, and word to the phone when they change.
+// Contract: docs/api.md.
 import { statesRoute } from "./pr-states";
-import type { ApnsHost } from "./apns";
 import { AiJobs, type AiJob, aiKey } from "./ai-jobs";
 import { ask, askChat, AskRefused } from "./ask";
-import { parseAskInput } from "./ask-chat";
-import { askConfigured, deviceConfig, feedbackConfigured } from "./config";
+import { bodyOf, parseAskInput } from "./boundary";
+import { eventRoute, registerRoute, unpairRoute } from "./devices";
+import { aiConfigOf, askConfigured, deviceConfig, feedbackConfigured } from "./config";
 import { aiJobs, type Env, githubLogin, isSet, prIndex } from "./env";
-import { fetchDiff, mergedPullRequests, readPullRequests } from "./github";
+import { detailVersionOf, fetchDiff, liveDiff, mergedPullRequests, pullRequestSummary, readPullRequests } from "./github";
+import { parseRepoFullName, parseSha, prId, type RepoFullName } from "./ids";
 import {
   feedbackChat, feedbackList, isFeedbackId, parseFeedbackInput, sendFeedback, startFeedback,
 } from "./feedback";
 import { DEFAULT_CONTEXT } from "./key-lines";
+import { type AiConfig, type AiFeature, resolveChoice } from "./models";
 import { detailKey, diffKey, PrIndex } from "./pr-index";
-import { deviceSecretOf, normalizePairingCode, sha256Hex } from "./pairing";
+import { codeHashOf, deviceSecretOf, fingerprintOf, isPairedSecret, normalizePairingCode } from "./pairing";
+import {
+  fetchRepoIndex, isRepoIndex, rankRepos, type RepoIndex, REPOS_FORCED_GAP_MS, REPOS_KEY, REPOS_RETRY_GAP_MS,
+  REPOS_STALE_MS,
+} from "./repos";
 import { createAppPage, finishAppCreation } from "./setup";
+import { type LiveRead, serveVersioned } from "./versioned";
 import { parseDelivery, verifySignature } from "./webhook";
 import { writeToGitHub } from "./write";
 import { busyAnswer, clientRefOf } from "./write-receipts";
 
 export { AiJobs, PrIndex };
 
-const PULL_REQUEST_PATH = /^\/prs\/([\w.-]+)\/([\w.-]+)\/(\d+)\/(diff|detail|write|key-lines|rewrite|ask)$/;
+const PULL_REQUEST_PATH = /^\/prs\/([\w.-]+)\/([\w.-]+)\/(\d+)\/(diff|detail|summary|write|key-lines|rewrite|ask)$/;
+/** GraphQL's `Int`: a bigger number is no PR, and GitHub would refuse the query for it. */
+const MAX_PR_NUMBER = 2_147_483_647;
 const VERSION = /^[\w.:-]{1,200}$/;
-const COMMIT = /^[0-9a-f]{40}$/;
 const MAX_CONTEXT = 2_000;
 
 /** An unset token admits nobody: a self-hosted Worker has no `APP_TOKEN`, and `Bearer ` must not match it. */
@@ -38,36 +46,16 @@ function hasToken(request: Request, token: string | undefined): boolean {
   return sent.byteLength === expected.byteLength && subtle.timingSafeEqual(sent, expected);
 }
 
-/** Paired fingerprints this isolate has seen lately, so most requests skip asking the index. An unpair lands within it. */
-const PAIRED_CACHE_MS = 60_000;
-const pairedSeen = new Map<string, number>();
-
-async function isPairedDevice(request: Request, env: Env): Promise<boolean> {
-  const secret = deviceSecretOf(request.headers.get("Authorization"));
-  if (!secret) {
-    return false;
-  }
-  const fingerprint = await sha256Hex(secret);
-  if ((pairedSeen.get(fingerprint) ?? 0) > Date.now()) {
-    return true;
-  }
-  const paired = await prIndex(env).isPaired(fingerprint);
-  if (paired) {
-    pairedSeen.set(fingerprint, Date.now() + PAIRED_CACHE_MS);
-  }
-  return paired;
-}
-
-/** Jai's app's `APP_TOKEN`, as ever, or the device secret of an app paired with this Worker. */
+/** Jai's app's `APP_TOKEN`, as ever, or the device secret of an app paired with this Worker, asked of the index. */
 async function isAuthorized(request: Request, env: Env): Promise<boolean> {
-  return hasToken(request, env.APP_TOKEN) || isPairedDevice(request, env);
+  return hasToken(request, env.APP_TOKEN) || isPairedSecret(request.headers.get("Authorization"), prIndex(env));
 }
 
 function errorAnswer(status: number, code: string, message: string): Response {
   return Response.json({ error: { code, message } }, { status });
 }
 
-/** `POST /device/pair` (docs/api/pr-selfhost.md): a one-time code admits the device secret sent as the bearer. */
+/** `POST /device/pair` (docs/api.md): a one-time code admits the device secret sent as the bearer. */
 async function pairRoute(request: Request, env: Env): Promise<Response> {
   const secret = deviceSecretOf(request.headers.get("Authorization"));
   if (!secret) {
@@ -78,16 +66,39 @@ async function pairRoute(request: Request, env: Env): Promise<Response> {
   if (!code) {
     return errorAnswer(400, "validation_error", "code must be the 8-character pairing code");
   }
-  const fingerprint = await sha256Hex(secret);
-  const record = await prIndex(env).pair(await sha256Hex(code), fingerprint, Date.now());
+  const fingerprint = await fingerprintOf(secret);
+  const record = await prIndex(env).pair(await codeHashOf(code), fingerprint, Date.now());
   if (!record) {
     return errorAnswer(401, "pairing_code_invalid", "unknown, used or expired pairing code");
   }
-  pairedSeen.clear();
   return Response.json({ role: record.role, fingerprint, label: record.label });
 }
 
-async function configRoute(env: Env): Promise<Response> {
+/** Config problems already in `/events` from this isolate, by the vars that caused them. */
+let reportedAiConfig: string | null = null;
+
+/** The AI model config. Its problems go to `/events` once per isolate and per value; the parsed fallbacks serve on. */
+function aiConfig(env: Env, context: ExecutionContext): AiConfig {
+  const config = aiConfigOf(env);
+  const key = JSON.stringify([env.AI_MODELS_ALLOWED, env.AI_EFFORT_MAX, env.AI_DEFAULTS]);
+  if (config.problems.length > 0 && reportedAiConfig !== key) {
+    reportedAiConfig = key;
+    console.error("AI model config problems", config.problems);
+    context.waitUntil(prIndex(env).record("ai_config_error", { problems: config.problems }));
+  }
+  return config;
+}
+
+/** The request's `model` and `effort` within what this Worker allows, or a 400 saying what is. */
+function choiceOf(
+  feature: AiFeature, requested: { model?: unknown; effort?: unknown }, env: Env, context: ExecutionContext,
+) {
+  const result = resolveChoice(aiConfig(env, context), feature, requested);
+  return result.ok ? result : { ok: false as const, answer: errorAnswer(400, "invalid_model_choice", result.error) };
+}
+
+async function configRoute(env: Env, context: ExecutionContext): Promise<Response> {
+  aiConfig(env, context);
   const login = await githubLogin(env).catch(() => null);
   return Response.json(deviceConfig(env, login), { headers: { "Cache-Control": "no-store" } });
 }
@@ -113,44 +124,34 @@ async function receiveWebhook(request: Request, env: Env): Promise<Response> {
   return new Response(null, { status: 202 });
 }
 
-/**
- * R2, then GitHub. No edge cache: it needs a custom domain, and the phone reads each version once and keeps it.
- */
-async function serveVersioned(key: string, contentType: string, load: () => Promise<Response>, env: Env,
-  context: ExecutionContext): Promise<Response> {
-  const stored = await env.DIFFS.get(key);
-  if (stored) {
-    return new Response(stored.body, { headers: { "Content-Type": contentType } });
-  }
-  const live = await load();
-  if (!live.ok) {
-    return live;
-  }
-  const bytes = await live.arrayBuffer();
-  context.waitUntil(env.DIFFS.put(key, bytes.slice(0)));
-  return new Response(bytes, { headers: { "Content-Type": contentType } });
-}
-
-async function liveDetail(repo: string, number: number, env: Env): Promise<Response> {
-  const id = `${repo}#${number}`;
+/** A PR's detail now, under the version the index would keep it as (`detailVersionOf`). */
+async function liveDetail(repo: RepoFullName, number: number, env: Env): Promise<LiveRead> {
+  const id = prId(repo, number);
   const pr = (await readPullRequests([{ id, repo, number }], env)).get(id);
   return pr
-    ? Response.json({ ...pr.detail, title: pr.title, revision: pr.revision, version: pr.version })
-    : new Response("not found\n", { status: 404 });
+    ? {
+      response: Response.json({ ...pr.detail, title: pr.title, revision: pr.revision, version: pr.version }),
+      version: await detailVersionOf(pr),
+    }
+    : { response: new Response("not found\n", { status: 404 }), version: null };
 }
 
 /** With a version, the stored copy. Without one, GitHub now: a PR on an agent's list need not be on Jai's. */
-async function write(repo: string, number: number, request: Request, env: Env): Promise<Response> {
-  const input = await request.json();
+async function write(repo: RepoFullName, number: number, request: Request, env: Env): Promise<Response> {
+  const body = await bodyOf(request);
+  if (!body) {
+    return Response.json({ error: "That is not something the viewer can post." }, { status: 400 });
+  }
+  const input = body.value;
   const ref = clientRefOf(input);
-  const receipt = ref && `write:${repo}#${number}:${ref}`;
+  const receipt = ref && `write:${prId(repo, number)}:${ref}`;
   if (receipt) {
     const claim = await prIndex(env).claimWrite(receipt, Date.now());
     if (claim === "busy") {
       return busyAnswer();
     }
     if (claim === "done") {
-      return liveDetail(repo, number, env);
+      return (await liveDetail(repo, number, env)).response;
     }
   }
   const failure = await writeToGitHub(repo, number, input, env);
@@ -161,7 +162,7 @@ async function write(repo: string, number: number, request: Request, env: Env): 
     return failure;
   }
   await prIndex(env).mark(repo, number, true);
-  return liveDetail(repo, number, env);
+  return (await liveDetail(repo, number, env)).response;
 }
 
 /** The answer if it is there, and 202 while the job runs. A model call outlasts any one request. */
@@ -179,36 +180,49 @@ async function aiAnswer(job: AiJob, isRetry: boolean, env: Env): Promise<Respons
 }
 
 function aiRoute(
-  kind: "key_lines" | "rewrite", repo: string, number: number, params: URLSearchParams, env: Env,
+  kind: "key_lines" | "rewrite", repo: RepoFullName, number: number, params: URLSearchParams, env: Env,
+  executionContext: ExecutionContext,
 ): Promise<Response> {
-  const head = params.get("head") ?? "";
+  const head = parseSha(params.get("head"));
   const context = Number(params.get("context") ?? DEFAULT_CONTEXT);
-  if (!COMMIT.test(head) || !Number.isInteger(context) || context < -1 || context > MAX_CONTEXT) {
+  if (!head || !Number.isInteger(context) || context < -1 || context > MAX_CONTEXT) {
     return Promise.resolve(new Response("bad request\n", { status: 400 }));
   }
-  return aiAnswer({ kind, repo, number, head, context }, params.get("retry") === "1", env);
+  const requested = { model: params.get("model") || null, effort: params.get("effort") || null };
+  const chosen = choiceOf(kind, requested, env, executionContext);
+  if (!chosen.ok) {
+    return Promise.resolve(chosen.answer);
+  }
+  return aiAnswer({ kind, repo, number, head, context, choice: chosen.choice }, params.get("retry") === "1", env);
 }
 
 /** The conversation on a GET, a question on a POST, and the reason in its own words when one can't go. */
-async function askRoute(repo: string, number: number, request: Request, env: Env): Promise<Response> {
+async function askRoute(
+  repo: RepoFullName, number: number, request: Request, env: Env, context: ExecutionContext,
+): Promise<Response> {
   let receipt: string | null = null;
   try {
     if (request.method !== "POST") {
       return Response.json(await askChat(repo, number, env));
     }
-    const body = await request.json();
+    const body = (await bodyOf(request))?.value;
     const input = parseAskInput(body);
     if (!input) {
       return Response.json({ error: "That question can't be sent." }, { status: 400 });
     }
+    const { model, effort } = (body ?? {}) as { model?: unknown; effort?: unknown };
+    const chosen = choiceOf("ask", { model, effort }, env, context);
+    if (!chosen.ok) {
+      return chosen.answer;
+    }
     const ref = clientRefOf(body);
-    receipt = ref && `ask:${repo}#${number}:${ref}`;
+    receipt = ref && `ask:${prId(repo, number)}:${ref}`;
     const claim = receipt ? await prIndex(env).claimWrite(receipt, Date.now()) : "go";
     if (claim === "busy") {
       return busyAnswer();
     }
     if (claim === "go") {
-      await ask(repo, number, input, env);
+      await ask(repo, number, input, chosen.choice, env);
       if (receipt) {
         await prIndex(env).finishWrite(receipt, true, Date.now());
       }
@@ -238,7 +252,7 @@ async function feedbackRoute(id: string | undefined, request: Request, env: Env)
     if (request.method !== "POST") {
       return Response.json(id ? await feedbackChat(id, env) : await feedbackList(env));
     }
-    const body = await request.json();
+    const body = (await bodyOf(request))?.value;
     const input = parseFeedbackInput(body);
     if (!input) {
       return Response.json({ error: "That feedback can't be sent." }, { status: 400 });
@@ -271,63 +285,119 @@ async function feedbackRoute(id: string | undefined, request: Request, env: Env)
   }
 }
 
+/** `GET /prs/{owner}/{repo}/{n}/summary`: a picker row for any PR, read live, so a typed number shows what it opens. */
+async function summaryRoute(repo: RepoFullName, number: number, env: Env): Promise<Response> {
+  if (number < 1 || number > MAX_PR_NUMBER) {
+    return errorAnswer(404, "not_found", "no such pull request");
+  }
+  try {
+    const summary = await pullRequestSummary(repo, number, env);
+    return summary ? Response.json(summary) : errorAnswer(404, "not_found", "no such pull request");
+  } catch (error) {
+    console.error("summary failed", error);
+    return errorAnswer(502, "github_unavailable", "GitHub could not be asked");
+  }
+}
+
+async function storedRepoIndex(env: Env): Promise<RepoIndex | null> {
+  const stored = await env.DIFFS.get(REPOS_KEY);
+  const value: unknown = stored ? await stored.json().catch(() => null) : null;
+  return isRepoIndex(value) ? value : null;
+}
+
+async function refreshRepoIndex(env: Env, now: number): Promise<RepoIndex> {
+  const index = await fetchRepoIndex(env, now);
+  await env.DIFFS.put(REPOS_KEY, JSON.stringify(index), { httpMetadata: { contentType: "application/json" } });
+  return index;
+}
+
+/**
+ * `GET /repos` (docs/api.md, "Quick jump"). The copy in R2 answers at once; one over six hours old is read
+ * again behind the answer, and `?refresh=1` reads it again first, at most every five minutes.
+ */
+async function reposRoute(params: URLSearchParams, env: Env, context: ExecutionContext): Promise<Response> {
+  const now = Date.now();
+  const index = prIndex(env);
+  let current = await storedRepoIndex(env);
+  const isForced = params.get("refresh") === "1";
+  if (!current || (isForced && await index.claimRepoRefresh(now, REPOS_FORCED_GAP_MS))) {
+    if (!current) {
+      await index.claimRepoRefresh(now, 0);
+    }
+    try {
+      current = await refreshRepoIndex(env, now);
+    } catch (error) {
+      console.error("repo index failed", error);
+      if (!current) {
+        return errorAnswer(502, "github_unavailable", "GitHub could not be asked for the repos");
+      }
+    }
+  } else if (now - Date.parse(current.updatedAt) >= REPOS_STALE_MS
+    && await index.claimRepoRefresh(now, REPOS_RETRY_GAP_MS)) {
+    context.waitUntil(refreshRepoIndex(env, now).catch((error) => console.error("repo index failed", error)));
+  }
+  const listed = new Map(Object.entries(await index.listedCounts()));
+  return Response.json(rankRepos(current, listed), { headers: { "Cache-Control": "no-store" } });
+}
+
 function pullRequestRoute(
   match: RegExpExecArray, params: URLSearchParams, request: Request, env: Env, context: ExecutionContext,
 ): Promise<Response> {
   const [, owner, name, number, kind] = match;
-  const repo = `${owner}/${name}`;
+  const repo = parseRepoFullName(`${owner}/${name}`);
   const pr = Number(number);
+  if (!repo) {
+    return Promise.resolve(new Response("not found\n", { status: 404 }));
+  }
+  if (kind === "summary") {
+    return summaryRoute(repo, pr, env);
+  }
   if (kind === "write") {
     return request.method === "POST" ? write(repo, pr, request, env)
       : Promise.resolve(new Response("not found\n", { status: 404 }));
   }
   if (kind === "ask") {
-    return askConfigured(env) ? askRoute(repo, pr, request, env) : Promise.resolve(notConfigured("Ask AI"));
+    return askConfigured(env) ? askRoute(repo, pr, request, env, context) : Promise.resolve(notConfigured("Ask AI"));
   }
   if (kind === "key-lines" || kind === "rewrite") {
     if (!isSet(env.ANTHROPIC_API_KEY)) {
       return Promise.resolve(notConfigured(kind === "rewrite" ? "Rewrite" : "Key lines"));
     }
-    return aiRoute(kind === "rewrite" ? "rewrite" : "key_lines", repo, pr, params, env);
+    return aiRoute(kind === "rewrite" ? "rewrite" : "key_lines", repo, pr, params, env, context);
   }
+  // R2, then GitHub. No edge cache: it needs a custom domain, and the phone reads each version once and keeps it.
+  const waitUntil = (promise: Promise<unknown>) => context.waitUntil(promise);
   if (kind === "diff") {
     const revision = params.get("revision");
-    const load = () => fetchDiff(repo, pr, env);
+    const load = () => liveDiff(repo, pr, env);
     return revision && VERSION.test(revision)
-      ? serveVersioned(diffKey(repo, pr, revision), "text/plain", load, env, context)
-      : load();
+      ? serveVersioned(env.DIFFS, diffKey(repo, pr, revision), revision, "text/plain", load, waitUntil)
+      : fetchDiff(repo, pr, env);
   }
   const version = params.get("version");
   const load = () => liveDetail(repo, pr, env);
   return version && VERSION.test(version)
-    ? serveVersioned(detailKey(repo, pr, version), "application/json", load, env, context)
-    : load();
+    ? serveVersioned(env.DIFFS, detailKey(repo, pr, version), version, "application/json", load, waitUntil)
+    : load().then((live) => live.response);
 }
 
-async function deviceRoute(pathname: string, request: Request, env: Env): Promise<Response | null> {
+async function deviceRoute(
+  pathname: string, request: Request, env: Env, context: ExecutionContext,
+): Promise<Response | null> {
   if (pathname === "/device/config" && request.method === "GET") {
-    return configRoute(env);
+    return configRoute(env, context);
   }
   if (request.method === "DELETE" && pathname === "/device/pair") {
-    const secret = deviceSecretOf(request.headers.get("Authorization"));
-    if (secret) {
-      await prIndex(env).unpair(await sha256Hex(secret));
-      pairedSeen.clear();
-    }
-    return new Response(null, { status: 204 });
+    return unpairRoute(request, prIndex(env));
   }
   if (request.method !== "POST") {
     return null;
   }
   if (pathname === "/device/register") {
-    const { token, host } = (await request.json()) as { token: string; host: ApnsHost };
-    await prIndex(env).registerDevice(token, host);
-    return new Response(null, { status: 204 });
+    return registerRoute(request, prIndex(env));
   }
   if (pathname === "/device/event") {
-    const { kind, ...detail } = (await request.json()) as { kind: string } & Record<string, unknown>;
-    await prIndex(env).record(kind, detail);
-    return new Response(null, { status: 204 });
+    return eventRoute(request, prIndex(env));
   }
   return null;
 }
@@ -364,6 +434,9 @@ export default {
     if (pathname === "/prs") {
       return Response.json(await prIndex(env).rows());
     }
+    if (pathname === "/repos" && request.method === "GET") {
+      return reposRoute(searchParams, env, context);
+    }
     if (pathname === "/tick" && request.method === "POST") {
       await prIndex(env).tick(Date.now());
       return new Response(null, { status: 204 });
@@ -379,7 +452,7 @@ export default {
       await env.DIFFS.delete("setup/github-app.json");
       return stored ? new Response(stored.body) : new Response("none\n", { status: 404 });
     }
-    const device = await deviceRoute(pathname, request, env);
+    const device = await deviceRoute(pathname, request, env, context);
     if (device) {
       return device;
     }

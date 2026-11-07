@@ -58,3 +58,7 @@ Answers:
 `worker/src/apns.ts` sends through the relay when `PUSH_RELAY_URL` and the secret `PUSH_RELAY_KEY` are set, and
 straight to APNs otherwise (Jai's own Worker). The rest of the Worker does not know which.
 
+The PR Worker (`worker/src/apns.ts`) sends two kinds: the silent `pr_sync` wake (`background`, priority 5) and
+tap-to-open alerts (`alert`, priority 10, no `collapse_id`, a payload of about 1 KB at most), both within the rules
+above. Their payloads are in [pr-selfhost.md](pr-selfhost.md).
+

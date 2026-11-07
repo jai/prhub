@@ -1,4 +1,3 @@
 node_modules/
 .wrangler/
-# Rendered by setup.sh from wrangler.template.jsonc
-wrangler.jsonc
+dist/

@@ -1,0 +1,71 @@
+# The Worker and the relay: tests, typecheck and a bundle on every pull request and push to main, and the scrub that
+# keeps private names and values out of this public repo.
+name: worker
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  scrub:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - run: scripts/scrub.sh
+
+  worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      # Includes the contract test, which fails when docs/fixtures/ no longer matches what the builders send.
+      - run: npm test
+      - run: npm run typecheck
+      - name: Render the template with placeholder values
+        working-directory: deploy
+        run: |
+          sed -e 's/__WORKER_NAME__/pr-review/' \
+              -e 's/__CLOUDFLARE_ACCOUNT_ID__/00000000000000000000000000000000/' \
+              -e 's/__R2_BUCKET__/pr-review-diffs/' \
+              -e 's/__[A-Z0-9_]*__//g' \
+              wrangler.template.jsonc > wrangler.jsonc
+      - name: wrangler deploy --dry-run
+        run: npx wrangler deploy --dry-run --outdir dist --config ../deploy/wrangler.jsonc
+
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: relay
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: relay/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run typecheck
+      - name: wrangler deploy --dry-run
+        run: npx wrangler deploy --dry-run --outdir dist

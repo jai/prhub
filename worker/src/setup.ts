@@ -52,7 +52,7 @@ export async function createAppPage(request: Request, params: URLSearchParams, e
   { headers: { "Content-Type": "text/html" } });
 }
 
-/** Keeps what GitHub returns until it is read once and set as Worker secrets (docs/api/pr-selfhost.md). */
+/** Keeps what GitHub returns until it is read once and set as Worker secrets (docs/api.md). */
 export async function finishAppCreation(params: URLSearchParams, env: Env): Promise<Response> {
   const code = params.get("code");
   if (!isSetupRequest(params, env) || !code || !/^\w+$/.test(code)) {
