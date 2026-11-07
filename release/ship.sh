@@ -9,7 +9,8 @@
 #
 # Needs, in the environment: ASC_KEY_PATH (an App Store Connect API key, .p8, with the App Manager role), ASC_KEY_ID,
 # ASC_ISSUER_ID and PRHUB_TESTFLIGHT_GROUP; and a Mac whose Xcode can sign for the team in project.yml. Signing needs a
-# login session: run it in one, not from a bare SSH shell.
+# login session: run it in one, not from a bare SSH shell. Keep the key file in place until the script ends: xcodebuild
+# reads it again during the upload.
 set -uo pipefail
 cd "${0:A:h}/.."
 notes=${1:?usage: release/ship.sh "<What to Test>"}
@@ -46,7 +47,7 @@ export_with() {
     /usr/libexec/PlistBuddy -c "Add :teamID string $team" "$options"
     /usr/libexec/PlistBuddy -c "Set :destination $1" "$options"
     xcodebuild -exportArchive -archivePath "$archive" -exportOptionsPlist "$options" -exportPath "$ipa" \
-        -allowProvisioningUpdates "${auth[@]}" 2>&1 | grep -vE 'AuthKey|BEGIN PRIVATE' | tail -3
+        -allowProvisioningUpdates "${auth[@]}" 2>&1 | grep -v 'PRIVATE KEY' | grep -E 'error:|EXPORT|Exported|Uploaded' | tail -6
     return ${pipestatus[1]}
 }
 export_with export || { echo "SHIP FAILED: export of PRHub build $build"; exit 1; }
