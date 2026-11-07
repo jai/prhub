@@ -1,0 +1,118 @@
+name: PRHub
+
+# PRKit, the PR screens, from this repo's root package (Package.swift).
+packages:
+  PRKit:
+    path: ..
+
+options:
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: 6.0
+    SWIFT_STRICT_CONCURRENCY: complete
+    # App Store Connect numbers PRHub's builds: release/ship.sh archives with one past its highest. This is the number a
+    # local or CI build carries.
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1.0
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: K2P9X73SPT
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+
+targets:
+  # PRHub: App Store Connect app 6831601628.
+  PRHub:
+    type: application
+    platform: iOS
+    sources:
+      - path: PRHub
+        excludes:
+          - "**/.DS_Store"
+          - "Info.plist"
+          - "PrivacyInfo.xcprivacy"
+          - "PRHub.entitlements"
+      # Named on its own so it is a bundled resource: Apple's upload scanner reads the privacy manifest from the .app root.
+      - path: PRHub/PrivacyInfo.xcprivacy
+        buildPhase: resources
+    # Info.plist is generated from this block by `xcodegen generate`; XcodeGen adds the CFBundle* keys.
+    info:
+      path: PRHub/Info.plist
+      properties:
+        CFBundleDisplayName: PRHub
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        LSApplicationCategoryType: public.app-category.developer-tools
+        ITSAppUsesNonExemptEncryption: false
+        # Setup links: prhub://setup?worker=…&code=… (docs/api.md, "The setup link").
+        CFBundleURLTypes:
+          - CFBundleURLName: setup
+            CFBundleURLSchemes: [prhub]
+        NSCameraUsageDescription: PRHub uses the camera to scan the setup code your pr-worker printed.
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # The pr-worker's silent wake, through the relay.
+        UIBackgroundModes:
+          - remote-notification
+    # Generated too: XcodeGen rewrites this file on every `generate`, so the keys live here. Push, for the silent wake;
+    # the app's own keychain group, for the device secret and the Worker URL.
+    entitlements:
+      path: PRHub/PRHub.entitlements
+      properties:
+        aps-environment: development
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)com.jaigovindani.prreview
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jaigovindani.prreview
+        PRODUCT_NAME: PRHub
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_PREVIEWS: YES
+    dependencies:
+      - package: PRKit
+        product: PRKit
+    scheme:
+      testTargets:
+        - PRHubTests
+        - PRHubUITests
+        # The PR screens' own tests, run with the app's.
+        - package: PRKit/PRKitTests
+      gatherCoverageData: true
+
+  PRHubTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - PRHubTests
+    dependencies:
+      - target: PRHub
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jaigovindani.prreview.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+  # The app in sample mode: onboarding, the lists, a PR, its diff and key lines, Settings. No Worker, no secrets.
+  PRHubUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - PRHubUITests
+    dependencies:
+      - target: PRHub
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jaigovindani.prreview.uitests
+        GENERATE_INFOPLIST_FILE: YES

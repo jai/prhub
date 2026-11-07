@@ -1,0 +1,408 @@
+#if os(iOS)
+import PRKitCore
+import PRKitDesign
+import SwiftUI
+import UIKit
+
+/// A fixed line height, so the table never measures code: one tall list inside one sideways scroller, a section per file.
+/// Threads and the comment box are the rows that size themselves, as wide as the screen and not the table, so they read
+/// without scrolling sideways. A tap on a code line highlights it and opens the box under it.
+final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableViewDelegate {
+    static let hostedIdentifier = "hosted"
+    /// Past this many rows, a file folds with a cross-dissolve: animating each row out would drop frames.
+    private static let animatedFoldLimit = 1_500
+    private static let controlsClearance: CGFloat = 60
+    /// How far a drag runs before the bars answer it, so a resting thumb doesn't flicker them.
+    static let barsDragThreshold: CGFloat = 8
+
+    let table = ReportingTableView()
+    let document: DiffDocument
+    var rows: DiffRows
+    private var viewed: Set<String>
+    private var lastJump: DiffJump?
+    let actions: DiffActions
+    /// The line of the document being commented on.
+    var composing: Int?
+    private var keyboardObserver: NSObjectProtocol?
+    var keyboardObservers: [NSObjectProtocol] = []
+    var topInset: CGFloat = 0
+    var lastScrollY: CGFloat = 0
+    private var hasPlacedTop = false
+    private let backSwipe = BackSwipeKeeper()
+
+    init(
+        document: DiffDocument, rows: DiffRows, viewed: Set<String>, onContent: @escaping () -> Void,
+        actions: DiffActions
+    ) {
+        self.document = document
+        self.rows = rows
+        self.viewed = viewed
+        self.actions = actions
+        super.init(frame: .zero)
+        isDirectionalLockEnabled = true
+        alwaysBounceVertical = false
+        showsHorizontalScrollIndicator = false
+        table.onContent = onContent
+        table.dataSource = self
+        table.delegate = self
+        table.estimatedRowHeight = DiffStyle.rowHeight
+        table.estimatedSectionHeaderHeight = DiffStyle.fileHeaderHeight
+        table.sectionHeaderHeight = DiffStyle.fileHeaderHeight
+        table.sectionHeaderTopPadding = 0
+        table.separatorStyle = .none
+        table.isDirectionalLockEnabled = true
+        table.keyboardDismissMode = .interactive
+        table.register(DiffLineCell.self, forCellReuseIdentifier: DiffLineCell.identifier)
+        table.register(UITableViewCell.self, forCellReuseIdentifier: Self.hostedIdentifier)
+        table.register(DiffFileHeader.self, forHeaderFooterViewReuseIdentifier: DiffFileHeader.identifier)
+        // Set by hand, from `update(topInset:)`: the bars leaving must not move the code.
+        contentInsetAdjustmentBehavior = .never
+        table.contentInsetAdjustmentBehavior = .never
+        // Room to read the last line above the floating controls.
+        table.contentInset.bottom = Self.controlsClearance
+        addSubview(table)
+        watchKeyboard()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("not used from a storyboard")
+    }
+
+    /// After a post: the new threads fade in, with the scroll position kept.
+    func update(rows: DiffRows) {
+        guard rows.stamp != self.rows.stamp else {
+            return
+        }
+        self.rows = rows
+        if let composing, path(ofLine: composing) == nil {
+            closeComposer()
+        }
+        UIView.transition(with: table, duration: 0.25, options: .transitionCrossDissolve) {
+            self.table.reloadData()
+        }
+    }
+
+    /// The line being commented on, from the screen, which holds the box.
+    func update(composing next: Int?) {
+        guard next != composing else {
+            return
+        }
+        let wasComposing = composing != nil
+        composing = next
+        highlightLines()
+        guard let next, let path = path(ofLine: next) else {
+            return
+        }
+        let indexPath = IndexPath(row: path.row, section: path.section)
+        if wasComposing {
+            table.scrollToRow(at: indexPath, at: .none, animated: true)
+        } else {
+            followKeyboard()
+        }
+    }
+
+    /// The space the clock and any bars take. It moves the sticky header and leaves the code where it is, unless the
+    /// list is at its very top.
+    func update(topInset next: CGFloat) {
+        guard next != topInset else {
+            return
+        }
+        let isAtTop = table.contentOffset.y <= -topInset + 1
+        topInset = next
+        UIView.performWithoutAnimation {
+            table.contentInset.top = next
+            table.verticalScrollIndicatorInsets.top = next
+            if isAtTop {
+                table.contentOffset.y = -next
+            }
+            table.layoutIfNeeded()
+        }
+    }
+
+    /// A file marked viewed folds, and one unmarked opens, wherever the change came from.
+    func update(viewed next: Set<String>) {
+        for path in next.symmetricDifference(viewed) {
+            guard let section = rows.files.firstIndex(where: { $0.path == path }) else {
+                viewed.formSymmetricDifference([path])
+                continue
+            }
+            let isNowViewed = next.contains(path)
+            guard !(composingSection == section && composerHasText) else {
+                viewed.formSymmetricDifference([path])
+                continue
+            }
+            if composingSection == section {
+                closeComposer()
+            }
+            refold(section) {
+                viewed.formSymmetricDifference([path])
+                if isCollapsed(section) != isNowViewed {
+                    actions.folds.toggle(rows.files[section].foldID)
+                }
+            }
+            (table.headerView(forSection: section) as? DiffFileHeader)?.setViewed(isNowViewed)
+        }
+    }
+
+    func update(jump: DiffJump?) {
+        guard let jump, jump != lastJump else {
+            return
+        }
+        lastJump = jump
+        guard let section = rows.files.firstIndex(where: { $0.path == jump.path }) else {
+            return
+        }
+        setContentOffset(CGPoint(x: 0, y: contentOffset.y), animated: false)
+        if let row = rowToShow(jump, in: section) {
+            highlightLines()
+            table.scrollToRow(at: IndexPath(row: row, section: section), at: .middle, animated: true)
+            return
+        }
+        highlightLines()
+        if table.numberOfRows(inSection: section) > 0 {
+            table.scrollToRow(at: IndexPath(row: 0, section: section), at: .top, animated: true)
+        } else {
+            let end = table.contentSize.height - table.bounds.height
+            let top = min(table.rectForHeader(inSection: section).minY, max(end, 0))
+            table.setContentOffset(CGPoint(x: 0, y: top), animated: true)
+        }
+    }
+
+    /// The row of the line asked for, as drawn. Its file opens if it was folded. Nil if the line isn't showing.
+    private func rowToShow(_ jump: DiffJump, in section: Int) -> Int? {
+        guard let target = jump.line, let side = jump.side,
+              let index = document.lines.firstIndex(where: {
+                  $0.file == section && (side == .right ? $0.newLine : $0.oldLine) == target
+              }),
+              let row = path(ofLine: index)?.row else {
+            return nil
+        }
+        if isCollapsed(section) {
+            toggleFile(section)
+        }
+        return row
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        var responder = next
+        while let current = responder, !(current is UIViewController) {
+            responder = current.next
+        }
+        backSwipe.keep(on: window == nil ? nil : (responder as? UIViewController)?.navigationController)
+    }
+
+    /// Runs on every sideways scroll too, which is what keeps the file headers on screen.
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let columnWidth = ("M" as NSString).size(withAttributes: [.font: DiffStyle.font]).width
+        let width = max(bounds.width, CGFloat(DiffDocument.columns + 2) * columnWidth)
+        // Without animation: the tab bar leaving grows this view inside the bars' animation, and an animated frame
+        // animates the table's bounds, its scroll position included. The rows then freeze under the finger.
+        UIView.performWithoutAnimation {
+            table.frame = CGRect(x: 0, y: 0, width: width, height: bounds.height)
+            table.layoutIfNeeded()
+        }
+        // A table with no size yet can't hold an offset, so the first one waits for this.
+        if !hasPlacedTop, bounds.height > 0 {
+            hasPlacedTop = true
+            table.contentOffset.y = -topInset
+            lastScrollY = table.contentOffset.y
+        }
+        contentSize = CGSize(width: width, height: bounds.height)
+        for case let header as DiffFileHeader in table.subviews {
+            header.pin(toVisibleWidth: bounds.width, offsetX: contentOffset.x)
+        }
+    }
+
+    private var composingSection: Int? {
+        composing.map { document.lines[$0].file }
+    }
+
+    private var composerHasText: Bool {
+        composing.map { !actions.text(document.lines[$0]).wrappedValue.allSatisfy(\.isWhitespace) } ?? false
+    }
+
+    private func path(ofLine index: Int) -> IndexPath? {
+        let section = document.lines[index].file
+        return rows.files[section].rows.firstIndex(of: .line(index)).map { IndexPath(row: $0, section: section) }
+    }
+
+    /// A viewed file starts folded, as on GitHub, and a tap on its header still opens it.
+    private func isCollapsed(_ section: Int) -> Bool {
+        let file = rows.files[section]
+        return viewed.contains(file.path) != actions.folds.isFlipped(file.foldID)
+    }
+
+    private func row(at indexPath: IndexPath) -> DiffRows.Row {
+        rows.files[indexPath.section].rows[indexPath.row]
+    }
+
+    func numberOfSections(in tableView: UITableView) -> Int {
+        rows.files.count
+    }
+
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        guard !isCollapsed(section) else {
+            return 0
+        }
+        return rows.files[section].rows.count
+    }
+
+    func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+        let header = tableView.dequeueReusableHeaderFooterView(withIdentifier: DiffFileHeader.identifier)
+        guard let header = header as? DiffFileHeader else {
+            return nil
+        }
+        let file = rows.files[section]
+        let isViewed = viewed.contains(file.path)
+        header.configure(file, section: section, isCollapsed: isCollapsed(section), isViewed: isViewed)
+        header.onTap = { [weak self] in self?.toggleFile(section) }
+        header.onViewed = { [weak self] in self?.actions.setViewed($0, file.path) }
+        header.pin(toVisibleWidth: bounds.width, offsetX: contentOffset.x)
+        return header
+    }
+
+    func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+        DiffStyle.fileHeaderHeight
+    }
+
+    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+        if case .line = row(at: indexPath) {
+            return DiffStyle.rowHeight
+        }
+        return UITableView.automaticDimension
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        switch row(at: indexPath) {
+        case let .line(index):
+            return lineCell(index, at: indexPath)
+        case let .thread(index):
+            return threadCell(rows.threads[index], at: indexPath)
+        case let .draft(index):
+            let draft = rows.drafts[index]
+            return hostedCell(at: indexPath, id: draft.id) {
+                PRDraftCard(draft: draft) { [weak self] in self?.actions.removeDraft(draft) }
+            }
+        case .note:
+            return noteCell(at: indexPath)
+        }
+    }
+
+}
+
+// MARK: - Comment box and folds
+
+extension DiffTableContainer {
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: false)
+        guard case let .line(index) = row(at: indexPath), !composerHasText else {
+            return
+        }
+        let kind = document.lines[index].kind
+        guard kind == .added || kind == .removed || kind == .context else {
+            return
+        }
+        actions.compose(index == composing ? nil : index)
+    }
+
+    /// Soon, not now: this can come while SwiftUI is updating the table, and the screen holds the box.
+    func closeComposer() {
+        DispatchQueue.main.async { [actions] in actions.compose(nil) }
+    }
+
+    private func highlightLines() {
+        UIView.animate(withDuration: 0.18) {
+            for indexPath in self.table.indexPathsForVisibleRows ?? [] {
+                if case let .line(index) = self.row(at: indexPath) {
+                    self.table.cellForRow(at: indexPath).map {
+                        self.mark($0, line: index, at: indexPath)
+                    }
+                }
+            }
+        }
+    }
+
+    /// The line ends up just above the box and the keyboard, which only land once the field has focus.
+    private func followKeyboard() {
+        keyboardObserver = NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardDidShowNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let composing = self.composing else {
+                    return
+                }
+                if let path = self.path(ofLine: composing) {
+                    self.table.scrollToRow(
+                        at: IndexPath(row: path.row, section: path.section), at: .bottom, animated: true
+                    )
+                }
+                self.keyboardObserver.map(NotificationCenter.default.removeObserver)
+                self.keyboardObserver = nil
+            }
+        }
+    }
+
+    /// A half-written comment holds its file open.
+    private func toggleFile(_ section: Int) {
+        if composingSection == section {
+            guard !composerHasText else {
+                return
+            }
+            closeComposer()
+        }
+        refold(section) { actions.folds.toggle(rows.files[section].foldID) }
+    }
+
+    /// `change` flips the file; this animates what that did.
+    private func refold(_ section: Int, change: () -> Void) {
+        let wasCollapsed = isCollapsed(section)
+        let paths = rows.files[section].rows.indices.map { IndexPath(row: $0, section: section) }
+        if paths.count > Self.animatedFoldLimit {
+            change()
+            UIView.transition(with: table, duration: 0.2, options: .transitionCrossDissolve) {
+                self.table.reloadData()
+            }
+        } else {
+            table.performBatchUpdates {
+                change()
+                if wasCollapsed, !isCollapsed(section) {
+                    table.insertRows(at: paths, with: .fade)
+                } else if !wasCollapsed, isCollapsed(section) {
+                    table.deleteRows(at: paths, with: .fade)
+                }
+            }
+        }
+        (table.headerView(forSection: section) as? DiffFileHeader)?.setCollapsed(isCollapsed(section), animated: true)
+        keepHeaderInView(section)
+    }
+
+    /// Folding from deep inside a file would leave the reader somewhere else in the diff.
+    private func keepHeaderInView(_ section: Int) {
+        let top = table.rectForHeader(inSection: section).minY
+        if table.contentOffset.y > top {
+            table.setContentOffset(CGPoint(x: 0, y: top), animated: true)
+        }
+    }
+
+    /// Found by id: a thread's row moves when a comment box opens above it.
+    func toggleThread(_ id: String) {
+        guard let threadIndex = rows.threads.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        actions.folds.toggle(id)
+        for (section, file) in rows.files.enumerated() {
+            guard let stored = file.rows.firstIndex(of: .thread(threadIndex)) else {
+                continue
+            }
+            let path = IndexPath(row: stored, section: section)
+            UIView.animate(withDuration: 0.28) {
+                self.table.performBatchUpdates { self.table.reconfigureRows(at: [path]) }
+            }
+            return
+        }
+    }
+}
+#endif

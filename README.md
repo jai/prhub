@@ -52,23 +52,35 @@ pairing code works once and expires after 30 minutes. For a new code, ask your a
 
 ## What's here
 
+- `app/`: the PRHub iPhone app (XcodeGen, `app/project.yml`): pairing, Settings and the sample PRs around PRKit.
+- `PRKit/` and `Package.swift`: PRKit, the Swift package with the PR screens, their models and the Worker client
+  ([PRKit/README.md](PRKit/README.md)). Other apps add this repo as a package and embed the screens as one tab.
 - `worker/`: the Worker each person deploys. `deploy/` has its template, `setup.sh` and the agent's deployment guide.
 - `relay/`: the push relay that Jai runs, which forwards silent pushes to Apple ([docs/push-relay.md](docs/push-relay.md)).
 - `docs/`: the Worker's API ([docs/api.md](docs/api.md)), the fixtures the app's tests decode, and plans.
-
-## The app
-
-The iPhone app and PRKit, the Swift package with its PR screens, live in this repo too.
+- `release/`: `ship.sh`, which uploads a TestFlight build. `DESIGN.md`: the app's design tokens and parts.
 
 ## Build and test
 
 ```sh
 (cd worker && npm ci && npm test && npm run typecheck)
 (cd relay && npm ci && npm test && npm run typecheck)
-scripts/scrub.sh    # fails if a private name or value is in the repo
+swift test                 # PRKit, on macOS
+make -C app test           # the app's and PRKit's unit tests on an iOS Simulator (Xcode 26, XcodeGen)
+make -C app ui-test        # the samples flow, and pictures of every screen in app/build/screenshots
+scripts/scrub.sh           # fails if a private name or value is in the repo
 ```
 
-CI runs these on every push and pull request, and a nightly end-to-end check against a test Worker.
+CI runs these on every push and pull request, and a nightly end-to-end check against a test Worker. The app's tests
+need no Worker and no secrets: they run on the sample PRs.
+
+## Use PRKit in your app
+
+```swift
+.package(url: "https://github.com/jai/prhub", from: "0.1.0")
+```
+
+Add the `PRKit` product to the app target, then follow [PRKit/README.md](PRKit/README.md).
 
 ## Privacy
 

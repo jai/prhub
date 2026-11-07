@@ -1,0 +1,636 @@
+import Foundation
+import Observation
+import PRKitCore
+import QuartzCore
+
+/// What started a sync, reported to the Worker with what it found, so freshness is measured and not guessed.
+public enum PRSyncTrigger: String, Sendable {
+    case silentPush = "push"
+    case otherPush = "other_push"
+    case foreground
+    case pull
+}
+
+public enum PRSyncOutcome: Sendable {
+    case changed, unchanged, failed
+}
+
+/// The two lists the PRs tab holds.
+enum PRListPage: String, CaseIterable, Identifiable {
+    case review, mine
+
+    var id: Self { self }
+
+    func holds(_ row: PullRequestRow) -> Bool {
+        (row.isReviewRequest || row.isAnswered) == (self == .review)
+    }
+
+    /// A line of the list. On the review list, what Jai still has to review, then what he has approved, sent back or
+    /// commented on.
+    enum Entry: Identifiable {
+        case header(String)
+        case row(PullRequestRow)
+
+        var id: String {
+            switch self {
+            case let .header(title): "header:\(title)"
+            case let .row(row): row.id
+            }
+        }
+    }
+
+    func entries(_ rows: [PullRequestRow]) -> [Entry] {
+        let section = { (title: String, rows: [PullRequestRow]) -> [Entry] in
+            rows.isEmpty ? [] : [.header(title)] + rows.map(Entry.row)
+        }
+        guard self == .review, !rows.contains(where: \.isMerged) else {
+            return rows.map(Entry.row)
+        }
+        return section("Review Pending", rows.filter { !$0.isAnswered })
+            + section("Recently Reviewed", rows.filter(\.isAnswered))
+    }
+
+    /// Past the review SLA first, the longest overdue on top; then the rows waiting on Jai's own change request; then
+    /// the rest, each in the order it came.
+    static func ordered(_ rows: [PullRequestRow], now: Date = .now) -> [PullRequestRow] {
+        let late = rows.filter { $0.isPastSLA(now: now) }.sorted { ($0.reviewDue ?? now) < ($1.reviewDue ?? now) }
+        let rest = rows.filter { !$0.isPastSLA(now: now) }
+        return late + rest.filter(\.isWaitingOnJaisChangeRequest) + rest.filter { !$0.isWaitingOnJaisChangeRequest }
+    }
+}
+
+/// The orgs and repos the PRs tab shows, saved on the phone. Every org's PRs are mirrored either way, so a change is
+/// instant and nothing has to load.
+struct PROrgFilter: RawRepresentable, Equatable {
+    private(set) var selected: Set<String>
+    /// Empty means every repo of the chosen orgs.
+    private(set) var repos: Set<String> = []
+
+    init(selected: Set<String>) {
+        self.selected = selected
+    }
+
+    /// `orgs|repos`, each comma separated. A value saved before repos existed has no `|`.
+    init?(rawValue: String) {
+        let parts = rawValue.split(separator: "|", omittingEmptySubsequences: false)
+        selected = Set(parts[0].split(separator: ",").map(String.init))
+        repos = parts.count > 1 ? Set(parts[1].split(separator: ",").map(String.init)) : []
+    }
+
+    var rawValue: String {
+        "\(selected.sorted().joined(separator: ","))|\(repos.sorted().joined(separator: ","))"
+    }
+
+    func showsOrg(of row: PullRequestRow) -> Bool {
+        selected.contains(row.org)
+    }
+
+    func shows(_ row: PullRequestRow) -> Bool {
+        showsOrg(of: row) && (repos.isEmpty || repos.contains(row.repo))
+    }
+
+    /// An org going takes its repos with it, so a hidden choice can't empty the list.
+    mutating func toggle(_ org: String) {
+        if selected.remove(org) == nil {
+            selected.insert(org)
+        } else {
+            repos = repos.filter { !$0.hasPrefix("\(org)/") }
+        }
+    }
+
+    mutating func toggleRepo(_ repo: String) {
+        if repos.remove(repo) == nil {
+            repos.insert(repo)
+        }
+    }
+
+    mutating func showAllRepos() {
+        repos = []
+    }
+}
+
+/// The list on screen and the mirror behind it, in Caches: never backed up, and iOS may clear it, which only costs a
+/// download. Rows are on screen from the file before the Worker answers. A push carries no data, so a lost one costs
+/// nothing but time.
+@MainActor
+@Observable
+final class PRsModel {
+    private static let staleAfter: TimeInterval = 5 * 60
+    private static let answersKey = "prLocalAnswers"
+
+    private(set) var rows: [PullRequestRow]
+    /// Merged PRs by page: his own on My PRs, the ones he reviewed on For review. Read when a page shows them.
+    private(set) var merged: [PRListPage: [PullRequestRow]] = [:]
+    private(set) var mergedError: [PRListPage: String] = [:]
+    private(set) var errorMessage: String?
+    private(set) var workerSyncedAt: Date?
+    /// Rows Jai swiped away. They stay hidden until the Worker's list drops them, so one can't flicker back.
+    private(set) var removedRequests: Set<String> = []
+    /// By row id. Saved, so a row stays read through a restart until the Worker's list catches up.
+    private(set) var localAnswers: [String: PRLocalAnswer] = UserDefaults.standard.data(forKey: PRsModel.answersKey)
+        .flatMap { try? JSONDecoder().decode([String: PRLocalAnswer].self, from: $0) } ?? [:]
+    let client: PRViewerClient
+    /// PRs with no Worker (`PRSampleSet`): Jai's Debug `-UXFixtures`, or PRHub's "Try with sample PRs". Nothing then
+    /// leaves the phone.
+    let samples: PRSampleSet?
+    /// The host's (`PRKitHost.outbox`), read when a write goes, which hands each answer back through `outboxAnswered`
+    /// and `outboxRefused`. Without one, as in a test, writes go straight to the Worker.
+    @ObservationIgnored var outboxSource: @MainActor () -> (any PRKitOutbox)? = { nil }
+
+    var outbox: (any PRKitOutbox)? {
+        get { outboxSource() }
+        set { outboxSource = { newValue } }
+    }
+    /// The APNs environment the push token is registered under (`PRKitHost.apnsEnvironment`).
+    @ObservationIgnored var apnsEnvironment = ""
+    /// Where `PRKitEvent`s go: the host.
+    @ObservationIgnored var onEvent: (PRKitEvent) -> Void = { _ in }
+    /// A write GitHub refused after Jai left its screen, with his words, until he dismisses it.
+    private(set) var refusedWrite: String?
+    /// Outbox answers by item id, until the write that is waiting on one takes it.
+    private var outcomes: [String: Result<Data, PRViewerError>] = [:]
+    /// Ids a screen is waiting on. Answers to the rest arrive after Jai has moved on.
+    private var waiting: Set<String> = []
+    /// What each write still on the phone said, so a refusal that comes after the screen has gone can quote it.
+    private var queuedSummaries: [String: String] = [:]
+    /// How long a screen waits for GitHub's answer before the write carries on without it.
+    var answerWait: Duration = .seconds(15)
+    private let mirror: PRMirror
+    /// The newest sync, and its list fetch while that is out: what a wake waits for, and what a pull waits for.
+    private var running: Task<PRSyncOutcome, Never>?
+    private var listing: Task<PRSyncOutcome, Never>?
+    /// Each list fetch's number. Only the newest one's rows show (`PRMirror`).
+    private var generation = 0
+    /// PRs whose newest files failed to download: each shows its last good revision and says so, until a pull.
+    private(set) var notUpdated: Set<String> = []
+
+    /// Where the mirror says a download or a write failed for good: the host's event log.
+    func logFailures(to log: @escaping @Sendable (String) -> Void) {
+        mirror.log.set(log)
+    }
+    private var apnsToken: String?
+    /// What the Worker serves, which the PR screens follow: everything in Jai's build; PRHub's pr-worker's
+    /// `GET /device/config`. Read through (`PRKitHost.configuration`), so a view that reads it follows a new config.
+    @ObservationIgnored var featureSource: @MainActor () -> PRKitConfiguration = { .everything }
+
+    var configuration: PRKitConfiguration {
+        featureSource()
+    }
+
+    /// `directory`: where the mirror's files go, the app's caches unless a test gives its own.
+    init(client: PRViewerClient, samples: PRSampleSet? = nil, directory: URL? = nil) {
+        self.client = client
+        self.samples = samples
+        let name = samples == nil ? "pr-viewer" : PRSampleSet.directoryName
+        let directory = directory ?? URL.cachesDirectory.appending(path: name, directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let saved = samples.map { $0.seed(in: directory) } ?? PRMirror.savedRows(in: directory)
+        rows = saved
+        if samples != nil {
+            localAnswers = [:]
+        }
+        mirror = PRMirror(directory: directory, client: client, shown: saved)
+    }
+
+    var orgs: [String] {
+        Set(rows.map(\.org)).sorted()
+    }
+
+    var orgDefault: PROrgDefault {
+        configuration.orgDefault
+    }
+
+    /// Worked out by the Worker's own last successful look at GitHub, so a stuck Worker shows here and not as old code.
+    var staleSince: Date? {
+        workerSyncedAt.flatMap { Date.now.timeIntervalSince($0) > Self.staleAfter ? $0 : nil }
+    }
+
+    func loadMerged(on page: PRListPage) async {
+        if let samples {
+            merged[page] = samples.merged(reviewed: page == .review)
+            return
+        }
+        do {
+            merged[page] = try await client.mergedPullRequests(reviewed: page == .review)
+            mergedError[page] = nil
+        } catch {
+            mergedError[page] = error.localizedDescription
+        }
+    }
+
+    /// A wake that finds a sync running waits for it, rather than reporting work it did not do. A pull waits for a
+    /// list alone — the one being fetched, else a new one — and the PRs' files download behind it, each row showing as
+    /// its files land: the spinner is for the list, not for every new PR's diff.
+    @discardableResult
+    func refresh(_ trigger: PRSyncTrigger) async -> PRSyncOutcome {
+        if samples != nil {
+            onEvent(.synced(trigger, .unchanged))
+            return .unchanged
+        }
+        if trigger == .pull, let listing {
+            return await listing.value
+        }
+        if trigger != .pull, let running {
+            return await running.value
+        }
+        generation += 1
+        let generation = generation
+        let before = rows
+        let listed = Task { await list(generation: generation, retry: trigger == .pull) }
+        let listPhase = Task { () -> PRSyncOutcome in
+            let outcome = await listed.value ? (rows != before ? PRSyncOutcome.changed : .unchanged) : .failed
+            if self.generation == generation {
+                listing = nil
+            }
+            return outcome
+        }
+        let whole = Task { () -> PRSyncOutcome in
+            let outcome = await listed.value ? await download(generation: generation, before: before, trigger) : .failed
+            if self.generation == generation {
+                running = nil
+            }
+            onEvent(.synced(trigger, outcome))
+            return outcome
+        }
+        listing = listPhase
+        running = whole
+        return trigger == .pull ? await listPhase.value : await whole.value
+    }
+
+    /// The token is kept either way; it goes to a Worker that pushes (`push`), now and at each foreground sync.
+    func register(apnsToken: String) {
+        self.apnsToken = apnsToken
+        guard configuration.isOn(.push) else {
+            return
+        }
+        let body = PRDeviceRegistration(token: apnsToken, host: apnsEnvironment)
+        Task { await post(body, to: "device/register") }
+    }
+
+    /// PRHub's Disconnect: the rows, the mirror's files, the answers and the filter, so another Worker's PRs start
+    /// from nothing.
+    func forgetEverything() {
+        rows = []
+        merged = [:]
+        mergedError = [:]
+        errorMessage = nil
+        workerSyncedAt = nil
+        removedRequests = []
+        notUpdated = []
+        refusedWrite = nil
+        saveAnswers([:])
+        UserDefaults.standard.removeObject(forKey: "prOrgFilter")
+        // Nothing of a sync still running may show, and nothing it downloads may stay.
+        generation += 1
+        running = nil
+        listing = nil
+        let files = (try? FileManager.default.contentsOfDirectory(at: mirror.directory, includingPropertiesForKeys: nil))
+        for file in files ?? [] {
+            try? FileManager.default.removeItem(at: file)
+        }
+        let mirror = mirror
+        let generation = generation
+        Task { await mirror.forget(generation: generation) }
+    }
+
+    /// After a pairing, or a config that turned push on: the token this launch already has.
+    func registerKnownToken() {
+        if let apnsToken {
+            register(apnsToken: apnsToken)
+        }
+    }
+
+    /// The phone's alone: the Worker reads a sync as the phone being up to date, which decides its pushes.
+    func report(_ event: some Encodable & Sendable) async {
+        #if os(macOS)
+        return
+        #else
+        await post(event, to: "device/event")
+        #endif
+    }
+
+    private func post(_ body: some Encodable & Sendable, to path: String) async {
+        try? await client.post(path, body)
+    }
+
+    /// What a tap pushes. The PR is read and parsed here, on the main thread, so its time counts from the tap.
+    func session(for row: PullRequestRow) -> PRSession {
+        let tappedAt = CACurrentMediaTime()
+        onEvent(.opened(PullRequestRef(repo: row.repo, number: row.number)))
+        return PRSession(
+            ref: PullRequestRef(repo: row.repo, number: row.number), title: row.title, content: localContent(row),
+            keyLines: localKeyLines(row), tappedAt: tappedAt, model: self
+        )
+    }
+
+    /// A PR named by a link: from the phone if it is on a list, else the session reads it live.
+    func session(for ref: PullRequestRef) -> PRSession {
+        let row = rows.first { $0.repo.caseInsensitiveCompare(ref.repo) == .orderedSame && $0.number == ref.number }
+        if let row {
+            return session(for: row)
+        }
+        onEvent(.opened(ref))
+        return PRSession(ref: ref, title: nil, content: nil, tappedAt: CACurrentMediaTime(), model: self)
+    }
+
+    private func localKeyLines(_ row: PullRequestRow) -> PRKeyLines? {
+        row.keyLinesFileName
+            .flatMap { try? Data(contentsOf: mirror.directory.appending(path: $0)) }
+            .flatMap { try? JSONDecoder().decode(PRKeyLines.self, from: $0) }
+    }
+
+    /// Asks every few seconds until the Worker's job lands. An answer can be a failure, in the job's own words.
+    func aiAnswer<Answer: Decodable>(
+        _ kind: String, ref: PullRequestRef, head: String, context: Int = PRKeyLines.defaultContext, retry: Bool
+    ) async throws -> Answer {
+        if let samples {
+            guard kind == "key-lines", let data = samples.keyLines(for: ref) else {
+                throw PRViewerError.refused("Sample PRs don't reach the model.")
+            }
+            return try JSONDecoder().decode(Answer.self, from: data)
+        }
+        let path = "prs/\(ref.repo)/\(ref.number)/\(kind)"
+        var isFirst = true
+        while !Task.isCancelled {
+            if let data = try await client.aiAnswer(path: path, head: head, context: context, retry: retry && isFirst) {
+                if let failure = try? JSONDecoder().decode(PRAIFailure.self, from: data) {
+                    throw PRViewerError.refused(failure.error)
+                }
+                return try JSONDecoder().decode(Answer.self, from: data)
+            }
+            isFirst = false
+            try await Task.sleep(for: .seconds(3))
+        }
+        throw CancellationError()
+    }
+
+    /// Nil if iOS cleared the cache under a row: the session then reads the PR live.
+    private func localContent(_ row: PullRequestRow) -> PRContent? {
+        let read = { (name: String) in
+            try? Data(contentsOf: self.mirror.directory.appending(path: name), options: .mappedIfSafe)
+        }
+        guard let detail = read(row.detailFileName).flatMap({ try? PullRequestDetail.decode($0) }) else {
+            return nil
+        }
+        let document = read(row.diffFileName).map(DiffDocument.init)
+        return row.hasDiff && document == nil ? nil : PRContent(detail: detail, document: document)
+    }
+
+    /// The row reads as answered from now, ahead of the Worker.
+    func noteAnswer(_ review: String, on ref: PullRequestRef, head: String) {
+        let answer = PRLocalAnswer(review: review, sentAt: Date.now.ISO8601Format(), head: head)
+        let isThisPR = { (row: PullRequestRow) in
+            row.repo.caseInsensitiveCompare(ref.repo) == .orderedSame && row.number == ref.number
+        }
+        if let row = rows.first(where: isThisPR) {
+            var answers = localAnswers
+            answers[row.id] = answer
+            saveAnswers(answers)
+        }
+    }
+
+    private func saveAnswers(_ answers: [String: PRLocalAnswer]) {
+        guard answers != localAnswers else {
+            return
+        }
+        localAnswers = answers
+        // A sample's answers last as long as it does.
+        guard samples == nil else {
+            return
+        }
+        UserDefaults.standard.set(try? JSONEncoder().encode(answers), forKey: Self.answersKey)
+    }
+
+    /// Takes Jai off this PR's review on GitHub.
+    func removeReviewRequest(_ row: PullRequestRow) {
+        removedRequests.insert(row.id)
+        if samples != nil {
+            return
+        }
+        Task {
+            do {
+                _ = try await write(.removeRequest, to: PullRequestRef(repo: row.repo, number: row.number))
+            } catch PRViewerError.saved {
+                return // It goes when the network does; the row stays away.
+            } catch {
+                removedRequests.remove(row.id)
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func askChat(_ ref: PullRequestRef) async throws -> PRAskChat {
+        if let samples {
+            return samples.askChat
+                ?? PRAskChat(messages: [], isWorking: false, activity: nil, problem: nil, costCents: nil)
+        }
+        return try await client.askChat(ref)
+    }
+
+    func ask(_ question: PRAskQuestion, about ref: PullRequestRef) async throws -> PRAskChat {
+        guard let outbox else {
+            return try await client.ask(question, about: ref)
+        }
+        let id = try await outbox.enqueue(prAIChat: question, about: ref)
+        queuedSummaries[id] = "your question “\(question.question)”"
+        return try JSONDecoder().decode(PRAskChat.self, from: await answer(to: id))
+    }
+
+    func hasQueuedAIChat(about ref: PullRequestRef) -> Bool {
+        outbox?.hasQueuedAIChat(about: ref) ?? false
+    }
+
+    /// Posts as Jai and answers with the PR as it now stands. The mirror follows on its own, soon after.
+    func write(_ write: PRWrite, to ref: PullRequestRef) async throws -> PullRequestDetail {
+        // A sample row can name a real PR. Nothing done to it may reach GitHub.
+        if let samples {
+            guard samples.answersOnPhone, let detail = sampleWrite(write, to: ref) else {
+                throw PRViewerError.refused("Sample PRs don't write to GitHub.")
+            }
+            return detail
+        }
+        let detail = try PullRequestDetail.decode(await send(write, to: ref))
+        Task { await refresh(.pull) }
+        return detail
+    }
+
+    /// What `write` makes of a sample PR, kept in its file so the PR shows it when it opens again. Nil for a PR that
+    /// is not a sample.
+    private func sampleWrite(_ write: PRWrite, to ref: PullRequestRef) -> PullRequestDetail? {
+        guard let row = rows.first(where: { $0.repo == ref.repo && $0.number == ref.number }) else {
+            return nil
+        }
+        let file = mirror.directory.appending(path: row.detailFileName)
+        guard let stored = try? Data(contentsOf: file) else {
+            return nil
+        }
+        let login = configuration.login ?? "you"
+        let data = PRSampleSet.applying(write, to: stored, login: login)
+        try? data.write(to: file)
+        return try? PullRequestDetail.decode(data)
+    }
+
+    /// Said under a PR's actions after a write: that a sample's went nowhere. Nil for real PRs.
+    var writeNotice: String? {
+        samples?.answersOnPhone == true ? PRSampleSet.notice : nil
+    }
+
+    /// Merge and update branch go now or not at all: Jai should see them happen. The rest are saved first.
+    private func send(_ write: PRWrite, to ref: PullRequestRef) async throws -> Data {
+        guard let outbox, write.isQueued else {
+            return try await client.write(write, to: ref)
+        }
+        let id = try await outbox.enqueue(prWrite: write, to: ref)
+        queuedSummaries[id] = write.summary.map { "\($0) on \(ref.repo)#\(ref.number)" }
+        return try await answer(to: id)
+    }
+
+    /// GitHub's answer if it comes within `answerWait`, else `PRViewerError.saved`: the write goes on without the screen.
+    private func answer(to id: String) async throws -> Data {
+        waiting.insert(id)
+        defer { waiting.remove(id) }
+        let clock = ContinuousClock()
+        let end = clock.now + answerWait
+        while clock.now < end {
+            if let outcome = outcomes.removeValue(forKey: id) {
+                queuedSummaries[id] = nil
+                return try outcome.get()
+            }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        throw PRViewerError.saved
+    }
+
+    /// GitHub's answer to an outbox item, for the write waiting on it.
+    func outboxAnswered(id: String, data: Data) {
+        outcomes[id] = .success(data)
+    }
+
+    func outboxRefused(id: String, reason why: String) {
+        if waiting.contains(id) {
+            outcomes[id] = .failure(.refused(why))
+            return
+        }
+        // Words that would otherwise be lost: say what was refused and what it said.
+        let summary = queuedSummaries.removeValue(forKey: id)
+        let words = summary.map { "GitHub refused \($0): \(why)" } ?? "GitHub refused a write: \(why)"
+        refusedWrite = words
+        onEvent(.writeRefused(words))
+    }
+
+    func dismissRefusedWrite() {
+        refusedWrite = nil
+    }
+
+    /// A PR named by a link and on neither list: GitHub, through the Worker, now.
+    func fetchLive(_ ref: PullRequestRef) async throws -> PRContent {
+        let detail = try PullRequestDetail.decode(await client.liveDetail(ref))
+        do {
+            return try await PRContent(detail: detail, document: DiffDocument(data: client.liveDiff(ref)))
+        } catch PRViewerError.status(406) {
+            return PRContent(detail: detail, document: nil)
+        }
+    }
+}
+
+extension PRsModel {
+    /// The Worker's list, with the rows whose files are already here on screen at once. False when the Worker didn't
+    /// answer: its words are on screen instead.
+    private func list(generation: Int, retry: Bool) async -> Bool {
+        do {
+            let list = try await client.pullRequests()
+            workerSyncedAt = Date(timeIntervalSince1970: list.synced_at / 1000)
+            if let shown = await mirror.begin(list.prs, generation: generation, retry: retry),
+               generation == self.generation {
+                rows = shown
+                if retry {
+                    notUpdated = []
+                }
+            }
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    /// Every PR the list names that is not on the phone yet, then the rest of a sync: the answers, the push token and
+    /// the report to the Worker. A sync a newer list has overtaken leaves all that to the newer one, and waits for it.
+    private func download(generation: Int, before: [PullRequestRow], _ trigger: PRSyncTrigger) async -> PRSyncOutcome {
+        let result = await mirror.sync(generation: generation) { [weak self] generation, rows, failed in
+            await self?.landed(rows, failed: failed, generation: generation)
+        }
+        guard let result, generation == self.generation else {
+            // Overtaken: the newer sync downloads what this one wanted too, and says what came of it.
+            if let running {
+                _ = await running.value
+            }
+            return rows != before ? .changed : .unchanged
+        }
+        let changed = result.rows != before
+        rows = result.rows
+        notUpdated = result.failed
+        removedRequests.formIntersection(rows.map(\.id))
+        saveAnswers(localAnswers.filter { id, answer in answer.isNeeded(by: rows.first { $0.id == id }) })
+        errorMessage = result.isComplete ? nil : "Some PRs could not be brought up to date."
+        if trigger == .foreground, configuration.isOn(.push), let apnsToken {
+            let device = PRDeviceRegistration(token: apnsToken, host: apnsEnvironment)
+            await post(device, to: "device/register")
+        }
+        await report(PRSyncEvent(
+            trigger: trigger.rawValue, rows: result.rows.count, changed: result.fetched, complete: result.isComplete
+        ))
+        onEvent(.reviewRequests(rows.filter { $0.isReviewRequest && !removedRequests.contains($0.id) }.count))
+        return changed ? .changed : .unchanged
+    }
+
+    /// A PR's files have landed: its row shows, unless a newer list has begun since.
+    private func landed(_ landed: [PullRequestRow], failed: Set<String>, generation: Int) {
+        if generation == self.generation {
+            rows = landed
+            notUpdated = failed
+        }
+    }
+}
+
+private struct PRDeviceRegistration: Encodable, Sendable {
+    let token: String
+    let host: String
+}
+
+private struct PRSyncEvent: Encodable, Sendable {
+    let kind = "sync"
+    let trigger: String
+    let rows: Int
+    let changed: [String]
+    let complete: Bool
+}
+
+/// One tap on a PR: how long the diff took and whether it was already on the phone.
+struct PROpenEvent: Encodable, Sendable {
+    let kind = "open"
+    let milliseconds: Int
+    let parseMilliseconds: Int
+    let preloaded: Bool
+    let bytes: Int
+    let lines: Int
+}
+
+private extension PRWrite {
+    var isQueued: Bool {
+        switch self {
+        case .merge, .updateBranch: false
+        default: true
+        }
+    }
+
+    /// The words Jai wrote, for a refusal that arrives after he has left the screen. Nil where there are none to lose.
+    var summary: String? {
+        switch self {
+        case let .comment(body), let .reply(_, body), let .line(_, _, _, body, _): "your comment “\(body)”"
+        case let .review(_, body, _, _): body.isEmpty ? "your review" : "your review “\(body)”"
+        case .editBody: "your description edit"
+        case .resolve, .viewed, .removeRequest, .checkbox, .updateBranch, .merge: nil
+        }
+    }
+}

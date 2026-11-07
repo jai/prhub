@@ -1,0 +1,9 @@
+{
+  "name": "prhub-design",
+  "private": true,
+  "type": "module",
+  "description": "Generates PRHub's colours and PRKitDesign's type, shapes and icon style from DESIGN.md (make -C app design).",
+  "dependencies": {
+    "yaml": "^2.9.1"
+  }
+}

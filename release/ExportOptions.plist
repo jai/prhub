@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- release/ship.sh copies this file twice, with `teamID` added: once as is, to export and check the IPA, and once
+	     with `destination` set to `upload`. Nothing else differs, so the export proves the signing the upload sends. -->
+	<key>destination</key>
+	<string>export</string>
+	<key>method</key>
+	<string>app-store-connect</string>
+	<!-- Automatic signing: Xcode makes and renews the App Store profile itself. -->
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<!-- ship.sh picks the build number; Xcode must not renumber it. -->
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+	<key>uploadSymbols</key>
+	<true/>
+	<key>stripSwiftSymbols</key>
+	<true/>
+</dict>
+</plist>
