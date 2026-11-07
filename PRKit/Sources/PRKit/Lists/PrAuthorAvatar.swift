@@ -27,6 +27,7 @@ public struct PrAuthorAvatar: View {
                     ZStack {
                         Circle().fill(.quaternary)
                         Text(initials)
+                            // design-lint: allow initials are drawn to the avatar's size, which follows Dynamic Type
                             .font(.system(size: size * 0.38, weight: .semibold, design: .rounded))
                             .foregroundStyle(.secondary)
                     }

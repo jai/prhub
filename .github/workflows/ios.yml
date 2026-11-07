@@ -5,10 +5,10 @@ name: ios
 
 on:
   pull_request:
-    paths: [Package.swift, PRKit/**, app/**, DESIGN.md, docs/fixtures/**, .github/workflows/ios.yml]
+    paths: [Package.swift, PRKit/**, app/**, DESIGN.md, docs/fixtures/**, scripts/design-lint*, .github/workflows/ios.yml]
   push:
     branches: [main]
-    paths: [Package.swift, PRKit/**, app/**, DESIGN.md, docs/fixtures/**, .github/workflows/ios.yml]
+    paths: [Package.swift, PRKit/**, app/**, DESIGN.md, docs/fixtures/**, scripts/design-lint*, .github/workflows/ios.yml]
   workflow_dispatch:
 
 permissions:
@@ -29,6 +29,8 @@ jobs:
           node-version: 24
       - name: Design tokens match DESIGN.md
         run: make -C app design-check
+      - name: No literal fonts, colours, paddings, corners or animations in views
+        run: scripts/design-lint.sh
 
   prkit:
     runs-on: macos-26

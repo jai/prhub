@@ -3,7 +3,7 @@ SIM_NAME ?= iPhone 17
 SIM_DESTINATION ?= platform=iOS Simulator,name=$(SIM_NAME)
 DERIVED ?= build/DerivedData
 
-.PHONY: project build test ui-test screenshots design design-check
+.PHONY: project build test ui-test screenshots design design-check design-lint
 
 project:
 	xcodegen generate --spec project.yml --quiet
@@ -28,3 +28,7 @@ design:
 
 design-check:
 	cd Tools/design && { [ -d node_modules ] || npm ci --silent; } && node generate.mjs --check
+
+# No font size, colour, padding, corner or animation typed in a view (scripts/design-lint.sh).
+design-lint:
+	../scripts/design-lint.sh

@@ -212,6 +212,7 @@ public struct PrPastSLAMark: View {
     public let format: ThreadTimeFormat
 
     public var body: some View {
+        // design-lint: allow the clock and its age read as one mark under the avatar
         VStack(spacing: 1) {
             Image(systemName: "clock.badge.exclamationmark.fill")
                 .font(.appCaption)

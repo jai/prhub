@@ -1,0 +1,6 @@
+# Files design-lint.sh skips, one path and why per line. A file comes off the list once its literals are tokens.
+# The diff's UIKit and AppKit cells and DiffStyle: their colours (added, removed, hunk, selected line, viewed) move to
+# tokens once the diff font settings land.
+PRKit/Sources/PRKit/DiffStyle.swift diff colours not yet tokens
+PRKit/Sources/PRKit/Phone/DiffTableCells.swift diff colours not yet tokens
+PRKit/Sources/PRKit/Mac/DiffTableCells+Mac.swift diff colours not yet tokens

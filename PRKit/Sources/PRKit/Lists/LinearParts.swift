@@ -32,6 +32,7 @@ public struct LinearStateCircle: View {
             case "started":
                 ZStack {
                     Circle().strokeBorder(lineWidth: 1.5)
+                    // design-lint: allow the pie's gap inside Linear's 13 pt ring is the mark's drawing
                     LinearStatePie().padding(3)
                 }
             case "unstarted":
