@@ -235,8 +235,8 @@ extension PRSampleSet {
     """
 }
 
-/// One of PRHub's sample PRs, written out as the mirror would hold it.
-private struct PRHubSample {
+/// One of PRHub's sample PRs, written out as the mirror would hold it. Debug builds add a long one (`-PRHubLongDiff`).
+struct PRHubSample {
     let repo: String
     let number: Int
     let title: String

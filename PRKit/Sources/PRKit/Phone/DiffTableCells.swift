@@ -129,6 +129,16 @@ final class DiffFileHeader: UITableViewHeaderFooterView {
 
 final class ReportingTableView: UITableView {
     var onContent: (() -> Void)?
+    /// A fold or a reload changed how tall the diff is.
+    var onContentSize: (() -> Void)?
+
+    override var contentSize: CGSize {
+        didSet {
+            if contentSize.height != oldValue.height {
+                onContentSize?()
+            }
+        }
+    }
 
     override func layoutSubviews() {
         super.layoutSubviews()

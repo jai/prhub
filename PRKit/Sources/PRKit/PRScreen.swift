@@ -98,7 +98,10 @@ struct PRScreen: View {
             .animation(AppMotion.fold, value: session.barsHidden)
             .onChange(of: session.page) {
                 PRPlatform.endEditing()
+                session.barsHidden = false
             }
+            // Back from a pushed screen, or the app: the bars are there to leave by.
+            .onAppear { session.barsHidden = false }
             .onChange(of: session.timer.milliseconds) { report() }
             .task(id: ObjectIdentifier(session)) { await session.loadIfNeeded() }
     }

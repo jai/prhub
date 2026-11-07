@@ -55,7 +55,12 @@ struct PRDiffPage: View {
             replyText: { session.openText(for: .reply(thread: $0)) },
             compose: { line in withAnimation(AppMotion.fold) { session.composingLine = line } },
             closeNote: { session.closeKeyLine() },
-            setBarsHidden: { session.barsHidden = $0 },
+            setBarsHidden: { isHidden in
+                guard session.barsHidden != isHidden else {
+                    return
+                }
+                withAnimation(AppMotion.fold) { session.barsHidden = isHidden }
+            },
             setKeyboardUp: { isUp in
                 withAnimation(AppMotion.fold) {
                     session.isKeyboardUp = isUp

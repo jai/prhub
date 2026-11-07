@@ -12,8 +12,6 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
     /// Past this many rows, a file folds with a cross-dissolve: animating each row out would drop frames.
     private static let animatedFoldLimit = 1_500
     private static let controlsClearance: CGFloat = 60
-    /// How far a drag runs before the bars answer it, so a resting thumb doesn't flicker them.
-    static let barsDragThreshold: CGFloat = 8
 
     let table = ReportingTableView()
     let document: DiffDocument
@@ -27,6 +25,8 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
     var keyboardObservers: [NSObjectProtocol] = []
     var topInset: CGFloat = 0
     var lastScrollY: CGFloat = 0
+    var isKeyboardUp = false
+    var isSettlingBars = false
     private var hasPlacedTop = false
     private let backSwipe = BackSwipeKeeper()
 
@@ -42,7 +42,10 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
         isDirectionalLockEnabled = true
         alwaysBounceVertical = false
         showsHorizontalScrollIndicator = false
+        // The status bar's tap scrolls one view to the top, and only when one alone asks: the table.
+        scrollsToTop = false
         table.onContent = onContent
+        table.onContentSize = { [weak self] in self?.settleBars() }
         table.dataSource = self
         table.delegate = self
         table.estimatedRowHeight = DiffStyle.rowHeight
@@ -60,6 +63,9 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
         table.contentInsetAdjustmentBehavior = .never
         // Room to read the last line above the floating controls.
         table.contentInset.bottom = Self.controlsClearance
+        let belowRows = UITapGestureRecognizer(target: self, action: #selector(tappedBelowRows))
+        belowRows.cancelsTouchesInView = false
+        table.addGestureRecognizer(belowRows)
         addSubview(table)
         watchKeyboard()
     }
@@ -118,6 +124,7 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
             }
             table.layoutIfNeeded()
         }
+        settleBars()
     }
 
     /// A file marked viewed folds, and one unmarked opens, wherever the change came from.
@@ -190,7 +197,13 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
         while let current = responder, !(current is UIViewController) {
             responder = current.next
         }
-        backSwipe.keep(on: window == nil ? nil : (responder as? UIViewController)?.navigationController)
+        backSwipe.keep(
+            on: window == nil ? nil : (responder as? UIViewController)?.navigationController, over: [self, table]
+        )
+        // Back on screen, as the reader left it or not: the bars are there to leave by.
+        if window != nil {
+            setBarsHidden(false)
+        }
     }
 
     /// Runs on every sideways scroll too, which is what keeps the file headers on screen.
@@ -377,6 +390,8 @@ extension DiffTableContainer {
         }
         (table.headerView(forSection: section) as? DiffFileHeader)?.setCollapsed(isCollapsed(section), animated: true)
         keepHeaderInView(section)
+        // A fold changes how much there is to scroll, maybe to nothing: the bars come back rather than wait for a scroll.
+        setBarsHidden(false)
     }
 
     /// Folding from deep inside a file would leave the reader somewhere else in the diff.

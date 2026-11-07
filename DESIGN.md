@@ -384,6 +384,9 @@ The shared views. Use these; extend one rather than writing a near-copy.
 - **A panel from the right:** `sidePanel`, over the page, dimming it; a tap on the dim or a swipe right closes it. In place:
   no sheet. A diff's Files and Key lines (`PRNavigator`) and a thread's details (`ThreadDetailsPanel`) use it.
 - **Room for the code:** on the phone the nav bar and tab bar leave as you scroll down and return as you scroll up, or when the keyboard goes. The diff runs under them, so they never move it.
+  They never stay gone with no way back: they return at the top, when there is nothing to scroll, when a file folds or
+  opens, on a tap of the status bar or below the last line, and when the diff comes back on screen. The edge swipe goes
+  back while they are gone. `DiffBars` is the rule.
 - **PR screens:** `.prCard()` for a box, `PRAuthorLine` for who and when, `InlineComposer` for writing, `PRButtonStyle` for
   a button.
 
