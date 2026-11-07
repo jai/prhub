@@ -31,6 +31,9 @@ colors:
   tone-waiting-dark: "#D29922"
   tone-merged: "#8250DF"
   tone-merged-dark: "#A371F7"
+  # Words on the accent or a tone. Black in dark: white on a dark tone (#3FB950) is 2.5:1, black is 8:1.
+  on-accent: "#FFFFFF"
+  on-accent-dark: "#000000"
   # Linear's mark, and nothing else.
   linear: "#5E6AD2"
 typography:
@@ -180,7 +183,7 @@ Every colour is a role in `PRKitDesign/AppColor.swift`. Views use the role, neve
 | Text | `Color.ink` (or `.primary`) | titles, notes |
 | Quiet text | `Color.inkQuiet` (or `.secondary`) | meta, counts, section titles, what you did, the ticket line |
 | Tones | `Color.toneGood`, `.toneBad`, `.toneWaiting`, `.toneMerged`: GitHub's, light and dark | a state, a signal, a review's word, a problem |
-| On a colour | `Color.onAccent` | words and spinners on the accent or a tone |
+| On a colour | `Color.onAccent`: white in light, black in dark | words and spinners on the accent or a tone |
 | Accent | `.tint`, `Color.accentColor` | controls only: buttons, tab selection, a focused field's ring. Never a row's content |
 | Ground | `Color.groundPage`, `Color.groundCard` | the page, and a block or box on it. Both, always: `.background` is black on black in dark |
 | Fill | `Color.groundFill` | behind a field or a quiet button |

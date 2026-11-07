@@ -20,8 +20,16 @@ extension Color {
     /// Text, and quiet text (meta, a count, what someone did).
     public static var ink: Color { .primary }
     public static var inkQuiet: Color { .secondary }
-    /// Words and spinners on the accent or a tone: a primary button, a swipe action, the person's own chat bubble.
-    public static var onAccent: Color { .white }
+    /// Words and spinners on the accent or a tone: a primary button, a swipe action, the person's own chat bubble. White
+    /// in light; black in dark, where the tones are bright enough that white on them fails contrast (DESIGN.md,
+    /// `on-accent`).
+    public static var onAccent: Color {
+        #if os(iOS)
+        Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? .black : .white })
+        #else
+        Color(nsColor: NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? .black : .white })
+        #endif
+    }
 
     /// The page, and a block or box on it. Both, always: `.background` is black on black in dark.
     public static var groundPage: Color {
