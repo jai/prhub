@@ -9,12 +9,17 @@ struct PRDiffPage: View {
     let document: DiffDocument
     let rows: DiffRows
     @Environment(\.openURL) private var openURL
+    @AppStorage(diffFontIn: nil) private var diffFont
+    #if os(macOS)
+    /// Read so the diff redraws when View → Make Text Bigger changes it.
+    @AppStorage(MacTextSize.key) private var macTextScale = MacTextSize.standard
+    #endif
 
     var body: some View {
         GeometryReader { proxy in
             DiffTableView(
                 document: document, rows: rows, viewed: session.viewedFiles, jump: session.jump,
-                composing: session.composingLine, topInset: proxy.safeAreaInsets.top,
+                composing: session.composingLine, topInset: proxy.safeAreaInsets.top, font: diffFont,
                 onContent: { session.timer.contentLaidOut() }, actions: actions
             )
             #if os(iOS)

@@ -11,7 +11,6 @@ final class DiffLineCell: UITableViewCell {
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         selectionStyle = .none
-        label.font = DiffStyle.font
         label.lineBreakMode = .byClipping
         label.frame = contentView.bounds.insetBy(dx: 6, dy: 0)
         label.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -34,6 +33,7 @@ final class DiffFileHeader: UITableViewHeaderFooterView {
     private let change = UILabel()
     private let viewed = UIButton(type: .system)
     private var isViewed = false
+    private var metrics: DiffMetrics?
     var onTap: () -> Void = {}
     var onViewed: (Bool) -> Void = { _ in }
 
@@ -43,10 +43,7 @@ final class DiffFileHeader: UITableViewHeaderFooterView {
         bar.backgroundColor = .secondarySystemBackground
         chevron.tintColor = .secondaryLabel
         chevron.contentMode = .scaleAspectFit
-        chevron.preferredSymbolConfiguration = .init(pointSize: 11, weight: .semibold)
-        path.font = .monospacedSystemFont(ofSize: 12, weight: .semibold)
         path.lineBreakMode = .byTruncatingHead
-        change.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
         change.textAlignment = .right
         viewed.addTarget(self, action: #selector(viewedTapped), for: .touchUpInside)
         for view in [chevron, path, change, viewed] {
@@ -64,7 +61,13 @@ final class DiffFileHeader: UITableViewHeaderFooterView {
         fatalError("not used from a storyboard")
     }
 
-    func configure(_ file: DiffRows.File, section: Int, isCollapsed: Bool, isViewed: Bool) {
+    func configure(
+        _ file: DiffRows.File, section: Int, isCollapsed: Bool, isViewed: Bool, metrics: DiffMetrics
+    ) {
+        self.metrics = metrics
+        chevron.preferredSymbolConfiguration = .init(pointSize: metrics.chevronSymbolSize, weight: .semibold)
+        path.font = metrics.headerPath
+        change.font = metrics.headerChange
         path.text = file.path
         let text = NSMutableAttributedString(
             string: "+\(file.change.added)", attributes: [.foregroundColor: UIColor.systemGreen]
@@ -83,7 +86,7 @@ final class DiffFileHeader: UITableViewHeaderFooterView {
         self.isViewed = isViewed
         let symbol = UIImage(
             systemName: isViewed ? "checkmark.circle.fill" : "circle",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: metrics?.viewedSymbolSize ?? 0, weight: .regular)
         )
         viewed.setImage(symbol, for: .normal)
         viewed.tintColor = isViewed ? .systemGreen : .secondaryLabel
@@ -101,20 +104,22 @@ final class DiffFileHeader: UITableViewHeaderFooterView {
         }
     }
 
-    /// Where the screen is, in the table's sideways scroll.
+    /// Where the screen is, in the table's sideways scroll. The viewed mark's tap target is a square the row's height
+    /// at the right edge, the same viewed or not, so marking a file never moves the path or the counts.
     func pin(toVisibleWidth width: CGFloat, offsetX: CGFloat) {
-        bar.frame = CGRect(x: offsetX, y: 0, width: width, height: DiffStyle.fileHeaderHeight)
-        let inset: CGFloat = 8
+        guard let metrics else {
+            return
+        }
+        let height = metrics.fileHeaderHeight
+        bar.frame = CGRect(x: offsetX, y: 0, width: width, height: height)
         change.sizeToFit()
         let changeWidth = change.bounds.width
-        chevron.frame = CGRect(x: inset, y: 0, width: 16, height: DiffStyle.fileHeaderHeight)
-        viewed.frame = CGRect(x: width - 36, y: 0, width: 36, height: DiffStyle.fileHeaderHeight)
-        change.frame = CGRect(
-            x: viewed.frame.minX - changeWidth, y: 0, width: changeWidth, height: DiffStyle.fileHeaderHeight
-        )
+        chevron.frame = CGRect(x: Space.sm, y: 0, width: metrics.chevronSymbolSize + Space.xs, height: height)
+        viewed.frame = CGRect(x: width - metrics.viewedTarget, y: 0, width: metrics.viewedTarget, height: height)
+        change.frame = CGRect(x: viewed.frame.minX - changeWidth, y: 0, width: changeWidth, height: height)
         path.frame = CGRect(
-            x: chevron.frame.maxX + 6, y: 0, width: change.frame.minX - chevron.frame.maxX - 12,
-            height: DiffStyle.fileHeaderHeight
+            x: chevron.frame.maxX + Space.sm, y: 0, width: change.frame.minX - chevron.frame.maxX - Space.md,
+            height: height
         )
     }
 
@@ -156,14 +161,18 @@ struct DiffTableView: UIViewRepresentable {
     let jump: DiffJump?
     let composing: Int?
     let topInset: CGFloat
+    let font: DiffFont
     let onContent: () -> Void
     let actions: DiffActions
 
     func makeUIView(context: Context) -> DiffTableContainer {
-        DiffTableContainer(document: document, rows: rows, viewed: viewed, onContent: onContent, actions: actions)
+        DiffTableContainer(
+            document: document, rows: rows, viewed: viewed, font: font, onContent: onContent, actions: actions
+        )
     }
 
     func updateUIView(_ uiView: DiffTableContainer, context: Context) {
+        uiView.update(font: font)
         uiView.update(rows: rows)
         uiView.update(viewed: viewed)
         uiView.update(topInset: topInset)

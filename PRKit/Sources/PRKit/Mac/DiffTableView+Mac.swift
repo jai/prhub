@@ -15,14 +15,18 @@ struct DiffTableView: NSViewRepresentable {
     let composing: Int?
     /// For the phone, whose diff runs under its bars.
     let topInset: CGFloat
+    let font: DiffFont
     let onContent: () -> Void
     let actions: DiffActions
 
     func makeNSView(context: Context) -> DiffTableContainer {
-        DiffTableContainer(document: document, rows: rows, viewed: viewed, onContent: onContent, actions: actions)
+        DiffTableContainer(
+            document: document, rows: rows, viewed: viewed, font: font, onContent: onContent, actions: actions
+        )
     }
 
     func updateNSView(_ nsView: DiffTableContainer, context: Context) {
+        nsView.update(font: font)
         nsView.update(rows: rows)
         nsView.update(viewed: viewed)
         nsView.update(composing: composing)
@@ -41,6 +45,7 @@ final class DiffTableContainer: NSScrollView, NSTableViewDataSource, NSTableView
     let document: DiffDocument
     var rows: DiffRows
     var viewed: Set<String>
+    private(set) var metrics: DiffMetrics
     private var lastJump: DiffJump?
     let actions: DiffActions
     private var onContent: (() -> Void)?
@@ -55,14 +60,15 @@ final class DiffTableContainer: NSScrollView, NSTableViewDataSource, NSTableView
     var headers: [Int: DiffFileHeaderView] = [:]
 
     init(
-        document: DiffDocument, rows: DiffRows, viewed: Set<String>, onContent: @escaping () -> Void,
-        actions: DiffActions
+        document: DiffDocument, rows: DiffRows, viewed: Set<String>, font: DiffFont,
+        onContent: @escaping () -> Void, actions: DiffActions
     ) {
         self.document = document
         self.rows = rows
         self.viewed = viewed
         self.actions = actions
         self.onContent = onContent
+        metrics = DiffMetrics(font)
         super.init(frame: .zero)
         hasVerticalScroller = true
         hasHorizontalScroller = true
@@ -95,6 +101,21 @@ final class DiffTableContainer: NSScrollView, NSTableViewDataSource, NSTableView
     }
 
     // MARK: - Updates from the screen
+
+    /// A new font from Settings, or a new text size: the code and headers redraw in it, where the reader was.
+    func update(font: DiffFont) {
+        let next = DiffMetrics(font)
+        guard next.font != metrics.font || next.scale != metrics.scale else {
+            return
+        }
+        metrics = next
+        headers = [:]
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.25
+            table.animator().reloadData()
+        }
+        tile()
+    }
 
     /// After a post: the new threads fade in, with the scroll position kept.
     func update(rows: DiffRows) {
@@ -175,8 +196,7 @@ final class DiffTableContainer: NSScrollView, NSTableViewDataSource, NSTableView
     /// A scroll view lays its parts out here, not in `layout()`: on every resize of the window.
     override func tile() {
         super.tile()
-        let columnWidth = ("M" as NSString).size(withAttributes: [.font: DiffStyle.font]).width
-        let width = max(contentView.bounds.width, CGFloat(DiffDocument.columns + 2) * columnWidth)
+        let width = max(contentView.bounds.width, CGFloat(DiffDocument.columns + 2) * metrics.columnWidth)
         if let column = table.tableColumns.first, column.width != width {
             column.width = width
         }
@@ -264,10 +284,10 @@ final class DiffTableContainer: NSScrollView, NSTableViewDataSource, NSTableView
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
         switch items[row] {
         case .header:
-            return DiffStyle.fileHeaderHeight
+            return metrics.fileHeaderHeight
         case let .row(section, index):
             if case .line = self.row(section: section, row: index) {
-                return DiffStyle.rowHeight
+                return metrics.rowHeight
             }
             let height = hostedID(section: section, row: index).flatMap { hosted[$0]?.height }
                 ?? hostedRow(section: section, row: index)?.height ?? 0

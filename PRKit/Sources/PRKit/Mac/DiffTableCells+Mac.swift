@@ -65,7 +65,6 @@ final class DiffLineView: NSTableCellView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         identifier = Self.identifier
-        label.font = DiffStyle.font
         label.lineBreakMode = .byClipping
         label.cell?.truncatesLastVisibleLine = false
         label.autoresizingMask = [.width, .height]
@@ -91,17 +90,19 @@ final class DiffFileHeaderView: NSView, PinnedToWindow {
     private let change = NSTextField(labelWithString: "")
     private let viewed = NSButton()
     private var isViewed = false
+    private let metrics: DiffMetrics
     var onTap: () -> Void = {}
     var onViewed: (Bool) -> Void = { _ in }
 
-    init(_ file: DiffRows.File, section: Int, isCollapsed: Bool, isViewed: Bool) {
+    init(_ file: DiffRows.File, section: Int, isCollapsed: Bool, isViewed: Bool, metrics: DiffMetrics) {
+        self.metrics = metrics
         super.init(frame: .zero)
         bar.wantsLayer = true
         bar.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         chevron.image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 11, weight: .semibold))
+            .withSymbolConfiguration(.init(pointSize: metrics.chevronSymbolSize, weight: .semibold))
         chevron.contentTintColor = .secondaryLabelColor
-        path.font = .monospacedSystemFont(ofSize: 12, weight: .semibold)
+        path.font = metrics.headerPath
         path.lineBreakMode = .byTruncatingHead
         path.stringValue = file.path
         path.setAccessibilityIdentifier("file-header-\(section)")
@@ -112,7 +113,7 @@ final class DiffFileHeaderView: NSView, PinnedToWindow {
             string: " −\(file.change.removed)", attributes: [.foregroundColor: NSColor.systemRed]
         ))
         text.addAttribute(
-            .font, value: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium),
+            .font, value: metrics.headerChange,
             range: NSRange(location: 0, length: text.length)
         )
         change.attributedStringValue = text
@@ -139,7 +140,7 @@ final class DiffFileHeaderView: NSView, PinnedToWindow {
         self.isViewed = isViewed
         viewed.image = NSImage(
             systemSymbolName: isViewed ? "checkmark.circle.fill" : "circle", accessibilityDescription: "Viewed"
-        )?.withSymbolConfiguration(.init(pointSize: 15, weight: .regular))
+        )?.withSymbolConfiguration(.init(pointSize: metrics.viewedSymbolSize, weight: .regular))
         viewed.contentTintColor = isViewed ? .systemGreen : .secondaryLabelColor
         viewed.setAccessibilityValue(isViewed ? "on" : "off")
     }
@@ -157,21 +158,24 @@ final class DiffFileHeaderView: NSView, PinnedToWindow {
     }
 
     func pin(offsetX: CGFloat, width: CGFloat) {
-        let height = DiffStyle.fileHeaderHeight
+        let height = metrics.fileHeaderHeight
         bar.frame = NSRect(x: offsetX, y: 0, width: width, height: height)
-        let inset: CGFloat = 8
+        let inset = Space.sm
+        let chevronWidth = metrics.chevronSymbolSize + Space.xs
         let changeWidth = change.fittingSize.width
         let lineHeight = path.fittingSize.height
         let textY = (height - lineHeight) / 2
         let rotation = chevron.frameCenterRotation
         chevron.frameCenterRotation = 0
-        chevron.frame = NSRect(x: inset, y: 0, width: 16, height: height)
+        chevron.frame = NSRect(x: inset, y: 0, width: chevronWidth, height: height)
         chevron.frameCenterRotation = rotation
-        viewed.frame = NSRect(x: width - 36, y: 0, width: 36, height: height)
+        viewed.frame = NSRect(
+            x: width - metrics.viewedTarget, y: 0, width: metrics.viewedTarget, height: height
+        )
         change.frame = NSRect(x: viewed.frame.minX - changeWidth, y: textY, width: changeWidth, height: lineHeight)
         // Not from the chevron's frame: turned, its frame is the box around it, wider than it stands.
-        let pathX = inset + 16 + 6
-        path.frame = NSRect(x: pathX, y: textY, width: change.frame.minX - pathX - 6, height: lineHeight)
+        let pathX = inset + chevronWidth + Space.sm
+        path.frame = NSRect(x: pathX, y: textY, width: change.frame.minX - pathX - Space.sm, height: lineHeight)
     }
 
     @objc private func clicked() {
@@ -189,6 +193,7 @@ extension DiffTableContainer {
         let view = reused ?? DiffLineView()
         let line = document.lines[index]
         let text = document.text(of: line, limit: DiffDocument.columns)
+        view.label.font = metrics.code
         view.label.stringValue = document.isClipped(line) ? "\(text)⋯" : text
         view.setAccessibilityIdentifier("diff-line-\(index)")
         return view
@@ -201,7 +206,8 @@ extension DiffTableContainer {
         }
         let file = rows.files[section]
         let header = DiffFileHeaderView(
-            file, section: section, isCollapsed: isCollapsed(section), isViewed: viewed.contains(file.path)
+            file, section: section, isCollapsed: isCollapsed(section), isViewed: viewed.contains(file.path),
+            metrics: metrics
         )
         headers[section] = header
         header.onTap = { [weak self] in self?.toggleFile(section) }

@@ -19,7 +19,11 @@ let package = Package(
         .target(name: "PRKitNetwork", path: "PRKit/Sources/PRKitNetwork"),
         .target(name: "PRKitCore", dependencies: ["PRKitNetwork"], path: "PRKit/Sources/PRKitCore"),
         .target(name: "PRKitDesign", path: "PRKit/Sources/PRKitDesign"),
-        .target(name: "PRKit", dependencies: ["PRKitCore", "PRKitDesign", "PRKitNetwork"], path: "PRKit/Sources/PRKit"),
+        // The diff's open-licence fonts, each with its OFL, registered at run time (DiffFont.swift).
+        .target(
+            name: "PRKit", dependencies: ["PRKitCore", "PRKitDesign", "PRKitNetwork"], path: "PRKit/Sources/PRKit",
+            resources: [.copy("Resources/Fonts")]
+        ),
         .testTarget(name: "PRKitTests", dependencies: ["PRKit", "PRKitNetwork"], path: "PRKit/Tests/PRKitTests"),
     ]
 )

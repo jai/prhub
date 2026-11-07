@@ -21,6 +21,8 @@ An app gives it a host (`PRKitHost`) and shows `PRKitRoot` in a tab. Nothing els
 3. Make one `PRKitController(host:)` at launch and keep it. A silent push syncs PRs with no scene on screen.
 4. Show `PRKitRoot(controller)` in a tab, and put `.prKitEnvironment(controller)` on the root, so a PR link on any tab
    opens the PR there.
+5. Put `DiffFontSection()` in the app's Settings `Form`: the diff's font and size, which every diff follows. Its fonts
+   ship in the package and register themselves; the app's Info.plist needs nothing.
 
 ```swift
 let prs = PRKitController(host: PRHubPRHost(access: .paired(endpoint: endpoint, secret: secret), samples: nil))

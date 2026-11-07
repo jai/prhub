@@ -92,7 +92,7 @@ public struct MarkdownText: View {
             .padding(.leading, CGFloat(depth - 1) * MarkdownStyle.indent)
         case .code:
             Text(block.content)
-                .font(.appFootnote.monospaced())
+                .diffCodeFont(step: Font.appleSize(.footnote) - DiffFont.standard.size)
                 .padding(Space.sm)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.fill.tertiary, in: .rect(cornerRadius: Radius.md))

@@ -141,6 +141,7 @@ all of them are in scope. A new screen adds a row here and a step in `PRHubScree
 | Ask AI | PRs → a PR → the toolbar, or a line's comment box | `PRAskSheet`, `SessionBubble`, `SessionComposer` |
 | PR diff | PRs → a PR → Diff | `DiffTableView`, `PRDiffPage`, `PRNavigator` |
 | Settings | Settings; signed in: account, App installs, Anthropic key, Sign out, Delete account | `PRHubSettingsView`, `AnthropicKeySection`, `DeleteAccountSheet` |
+| Diff font | Settings → Diff font: a preview, the size (9 to 20 pt) and the face; every diff and code view follows it | `DiffFontSection`, `DiffFont` |
 | No PRs yet | PRs, hosted, nothing listed | `PREmptyHint` in `PRsView` |
 | iPad | the phone's tabs, every orientation | the same views; `readableContentWidth()` centres scroll views |
 
@@ -213,8 +214,15 @@ title3 20.
 | `.app(.caption, design: .monospaced)` | regular | a file and line reference outside the diff |
 | `.appCallout` | regular | a chat message (`SessionBubble`) |
 
-A section heading is one step bigger than its content: "Conversation" (subheadline) over comments (footnote). Code in
-the diff uses the `code` token.
+**A heading is a step bigger.** A section's heading is one step bigger than the content under it, and it follows the
+content's size: when the content grows or shrinks, the heading moves with it. "Conversation" (subheadline) over comments
+(footnote) is one; the diff's file header is the other: `DiffFont`'s face, bold, 2 pt over the code, at any diff font
+and text size. Its viewed mark grows with it, in a tap target of 44 pt at least, the header row's height, that never
+moves the path or the counts.
+
+**The diff font.** Code (a diff, a code block, a line quoted in the comment box) is `DiffFont`: one monospaced face and
+a size, chosen in Settings → Diff font and kept on the device. The default is the `code` token, the system's monospaced
+font at 12 pt. The size follows Dynamic Type. The faces other than the system's ship in PRKit with their OFL licences.
 
 ## Layout
 

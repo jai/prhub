@@ -17,6 +17,7 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
     let document: DiffDocument
     var rows: DiffRows
     private var viewed: Set<String>
+    private(set) var metrics: DiffMetrics
     private var lastJump: DiffJump?
     let actions: DiffActions
     /// The line of the document being commented on.
@@ -31,13 +32,14 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
     private let backSwipe = BackSwipeKeeper()
 
     init(
-        document: DiffDocument, rows: DiffRows, viewed: Set<String>, onContent: @escaping () -> Void,
-        actions: DiffActions
+        document: DiffDocument, rows: DiffRows, viewed: Set<String>, font: DiffFont,
+        onContent: @escaping () -> Void, actions: DiffActions
     ) {
         self.document = document
         self.rows = rows
         self.viewed = viewed
         self.actions = actions
+        metrics = DiffMetrics(font, traits: UITraitCollection.current)
         super.init(frame: .zero)
         isDirectionalLockEnabled = true
         alwaysBounceVertical = false
@@ -48,9 +50,7 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
         table.onContentSize = { [weak self] in self?.settleBars() }
         table.dataSource = self
         table.delegate = self
-        table.estimatedRowHeight = DiffStyle.rowHeight
-        table.estimatedSectionHeaderHeight = DiffStyle.fileHeaderHeight
-        table.sectionHeaderHeight = DiffStyle.fileHeaderHeight
+        applyMetricsToTable()
         table.sectionHeaderTopPadding = 0
         table.separatorStyle = .none
         table.isDirectionalLockEnabled = true
@@ -68,11 +68,37 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
         table.addGestureRecognizer(belowRows)
         addSubview(table)
         watchKeyboard()
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in
+            self.remeasure(font: self.metrics.font)
+        }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("not used from a storyboard")
+    }
+
+    /// A new font from Settings: the code and headers redraw in it, crossfading, where the reader was.
+    func update(font: DiffFont) {
+        guard font != metrics.font else {
+            return
+        }
+        remeasure(font: font)
+    }
+
+    private func remeasure(font: DiffFont) {
+        metrics = DiffMetrics(font, traits: traitCollection)
+        applyMetricsToTable()
+        setNeedsLayout()
+        UIView.transition(with: table, duration: 0.25, options: .transitionCrossDissolve) {
+            self.table.reloadData()
+        }
+    }
+
+    private func applyMetricsToTable() {
+        table.estimatedRowHeight = metrics.rowHeight
+        table.estimatedSectionHeaderHeight = metrics.fileHeaderHeight
+        table.sectionHeaderHeight = metrics.fileHeaderHeight
     }
 
     /// After a post: the new threads fade in, with the scroll position kept.
@@ -209,8 +235,7 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
     /// Runs on every sideways scroll too, which is what keeps the file headers on screen.
     override func layoutSubviews() {
         super.layoutSubviews()
-        let columnWidth = ("M" as NSString).size(withAttributes: [.font: DiffStyle.font]).width
-        let width = max(bounds.width, CGFloat(DiffDocument.columns + 2) * columnWidth)
+        let width = max(bounds.width, CGFloat(DiffDocument.columns + 2) * metrics.columnWidth)
         // Without animation: the tab bar leaving grows this view inside the bars' animation, and an animated frame
         // animates the table's bounds, its scroll position included. The rows then freeze under the finger.
         UIView.performWithoutAnimation {
@@ -270,7 +295,9 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
         }
         let file = rows.files[section]
         let isViewed = viewed.contains(file.path)
-        header.configure(file, section: section, isCollapsed: isCollapsed(section), isViewed: isViewed)
+        header.configure(
+            file, section: section, isCollapsed: isCollapsed(section), isViewed: isViewed, metrics: metrics
+        )
         header.onTap = { [weak self] in self?.toggleFile(section) }
         header.onViewed = { [weak self] in self?.actions.setViewed($0, file.path) }
         header.pin(toVisibleWidth: bounds.width, offsetX: contentOffset.x)
@@ -278,12 +305,12 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
     }
 
     func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
-        DiffStyle.fileHeaderHeight
+        metrics.fileHeaderHeight
     }
 
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         if case .line = row(at: indexPath) {
-            return DiffStyle.rowHeight
+            return metrics.rowHeight
         }
         return UITableView.automaticDimension
     }

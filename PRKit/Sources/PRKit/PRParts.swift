@@ -187,7 +187,7 @@ public struct InlineComposer: View {
         VStack(alignment: .leading, spacing: Space.sm) {
             if let context {
                 Text(verbatim: context)
-                    .font(.app(.caption, design: .monospaced))
+                    .diffCodeFont()
                     .foregroundStyle(.secondary)
             }
             TextField(placeholder, text: $text, axis: .vertical)
