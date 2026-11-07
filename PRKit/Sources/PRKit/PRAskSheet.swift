@@ -103,7 +103,7 @@ struct PRAskSheet: View {
                         .lineLimit(1)
                         .truncationMode(.head)
                     Spacer()
-                    Button("Ask about the whole PR", systemImage: "xmark") { session.askAnchor = nil }
+                    Button("Ask about the whole PR", systemImage: AppIcon.close.symbol) { session.askAnchor = nil }
                         .labelStyle(.iconOnly)
                         .font(.appCaption)
                         .foregroundStyle(.secondary)

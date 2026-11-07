@@ -71,7 +71,16 @@ public enum AppIcon: String {
     case bigger = "arrow.up.left.and.arrow.down.right"
     case scanCode = "qrcode.viewfinder"
     case samples = "sparkles.rectangle.stack"
+    case settings = "gearshape"
+
+    // A PR's page: asking AI, its checks, what people wrote.
+    case askAI = "questionmark.bubble"
+    case required = "asterisk"
+    case openExternally = "arrow.up.right"
+    case taskDone = "checkmark.square.fill"
+    case taskOpen = "square"
     case fold = "chevron.down"
+    case close = "xmark"
 
     // Actions.
     case refresh = "arrow.clockwise"

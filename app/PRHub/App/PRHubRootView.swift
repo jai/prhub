@@ -102,7 +102,7 @@ private struct PRHubTabs: View {
             Tab("PRs", systemImage: "arrow.triangle.pull", value: PRHubTab.prs) {
                 PRKitRoot(environment.prs)
             }
-            Tab("Settings", systemImage: "gearshape", value: PRHubTab.settings) {
+            Tab("Settings", systemImage: AppIcon.settings.symbol, value: PRHubTab.settings) {
                 PRHubSettingsView(environment: environment, endSample: endSample)
             }
         }

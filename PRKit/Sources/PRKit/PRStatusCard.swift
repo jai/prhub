@@ -150,7 +150,7 @@ struct PRStatusCard: View {
 
         /// What a list says about the same thing, in the same words, symbol and colour.
         init(_ mark: PrStatusMark?) {
-            self.init(mark?.symbol ?? "questionmark.circle", mark?.tone.color ?? .secondary, mark?.text ?? "Unknown")
+            self.init(mark?.symbol ?? AppIcon.unknown.symbol, mark?.tone.color ?? .secondary, mark?.text ?? "Unknown")
         }
     }
 
@@ -231,14 +231,14 @@ struct PRStatusCard: View {
                     .font(.appCaption)
                     .lineLimit(1)
                 if check.required != false {
-                    Image(systemName: "asterisk")
+                    Image(AppIcon.required)
                         .font(.appCaption2)
                         .imageScale(.small)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
                 if check.url != nil {
-                    Image(systemName: "arrow.up.right")
+                    Image(AppIcon.openExternally)
                         .font(.appCaption2)
                         .foregroundStyle(.secondary)
                 }

@@ -484,10 +484,12 @@ detour (Ask AI, Delete account).
 
 ## Checking
 
-- `scripts/design-lint.sh` (or `make -C app design-lint`): no font size, colour, padding, gap, corner or animation
-  typed in a view outside PRKitDesign. CI's design job runs it with `make -C app design-check`. A real exception
-  carries `// design-lint: allow <why>` on its line or the line above; a file waiting on other work is listed in
-  `scripts/design-lint-allow.txt` with its reason.
+- `scripts/design-lint.sh` (or `make -C app design-lint`): no font size, colour, padding, gap, corner, animation or SF
+  Symbol name typed in a view outside PRKitDesign; a symbol is its meaning in `AppIcon`. CI's design job runs it with
+  `make -C app design-check`. A real exception carries `// design-lint: allow <why>` on its line or the line above; a
+  file waiting on other work is listed in `scripts/design-lint-allow.txt` with its reason, or with `[symbols]` to be
+  let off that one rule. AppIcon's raw values are unique, so the compiler refuses two meanings on one symbol: give the
+  new meaning its own symbol, or use the existing case if it is the same meaning.
 - `make -C app ui-test` writes a picture of every screen in the feature map, in light, dark and large text, to
   `app/build/screenshots` (CI uploads them). Look at them before calling UI work done; an agent reads the images, it
   doesn't count on a script to judge them.

@@ -186,9 +186,8 @@ struct PRNavigator: View {
 
     private var filesFoot: some View {
         let changedOnly = session.changedLinesOnly
-        let symbol = "line.3.horizontal.decrease.circle"
         return VStack(alignment: .leading, spacing: Space.sm) {
-            Button("Changed lines only", systemImage: changedOnly ? "\(symbol).fill" : symbol) {
+            Button("Changed lines only", systemImage: (changedOnly ? AppIcon.viewFilterOn : AppIcon.viewFilter).symbol) {
                 session.setChangedLinesOnly(!changedOnly)
             }
             .buttonStyle(PRButtonStyle(.secondary))
@@ -228,7 +227,7 @@ struct PRKeyLineNote: View {
                 .font(.appFootnote)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier("key-line-note")
-            Button("Close", systemImage: "xmark", action: close)
+            Button("Close", systemImage: AppIcon.close.symbol, action: close)
                 .labelStyle(.iconOnly)
                 .font(.appCaption)
                 .foregroundStyle(.secondary)

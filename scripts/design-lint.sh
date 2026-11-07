@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# design-lint.sh — fails if view code types a font size, colour, padding, gap, corner or animation that DESIGN.md's
-# tokens own. Run it before every push; CI runs it too.
+# design-lint.sh — fails if view code types a font size, colour, padding, gap, corner, animation or SF Symbol name that
+# DESIGN.md's tokens and AppIcon own. Run it before every push; CI runs it too.
 #
 #   scripts/design-lint.sh [path ...]     (default: PRKit/Sources/PRKit and app/PRHub)
 #
 # PRKit/Sources/PRKitDesign is where the values live, so it is never scanned. A line may keep a literal with a reason
 # on it or on the line above: `// design-lint: allow <why>`. A whole file may wait on the list in
-# scripts/design-lint-allow.txt, one path and its reason per line. What to use instead is DESIGN.md's "Making a change".
+# scripts/design-lint-allow.txt, one path and its reason per line; `path [symbols] reason` lets it off one rule only.
+# What to use instead is DESIGN.md's "Making a change".
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -21,12 +22,16 @@ use strict;
 use warnings;
 
 my ($allow_file, @files) = @ARGV;
-my %allowed;
+my (%allowed, %allowed_rule);
 if (open my $fh, "<", $allow_file) {
     while (<$fh>) {
         next if /^\s*(#|$)/;
-        my ($path) = split /\s+/;
-        $allowed{$path} = 1;
+        my ($path, $scope) = split /\s+/;
+        if (defined $scope && $scope =~ /^\[(\w+)\]$/) {
+            $allowed_rule{$path}{$1} = 1;
+        } else {
+            $allowed{$path} = 1;
+        }
     }
 }
 
@@ -34,20 +39,22 @@ my $colours = qr/(?:red|green|blue|orange|yellow|purple|pink|gray|grey|black|whi
 my $curves = qr/(?:easeInOut|easeIn|easeOut|linear|spring|snappy|smooth|bouncy|interpolatingSpring|default)/;
 my $number = qr/-?(?:\d*\.)?\d*[1-9]\d*(?:\.\d+)?/;
 my @rules = (
-    [qr/\.system\(\s*size:|\.custom\(|(?:UI|NS)Font\.(?:systemFont|monospacedSystemFont)\(ofSize:\s*\d/,
+    ["font", qr/\.system\(\s*size:|\.custom\(|(?:UI|NS)Font\.(?:systemFont|monospacedSystemFont)\(ofSize:\s*\d/,
         "a font size: use an AppFont style (.appFootnote, .app(.caption, design: .monospaced))"],
-    [qr/\.font\(\s*\.(?:largeTitle|title|title2|title3|headline|subheadline|body|callout|footnote|caption|caption2)\b/,
+    ["font", qr/\.font\(\s*\.(?:largeTitle|title|title2|title3|headline|subheadline|body|callout|footnote|caption|caption2)\b/,
         "a system text style: use its AppFont style (.appFootnote)"],
-    [qr/(?:Color|UIColor|NSColor)\(\s*(?:red|white|hue|srgbRed|displayP3Red):|#colorLiteral|Color\(\s*"/,
+    ["colour", qr/(?:Color|UIColor|NSColor)\(\s*(?:red|white|hue|srgbRed|displayP3Red):|#colorLiteral|Color\(\s*"/,
         "a colour: use its role (Color.toneGood, .inkQuiet, .groundCard) from AppColor.swift"],
-    [qr/(?:\bColor|(?:UI|NS)Color)\.$colours\b|(?:\bColor\.)?\bsystem(?:Red|Green|Blue|Orange|Yellow|Purple|Pink|Gray|Teal|Indigo|Mint|Cyan|Brown)\b|(?:foregroundStyle|foregroundColor|tint|fill|stroke|strokeBorder|background)\(\s*\.$colours\b|tint:\s*\.$colours\b/,
+    ["colour", qr/(?:\bColor|(?:UI|NS)Color)\.$colours\b|(?:\bColor\.)?\bsystem(?:Red|Green|Blue|Orange|Yellow|Purple|Pink|Gray|Teal|Indigo|Mint|Cyan|Brown)\b|(?:foregroundStyle|foregroundColor|tint|fill|stroke|strokeBorder|background)\(\s*\.$colours\b|tint:\s*\.$colours\b/,
         "a system colour: use its role (Color.toneBad, .onAccent) from AppColor.swift"],
-    [qr/\.padding\(\s*(?:(?:\.\w+|\[[^\]]*\])\s*,\s*)?$number\s*\)|\bspacing:\s*$number\b|EdgeInsets\([^)]*:\s*$number/,
+    ["space", qr/\.padding\(\s*(?:(?:\.\w+|\[[^\]]*\])\s*,\s*)?$number\s*\)|\bspacing:\s*$number\b|EdgeInsets\([^)]*:\s*$number/,
         "a padding or gap: use a Space step, or the part'"'"'s measure in PRKitDesign/Metrics.swift"],
-    [qr/cornerRadius:\s*$number\b|\.cornerRadius\(\s*$number/,
+    ["corner", qr/cornerRadius:\s*$number\b|\.cornerRadius\(\s*$number/,
         "a corner: use Radius or the part'"'"'s measure in PRKitDesign/Metrics.swift"],
-    [qr/(?:withAnimation|\.animation|Transaction\(animation:)\s*\(?\s*(?:Animation)?\.$curves\b|\bAnimation\.$curves\b|withAnimation\s*\{/,
+    ["motion", qr/(?:withAnimation|\.animation|Transaction\(animation:)\s*\(?\s*(?:Animation)?\.$curves\b|\bAnimation\.$curves\b|withAnimation\s*\{/,
         "an animation: use AppMotion (.fold, .swap, .press, .screen)"],
+    ["symbols", qr/\b(?:systemName|systemImage):\s*[^,)]*"|\bsymbol\s*=\s*"/,
+        "an SF Symbol'"'"'s name: use its meaning from AppIcon (PRKitDesign/AppIcon.swift), Image(AppIcon.x) or .x.symbol"],
 );
 
 my $failures = 0;
@@ -61,7 +68,8 @@ for my $file (@files) {
         next if $allowed_here;
         (my $code = $line) =~ s{//.*$}{};
         for my $rule (@rules) {
-            my ($pattern, $use) = @$rule;
+            my ($name, $pattern, $use) = @$rule;
+            next if $allowed_rule{$file}{$name};
             if ($code =~ $pattern) {
                 chomp $line;
                 $line =~ s/^\s+//;
@@ -77,5 +85,5 @@ if ($failures) {
         "\"// design-lint: allow <why>\".\n";
     exit 1;
 }
-print "design-lint: no literals outside PRKitDesign\n";
+print "design-lint: no literals or symbol names outside PRKitDesign\n";
 ' "$allow_file" $files

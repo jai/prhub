@@ -4,3 +4,17 @@
 PRKit/Sources/PRKit/DiffStyle.swift diff colours not yet tokens
 PRKit/Sources/PRKit/Phone/DiffTableCells.swift diff colours not yet tokens
 PRKit/Sources/PRKit/Mac/DiffTableCells+Mac.swift diff colours not yet tokens
+# Symbol names only ([symbols]). The navigation rework has these files open; their symbols move to AppIcon when it lands
+# (Ask AI to AppIcon.askAI, the PRs tab to its PR icon).
+PRKit/Sources/PRKit/PRScreen.swift [symbols] navigation rework in flight
+PRKit/Sources/PRKit/PRDiffPage.swift [symbols] navigation rework in flight
+PRKit/Sources/PRKit/PRDescriptionView.swift [symbols] navigation rework in flight
+PRKit/Sources/PRKit/PRsView.swift [symbols] navigation rework in flight
+PRKit/Sources/PRKit/Lists/PrListBlock.swift [symbols] navigation rework in flight
+PRKit/Sources/PRKit/Parts/PlatformModifiers.swift [symbols] navigation rework in flight
+app/PRHub/App/PRHubRootView.swift [symbols] the PRs tab takes the PR icon the navigation rework adds to AppIcon
+# A symbol another meaning already owns: AppIcon's raw values are unique, so each needs its own symbol or a ruling that
+# the two are one meaning.
+PRKit/Sources/PRKit/PRThreadCard.swift [symbols] the viewed mark is checkmark.circle.fill, AppIcon.ok's; it moves with the diff cells' mark
+PRKit/Sources/PRKit/Lists/LinearParts.swift [symbols] Linear's own state marks; checkmark.circle.fill and xmark.circle.fill are AppIcon.ok's and .checksFail's
+PRKit/Sources/PRKit/Parts/Composer.swift [symbols] send is arrow.up, AppIcon.moveUp's

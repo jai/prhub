@@ -138,7 +138,7 @@ public struct PRChevron: View {
     public let isCollapsed: Bool
 
     public var body: some View {
-        Image(systemName: "chevron.down")
+        Image(AppIcon.fold)
             .font(.appCaption.weight(.semibold))
             .foregroundStyle(.secondary)
             .rotationEffect(.degrees(isCollapsed ? -90 : 0))
@@ -205,7 +205,7 @@ public struct InlineComposer: View {
             }
             HStack(spacing: Space.sm) {
                 if let ask {
-                    Button("Ask AI", systemImage: "bubble.left.and.text.bubble.right") { ask(trimmed) }
+                    Button("Ask AI", systemImage: AppIcon.askAI.symbol) { ask(trimmed) }
                         .labelStyle(.iconOnly)
                         .buttonStyle(PRButtonStyle(.secondary))
                         .accessibilityLabel("Ask AI")

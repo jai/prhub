@@ -80,8 +80,8 @@ public struct PrStateIcon: View {
         case .draft: Image("GitHubPRDraft")
         case .merged: Image("GitHubPRMerged")
         case .closed: Image("GitHubPRClosed")
-        case .resolving: Image(systemName: "clock")
-        case .notFound: Image(systemName: "questionmark.circle")
+        case .resolving: Image(AppIcon.waiting)
+        case .notFound: Image(AppIcon.unknown)
         }
     }
 

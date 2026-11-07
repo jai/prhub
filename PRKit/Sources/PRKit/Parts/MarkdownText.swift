@@ -68,7 +68,7 @@ public struct MarkdownText: View {
                 if let onCheckbox, let index = checkboxes[block.id], let isChecked = Self.checkedState(block) {
                     Button { onCheckbox(index, !isChecked) } label: {
                         HStack(alignment: .firstTextBaseline, spacing: MarkdownStyle.markerGap) {
-                            Image(systemName: isChecked ? "checkmark.square.fill" : "square")
+                            Image(isChecked ? AppIcon.taskDone : AppIcon.taskOpen)
                                 .foregroundStyle(isChecked ? Color.accentColor : Color.secondary)
                             // After the box and the space that follows it, so wrapped lines line up with the first.
                             let box = block.content.index(afterCharacter: block.content.startIndex)
