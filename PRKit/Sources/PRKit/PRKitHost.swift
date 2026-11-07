@@ -38,11 +38,14 @@ public struct PRKitConfiguration: Equatable, Sendable {
     public var orgDefault: PROrgDefault
     /// The GitHub login the Worker acts as: who a sample PR's review is from. Nil where it is not known.
     public var login: String?
+    /// What the PR list says once the Worker has synced and has no PRs; nil says nothing.
+    public var emptyHint: PREmptyHint?
 
-    public init(features: Set<Feature>, orgDefault: PROrgDefault, login: String? = nil) {
+    public init(features: Set<Feature>, orgDefault: PROrgDefault, login: String? = nil, emptyHint: PREmptyHint? = nil) {
         self.features = features
         self.orgDefault = orgDefault
         self.login = login
+        self.emptyHint = emptyHint
     }
 
     /// Every feature, and every owner in the list until someone picks a filter.
@@ -52,6 +55,22 @@ public struct PRKitConfiguration: Equatable, Sendable {
 
     public func isOn(_ feature: Feature) -> Bool {
         features.contains(feature)
+    }
+}
+
+/// The host's words for an empty PR list, and a link that may fill it: PRHub's hosted service points at installing its
+/// GitHub App.
+public struct PREmptyHint: Equatable, Sendable {
+    public var title: String
+    public var message: String
+    public var linkTitle: String
+    public var link: URL
+
+    public init(title: String, message: String, linkTitle: String, link: URL) {
+        self.title = title
+        self.message = message
+        self.linkTitle = linkTitle
+        self.link = link
     }
 }
 

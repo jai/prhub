@@ -167,6 +167,10 @@ struct PRsView: View {
             .overlay {
                 if model.rows.isEmpty, let message = model.errorMessage {
                     ContentUnavailableView("No PRs", systemImage: "arrow.triangle.pull", description: Text(message))
+                } else if model.rows.isEmpty, model.workerSyncedAt != nil || model.samples != nil,
+                          let hint = model.configuration.emptyHint {
+                    emptyHint(hint)
+                        .transition(.opacity)
                 } else if !model.rows.isEmpty, rows(on: page).isEmpty, !showsMergedHere || model.mergedError[page] == nil {
                     ContentUnavailableView(
                         "No PRs", systemImage: "line.3.horizontal.decrease",
@@ -250,6 +254,19 @@ struct PRsView: View {
                 showsMerged: showsMergedBinding
             )
                 .presentationCompactAdaptation(.popover)
+        }
+    }
+
+    /// The host's words for a list GitHub left empty, and its link (`PRKitConfiguration.emptyHint`).
+    private func emptyHint(_ hint: PREmptyHint) -> some View {
+        ContentUnavailableView {
+            Label(hint.title, systemImage: "arrow.triangle.pull")
+        } description: {
+            Text(hint.message)
+        } actions: {
+            Link(hint.linkTitle, destination: hint.link)
+                .buttonStyle(PRButtonStyle(.primary))
+                .accessibilityIdentifier("pr-empty-hint-link")
         }
     }
 
