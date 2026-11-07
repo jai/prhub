@@ -83,6 +83,10 @@ final class PRHubScreenshotTests: XCTestCase {
         XCTAssertTrue(scroll(to: delete))
         app.collectionViews.firstMatch.swipeUp()
         try picture("10-account-bottom", look)
+        // The diff font's section sits under it, so the bottom of Settings can be past the button.
+        for _ in 0..<8 where !(delete.exists && delete.isHittable) {
+            app.collectionViews.firstMatch.swipeDown(velocity: .slow)
+        }
         delete.tap()
         XCTAssertTrue(app.buttons["prhub-delete-account-confirm"].waitForExistence(timeout: 5))
         try picture("11-delete-account", look)

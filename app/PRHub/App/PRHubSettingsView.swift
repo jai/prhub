@@ -5,8 +5,8 @@ import UIKit
 
 /// PRHub's one other screen. Signed in with GitHub: the account, the GitHub App's installs, the person's own
 /// Anthropic key, Sign out and Delete Account. Paired with a pr-worker: that Worker, what it serves
-/// (`GET /device/config`) and Disconnect. Over the samples: what they are, and the way back to onboarding. The version
-/// always.
+/// (`GET /device/config`) and Disconnect. Over the samples: what they are, and the way back to onboarding. The diff's
+/// font and the version always.
 struct PRHubSettingsView: View {
     let environment: PRHubEnvironment
     /// Back from the samples to onboarding; nil over a paired Worker.
@@ -27,6 +27,7 @@ struct PRHubSettingsView: View {
                 } else {
                     workerSections
                 }
+                DiffFontSection()
                 Section("About") {
                     LabeledContent("Version", value: AppIdentity.appVersion())
                 }

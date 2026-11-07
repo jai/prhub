@@ -1,5 +1,6 @@
 #if DEBUG
 import Foundation
+import PRKit
 import Synchronization
 
 /// Debug builds only: the launch arguments the UI tests use to put PRHub on screen with no Worker.
@@ -13,9 +14,15 @@ import Synchronization
 /// - `-PRHubPaired`: the PRs and Settings over the sample PRs as if paired, every AI feature on. With `-PRHubNoAI` the
 ///   Worker has no model key; with `-PRHubSettings` it opens on Settings; with `-PRHubLongDiff` For review starts with a
 ///   PR whose one file is longer than the screen, for the diff's bars.
+///
+/// Every one starts at the default diff font, whatever an earlier run chose in Settings; `-prkit.diffFont face:size`
+/// sets one for the run.
 enum PRHubScreenshots {
     @MainActor static func environment() -> PRHubEnvironment? {
         let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains(where: { $0.hasPrefix("-PRHub") }) {
+            UserDefaults.standard.removeObject(forKey: DiffFont.storageKey)
+        }
         if arguments.contains("-PRHubFirstRun") {
             return firstRun()
         }
