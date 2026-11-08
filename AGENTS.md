@@ -113,6 +113,8 @@ Connect API cannot make a product.
    Workflows**, edit **PRHub Release**:
    - **Post-Actions → + → TestFlight Internal Testing**, artifact **iOS**, group **Internal**.
    - **Post-Actions → + → TestFlight External Testing**, artifact **iOS**, group **Public**.
+   - Enable the workflow if it is disabled. `release/ship.sh` ships locally while no enabled PRHub Release workflow
+     exists.
 5. Build numbers: App Store Connect → PRHub → **Xcode Cloud → Settings → Build Number**. Make sure **Next Build
    Number** is higher than TestFlight's highest PRHub build. `release/next-build.sh` reads both numbers.
 6. Delete or disable any other workflow that archives PRHub, so that only a release commit makes a build.
