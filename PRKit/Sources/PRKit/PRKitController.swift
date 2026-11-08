@@ -14,7 +14,7 @@ public final class PRKitController {
 
     public init(host: some PRKitHost) {
         let client = PRViewerClient(access: host.access, isInForeground: { await host.isInForeground() })
-        model = PRsModel(client: client, samples: host.samples)
+        model = PRsModel(client: client, samples: host.samples, directory: host.mirrorDirectory)
         launchOptions = host.launchOptions
         model.outboxSource = { host.outbox }
         model.apnsEnvironment = host.apnsEnvironment
@@ -58,7 +58,13 @@ public final class PRKitController {
     /// Shows this PR on the PRs tab, over nothing else, with its diff on top when the link asks for it (GitHub's
     /// `/files`): Back from the diff is the PR. The host selects the tab.
     public func open(_ link: PRLink) {
-        navigation.pendingLink = link
+        navigation.pending = PRPendingOpen(link: link, source: .link, pushed: nil)
+    }
+
+    /// A tapped alert's PR (`PRPush`), over nothing else on the PRs tab. `row` is the row the alert carried
+    /// (`PRPush.row(in:)`): the PR shows from the phone when its files are here, and is read at that version when not.
+    public func open(alert ref: PullRequestRef, row: PullRequestRow?) {
+        navigation.pending = PRPendingOpen(link: PRLink(ref: ref), source: .push, pushed: row)
     }
 
     /// Shows the PR that `text` names — a github.com PR link or `owner/repo#N` (`PRLinkParser`) — and says whether
@@ -99,6 +105,14 @@ public final class PRKitController {
     }
 }
 
+/// A PR to show on the PRs tab, and how it was asked for.
+struct PRPendingOpen: Equatable {
+    let link: PRLink
+    let source: PROpenReport.Source
+    /// The row an alert carried.
+    let pushed: PullRequestRow?
+}
+
 /// What the PRs tab has open. Held by the controller, so nothing a tab does to its view can drop an open PR, and the same
 /// screens show whichever way the tab is laid out: on a narrow screen a stack over the list; on a wide one the first PR
 /// beside the list, with the rest stacked over it.
@@ -106,8 +120,8 @@ public final class PRKitController {
 @Observable
 final class PRNavigation {
     var routes: [PRRoute] = []
-    /// A PR opened from a link anywhere in the app: the PRs tab shows it, then sets this back to `nil`.
-    var pendingLink: PRLink?
+    /// A PR opened from a link or an alert anywhere in the app: the PRs tab shows it, then sets this back to `nil`.
+    var pending: PRPendingOpen?
 
     /// The PR beside the list on a wide screen.
     var selected: PRSession? {

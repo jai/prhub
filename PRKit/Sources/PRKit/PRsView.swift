@@ -20,10 +20,10 @@ struct PRsView: View {
                     PRDiffShortcuts(session: session)
                 }
             }
-            .onChange(of: navigation.pendingLink, initial: true) { _, link in
-                if let link {
-                    navigation.pendingLink = nil
-                    open(link)
+            .onChange(of: navigation.pending, initial: true) { _, pending in
+                if let pending {
+                    navigation.pending = nil
+                    open(pending)
                 }
             }
             .task {
@@ -34,7 +34,7 @@ struct PRsView: View {
                 openBenchmark()
                 if let ref = launchOptions.linkAfterOpening {
                     try? await Task.sleep(for: .seconds(2))
-                    navigation.pendingLink = PRLink(ref: ref)
+                    navigation.pending = PRPendingOpen(link: PRLink(ref: ref), source: .push, pushed: nil)
                 }
             }
     }
@@ -61,8 +61,9 @@ struct PRsView: View {
     }
 
     /// A link from a notification: there is no stack of its own to go back to, so it shows here, over nothing else.
-    private func open(_ link: PRLink) {
-        navigation.routes = PRRoute.opening(model.session(for: link.ref), showsDiff: link.showsDiff)
+    private func open(_ pending: PRPendingOpen) {
+        let session = model.session(for: pending.link.ref, pushed: pending.pushed, source: pending.source)
+        navigation.routes = PRRoute.opening(session, showsDiff: pending.link.showsDiff)
     }
 
     /// A benchmark or UI test's launch: the row, on its diff when `-prPage Diff` asks.
@@ -303,11 +304,18 @@ struct PRsList: View {
         )
         .notUpdated(model.notUpdated.contains(row.id))
         .selected(selected == ref)
+        .environment(\.openURL, OpenURLAction { url in
+            guard let link = PRLink(url: url), let opener else {
+                return .systemAction
+            }
+            opener.open(link, source: .list)
+            return .handled
+        })
         PRSwipeRow(
             leading: opener.map { opener in
                 PRSwipeAction(
                     title: "Review changes", icon: .reviewChanges, id: "pr-swipe-review", tone: .accent, inMenu: false
-                ) { opener.review(ref) }
+                ) { opener.review(ref, source: .list) }
             },
             trailing: row.isReviewRequest ? PRSwipeAction(
                 title: row.status?.review == "approved" ? "Approved · Remove me" : "Remove me", icon: .dismiss,

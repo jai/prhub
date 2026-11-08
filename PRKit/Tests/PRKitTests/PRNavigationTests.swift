@@ -18,7 +18,7 @@ struct PRNavigationTests {
         #expect(PRLinkParser.link(in: "https://github.com/acme/api/pull/7")?.showsDiff == false)
         #expect(PRLinkParser.link(in: "acme/api#7") == PRLink(ref: ref))
         #expect(kit.open(text: "https://github.com/acme/api/pull/7/files"))
-        #expect(kit.navigation.pendingLink == PRLink(ref: ref, showsDiff: true))
+        #expect(kit.navigation.pending?.link == PRLink(ref: ref, showsDiff: true))
     }
 
     @Test func theReviewShortcutPushesThePRWithItsDiffOnTopAndKeyLinesOpen() {

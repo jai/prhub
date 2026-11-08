@@ -41,6 +41,16 @@ public enum PRPush: Equatable, Sendable {
         }
     }
 
+    /// The PR's row as `GET /prs` lists it, which an alert carries (docs/api.md, "Alerts"), so the phone can fetch its
+    /// stored detail and diff before the tap: nil when the push has none or it is not a row.
+    public static func row(in userInfo: [AnyHashable: Any]) -> PullRequestRow? {
+        guard let row = userInfo["row"], JSONSerialization.isValidJSONObject(row),
+              let data = try? JSONSerialization.data(withJSONObject: row) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(PullRequestRow.self, from: data)
+    }
+
     /// The PR an alert opens; nil for the wake.
     public var openedPullRequest: PullRequestRef? {
         if case let .alert(_, pullRequest) = self {

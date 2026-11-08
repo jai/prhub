@@ -80,13 +80,13 @@ struct PullRequestOpener {
     let model: PRsModel
     let stack: PRStack
 
-    func open(_ link: PRLink) {
-        stack.show(PRRoute.opening(model.session(for: link.ref), showsDiff: link.showsDiff))
+    func open(_ link: PRLink, source: PROpenReport.Source = .link) {
+        stack.show(PRRoute.opening(model.session(for: link.ref, source: source), showsDiff: link.showsDiff))
     }
 
     /// The Review shortcut: the PR with its diff on top, and the panel open on its key lines.
-    func review(_ ref: PullRequestRef) {
-        let session = model.session(for: ref)
+    func review(_ ref: PullRequestRef, source: PROpenReport.Source = .link) {
+        let session = model.session(for: ref, source: source)
         session.opensPanelOnArrival = true
         stack.show(PRRoute.opening(session, showsDiff: true))
     }

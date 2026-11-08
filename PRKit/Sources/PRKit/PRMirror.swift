@@ -30,6 +30,9 @@ actor PRMirror {
         var attempts = 5
         /// How long a wake waits for downloads before it publishes what it has.
         var deadline: Duration = .seconds(20)
+        /// How long prune leaves a file no list names, such as an alert's PR fetched before the list named it: longer
+        /// than an alert waits to be tapped and synced.
+        var keepsUnlisted: Duration = .seconds(30 * 60)
     }
 
     nonisolated let directory: URL
@@ -245,14 +248,20 @@ actor PRMirror {
         await landed(generation, rows, failedRows())
     }
 
-    /// Keeps what the newest list and the shown rows name, and every file still downloading. Anything else — a file
-    /// of an old revision, a temporary file left by a crash — goes.
+    /// Keeps what the newest list and the shown rows name, every file still downloading, and any file younger than
+    /// `keepsUnlisted`: an alert's PR that the Notification Service Extension fetched (`PRPushPrefetch`) before the list
+    /// named it. Anything else — a file of an old revision, a temporary file left by a crash — goes.
     private func prune() {
         let wanted = Set((latest + shown).flatMap(\.files))
-            .union(inFlight.keys).union(ending.values).union([Self.rowsFile])
+            .union(inFlight.keys).union(ending.values).union([Self.rowsFile, PRPushPrefetchLog.fileName])
         let manager = FileManager.default
-        for name in (try? manager.contentsOfDirectory(atPath: directory.path())) ?? [] where !wanted.contains(name) {
-            try? manager.removeItem(at: directory.appending(path: name))
+        let keys: Set<URLResourceKey> = [.contentModificationDateKey]
+        let files = (try? manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: Array(keys))) ?? []
+        for file in files where !wanted.contains(file.lastPathComponent) {
+            let modified = (try? file.resourceValues(forKeys: keys))?.contentModificationDate ?? .distantPast
+            if Date.now.timeIntervalSince(modified) >= Double(policy.keepsUnlisted.components.seconds) {
+                try? manager.removeItem(at: file)
+            }
         }
     }
 

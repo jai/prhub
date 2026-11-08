@@ -89,7 +89,7 @@ struct PRMirrorQueueTests {
 
     /// Quick retries, so a test that fails a file several times takes a moment.
     private static let quick = PRMirror.RetryPolicy(
-        first: .milliseconds(10), longest: .milliseconds(40), attempts: 3, deadline: .seconds(5)
+        first: .milliseconds(10), longest: .milliseconds(40), attempts: 3, deadline: .seconds(5), keepsUnlisted: .zero
     )
 
     /// A test's own mirror folder: another suite's sync prunes the shared one.

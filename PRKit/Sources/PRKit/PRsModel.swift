@@ -313,24 +313,48 @@ final class PRsModel {
         try? await client.post(path, body)
     }
 
-    /// What a tap pushes. The PR is read and parsed here, on the main thread, so its time counts from the tap.
-    func session(for row: PullRequestRow) -> PRSession {
+    /// What a tap pushes. The PR is read and parsed here, on the main thread, so its time counts from the tap. Whatever
+    /// the phone holds of it shows at once; `newer`, a row it does not hold yet, is read behind it from the Worker's
+    /// stored copy. With nothing on the phone the screen reads `newer`, else `row`, at their versions.
+    func session(
+        for row: PullRequestRow, source: PROpenReport.Source = .list, newer: PullRequestRow? = nil
+    ) -> PRSession {
         let tappedAt = CACurrentMediaTime()
-        onEvent(.opened(PullRequestRef(repo: row.repo, number: row.number)))
+        let ref = PullRequestRef(repo: row.repo, number: row.number)
+        onEvent(.opened(ref))
+        let content = localContent(row)
+        let opening = PROpening(
+            source: source, cache: content == nil ? .miss : newer == nil ? .hit : .stale,
+            reads: content == nil ? newer ?? row : newer
+        )
         return PRSession(
-            ref: PullRequestRef(repo: row.repo, number: row.number), title: row.title, content: localContent(row),
-            keyLines: localKeyLines(row), tappedAt: tappedAt, model: self
+            ref: ref, title: newer?.title ?? row.title, content: content, keyLines: localKeyLines(row),
+            tappedAt: tappedAt, model: self, opening: opening
         )
     }
 
-    /// A PR named by a link: from the phone if it is on a list, else the session reads it live.
-    func session(for ref: PullRequestRef) -> PRSession {
-        let row = rows.first { $0.repo.caseInsensitiveCompare(ref.repo) == .orderedSame && $0.number == ref.number }
-        if let row {
-            return session(for: row)
+    /// A PR named by a link or an alert: from the phone if it holds it. `pushed` is the row an alert carried (docs/api.md,
+    /// "Alerts"), its files on the phone when the Notification Service Extension fetched them. Else the session reads
+    /// the PR from the Worker: `pushed` at its version, or, for a PR on no list, live.
+    func session(
+        for ref: PullRequestRef, pushed: PullRequestRow? = nil, source: PROpenReport.Source = .link
+    ) -> PRSession {
+        let isThisPR = { (row: PullRequestRow) in
+            row.repo.caseInsensitiveCompare(ref.repo) == .orderedSame && row.number == ref.number
+        }
+        let listed = rows.first(where: isThisPR)
+        if let pushed, isThisPR(pushed), mirror.isLocal(pushed) || listed == nil {
+            return session(for: pushed, source: source)
+        }
+        if let listed {
+            let isNewer = pushed.map { isThisPR($0) && ($0.detail != listed.detail || $0.revision != listed.revision) }
+            return session(for: listed, source: source, newer: isNewer == true ? pushed : nil)
         }
         onEvent(.opened(ref))
-        return PRSession(ref: ref, title: nil, content: nil, tappedAt: CACurrentMediaTime(), model: self)
+        return PRSession(
+            ref: ref, title: nil, content: nil, tappedAt: CACurrentMediaTime(), model: self,
+            opening: PROpening(source: source, cache: .miss, reads: nil)
+        )
     }
 
     private func localKeyLines(_ row: PullRequestRow) -> PRKeyLines? {
@@ -522,18 +546,46 @@ final class PRsModel {
         refusedWrite = nil
     }
 
-    /// A PR named by a link and on neither list: GitHub, through the Worker, now.
-    func fetchLive(_ ref: PullRequestRef) async throws -> PRContent {
-        let detail = try PullRequestDetail.decode(await client.liveDetail(ref))
-        do {
-            return try await PRContent(detail: detail, document: DiffDocument(data: client.liveDiff(ref)))
-        } catch PRViewerError.status(406) {
-            return PRContent(detail: detail, document: nil)
-        }
+    /// A PR the phone does not hold, its detail and diff side by side: `row` at its version, which the Worker serves
+    /// from its stored copy, else (a PR on no list) GitHub, through the Worker, now. With how long the Worker took and
+    /// how long reading what came took.
+    func fetch(_ ref: PullRequestRef, row: PullRequestRow?) async throws -> PRFetched {
+        let started = ContinuousClock.now
+        async let detail = readDetail(ref, row: row)
+        async let diff = readDiff(ref, row: row)
+        let (detailData, diffData) = try await (detail, diff)
+        let arrived = ContinuousClock.now
+        let content = PRContent(detail: try PullRequestDetail.decode(detailData), document: diffData.map(DiffDocument.init))
+        return PRFetched(
+            content: content, networkMilliseconds: (arrived - started).milliseconds,
+            decodeMilliseconds: (ContinuousClock.now - arrived).milliseconds
+        )
     }
 }
 
 extension PRsModel {
+    private func readDetail(_ ref: PullRequestRef, row: PullRequestRow?) async throws -> Data {
+        if let row {
+            return try await client.detail(row)
+        }
+        return try await client.liveDetail(ref)
+    }
+
+    /// Nil when GitHub won't give a diff this big.
+    private func readDiff(_ ref: PullRequestRef, row: PullRequestRow?) async throws -> Data? {
+        if row?.hasDiff == false {
+            return nil
+        }
+        do {
+            if let row {
+                return try await client.diff(row)
+            }
+            return try await client.liveDiff(ref)
+        } catch PRViewerError.status(406) {
+            return nil
+        }
+    }
+
     /// The Worker's list, with the rows whose files are already here on screen at once. False when the Worker didn't
     /// answer: its words are on screen instead.
     private func list(generation: Int, retry: Bool) async -> Bool {
@@ -604,6 +656,28 @@ private struct PRSyncEvent: Encodable, Sendable {
     let rows: Int
     let changed: [String]
     let complete: Bool
+}
+
+/// A PR read from the Worker, and how long that took.
+struct PRFetched: Sendable {
+    let content: PRContent
+    let networkMilliseconds: Int
+    let decodeMilliseconds: Int
+}
+
+/// How a session opened: what opened it, what the phone had, and the row its screen reads, if any.
+struct PROpening: Sendable {
+    let source: PROpenReport.Source
+    let cache: PROpenReport.Cache
+    /// What the screen reads: with nothing on the phone, its content; with an older copy, the newer one behind it. Nil:
+    /// nothing to read (a hit), or a PR on no list, read live.
+    let reads: PullRequestRow?
+}
+
+extension Duration {
+    var milliseconds: Int {
+        Int((Double(components.seconds) * 1000 + Double(components.attoseconds) / 1e15).rounded())
+    }
 }
 
 /// One tap on a PR: how long the diff took and whether it was already on the phone.

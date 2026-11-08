@@ -76,7 +76,12 @@ final class PRSession: Hashable {
     let folds = FoldSet()
     let parseMilliseconds: Int
     let isPreloaded: Bool
+    /// What opened it, what the phone had, and what its screen reads (`PRsModel.session`).
+    let opening: PROpening
+    private let tappedAt: CFTimeInterval
     private(set) var state: PRSessionState
+    /// Said once, when content first shows (`PRKitEvent.contentShown`).
+    private var hasReportedContent = false
     /// Line comments waiting for the review they will go out with.
     private(set) var drafts: [PRDraftComment]
     /// The diff has shown once: the timer counts from there, unless the PR opened on its diff.
@@ -142,12 +147,14 @@ final class PRSession: Hashable {
 
     init(
         ref: PullRequestRef, title: String?, content: PRContent?, keyLines: PRKeyLines? = nil,
-        tappedAt: CFTimeInterval, model: PRsModel
+        tappedAt: CFTimeInterval, model: PRsModel, opening: PROpening? = nil
     ) {
         self.ref = ref
         self.model = model
         rowTitle = title
         isPreloaded = content != nil
+        self.tappedAt = tappedAt
+        self.opening = opening ?? PROpening(source: .link, cache: content == nil ? .miss : .hit, reads: nil)
         let drafts = draftStore.load(ref)
         self.drafts = drafts
         let changedLinesOnly = UserDefaults.standard.bool(forKey: Self.changedLinesKey)
@@ -187,16 +194,30 @@ final class PRSession: Hashable {
         return nil
     }
 
-    /// Reads a PR the phone doesn't hold. A preloaded one has nothing to do here.
+    /// Reads a PR the phone doesn't hold. One the phone holds is on screen already, and when the phone holds an older
+    /// copy the newer one is read behind it and swapped in: the screen never waits while it has something to show.
     func loadIfNeeded() async {
-        guard case .reading = state else {
+        switch state {
+        case .reading:
+            await read()
+        case .ready:
+            reportContent(networkMilliseconds: 0, decodeMilliseconds: parseMilliseconds)
+            if opening.cache == .stale, let newer = opening.reads {
+                await refresh(to: newer)
+            }
+        case .failed:
             return
         }
+    }
+
+    private func read() async {
         do {
-            let content = try await model.fetchLive(ref)
+            let fetched = try await model.fetch(ref, row: opening.reads)
+            let content = fetched.content
                 .replacing(drafts: drafts, changedLinesOnly: changedLinesOnly, note: selectedKeyLine)
             viewedFiles = Set(content.detail.viewedFiles ?? [])
             withAnimation(AppMotion.swap) { state = .ready(content) }
+            reportContent(networkMilliseconds: fetched.networkMilliseconds, decodeMilliseconds: fetched.decodeMilliseconds)
         } catch is CancellationError {
             return
         } catch let error as URLError where error.code == .cancelled {
@@ -204,6 +225,30 @@ final class PRSession: Hashable {
         } catch {
             state = .failed(error.localizedDescription)
         }
+    }
+
+    /// The newer copy, over the one on screen. A failure leaves the older copy up: the next sync brings the new one.
+    private func refresh(to newer: PullRequestRow) async {
+        guard let fetched = try? await model.fetch(ref, row: newer), case .ready = state else {
+            return
+        }
+        let content = fetched.content
+            .replacing(drafts: drafts, changedLinesOnly: changedLinesOnly, note: selectedKeyLine)
+        viewedFiles = Set(content.detail.viewedFiles ?? [])
+        withAnimation(AppMotion.swap) { state = .ready(content) }
+    }
+
+    /// From the tap to content on screen, once (`PRKitEvent.contentShown`).
+    private func reportContent(networkMilliseconds: Int, decodeMilliseconds: Int) {
+        guard !hasReportedContent else {
+            return
+        }
+        hasReportedContent = true
+        model.onEvent(.contentShown(PROpenReport(
+            source: opening.source, cache: opening.cache,
+            timeToContentMilliseconds: Int(((CACurrentMediaTime() - tappedAt) * 1000).rounded()),
+            networkMilliseconds: networkMilliseconds, decodeMilliseconds: decodeMilliseconds
+        )))
     }
 
     func retry() async {

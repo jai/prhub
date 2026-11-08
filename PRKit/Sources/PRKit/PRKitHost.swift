@@ -23,6 +23,13 @@ public protocol PRKitHost: AnyObject, Sendable {
     func receive(_ event: PRKitEvent)
     /// A PR's files that failed to download or be written: for the host's event log.
     func log(_ line: String)
+    /// Where the PR mirror keeps its files (`PRMirrorLocation`): the app group's, so a Notification Service Extension
+    /// can prefetch an alert's PR (`PRPushPrefetch`). Nil: the app's caches.
+    var mirrorDirectory: URL? { get }
+}
+
+extension PRKitHost {
+    public var mirrorDirectory: URL? { nil }
 }
 
 /// The features the PR screens follow and the org filter's starting point. Agent Pager's is `everything`; PRHub's
@@ -112,4 +119,48 @@ public enum PRKitEvent: Equatable, Sendable {
     case reviewRequests(Int)
     /// GitHub refused a write after its screen had gone. The PRs tab shows these words until they are dismissed.
     case writeRefused(String)
+    /// A PR's content is on screen: how it was opened, whether the phone had it, and how long it took.
+    case contentShown(PROpenReport)
+}
+
+/// One PR opened, from the tap to its content on screen (`PRKitEvent.contentShown`).
+public struct PROpenReport: Equatable, Sendable {
+    /// What opened it.
+    public enum Source: String, CaseIterable, Sendable {
+        /// A tapped alert.
+        case push
+        /// A row of the list.
+        case list
+        /// A PR link in the app, or one handed to `PRKitController.open`.
+        case link
+    }
+
+    /// What the phone had when it opened.
+    public enum Cache: String, CaseIterable, Sendable {
+        /// The PR as it is now: shown at once.
+        case hit
+        /// An older copy: shown at once, then replaced by the new one.
+        case stale
+        /// Nothing: read from the Worker while the screen waited.
+        case miss
+    }
+
+    public let source: Source
+    public let cache: Cache
+    /// From the tap to content on screen.
+    public let timeToContentMilliseconds: Int
+    /// Of that, waiting on the Worker: zero when the phone had it.
+    public let networkMilliseconds: Int
+    /// Of that, reading what arrived or what was on the phone into the screen's content.
+    public let decodeMilliseconds: Int
+
+    public init(
+        source: Source, cache: Cache, timeToContentMilliseconds: Int, networkMilliseconds: Int, decodeMilliseconds: Int
+    ) {
+        self.source = source
+        self.cache = cache
+        self.timeToContentMilliseconds = timeToContentMilliseconds
+        self.networkMilliseconds = networkMilliseconds
+        self.decodeMilliseconds = decodeMilliseconds
+    }
 }
