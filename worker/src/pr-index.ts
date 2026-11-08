@@ -2,6 +2,7 @@ import { alarmToSet } from "./alarm";
 import { claimOf, RECEIPT_KEPT_MS, type WriteClaim, type WriteReceipt } from "./write-receipts";
 import { DurableObject } from "cloudflare:workers";
 import { alertKey, alertKinds, alertMessage, alertsFor, type HeldStatus } from "./alerts";
+import { createHeldAlertsTable, type HeldRow, holdAlert, releaseAlerts } from "./push-gate";
 import {
   type ApnsHost, apnsJwt, type PushMessage, pushMode, sendDirect, sendViaPager, sendViaRelay, SYNC_WAKE,
 } from "./apns";
@@ -109,6 +110,7 @@ export class PrIndex extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS spent_codes (code_hash TEXT PRIMARY KEY, at INTEGER);
       CREATE TABLE IF NOT EXISTS alerts (key TEXT PRIMARY KEY, at INTEGER);`);
     createLimitHitsTable(this.sql);
+    createHeldAlertsTable(this.sql);
     const columns = this.sql.exec<{ name: string }>("PRAGMA table_info(pull_requests)").toArray();
     if (!columns.some(({ name }) => name === "version")) {
       this.sql.exec("ALTER TABLE pull_requests ADD COLUMN version TEXT NOT NULL DEFAULT ''");
@@ -129,13 +131,16 @@ export class PrIndex extends DurableObject<Env> {
   }
 
   rows(): { prs: Row[]; synced_at: number } {
+    return { prs: this.selectRows(`ORDER BY ${LIST_ORDER}`), synced_at: this.meta("synced_at") };
+  }
+
+  /** The rows of `GET /prs`, chosen and ordered by `rest`: one SELECT, so an alert's row is the list's row. */
+  private selectRows(rest: string, ...bindings: unknown[]): Row[] {
     const rows = this.sql.exec<Omit<Row, "status"> & { status: string | null }>(`SELECT repo, number, title, head,
       revision, diff_state AS diff, COALESCE(detail_version, NULLIF(version, ''), updated_at) AS detail, status,
       CASE WHEN key_lines_ready = head THEN ${DEFAULT_CONTEXT} END AS keyLines
-      FROM pull_requests
-      ORDER BY ${LIST_ORDER}`).toArray();
-    const prs = rows.map((row) => ({ ...row, status: parseRowStatus(row.status) }));
-    return { prs, synced_at: this.meta("synced_at") };
+      FROM pull_requests ${rest}`, ...bindings).toArray();
+    return rows.map((row) => ({ ...row, status: parseRowStatus(row.status) }));
   }
 
   /** A delivery. A PR no list holds and Jai has no part in is dropped here, so it never costs a GitHub read. */
@@ -163,7 +168,14 @@ export class PrIndex extends DurableObject<Env> {
     }
   }
 
+  /** A read pass, then the alerts it made ready (`push-gate.ts`), which go even when the pass could not read. */
   override async alarm(): Promise<void> {
+    const env = await this.actingEnv();
+    await this.readMarked(env);
+    await this.sendHeldAlerts(env);
+  }
+
+  private async readMarked(env: Env | null): Promise<void> {
     const marked = this.sql.exec<{ id: string; repo: string; number: number; generation: number }>(
       "SELECT id, repo, number, generation FROM dirty LIMIT ?", READS_PER_PASS).toArray();
     const dirty = marked.flatMap((row) => {
@@ -173,7 +185,6 @@ export class PrIndex extends DurableObject<Env> {
       }
       return ref ? [{ ...ref, generation: row.generation }] : [];
     });
-    const env = await this.actingEnv();
     if (!env) {
       // A hosted person signed out: nothing is read until they sign in again and their account ticks this index.
       return;
@@ -197,12 +208,11 @@ export class PrIndex extends DurableObject<Env> {
         await this.ctx.storage.setAlarm(this.rateLimitedUntil(Date.now()) ?? Date.now() + READ_RETRY_MS);
         return;
       }
-      const alerts: Promise<unknown>[] = [];
       for (const { id, generation } of dirty) {
         const pr = read.get(id);
         if (pr?.status && !this.isFullFor(id)) {
           const listed: Listed = { ...pr, status: pr.status };
-          alerts.push(...this.alertsOn(listed));
+          this.holdAlertsOn(listed);
           await this.store(listed, env);
         } else if (pr?.status) {
           this.addEvent("limit_reached", { limit: LimitName.IndexedPullRequestsMax, pr: id });
@@ -211,7 +221,6 @@ export class PrIndex extends DurableObject<Env> {
         }
         this.sql.exec("DELETE FROM dirty WHERE id = ? AND generation = ?", id, generation);
       }
-      await Promise.all(alerts);
     }
     await this.storeDiffs(env);
     await this.queueKeyLines(env);
@@ -290,26 +299,53 @@ export class PrIndex extends DurableObject<Env> {
   }
 
   /**
-   * The alerts a fresh read calls for, each claimed in storage before any push goes, so the same PR and head never
-   * alerts twice (`alerts.ts`). Read before `store` overwrites what was held.
+   * The alerts a fresh read calls for, each claimed in storage, so the same PR and head never alerts twice
+   * (`alerts.ts`), and held until its PR's files are stored (`push-gate.ts`). Read before `store` overwrites what was
+   * held.
    */
-  private alertsOn(pr: Listed): Promise<unknown>[] {
+  private holdAlertsOn(pr: Listed): void {
     const kinds = alertKinds(this.env);
     if (kinds.size === 0) {
-      return [];
+      return;
     }
     const heldRow = this.sql.exec<{ status: string | null }>(
       "SELECT status FROM pull_requests WHERE id = ?", prId(pr.repo, pr.number)).toArray()[0];
     const held: HeldStatus = parseRowStatus(heldRow?.status ?? null);
     const now = Date.now();
     const read = { ...pr, list: pr.status.list, review: pr.status.review };
-    return alertsFor(held, read, kinds, now).flatMap((alert) => {
+    for (const alert of alertsFor(held, read, kinds, now)) {
+      const key = alertKey(alert);
       const claimed = this.sql.exec(`INSERT INTO alerts (key, at) VALUES (?, ?) ON CONFLICT (key) DO NOTHING
-        RETURNING key`, alertKey(alert), now).toArray().length > 0;
+        RETURNING key`, key, now).toArray().length > 0;
+      if (claimed) {
+        holdAlert(this.sql, key, alert, now);
+      }
+    }
+  }
+
+  /**
+   * The held alerts whose PR's files are stored, or that waited long enough, each with how long it was held in
+   * `/events` (`alert` and `push_delayed`). One still waiting has an alarm at its deadline.
+   */
+  private async sendHeldAlerts(env: Env | null): Promise<void> {
+    const makesKeyLines = env !== null && isSet(env.ANTHROPIC_API_KEY);
+    const keyLinesOn = (row: HeldRow) => makesKeyLines && row.list === "review" && row.diff_state === "ready";
+    const now = Date.now();
+    const { release, dropped, nextAt } = releaseAlerts(this.sql, now, keyLinesOn);
+    for (const alert of dropped) {
+      this.addEvent("alert_dropped", { kind: alert.kind, pr: prId(alert.repo, alert.number) });
+    }
+    await Promise.all(release.map(({ alert, heldMs, reason }) => {
+      const pr = prId(alert.repo, alert.number);
+      const row = this.selectRows("WHERE id = ?", pr)[0] ?? null;
+      this.addEvent("push_delayed", { kind: alert.kind, pr, ms: heldMs, reason });
       // This instance's own record of what it said, under `/events`: never shared with another instance's.
-      const detail = { kind: alert.kind, pr: prId(pr.repo, pr.number), title: alert.title };
-      return claimed ? [this.sendToDevices(alertMessage(alert), "alert", detail)] : [];
-    });
+      return this.sendToDevices(alertMessage(alert, row), "alert",
+        { kind: alert.kind, pr, title: alert.title, held_ms: heldMs });
+    }));
+    if (nextAt !== null) {
+      await this.ensureAlarm(Math.max(0, nextAt - now));
+    }
   }
 
   /** Whether `GET /repos` may read GitHub now: not when it did within `gapMs`. Claimed in the same turn. */
@@ -527,9 +563,13 @@ export class PrIndex extends DurableObject<Env> {
     }
   }
 
-  keyLinesReady(id: PrId, head: Sha): void {
+  /** Key lines landed: an alert held for them (`push-gate.ts`) may go now. */
+  async keyLinesReady(id: PrId, head: Sha): Promise<void> {
     this.sql.exec("UPDATE pull_requests SET key_lines_ready = ? WHERE id = ? AND head = ?", head, id, head);
     this.setMeta("changed_at", Date.now());
+    if (this.sql.exec("SELECT 1 FROM held_alerts LIMIT 1").toArray().length > 0) {
+      await this.ensureAlarm(0);
+    }
   }
 
   private remove(id: string): void {

@@ -5,12 +5,24 @@
       "body": "Add the retry to the uploader"
     },
     "sound": "default",
-    "thread-id": "pr:acme/app#7"
+    "thread-id": "pr:acme/app#7",
+    "mutable-content": 1
   },
   "reason": "pr_alert",
   "kind": "review_requested",
   "pr": {
     "repo": "acme/app",
     "number": 7
+  },
+  "row": {
+    "repo": "acme/app",
+    "number": 7,
+    "title": "Add the retry to the uploader",
+    "head": "504754b2bc3ce5db892dde980e4bc83b60ff7a68",
+    "revision": "504754b2bc3ce5db892dde980e4bc83b60ff7a68-main",
+    "diff": "ready",
+    "detail": "2026-11-01T00:05:00Z.SUCCESS.0123456789abcdef",
+    "status": null,
+    "keyLines": 100
   }
 }

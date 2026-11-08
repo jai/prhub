@@ -89,23 +89,31 @@ function clip(text: string, limit: number): string {
   return characters.length <= limit ? characters.join("") : `${characters.slice(0, limit - 1).join("")}…`;
 }
 
-/** The visible push: `pr` is what the app opens on a tap. Well under APNs' 4096 bytes whatever the title. */
-export function alertMessage(alert: PrAlert): PushMessage {
+/** Room left in APNs' 4096 bytes for everything but `row`, whatever the title. */
+const MAX_PAYLOAD_BYTES = 4000;
+
+/**
+ * The visible push: `pr` is what the app opens on a tap. `row` is the PR's row as `GET /prs` lists it now, so the
+ * phone's Notification Service Extension (`mutable-content`) can fetch its stored detail and diff before the tap. A row
+ * that would take the payload past APNs' limit is left out, and the phone then reads the PR on the tap.
+ */
+export function alertMessage(alert: PrAlert, row: object | null = null): PushMessage {
   const name = prId(alert.repo, alert.number);
-  return {
-    pushType: "alert",
-    priority: 10,
-    collapseId: null,
-    lifetimeSeconds: ALERT_LIFETIME_SECONDS,
-    payload: {
-      aps: {
-        alert: { title: clip(`${HEADINGS[alert.kind]}: ${name}`, MAX_TITLE), body: clip(alert.title, MAX_BODY) },
-        sound: "default",
-        "thread-id": clip(`pr:${name}`, 64),
-      },
-      reason: "pr_alert",
-      kind: alert.kind,
-      pr: { repo: alert.repo, number: alert.number },
+  const payload: PushMessage["payload"] = {
+    aps: {
+      alert: { title: clip(`${HEADINGS[alert.kind]}: ${name}`, MAX_TITLE), body: clip(alert.title, MAX_BODY) },
+      sound: "default",
+      "thread-id": clip(`pr:${name}`, 64),
+      "mutable-content": 1,
     },
+    reason: "pr_alert",
+    kind: alert.kind,
+    pr: { repo: alert.repo, number: alert.number },
+  };
+  const withRow = row ? { ...payload, row } : payload;
+  const fits = new TextEncoder().encode(JSON.stringify(withRow)).length <= MAX_PAYLOAD_BYTES;
+  return {
+    pushType: "alert", priority: 10, collapseId: null, lifetimeSeconds: ALERT_LIFETIME_SECONDS,
+    payload: fits ? withRow : payload,
   };
 }

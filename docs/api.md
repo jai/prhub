@@ -384,8 +384,13 @@ When one is sent:
   time alerts nothing.
 - Once per kind, PR and head commit: asked again at the same commit, the user hears nothing new. The keys are kept 30
   days.
+- Only once the PR's detail and diff, and its key lines when this Worker makes them (an Anthropic key, and the PR on
+  the review list), are stored at the head the alert is about, so the phone reads them from R2 and never waits on
+  GitHub. An alert waits 30 seconds at most, then goes anyway; one whose PR's head moved on goes at once, and one whose
+  PR left every list is not sent (`alert_dropped`). Each held alert is in `/events` as `push_delayed` with `{kind, pr,
+  ms, reason}`, `reason` being `ready`, `moved` or `timed_out`.
 - To every device registered on the production host, as the wake is (a Simulator's sandbox registration gets none),
-  through the relay when it is set, else direct APNs; a Worker with neither sends none. Each send is in `/events` as `kind: "alert"` with `{kind, pr, status, reason}`.
+  through the relay when it is set, else direct APNs; a Worker with neither sends none. Each send is in `/events` as `kind: "alert"` with `{kind, pr, title, held_ms, status, reason}`.
 
 The push: `push_type` `alert`, priority 10, no `collapse_id`, 24-hour expiry, and this payload (at most about 1 KB, well
 under APNs' and the relay's 4096 bytes):
@@ -395,24 +400,33 @@ under APNs' and the relay's 4096 bytes):
   "aps": {
     "alert": { "title": "Review requested: acme/web#412", "body": "Show a retry button when checkout fails" },
     "sound": "default",
-    "thread-id": "pr:acme/web#412"
+    "thread-id": "pr:acme/web#412",
+    "mutable-content": 1
   },
   "reason": "pr_alert",
   "kind": "review_requested",
-  "pr": { "repo": "acme/web", "number": 412 }
+  "pr": { "repo": "acme/web", "number": 412 },
+  "row": { "repo": "acme/web", "number": 412, "title": "…", "head": "…", "revision": "…", "diff": "ready", "detail": "…", "status": {}, "keyLines": 100 }
 }
 ```
 
 - Titles: `Review requested: <repo>#<n>`, `Approved: <repo>#<n>`, `Changes requested: <repo>#<n>`, at most 120
   characters. `body` is the PR's title, at most 240. Either is cut with `…`.
 - `thread-id` groups a PR's alerts in Notification Center (at most 64 characters).
+- `row` is the PR's row exactly as `GET /prs` lists it when the alert goes ([docs/fixtures/alert.json](fixtures/alert.json)).
+  It is left out when it would take the payload past 4000 bytes.
+- `mutable-content: 1`: PRHub's Notification Service Extension fetches the row's stored detail and diff (`?version=`,
+  `?revision=`) into the app's mirror before the alert shows, so a tap opens the PR from the phone. It gives up within
+  iOS's time for an extension and shows the alert either way.
 - No `content-available`: the alert does not wake the app to sync.
 
 **For the iOS agent (PRKit).** On a tap of a notification whose `reason` is `pr_alert`, open the PR named by
-`pr.repo` and `pr.number` in the PRs tab, as a link to a PR opens. `kind` is for wording only; ignore a `kind` the app
-does not know. PRHub must ask for alert permission (`.alert`, `.sound`) to show these; today it registers for the silent
-wake only, and its `didReceiveRemoteNotification` ignores anything but `pr_sync`. Jai's Agent Pager app gets the same
-payload on its own topic, and until it routes `pr_alert` a tap opens the app's default tab.
+`pr.repo` and `pr.number` with `PRKitController.open(alert:row:)`, `row` being `PRPush.row(in:)`. `kind` is for
+wording only; ignore a `kind` the app does not know. A Notification Service Extension that links PRKitCore fetches the
+row first with `PRPushPrefetch` into `PRMirrorLocation.directory(appGroup:)`, the folder the host also names as
+`PRKitHost.mirrorDirectory`; the tap then shows the PR from the phone. Without it, the tap reads the row's stored copy,
+detail and diff side by side, and only a PR on no list is read live. Jai's Agent Pager app gets the same payload on its
+own topic.
 
 ## Hosted sign-in
 

@@ -84,6 +84,7 @@ test("an alert names the PR for a tap to open, and fits APNs whatever the title"
   assert.deepEqual(message.payload, {
     aps: {
       alert: { title: "Review requested: acme/api#7", body: "Add retries" }, sound: "default", "thread-id": "pr:acme/api#7",
+      "mutable-content": 1,
     },
     reason: "pr_alert",
     kind: "review_requested",

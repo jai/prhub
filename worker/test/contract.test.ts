@@ -114,5 +114,9 @@ test("an alert's push payload", () => {
     kind: "review_requested" as const, repo: "acme/app" as RepoFullName, number: 7,
     head: "504754b2bc3ce5db892dde980e4bc83b60ff7a68" as Sha, title: "Add the retry to the uploader",
   };
-  matchesFixture("alert.json", alertMessage(alert).payload);
+  const row = {
+    repo: alert.repo, number: alert.number, title: alert.title, head: alert.head, revision: `${alert.head}-main`,
+    diff: "ready", detail: "2026-11-01T00:05:00Z.SUCCESS.0123456789abcdef", status: null, keyLines: DEFAULT_CONTEXT,
+  };
+  matchesFixture("alert.json", alertMessage(alert, row).payload);
 });
