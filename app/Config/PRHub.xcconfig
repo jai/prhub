@@ -9,3 +9,8 @@ PRHUB_HOSTED_HOST = prhub.jai-f89.workers.dev
 PRHUB_SIGN_IN_GITHUB = YES
 PRHUB_SELF_HOSTED = NO
 PRHUB_SAMPLES = YES
+
+// Anonymous usage analytics (AGENTS.md, "Analytics"): the PostHog project's public client key and its host. An empty key
+// sends nothing, so a fork reports nowhere until it names its own project. Debug builds never send.
+PRHUB_ANALYTICS_KEY = phc_uRJQdyPp6YgzXqvDGdtY4r4dZWdxeeqaSQhZzDs7HwyW
+PRHUB_ANALYTICS_HOST = eu.i.posthog.com

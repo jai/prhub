@@ -285,7 +285,9 @@ struct HostedConnectionTests {
         }
     }
 
-    private static func connection(_ fake: Fake, paired: Bool = false) throws -> WorkerConnection {
+    private static func connection(
+        _ fake: Fake, paired: Bool = false, usage: UsageAnalytics = .disabled()
+    ) throws -> WorkerConnection {
         let endpoint = WorkerEndpoint(store: WorkerURLStore(
             service: "com.jaigovindani.prreview.tests", account: "hosted-url-\(UUID().uuidString)"
         ))
@@ -337,7 +339,7 @@ struct HostedConnectionTests {
             },
             forgetSecret: { fake.secret.with { $0 = nil } },
             defaults: UserDefaults(suiteName: "prhub-hosted-\(UUID().uuidString)")!,
-            build: build, hosted: hosted
+            build: build, usage: usage, hosted: hosted
         )
     }
 
@@ -364,6 +366,40 @@ struct HostedConnectionTests {
         #expect(await connection.signIn() == nil)
         #expect(connection.phase == .idle)
         #expect(fake.secret.with { $0 } == nil && connection.showsOnboarding)
+    }
+
+    @Test func aSignInIsRecordedFromStartToEnd() async throws {
+        let fake = Fake()
+        let sink = AnalyticsTests.RecordingAnalytics()
+        let connection = try Self.connection(fake, usage: AnalyticsTests.usage(sink))
+        fake.signInError.with { $0 = .server(status: 502) }
+        _ = await connection.signIn()
+        fake.signInError.with { $0 = nil }
+        _ = await connection.signIn()
+        #expect(sink.events == [
+            .onboardingPathChosen(.signInWithGitHub), .signInStarted(.onboarding), .signInFailed(.serverError),
+            .onboardingPathChosen(.signInWithGitHub), .signInStarted(.onboarding), .signInSucceeded,
+        ])
+    }
+
+    @Test func signInAgainIsNotAnOnboardingPath() async throws {
+        let sink = AnalyticsTests.RecordingAnalytics()
+        let connection = try Self.connection(Fake(), paired: true, usage: AnalyticsTests.usage(sink))
+        _ = await connection.signIn()
+        #expect(sink.events == [.signInStarted(.signInAgain), .signInSucceeded])
+    }
+
+    @Test func theKeyAndTheAccountAreRecordedOnceTheWorkerHasThem() async throws {
+        let fake = Fake()
+        let sink = AnalyticsTests.RecordingAnalytics()
+        let connection = try Self.connection(fake, paired: true, usage: AnalyticsTests.usage(sink))
+        try await connection.setAnthropicKey("key-0123456789abcdefghij")
+        try await connection.removeAnthropicKey()
+        fake.actionError.with { $0 = .server("anthropic_key_invalid", 422) }
+        _ = try? await connection.setAnthropicKey("bad-key-012345678901")
+        fake.actionError.with { $0 = nil }
+        try await connection.deleteAccount()
+        #expect(sink.events == [.anthropicKeySet, .anthropicKeyRemoved, .accountDeleted])
     }
 
     @Test func signedOutByGitHubShowsSignInAgainAndSigningInEndsTheOldSession() async throws {

@@ -29,6 +29,8 @@ struct PRHubSettingsView: View {
                         workerBlocks
                     }
                     DiffFontSection()
+                        .recordsDiffFontChanges(environment.usage)
+                    UsageSharingSection(usage: environment.usage)
                     PRPageBlock("About") {
                         PRValueLine("Version", value: AppIdentity.appVersion())
                     }

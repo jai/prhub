@@ -4,6 +4,10 @@ name: PRHub
 packages:
   PRKit:
     path: ..
+  # Usage analytics, behind app/PRHub/Analytics/PostHogAnalytics.swift only. Pinned: a new version is read first.
+  PostHog:
+    url: https://github.com/PostHog/posthog-ios
+    exactVersion: 3.93.6
 
 options:
   deploymentTarget:
@@ -60,6 +64,8 @@ targets:
         PRHubSignInWithGitHub: $(PRHUB_SIGN_IN_GITHUB)
         PRHubSelfHosted: $(PRHUB_SELF_HOSTED)
         PRHubSamples: $(PRHUB_SAMPLES)
+        PRHubAnalyticsKey: $(PRHUB_ANALYTICS_KEY)
+        PRHubAnalyticsHost: $(PRHUB_ANALYTICS_HOST)
         NSCameraUsageDescription: PRHub uses the camera to scan the setup code your pr-worker printed.
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
@@ -96,6 +102,8 @@ targets:
     dependencies:
       - package: PRKit
         product: PRKit
+      - package: PostHog
+        product: PostHog
     scheme:
       testTargets:
         - PRHubTests

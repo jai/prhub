@@ -8,12 +8,14 @@ import Foundation
 final class PRHubPRHost: PRKitHost {
     let access: PRViewerAccess
     let samples: PRSampleSet?
+    let usage: UsageAnalytics
     /// The connection's config, read through: a new config shows at once. `nil` before the first read.
     var config: @MainActor () -> DeviceConfig? = { nil }
 
-    init(access: PRViewerAccess, samples: PRSampleSet?) {
+    init(access: PRViewerAccess, samples: PRSampleSet?, usage: UsageAnalytics) {
         self.access = access
         self.samples = samples
+        self.usage = usage
     }
 
     func isInForeground() async -> Bool { appIsInForeground() }
@@ -99,7 +101,11 @@ final class PRHubPRHost: PRKitHost {
     var outbox: (any PRKitOutbox)? { nil }
     var apnsEnvironment: String { APNSEnvironment.current() }
     var launchOptions: PRKitLaunchOptions { .none }
-    func receive(_ event: PRKitEvent) {}
+    func receive(_ event: PRKitEvent) {
+        if let event = AnalyticsEvent(event) {
+            usage.record(event)
+        }
+    }
     /// PRHub has no event log: the system log has it (`PRMirror`).
     func log(_ line: String) {}
 }

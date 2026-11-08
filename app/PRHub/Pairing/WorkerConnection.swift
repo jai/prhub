@@ -57,6 +57,7 @@ final class WorkerConnection {
     /// outlive: its record goes when another device pairs.
     @ObservationIgnored private let unpair: (@Sendable () async -> Void)?
     @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let usage: UsageAnalytics
     @ObservationIgnored let hosted: Hosted?
 
     static let configKey = "deviceConfig"
@@ -65,9 +66,11 @@ final class WorkerConnection {
         endpoint: WorkerEndpoint, pairing: DevicePairing,
         fetchConfig: @escaping @Sendable () async throws -> DeviceConfig,
         forgetSecret: @escaping @Sendable () throws -> Void, unpair: (@Sendable () async -> Void)? = nil,
-        defaults: UserDefaults = .standard, build: PRHubBuild = .current, hosted: Hosted? = nil
+        defaults: UserDefaults = .standard, build: PRHubBuild = .current, usage: UsageAnalytics = .disabled(),
+        hosted: Hosted? = nil
     ) {
         self.build = build
+        self.usage = usage
         self.hosted = hosted
         self.endpoint = endpoint
         self.pairing = pairing
@@ -124,6 +127,7 @@ final class WorkerConnection {
         do {
             try await connect(SetupLink.parse(text))
         } catch {
+            usage.record(.workerPairingFailed(.invalidLink))
             phase = .invalidLink(error)
         }
     }
@@ -133,6 +137,7 @@ final class WorkerConnection {
         do {
             try await connect(SetupLink(worker: worker, code: code))
         } catch {
+            usage.record(.workerPairingFailed(.invalidLink))
             phase = .invalidLink(error)
         }
     }
@@ -164,6 +169,7 @@ final class WorkerConnection {
             phase = .selfHostedOff
             return
         }
+        usage.record(.onboardingPathChosen(.ownWorker))
         phase = .working(.pairing)
         do {
             try await pairing.run(link)
@@ -171,7 +177,9 @@ final class WorkerConnection {
             await readConfig()
             host = link.worker.host()
             phase = .idle
+            usage.record(.workerPaired)
         } catch {
+            usage.record(.workerPairingFailed(PairingFailureCode(error)))
             phase = .failed(error)
         }
     }
@@ -235,6 +243,10 @@ final class WorkerConnection {
         guard let hosted, build.signInWithGitHub, !isWorking else {
             return nil
         }
+        if !isPaired {
+            usage.record(.onboardingPathChosen(.signInWithGitHub))
+        }
+        usage.record(.signInStarted(isPaired ? .signInAgain : .onboarding))
         phase = .working(.signingIn)
         let previousUser = isPaired ? config?.account?.userId : nil
         let result: SignInResult
@@ -242,6 +254,7 @@ final class WorkerConnection {
             result = try await hosted.signIn()
         } catch {
             let error = error as? SignInError ?? .unreachable
+            usage.record(.signInFailed(SignInFailureCode(error)))
             phase = error == .cancelled ? .idle : .signInFailed(error)
             return nil
         }
@@ -252,6 +265,7 @@ final class WorkerConnection {
             try hosted.saveSecret(result.secret)
             try endpoint.save(hosted.worker)
         } catch {
+            usage.record(.signInFailed(.keychain))
             phase = .signInFailed(.keychain)
             return nil
         }
@@ -259,11 +273,13 @@ final class WorkerConnection {
         isSignedOutOfGitHub = config?.account?.state == .signedOut
         host = hosted.worker.host()
         phase = .idle
+        usage.record(.signInSucceeded)
         return previousUser.map { $0 == result.userId ? .samePerson : .newPerson } ?? .samePerson
     }
 
     /// Settings' Sign out, and Sign in again's: the Worker ends this session where it can; the phone forgets it.
     func signOut() async {
+        usage.record(.signedOut)
         try? await hosted?.signOut()
         forget()
     }
@@ -281,19 +297,23 @@ final class WorkerConnection {
                 throw error
             }
         }
+        usage.record(.accountDeleted)
         forget()
     }
 
     /// Settings' Anthropic key: kept on the Worker, never on the phone; the config then says which AI is on.
     func setAnthropicKey(_ key: String) async throws(AccountActionError) {
-        try await accountAction { try await $0.setAnthropicKey(key) }
+        try await accountAction(.anthropicKeySet) { try await $0.setAnthropicKey(key) }
     }
 
     func removeAnthropicKey() async throws(AccountActionError) {
-        try await accountAction { try await $0.removeAnthropicKey() }
+        try await accountAction(.anthropicKeyRemoved) { try await $0.removeAnthropicKey() }
     }
 
-    private func accountAction(_ action: (Hosted) async throws -> Void) async throws(AccountActionError) {
+    /// `done` is recorded once the Worker has taken the change.
+    private func accountAction(
+        _ done: AnalyticsEvent, _ action: (Hosted) async throws -> Void
+    ) async throws(AccountActionError) {
         guard let hosted else {
             return
         }
@@ -304,6 +324,7 @@ final class WorkerConnection {
             await readConfig()
             throw error
         }
+        usage.record(done)
         await readConfig()
     }
 
@@ -328,6 +349,7 @@ final class WorkerConnection {
     /// config and the secret here, so the next pairing is a new device.
     func disconnect() async {
         if host != nil {
+            usage.record(.workerDisconnected)
             await unpair?()
         }
         forget()

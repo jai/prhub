@@ -4,11 +4,12 @@ import Foundation
 /// repos and people are made up (`acme/*`, `octocat`); nothing is read from or sent to GitHub. A review or a comment
 /// stays on the phone, and says so.
 extension PRHubEnvironment {
-    static func sample() -> PRHubEnvironment {
+    static func sample(usage: UsageAnalytics = .disabled()) -> PRHubEnvironment {
         offline(
             config: DeviceConfig(features: [.keyLines], login: PRSampleSet.prHubLogin),
             samples: .prHub,
-            worker: URL(string: "https://samples.prhub.invalid")!, defaultsSuite: "prhub-samples", isSample: true
+            worker: URL(string: "https://samples.prhub.invalid")!, defaultsSuite: "prhub-samples", isSample: true,
+            usage: usage
         )
     }
 
@@ -16,7 +17,7 @@ extension PRHubEnvironment {
     /// pairing. The samples' environment, and the screenshots' `-PRHubPaired`.
     static func offline(
         config: DeviceConfig, access: PRViewerAccess = .offline, samples: PRSampleSet? = nil, worker: URL,
-        defaultsSuite: String, isSample: Bool
+        defaultsSuite: String, isSample: Bool, usage: UsageAnalytics = .disabled()
     ) -> PRHubEnvironment {
         let defaults = UserDefaults(suiteName: defaultsSuite) ?? .standard
         defaults.set(try? JSONEncoder().encode(config), forKey: WorkerConnection.configKey)
@@ -25,7 +26,9 @@ extension PRHubEnvironment {
             pairing: DevicePairing(pair: { _, _ in throw URLError(.badURL) }, save: { _ in }),
             fetchConfig: { config }, forgetSecret: {}, defaults: defaults
         )
-        return PRHubEnvironment(connection: connection, access: access, samples: samples, isSample: isSample)
+        return PRHubEnvironment(
+            connection: connection, access: access, samples: samples, isSample: isSample, usage: usage
+        )
     }
 }
 

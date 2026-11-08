@@ -117,7 +117,8 @@ struct PRHubTests {
 
     private static func connection(
         endpoint: WorkerEndpoint, config: DeviceConfig, unpaired: Shared<Int>, forgotten: Shared<Int>,
-        defaults: UserDefaults = UserDefaults(suiteName: "prhub-tests-\(UUID().uuidString)")!
+        defaults: UserDefaults = UserDefaults(suiteName: "prhub-tests-\(UUID().uuidString)")!,
+        usage: UsageAnalytics = .disabled()
     ) -> WorkerConnection {
         WorkerConnection(
             endpoint: endpoint,
@@ -131,7 +132,8 @@ struct PRHubTests {
             fetchConfig: { config }, forgetSecret: { forgotten.with { $0 += 1 } },
             unpair: { unpaired.with { $0 += 1 } },
             defaults: defaults,
-            build: PRHubBuild(hostedURL: nil, signInWithGitHub: false, selfHosted: true, samples: true)
+            build: PRHubBuild(hostedURL: nil, signInWithGitHub: false, selfHosted: true, samples: true),
+            usage: usage
         )
     }
 
@@ -157,6 +159,21 @@ struct PRHubTests {
         )
         #expect(relaunched.isPaired && relaunched.config == config)
         try endpoint.clear()
+    }
+
+    @Test func pairingAndDisconnectingAreRecordedWithoutTheWorker() async throws {
+        let endpoint = try Self.endpoint()
+        let sink = AnalyticsTests.RecordingAnalytics()
+        let connection = Self.connection(
+            endpoint: endpoint, config: DeviceConfig(features: []), unpaired: Shared(0), forgotten: Shared(0),
+            usage: AnalyticsTests.usage(sink)
+        )
+        await connection.connect(text: "https://pr-review.alex.workers.dev")
+        await connection.connect(text: "prhub://setup?worker=https%3A%2F%2Fpr-review.alex.workers.dev&code=7kq2-m9xa")
+        await connection.disconnect()
+        #expect(sink.events == [
+            .workerPairingFailed(.invalidLink), .onboardingPathChosen(.ownWorker), .workerPaired, .workerDisconnected,
+        ])
     }
 
     @Test func aBadLinkSaysWhyAndPairsNothing() async throws {

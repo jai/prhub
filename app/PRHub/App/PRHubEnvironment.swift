@@ -7,13 +7,16 @@ import Observation
 @MainActor
 @Observable
 final class PRHubEnvironment {
-    static let shared = PRHubEnvironment(endpoint: .live, secrets: .live(
-        isProtectedDataAvailable: AppIdentity.protectedDataAvailability()
-    ))
+    static let shared = PRHubEnvironment(
+        endpoint: .live, secrets: .live(isProtectedDataAvailable: AppIdentity.protectedDataAvailability()),
+        usage: .live()
+    )
 
     let connection: WorkerConnection
     let prs: PRKitController
     let navigation: PRHubNavigation
+    /// Anonymous usage events, and Settings' switch for them.
+    let usage: UsageAnalytics
     /// Runs on the bundled samples (`PRHubEnvironment.sample()`), with no Worker.
     let isSample: Bool
     /// "Try with sample PRs", while it is on: shown in place of onboarding until Connect your own Worker.
@@ -34,20 +37,21 @@ final class PRHubEnvironment {
     init(
         endpoint: WorkerEndpoint, secrets: DeviceSecretStore, defaults: UserDefaults = .standard,
         alertPermission: PRHubAlertPermission = PRHubAlertPermission(), build: PRHubBuild = .current,
-        authenticate: @escaping Authenticate = WebSignIn.live
+        authenticate: @escaping Authenticate = WebSignIn.live, usage: UsageAnalytics = .disabled()
     ) {
         self.alertPermission = alertPermission
+        self.usage = usage
         let refusals = SessionRefusals()
         let host = PRHubPRHost(
             access: .paired(endpoint: endpoint, secret: { try secrets.loadOrCreate() }, refused: {
                 await refusals.check()
             }),
-            samples: nil
+            samples: nil, usage: usage
         )
         prs = PRKitController(host: host)
         connection = Self.makeConnection(
             endpoint: endpoint, secrets: secrets, defaults: defaults, build: build, authenticate: authenticate,
-            unpair: { [client = prs.client] in try? await client.unpair() }
+            usage: usage, unpair: { [client = prs.client] in try? await client.unpair() }
         )
         refusals.connection = connection
         navigation = PRHubNavigation(pullRequests: prs)
@@ -59,10 +63,12 @@ final class PRHubEnvironment {
     /// Over `access` (none: nothing is sent) and, for "Try with sample PRs", `samples`.
     init(
         connection: WorkerConnection, access: PRViewerAccess = .offline, samples: PRSampleSet? = nil,
-        isSample: Bool = false, alertPermission: PRHubAlertPermission = PRHubAlertPermission()
+        isSample: Bool = false, alertPermission: PRHubAlertPermission = PRHubAlertPermission(),
+        usage: UsageAnalytics = .disabled()
     ) {
         self.alertPermission = alertPermission
-        let host = PRHubPRHost(access: access, samples: samples)
+        self.usage = usage
+        let host = PRHubPRHost(access: access, samples: samples, usage: usage)
         self.connection = connection
         prs = PRKitController(host: host)
         self.isSample = isSample
@@ -76,7 +82,8 @@ final class PRHubEnvironment {
     /// secret goes.
     static func makeConnection(
         endpoint: WorkerEndpoint, secrets: DeviceSecretStore, defaults: UserDefaults, build: PRHubBuild,
-        authenticate: @escaping Authenticate, unpair: (@Sendable () async -> Void)? = nil
+        authenticate: @escaping Authenticate, usage: UsageAnalytics = .disabled(),
+        unpair: (@Sendable () async -> Void)? = nil
     ) -> WorkerConnection {
         let pairing = DevicePairing(
             pair: { worker, code in
@@ -90,7 +97,7 @@ final class PRHubEnvironment {
             fetchConfig: { try await account.deviceConfig() },
             forgetSecret: { try secrets.delete() },
             unpair: unpair,
-            defaults: defaults, build: build,
+            defaults: defaults, build: build, usage: usage,
             hosted: build.hostedURL.map { worker in
                 .live(worker: worker, account: account, authenticate: authenticate, secrets: secrets)
             }
@@ -99,12 +106,14 @@ final class PRHubEnvironment {
 
     /// Onboarding's "Try with sample PRs".
     func startSample() {
-        sample = .sample()
+        usage.record(.onboardingPathChosen(.samples))
+        sample = .sample(usage: usage)
     }
 
     /// Settings' "Connect your own Worker", or a setup link opened during the samples: back to onboarding, with no
     /// list setting of the samples' left behind.
     func endSample() {
+        usage.record(.samplesLeft)
         sample = nil
         PRSampleSet.resetListSettings()
     }

@@ -7,7 +7,7 @@ struct PRHubRootView: View {
     let environment: PRHubEnvironment
     @Environment(\.scenePhase) private var scenePhase
 
-    private enum Screen {
+    fileprivate enum Screen {
         case onboarding, samples, signedOut, tabs
     }
 
@@ -46,6 +46,7 @@ struct PRHubRootView: View {
             }
         }
         .animation(AppMotion.swap, value: screen)
+        .recordsScreen(screen.analyticsScreen, environment.usage)
         .sensoryFeedback(.success, trigger: connection.showsOnboarding) { wasShowing, isShowing in
             wasShowing && !isShowing && connection.isPaired
         }
@@ -114,6 +115,7 @@ private struct PRHubTabs: View {
         .prKitEnvironment(environment.prs)
         .alertsOffer(environment.alertPermission)
         .environment(\.loadsAuthorAvatars, !environment.isSample)
+        .recordsScreen(navigation.selectedTab.analyticsScreen, environment.usage)
     }
 }
 
@@ -149,7 +151,26 @@ extension View {
     }
 }
 
+extension PRHubRootView.Screen {
+    /// The tabs report their own.
+    fileprivate var analyticsScreen: AnalyticsScreen? {
+        switch self {
+        case .onboarding: .onboarding
+        case .samples: .samples
+        case .signedOut: .signedOut
+        case .tabs: nil
+        }
+    }
+}
+
 extension PRHubTab {
+    fileprivate var analyticsScreen: AnalyticsScreen {
+        switch self {
+        case .prs: .prs
+        case .settings: .settings
+        }
+    }
+
     /// The tab's accessibility identifier, which the UI tests reach it by (`PRHubPlace`).
     fileprivate var identifier: String {
         switch self {

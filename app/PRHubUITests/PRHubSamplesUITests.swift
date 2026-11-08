@@ -52,6 +52,19 @@ final class PRHubSamplesUITests: XCTestCase {
         XCTAssertTrue(app.buttons["onboardingSignIn"].waitForExistence(timeout: 5), "back on onboarding")
     }
 
+    /// Settings' switch for anonymous usage data: on until turned off, in a build that names an analytics project.
+    func testSettingsOffersToStopSharingUsage() {
+        app.launchArguments = ["-PRHubFirstRun"]
+        app.launch()
+        let trySamples = app.buttons["onboardingTrySamples"]
+        XCTAssertTrue(trySamples.waitForExistence(timeout: 10))
+        trySamples.tap()
+        app.go(to: .settings)
+        let share = app.switches["prhub-share-usage"]
+        XCTAssertTrue(app.scrollSettings(to: share))
+        XCTAssertEqual(share.value as? String, "1")
+    }
+
     /// In a build that pairs with self-hosted Workers (`PRHUB_SELF_HOSTED`), which this build is not.
     func testAPairingCodeThatIsRefusedSaysSo() {
         app.launchArguments = ["-PRHubFirstRun", "-PRHubSelfHosted", "YES", "-PRHubSignInWithGitHub", "NO"]

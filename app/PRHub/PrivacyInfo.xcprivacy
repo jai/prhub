@@ -3,17 +3,32 @@
 <plist version="1.0">
 <dict>
 	<!-- Hand-written: XcodeGen copies it into the .app root, where Apple's upload scanner reads it. PRHub sends PR data
-	     only to the pr-worker its user deployed, and collects nothing for its developer (PRIVACY.md). -->
+	     only to the Worker its user signed in to or deployed. For its developer it collects anonymous product
+	     interaction through PostHog, not linked to the person and not used for tracking, which Settings turns off
+	     (PRIVACY.md, docs/app-store-privacy.md). -->
 	<key>NSPrivacyTracking</key>
 	<false/>
 	<key>NSPrivacyTrackingDomains</key>
 	<array/>
 	<key>NSPrivacyCollectedDataTypes</key>
-	<array/>
+	<array>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeProductInteraction</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
 		<!-- UserDefaults, in the app's own domain: the last /device/config, the list filters and folds, the alert
-		     offer's answer. CA92.1. -->
+		     offer's answer, the usage-sharing switch. CA92.1. -->
 		<dict>
 			<key>NSPrivacyAccessedAPIType</key>
 			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>

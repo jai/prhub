@@ -41,6 +41,7 @@ enum PRHubScreenshots {
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains(where: { $0.hasPrefix("-PRHub") }) {
             UserDefaults.standard.removeObject(forKey: DiffFont.storageKey)
+            UserDefaults.standard.removeObject(forKey: UsageAnalytics.sharingKey)
         }
         if arguments.contains("-PRHubFirstRun") {
             return firstRun()
@@ -61,7 +62,7 @@ enum PRHubScreenshots {
             config: DeviceConfig(features: features, login: PRSampleSet.prHubLogin),
             samples: arguments.contains("-PRHubLongDiff") ? .prHubLongDiff : .prHub,
             worker: URL(string: "https://pr-review.octocat.workers.dev")!, defaultsSuite: "screenshots-paired",
-            isSample: false
+            isSample: false, usage: .live()
         )
         if arguments.contains("-PRHubSettings") {
             environment.navigation.selectedTab = .settings
@@ -135,7 +136,7 @@ enum PRHubScreenshots {
         )
         let samples: PRSampleSet = arguments.contains("-PRHubHostedEmpty")
             ? PRSampleSet(samples: [], mergedReviewed: [], mergedMine: [], answersOnPhone: true) : .prHub
-        return PRHubEnvironment(connection: connection, samples: samples)
+        return PRHubEnvironment(connection: connection, samples: samples, usage: .live())
     }
 }
 
