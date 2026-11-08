@@ -13,7 +13,8 @@ Worker that the user deployed is not collected by the developer.
 
 ## Data types
 
-Select one type: **Usage Data → Product Interaction**. For it, answer:
+Select two types: **Usage Data → Product Interaction**, and **Diagnostics → Performance Data** (how long a PR took to
+open, and whether an alert's PR was fetched before the tap: `pr_opened`, `push_prefetch`). For each, answer:
 
 | Question | Answer |
 |---|---|
@@ -25,8 +26,8 @@ Leave every other type unselected:
 
 - **Identifiers (User ID, Device ID).** The random ID that the app makes is not linked to an account, and it is not
   the advertising identifier.
-- **Contact Info, User Content, Location, Browsing History, Search History, Diagnostics.** The events carry none of
-  these. Crash reports go through TestFlight only, and Apple discloses them.
+- **Contact Info, User Content, Location, Browsing History, Search History, Crash Data, Other Diagnostic Data.** The
+  events carry none of these. Crash reports go through TestFlight only, and Apple discloses them.
 
 ## Hosted service
 

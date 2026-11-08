@@ -4,8 +4,8 @@
 <dict>
 	<!-- Hand-written: XcodeGen copies it into the .app root, where Apple's upload scanner reads it. PRHub sends PR data
 	     only to the Worker its user signed in to or deployed. For its developer it collects anonymous product
-	     interaction through PostHog, not linked to the person and not used for tracking, which Settings turns off
-	     (PRIVACY.md, docs/app-store-privacy.md). -->
+	     interaction, and how long a PR took to open, through PostHog, not linked to the person and not used for
+	     tracking, which Settings turns off (PRIVACY.md, docs/app-store-privacy.md). -->
 	<key>NSPrivacyTracking</key>
 	<false/>
 	<key>NSPrivacyTrackingDomains</key>
@@ -15,6 +15,18 @@
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeProductInteraction</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePerformanceData</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
 			<false/>
 			<key>NSPrivacyCollectedDataTypeTracking</key>
@@ -35,6 +47,16 @@
 			<key>NSPrivacyAccessedAPITypeReasons</key>
 			<array>
 				<string>CA92.1</string>
+			</array>
+		</dict>
+		<!-- File timestamps, of the PR mirror's own files in the app group's container: prune leaves a file an alert's
+		     prefetch wrote moments ago. C617.1. -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
 			</array>
 		</dict>
 	</array>

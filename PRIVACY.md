@@ -32,7 +32,9 @@ The app tells Jai which screens and features people use, so that he can make PRH
 PostHog, an analytics service that processes it for Jai in its EU region (Frankfurt).
 
 - **What is sent.** Which screen shows, such as the PR list or Settings, and actions such as signing in, pairing a
-  Worker, opening a PR, a sync, and a change to the diff font. Failures send only a short error code, such as
+  Worker, opening a PR, a sync, and a change to the diff font. Opening a PR also sends how it was opened (an alert, the
+  list or a link), whether the phone already had it, and how many milliseconds it took; an alert sends whether the
+  phone fetched its PR before you tapped it, and how long that took. Failures send only a short error code, such as
   `code_refused`. Each event also carries the app version, the iOS version, the device model, the screen size, and the
   phone's language and time zone.
 - **What is never sent.** Your GitHub username or email, repo and organization names, PR titles, file paths, code,

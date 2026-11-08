@@ -19,8 +19,13 @@ enum AnalyticsEvent: Equatable, Sendable {
     case accountDeleted
     case workerDisconnected
     case diffFontChanged(DiffFontFace, size: Int)
-    /// From PRKit (`PRKitEvent`).
-    case pullRequestOpened
+    /// From PRKit (`PRKitEvent.contentShown`): a PR's content on screen, how it was opened, whether the phone had it,
+    /// and how long it took from the tap, waiting on the Worker and reading it.
+    case pullRequestOpened(
+        PROpenReport.Source, PROpenReport.Cache, timeToContentMs: Int, networkMs: Int, decodeMs: Int
+    )
+    /// How PRHubNotifications' fetch of an alert's PR went, and how long it took.
+    case pushPrefetch(PRPushPrefetch.Outcome, milliseconds: Int)
     case pullRequestsSynced(PRSyncTrigger, PRSyncOutcome)
     case pullRequestWriteRefused
 
@@ -42,6 +47,7 @@ enum AnalyticsEvent: Equatable, Sendable {
         case .workerDisconnected: "worker_disconnected"
         case .diffFontChanged: "diff_font_changed"
         case .pullRequestOpened: "pr_opened"
+        case .pushPrefetch: "push_prefetch"
         case .pullRequestsSynced: "prs_synced"
         case .pullRequestWriteRefused: "pr_write_refused"
         }
@@ -57,8 +63,16 @@ enum AnalyticsEvent: Equatable, Sendable {
         case let .diffFontChanged(face, size): ["face": .word(face.rawValue), "size": .number(size)]
         case let .pullRequestsSynced(trigger, outcome):
             ["trigger": .word(trigger.rawValue), "outcome": .word(outcome.analyticsWord)]
+        case let .pullRequestOpened(source, cache, timeToContent, network, decode):
+            [
+                "source": .word(source.rawValue), "cache": .word(cache.rawValue),
+                "time_to_content_ms": .number(timeToContent), "network_ms": .number(network),
+                "decode_ms": .number(decode),
+            ]
+        case let .pushPrefetch(outcome, milliseconds):
+            ["outcome": .word(outcome.rawValue), "ms": .number(milliseconds)]
         case .signInSucceeded, .workerPaired, .samplesLeft, .anthropicKeySet, .anthropicKeyRemoved, .signedOut,
-             .accountDeleted, .workerDisconnected, .pullRequestOpened, .pullRequestWriteRefused:
+             .accountDeleted, .workerDisconnected, .pullRequestWriteRefused:
             [:]
         }
     }
@@ -145,11 +159,17 @@ enum PairingFailureCode: String, CaseIterable, Sendable {
 extension AnalyticsEvent {
     /// What PRKit tells the app, as an event; nil for what is not reported. A badge count changes too often to be
     /// worth one, and a push's sync is reported only when it fails, so a busy repo does not flood the project. A
-    /// refused write's words can quote GitHub about the PR, so only that it happened is sent.
+    /// refused write's words can quote GitHub about the PR, so only that it happened is sent. A PR is reported once its
+    /// content shows, with its timings, and not when its screen is made.
     init?(_ event: PRKitEvent) {
         switch event {
         case .opened:
-            self = .pullRequestOpened
+            return nil
+        case let .contentShown(report):
+            self = .pullRequestOpened(
+                report.source, report.cache, timeToContentMs: report.timeToContentMilliseconds,
+                networkMs: report.networkMilliseconds, decodeMs: report.decodeMilliseconds
+            )
         case let .synced(trigger, outcome):
             let isPush = trigger == .silentPush || trigger == .otherPush
             guard !isPush || outcome == .failed else {

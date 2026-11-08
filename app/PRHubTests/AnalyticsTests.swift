@@ -33,7 +33,8 @@ struct AnalyticsTests {
         .screenViewed(.prs), .onboardingPathChosen(.ownWorker), .signInStarted(.onboarding), .signInSucceeded,
         .signInFailed(.denied), .workerPaired, .workerPairingFailed(.codeRefused), .samplesLeft, .anthropicKeySet,
         .anthropicKeyRemoved, .signedOut, .accountDeleted, .workerDisconnected, .diffFontChanged(.menlo, size: 13),
-        .pullRequestOpened, .pullRequestsSynced(.pull, .changed), .pullRequestWriteRefused,
+        .pullRequestOpened(.push, .hit, timeToContentMs: 180, networkMs: 0, decodeMs: 40),
+        .pullRequestsSynced(.pull, .changed), .pullRequestWriteRefused, .pushPrefetch(.landed, milliseconds: 412),
     ]
 
     nonisolated static func kind(_ event: AnalyticsEvent) -> Int {
@@ -55,13 +56,14 @@ struct AnalyticsTests {
         case .pullRequestOpened: 14
         case .pullRequestsSynced: 15
         case .pullRequestWriteRefused: 16
+        case .pushPrefetch: 17
         }
     }
 
     // MARK: - What an event can carry
 
     @Test func everyCaseIsListed() {
-        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0...16))
+        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0...17))
     }
 
     @Test func eachEventHasItsOwnSnakeCaseName() {
@@ -90,6 +92,8 @@ struct AnalyticsTests {
             AnalyticsScreen.allCases.map(\.rawValue) + OnboardingPath.allCases.map(\.rawValue)
                 + SignInContext.allCases.map(\.rawValue) + SignInFailureCode.allCases.map(\.rawValue)
                 + PairingFailureCode.allCases.map(\.rawValue) + DiffFontFace.allCases.map(\.rawValue)
+                + PROpenReport.Source.allCases.map(\.rawValue) + PROpenReport.Cache.allCases.map(\.rawValue)
+                + PRPushPrefetch.Outcome.allCases.map(\.rawValue)
                 + ["push", "other_push", "foreground", "pull", "changed", "unchanged", "failed"]
         )
         for (key, value) in event.properties {
@@ -110,7 +114,16 @@ struct AnalyticsTests {
 
     @Test func prKitsEventsAreMappedWithoutTheirContent() {
         let ref = PullRequestRef(repo: "acme/checkout", number: 7)
-        #expect(AnalyticsEvent(.opened(ref)) == .pullRequestOpened)
+        #expect(AnalyticsEvent(.opened(ref)) == nil, "reported once its content shows")
+        let report = PROpenReport(
+            source: .push, cache: .miss, timeToContentMilliseconds: 950, networkMilliseconds: 610, decodeMilliseconds: 45
+        )
+        #expect(AnalyticsEvent(.contentShown(report))
+            == .pullRequestOpened(.push, .miss, timeToContentMs: 950, networkMs: 610, decodeMs: 45))
+        #expect(AnalyticsEvent(.contentShown(report))?.properties == [
+            "source": .word("push"), "cache": .word("miss"), "time_to_content_ms": .number(950),
+            "network_ms": .number(610), "decode_ms": .number(45),
+        ])
         #expect(AnalyticsEvent(.writeRefused("Branch acme/secret is protected")) == .pullRequestWriteRefused)
         #expect(AnalyticsEvent(.reviewRequests(3)) == nil)
         #expect(AnalyticsEvent(.synced(.pull, .changed)) == .pullRequestsSynced(.pull, .changed))
@@ -128,7 +141,8 @@ struct AnalyticsTests {
         let host = PRHubPRHost(access: .offline, samples: nil, usage: Self.usage(sink))
         host.receive(.opened(PullRequestRef(repo: "acme/checkout", number: 7)))
         host.receive(.reviewRequests(2))
-        #expect(sink.events == [.pullRequestOpened])
+        host.receive(.writeRefused("no"))
+        #expect(sink.events == [.pullRequestWriteRefused])
     }
 
     // MARK: - The switch in Settings

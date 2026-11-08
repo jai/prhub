@@ -108,6 +108,25 @@ final class PRHubPRHost: PRKitHost {
     }
     /// PRHub has no event log: the system log has it (`PRMirror`).
     func log(_ line: String) {}
+
+    /// The app group's, which PRHubNotifications fills before an alert's tap. Samples keep their own.
+    var mirrorDirectory: URL? {
+        samples == nil ? Self.mirrorDirectory() : nil
+    }
+
+    /// The mirror in the app group (`PRHubAppGroup` in Info.plist). The first launch with it moves the caches' mirror
+    /// there, so nothing is downloaded again.
+    nonisolated static func mirrorDirectory(bundle: Bundle = .main) -> URL {
+        let group = bundle.object(forInfoDictionaryKey: "PRHubAppGroup") as? String
+        let shared = PRMirrorLocation.directory(appGroup: group)
+        let old = PRMirrorLocation.directory(appGroup: nil)
+        let manager = FileManager.default
+        if shared != old, !manager.fileExists(atPath: shared.path()), manager.fileExists(atPath: old.path()) {
+            try? manager.createDirectory(at: shared.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? manager.moveItem(at: old, to: shared)
+        }
+        return shared
+    }
 }
 
 extension PRViewerAccess {

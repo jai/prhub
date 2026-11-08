@@ -66,6 +66,8 @@ targets:
         PRHubSamples: $(PRHUB_SAMPLES)
         PRHubAnalyticsKey: $(PRHUB_ANALYTICS_KEY)
         PRHubAnalyticsHost: $(PRHUB_ANALYTICS_HOST)
+        # The app group the PR mirror lives in, shared with PRHubNotifications.
+        PRHubAppGroup: $(PRHUB_APP_GROUP)
         NSCameraUsageDescription: PRHub uses the camera to scan the setup code your pr-worker printed.
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
@@ -89,6 +91,9 @@ targets:
           - webcredentials:$(PRHUB_HOSTED_HOST)
         keychain-access-groups:
           - $(AppIdentifierPrefix)com.jaigovindani.prreview
+        # The PR mirror, which PRHubNotifications fills before an alert's tap.
+        com.apple.security.application-groups:
+          - $(PRHUB_APP_GROUP)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jaigovindani.prreview
@@ -104,6 +109,7 @@ targets:
         product: PRKit
       - package: PostHog
         product: PostHog
+      - target: PRHubNotifications
     scheme:
       testTargets:
         - PRHubTests
@@ -111,6 +117,50 @@ targets:
         # The PR screens' own tests, run with the app's.
         - package: PRKit/PRKitTests
       gatherCoverageData: true
+
+  # The Notification Service Extension: fetches an alert's PR into the app group's mirror before the tap
+  # (`PRPushPrefetch`), within iOS's time for it, and shows the alert either way.
+  PRHubNotifications:
+    type: app-extension
+    platform: iOS
+    configFiles:
+      Debug: Config/PRHub.xcconfig
+      Release: Config/PRHub.xcconfig
+    sources:
+      - path: PRHubNotifications
+        excludes:
+          - "Info.plist"
+          - "PRHubNotifications.entitlements"
+      # The app's own Keychain reads, for the paired Worker's URL and the device secret.
+      - path: PRHub/Pairing/WorkerURLStore.swift
+      - path: PRHub/Pairing/DeviceSecretStore.swift
+    info:
+      path: PRHubNotifications/Info.plist
+      properties:
+        CFBundleDisplayName: PRHub
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        PRHubAppGroup: $(PRHUB_APP_GROUP)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+    entitlements:
+      path: PRHubNotifications/PRHubNotifications.entitlements
+      properties:
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)com.jaigovindani.prreview
+        com.apple.security.application-groups:
+          - $(PRHUB_APP_GROUP)
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jaigovindani.prreview.notifications
+        PRODUCT_NAME: PRHubNotifications
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+        APPLICATION_EXTENSION_API_ONLY: YES
+    dependencies:
+      - package: PRKit
+        product: PRKitCore
 
   PRHubTests:
     type: bundle.unit-test

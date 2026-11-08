@@ -21,4 +21,10 @@ final class PRHubNavigation {
         pullRequests?.open(ref)
         selectedTab = .prs
     }
+
+    /// A tapped alert's PR, with the row it carried.
+    func showAlert(_ ref: PullRequestRef, row: PullRequestRow?) {
+        pullRequests?.open(alert: ref, row: row)
+        selectedTab = .prs
+    }
 }

@@ -3,14 +3,14 @@ import Observation
 import UserNotifications
 
 /// PRHub's notification delegate: a pr-worker alert shows while the app is in front, and its tap opens the PR
-/// (docs/api.md, "Alerts"). The hosted Worker's `signed_out` alert shows Sign in again, whether it arrives in front or
+/// (docs/api.md, "Alerts") from the row it carried, which PRHubNotifications has usually fetched already. The hosted Worker's `signed_out` alert shows Sign in again, whether it arrives in front or
 /// is tapped. Nonisolated: the system names no thread for these calls.
 final class PRHubNotificationDelegate: NSObject, UNUserNotificationCenterDelegate, Sendable {
-    private let open: @MainActor @Sendable (PullRequestRef) -> Void
+    private let open: @MainActor @Sendable (PullRequestRef, PullRequestRow?) -> Void
     private let signedOut: @MainActor @Sendable () -> Void
 
     init(
-        open: @escaping @MainActor @Sendable (PullRequestRef) -> Void,
+        open: @escaping @MainActor @Sendable (PullRequestRef, PullRequestRow?) -> Void,
         signedOut: @escaping @MainActor @Sendable () -> Void = {}
     ) {
         self.open = open
@@ -43,19 +43,21 @@ final class PRHubNotificationDelegate: NSObject, UNUserNotificationCenterDelegat
             Task { @MainActor in signedOut() }
         }
         let ref = PRPush(userInfo: userInfo)?.openedPullRequest
+        let row = PRPush.row(in: userInfo)
         let action = response.actionIdentifier
         // Not Sendable, but only ever called once, on the main actor.
         nonisolated(unsafe) let done = completionHandler
-        respond(action: action, pullRequest: ref) { done() }
+        respond(action: action, pullRequest: ref, row: row) { done() }
     }
 
     /// Everything of a tap but the system's types, so a test can play it.
     func respond(
-        action: String, pullRequest: PullRequestRef?, completion: @escaping @MainActor @Sendable () -> Void
+        action: String, pullRequest: PullRequestRef?, row: PullRequestRow? = nil,
+        completion: @escaping @MainActor @Sendable () -> Void
     ) {
         Task { @MainActor in
             if let pullRequest, action == UNNotificationDefaultActionIdentifier {
-                open(pullRequest)
+                open(pullRequest, row)
             }
             completion()
         }

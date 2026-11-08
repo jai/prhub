@@ -25,7 +25,7 @@ final class PRHubEnvironment {
     let alertPermission: PRHubAlertPermission
     /// Set as the notification center's delegate at launch (`AppDelegate`), which holds it weakly.
     @ObservationIgnored private(set) lazy var notificationDelegate = PRHubNotificationDelegate(
-        open: { [weak self] ref in self?.openAlert(ref) },
+        open: { [weak self] ref, row in self?.openAlert(ref, row: row) },
         signedOut: { [weak self] in
             guard let self else {
                 return
@@ -160,12 +160,13 @@ final class PRHubEnvironment {
         alertPermission.forgetDecline()
     }
 
-    /// A tapped review alert: its PR on the PRs tab. Nothing while no Worker is paired, as during the samples.
-    func openAlert(_ ref: PullRequestRef) {
+    /// A tapped review alert: its PR on the PRs tab, from the row it carried. Nothing while no Worker is paired, as
+    /// during the samples.
+    func openAlert(_ ref: PullRequestRef, row: PullRequestRow? = nil) {
         guard connection.isPaired, sample == nil else {
             return
         }
-        navigation.showPullRequest(ref)
+        navigation.showAlert(ref, row: row)
     }
 
     /// Just paired, or a config read: offers alerts once the Worker pushes.
@@ -187,9 +188,19 @@ final class PRHubEnvironment {
         guard !connection.needsSignInAgain else {
             return
         }
+        sendPrefetchReports()
         // The sync sends this launch's push token too, when the Worker pushes.
         await prs.refresh(.foreground)
         await offerAlertsIfDue()
+    }
+}
+
+extension PRHubEnvironment {
+    /// How PRHubNotifications' prefetches went since the last time the app was in front, as `push_prefetch` events.
+    func sendPrefetchReports() {
+        for entry in PRPushPrefetchLog(directory: PRHubPRHost.mirrorDirectory()).drain() {
+            usage.record(.pushPrefetch(entry.outcome, milliseconds: entry.milliseconds))
+        }
     }
 }
 

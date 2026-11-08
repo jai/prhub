@@ -45,7 +45,9 @@ through the PRHub GitHub App. The service stores these items:
 The app, not the hosted service, tells Jai which screens and features people use, so that he can make PRHub better.
 
 - **What is sent.** Which screen shows, such as the PR list or Settings, and actions such as signing in, opening a PR,
-  a sync, setting or removing your Anthropic key, and a change to the diff font. Failures send only a short error
+  a sync, setting or removing your Anthropic key, and a change to the diff font. Opening a PR also sends how it was
+  opened (an alert, the list or a link), whether the phone already had it, and how many milliseconds it took; an alert
+  sends whether the phone fetched its PR before you tapped it, and how long that took. Failures send only a short error
   code, such as `github_unavailable`. Each event also carries the app version, the iOS version, the device model, the
   screen size, and the phone's language and time zone.
 - **What is never sent.** Your GitHub user ID, username or email, repo and organization names, PR titles, file paths,

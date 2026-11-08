@@ -15,7 +15,7 @@ struct PRHubAlertTests {
 
     @Test func tappingAnAlertOpensThePRAndDismissingOpensNothing() async {
         let opened = Shared<[PullRequestRef]>([])
-        let delegate = PRHubNotificationDelegate { ref in opened.with { $0.append(ref) } }
+        let delegate = PRHubNotificationDelegate { ref, _ in opened.with { $0.append(ref) } }
         for action in [UNNotificationDismissActionIdentifier, UNNotificationDefaultActionIdentifier] {
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 delegate.respond(action: action, pullRequest: PRPush(userInfo: Self.alert)?.openedPullRequest) {

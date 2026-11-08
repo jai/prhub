@@ -10,3 +10,6 @@ DerivedData/
 app/PRHub/Info.plist
 app/PRHub/PRHub.entitlements
 *.p8
+
+app/PRHubNotifications/Info.plist
+app/PRHubNotifications/PRHubNotifications.entitlements
