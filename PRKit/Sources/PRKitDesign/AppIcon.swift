@@ -48,6 +48,7 @@ public enum AppIcon: String {
     // Threads and agent messages.
     case machine = "desktopcomputer"
     case machineNotAnswering = "desktopcomputer.trianglebadge.exclamationmark"
+    case automation = "repeat"
     case serverGone = "icloud.slash"
     case replied = "arrowshape.turn.up.left.fill"
     case awaitingReply = "bubble.left.and.text.bubble.right"
