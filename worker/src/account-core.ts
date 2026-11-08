@@ -6,6 +6,7 @@
  */
 import { z } from "zod";
 import type { GitHubUser, TokenGrant } from "./boundary.ts";
+import { type InstallationAccount, InstallationAccountSchema } from "./installations.ts";
 import { countOf, durationOf, LimitName, type Limits } from "./limits.ts";
 import { type Fetch, type OAuthApp, refreshGrant, revokeGrant } from "./oauth.ts";
 import { sha256Hex } from "./pairing.ts";
@@ -59,6 +60,9 @@ const AiSchema = z.object({
 
 /** The installations the person's token reached at the last sync (`installations.ts`), and when one was claimed. */
 const InstallationsSchema = z.object({ ids: z.array(z.string()), synced_at: z.number() });
+
+/** What the app shows of those installations (`GET /device/config`'s `installations`), kept apart from the ids. */
+const InstallationAccountsSchema = z.array(z.unknown());
 
 /** The slice of `DurableObjectStorage` the account uses; a test passes a Map. */
 export interface KeyValueStore {
@@ -114,6 +118,7 @@ export interface SessionInfo {
 const ACCOUNT = "account";
 const AI = "ai";
 const INSTALLATIONS = "installations";
+const INSTALLATION_ACCOUNTS = "installation_accounts";
 /** Signing out drops every token and key the account holds, so none is kept for someone with no phone signed in. */
 function signedOut(record: AccountRecord, reason: SignedOutReason): AccountRecord {
   return { ...record, state: "signed_out", signed_out_reason: reason, tokens: null, handoffs: [] };
@@ -345,10 +350,26 @@ export class AccountCore {
     return true;
   }
 
-  async setInstallations(ids: string[], now: number): Promise<void> {
+  async setInstallations(ids: string[], now: number, accounts: InstallationAccount[]): Promise<void> {
     if (await this.#read()) {
       await this.#deps.store.put(INSTALLATIONS, { ids, synced_at: now });
+      await this.#deps.store.put(INSTALLATION_ACCOUNTS, accounts);
     }
+  }
+
+  /**
+   * The installations the last sync read, as the app shows them; null before the first. One that no longer parses is
+   * left out.
+   */
+  async installationAccounts(): Promise<InstallationAccount[] | null> {
+    const parsed = InstallationAccountsSchema.safeParse(await this.#deps.store.get(INSTALLATION_ACCOUNTS));
+    if (!parsed.success) {
+      return null;
+    }
+    return parsed.data.flatMap((entry) => {
+      const account = InstallationAccountSchema.safeParse(entry);
+      return account.success ? [account.data] : [];
+    });
   }
 
   async #readInstallations(): Promise<z.infer<typeof InstallationsSchema>> {

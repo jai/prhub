@@ -29,5 +29,31 @@
     "sessions_max": 20,
     "sign_in_minutes": 10,
     "sign_in_code_minutes": 5
-  }
+  },
+  "hosted": true,
+  "account": {
+    "state": "signed_in",
+    "login": "octocat",
+    "user_id": "4242",
+    "anthropic_key": false
+  },
+  "installations": [
+    {
+      "account": "octocat",
+      "account_type": "User",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4",
+      "installation_id": 1,
+      "repository_selection": "all",
+      "suspended": false
+    },
+    {
+      "account": "acme",
+      "account_type": "Organization",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2?v=4",
+      "installation_id": 2,
+      "repository_selection": "selected",
+      "repo_count": 2,
+      "suspended": false
+    }
+  ]
 }

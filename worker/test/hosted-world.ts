@@ -25,6 +25,16 @@ export interface GitHubCall { method: string; url: string; form: URLSearchParams
 
 export interface FakeUser { id: number; login: string }
 
+export interface FakeInstallation {
+  account: string;
+  repos: string[];
+  /** An organization's unless it says a user's. */
+  type?: "User" | "Organization";
+  /** Every repo of the account unless it says a chosen few. */
+  selection?: "all" | "selected";
+  suspended?: boolean;
+}
+
 export class FakeGitHub {
   calls: GitHubCall[] = [];
   /** The challenge the Worker's authorize URL carried, which the code exchange must match. */
@@ -36,8 +46,8 @@ export class FakeGitHub {
   user: FakeUser = { id: 4242, login: "octocat" };
   /** Each access token's person. */
   readonly owners = new Map<string, FakeUser>();
-  /** Installations of the App: their account and repos. */
-  readonly installations = new Map<number, { account: string; repos: string[] }>();
+  /** Installations of the App: their account, its kind, its repos and whether all were picked, and suspension. */
+  readonly installations = new Map<number, FakeInstallation>();
   /** The repos each person can see, by user id. */
   readonly access = new Map<number, Set<string>>();
   /** Extra headers on every API answer, for rate limits. */
@@ -81,12 +91,23 @@ export class FakeGitHub {
       const reached = [...this.installations].filter(([, installation]) => installation.repos.some(sees));
       return answer({
         total_count: reached.length,
-        installations: page === 1 ? reached.map(([id, { account }]) => ({ id, account: { login: account } })) : [],
+        installations: page === 1 ? reached.map(([id, installation]) => ({
+          id,
+          account: {
+            login: installation.account, type: installation.type ?? "Organization",
+            avatar_url: `https://avatars.githubusercontent.com/u/${id}?v=4`,
+          },
+          repository_selection: installation.selection ?? "all",
+          suspended_at: installation.suspended ? "2026-11-06T00:00:00Z" : null,
+        })) : [],
       });
     }
     const repos = /^\/user\/installations\/(\d+)\/repositories$/.exec(path);
     if (repos) {
       const installation = this.installations.get(Number(repos[1]));
+      if (installation?.suspended) {
+        return answer({ message: "This installation has been suspended" }, 403);
+      }
       const visible = installation?.repos.filter(sees) ?? [];
       return installation && visible.length > 0
         ? answer({ total_count: visible.length, repositories: visible.map((name) => ({ full_name: name })) })

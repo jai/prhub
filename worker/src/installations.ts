@@ -102,9 +102,48 @@ function targetOf(event: string, repo: RepoFullName, payload: unknown): Delivery
 const MAX_PAGES = 20;
 const HEADERS = { Accept: "application/vnd.github+json", "User-Agent": "pr-viewer", "X-GitHub-Api-Version": "2022-11-28" };
 
-const InstallationsPage = z.object({
-  installations: z.array(z.object({ id: z.number().int().positive(), account: Login }).loose()),
+/**
+ * One installation the person reaches, as `GET /device/config` names it (docs/api.md): whose it is, its picture, and
+ * whether it has every repo or a chosen few. `repo_count` is how many of a chosen few the person's own token sees.
+ */
+export const InstallationAccountSchema = z.object({
+  account: z.string(),
+  account_type: z.enum(["User", "Organization"]),
+  avatar_url: z.string(),
+  installation_id: z.number().int().positive(),
+  repository_selection: z.enum(["all", "selected"]),
+  repo_count: z.number().int().nonnegative().optional(),
+  suspended: z.boolean(),
 });
+
+export type InstallationAccount = z.infer<typeof InstallationAccountSchema>;
+
+/**
+ * An installation in `GET /user/installations`. An enterprise's, or one GitHub sends without its account, is no account
+ * of the person's to show.
+ */
+const InstallationItem = z.object({
+  id: z.number().int().positive(),
+  account: z.object({
+    login: z.string(), type: z.string().nullish(), avatar_url: z.string().nullish(),
+  }).loose().nullish(),
+  repository_selection: z.string().nullish(),
+  suspended_at: z.string().nullish(),
+}).loose();
+const InstallationsPage = z.object({ installations: z.array(InstallationItem) });
+
+function accountOf(item: z.infer<typeof InstallationItem>, repos: string[] | null): InstallationAccount | null {
+  const parsed = InstallationAccountSchema.safeParse({
+    account: item.account?.login,
+    account_type: item.account?.type,
+    avatar_url: item.account?.avatar_url,
+    installation_id: item.id,
+    repository_selection: item.repository_selection,
+    ...(item.repository_selection === "selected" && repos ? { repo_count: repos.length } : {}),
+    suspended: Boolean(item.suspended_at),
+  });
+  return parsed.success ? parsed.data : null;
+}
 const ReposPage = z.object({ repositories: z.array(z.object({ full_name: z.string() }).loose()) });
 
 async function pages<Item>(
@@ -132,13 +171,21 @@ async function pages<Item>(
   return items;
 }
 
+/** One installation the person's token reaches: its owner's login, the repos it sees there, and how the app shows it. */
+export interface ListedInstallation {
+  account: string | null;
+  /** Null for a suspended installation: GitHub lists no repos for it, and its membership stays as it was. */
+  repos: string[] | null;
+  /** Null for an installation that is no account of the person's to show (an enterprise's). */
+  summary: InstallationAccount | null;
+}
+
 /**
  * The installations a person's token can reach and, in each, the repos it can see: `GET /user/installations` and
  * `GET /user/installations/{id}/repositories`. Null when GitHub could not answer all of it, so nothing is dropped on a
  * partial answer.
  */
-export async function listInstallations(token: string, fetcher: Fetch):
-Promise<Map<string, { account: string | null; repos: string[] }> | null> {
+export async function listInstallations(token: string, fetcher: Fetch): Promise<Map<string, ListedInstallation> | null> {
   const installations = await pages("https://api.github.com/user/installations", token, fetcher, (body) => {
     const parsed = InstallationsPage.safeParse(body);
     return parsed.success ? parsed.data.installations : null;
@@ -146,8 +193,14 @@ Promise<Map<string, { account: string | null; repos: string[] }> | null> {
   if (!installations) {
     return null;
   }
-  const listed = new Map<string, { account: string | null; repos: string[] }>();
+  const listed = new Map<string, ListedInstallation>();
   for (const installation of installations) {
+    if (installation.suspended_at) {
+      listed.set(String(installation.id), {
+        account: installation.account?.login ?? null, repos: null, summary: accountOf(installation, null),
+      });
+      continue;
+    }
     const repos = await pages(`https://api.github.com/user/installations/${installation.id}/repositories`, token,
       fetcher, (body) => {
         const parsed = ReposPage.safeParse(body);
@@ -157,7 +210,9 @@ Promise<Map<string, { account: string | null; repos: string[] }> | null> {
     if (!repos) {
       return null;
     }
-    listed.set(String(installation.id), { account: installation.account?.login ?? null, repos });
+    listed.set(String(installation.id), {
+      account: installation.account?.login ?? null, repos, summary: accountOf(installation, repos),
+    });
   }
   return listed;
 }
@@ -167,7 +222,7 @@ export interface SyncAccount {
   accessToken(): Promise<{ kind: "ok"; token: string; login: string; userId: string } | { kind: string }>;
   claimInstallationSync(now: number, gapMs: number): Promise<boolean> | boolean;
   installationIds(): Promise<string[]> | string[];
-  setInstallations(ids: string[], now: number): Promise<void> | void;
+  setInstallations(ids: string[], now: number, accounts: InstallationAccount[]): Promise<void> | void;
 }
 
 export interface InstallationApi {
@@ -182,7 +237,9 @@ export interface InstallationApi {
 
 /**
  * Reads the person's installations with their own token, joins each one with the repos they can see there, and leaves
- * the ones they no longer reach. False when it did not run: claimed too recently, signed out, or GitHub did not answer.
+ * the ones they no longer reach. A suspended one is kept as it was: it routes nothing until `unsuspend`. What the app
+ * shows of each is kept too, their own account first. False when it did not run: claimed too recently, signed out, or
+ * GitHub did not answer.
  */
 export async function syncInstallations(
   account: SyncAccount, installation: (id: string) => InstallationApi, fetcher: Fetch, now: number, gapMs: number,
@@ -200,13 +257,23 @@ export async function syncInstallations(
   }
   const member = { user_id: answer.userId, login: answer.login };
   for (const [id, { account: owner, repos }] of listed) {
-    await installation(id).join(member, repos, owner, now);
+    if (repos) {
+      await installation(id).join(member, repos, owner, now);
+    }
   }
   for (const id of await account.installationIds()) {
     if (!listed.has(id)) {
       await installation(id).leave(answer.userId);
     }
   }
-  await account.setInstallations([...listed.keys()], now);
+  const accounts = [...listed.values()].flatMap(({ summary }) => summary ? [summary] : []);
+  await account.setInstallations([...listed.keys()], now, sortedAccounts(accounts, answer.login));
   return true;
+}
+
+/** The person's own account first, then the rest by name. */
+function sortedAccounts(accounts: InstallationAccount[], login: string): InstallationAccount[] {
+  const own = (entry: InstallationAccount) => entry.account.toLowerCase() === login.toLowerCase() ? 0 : 1;
+  return accounts.toSorted((left, right) => own(left) - own(right)
+    || left.account.localeCompare(right.account, "en", { sensitivity: "base" }));
 }

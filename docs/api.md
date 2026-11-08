@@ -480,7 +480,39 @@ session may catch the HTTPS callback.
 
 `account.state` is `signed_in` or `signed_out`; a signed-out account adds `reason`: `revoked`, `refresh_expired` or
 `signed_out`. `account.anthropic_key` says whether the person gave their own Anthropic key; the key itself is never
-answered. Settings shows Delete Account when `hosted` is true. On the hosted Worker AI runs only on the person's own
+answered.
+
+A signed-in session's config also names the installations of the PRHub App that the person's own token reaches
+(`GET /user/installations`), their own account first, then the rest by name:
+
+```json
+{
+  "installations": [
+    { "account": "octocat", "account_type": "User", "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4",
+      "installation_id": 1, "repository_selection": "all", "suspended": false },
+    { "account": "acme", "account_type": "Organization", "avatar_url": "https://avatars.githubusercontent.com/u/2?v=4",
+      "installation_id": 2, "repository_selection": "selected", "repo_count": 2, "suspended": false }
+  ]
+}
+```
+
+| Field | Means |
+|---|---|
+| `account`, `account_type` | The user or org the App is installed on: `User` or `Organization` |
+| `avatar_url` | Its GitHub picture |
+| `installation_id` | GitHub's id: the installation's settings are `https://github.com/settings/installations/<id>` for a user, `https://github.com/organizations/<account>/settings/installations/<id>` for an org |
+| `repository_selection` | `all`: every repo of the account; `selected`: the repos picked on GitHub |
+| `repo_count` | With `selected` only: how many of the picked repos the person's own token sees. Absent while suspended |
+| `suspended` | The App is suspended there: it routes nothing until it is unsuspended |
+
+The list is what the last [installation sync](#webhook-routing) read: at sign-in, on app open every
+`installation_sync_on_open_minutes`, every `installation_sync_hours`, and at once for the person who installed,
+uninstalled, suspended or changed the repos of an installation (its webhook). `installations` is absent before the
+first sync and for a signed-out session. Orgs the person belongs to that have no installation are not listed: a GitHub
+App's user token lists only orgs where the App is installed (`GET /user/orgs`), and listing all of them would need a
+`read:org` OAuth scope the App does not ask for.
+
+Settings shows Delete Account when `hosted` is true. On the hosted Worker AI runs only on the person's own
 key: `features.key_lines` and `features.rewrite` are on once they gave it, and `features.ask_ai` once Ask's resources
 were made in their org ([`PUT /account/anthropic-key`](#put-accountanthropic-key)). Feedback is always off.
 
@@ -554,12 +586,13 @@ its repos each one can see. Who sees what comes only from each person's own toke
   old, and every `installation_sync_hours` from the account's alarm, the Worker reads `GET /user/installations` and
   `GET /user/installations/{id}/repositories` with the person's token. They join each installation listed, with exactly the repos listed, and leave the ones no
   longer listed. A partial answer changes nothing.
-- **`installation`.** `created`, `new_permissions_accepted` and `unsuspend` record the repos it names, and read the
-  installations of the person who acted, if they have signed in. `suspend` routes nothing until `unsuspend`, and
-  drops each member's rows of the installation's repos at once; after `unsuspend` the poll reads them again.
-  `deleted` drops the same rows and forgets the installation.
-- **`installation_repositories`.** `added` records the repos and reads the actor's installations again; `removed`
-  forgets the repos, so nobody is routed to them, and drops each member's rows of them at once.
+- **`installation`.** `created`, `new_permissions_accepted` and `unsuspend` record the repos it names. `suspend`
+  routes nothing until `unsuspend`, and drops each member's rows of the installation's repos at once; after
+  `unsuspend` the poll reads them again. `deleted` drops the same rows and forgets the installation. Every action
+  then reads the installations of the person who acted, if they have signed in. A sync reads no repos of a suspended
+  installation and leaves its members as they were.
+- **`installation_repositories`.** `added` records the repos; `removed` forgets the repos, so nobody is routed to
+  them, and drops each member's rows of them at once. Both then read the actor's installations again.
 - **`pull_request`, `pull_request_review`, `pull_request_review_comment`, `pull_request_review_thread`,
   `issue_comment` (on a PR).** Marked in the index of each member whose list has the repo, `involved` when they wrote
   the PR or are asked to review it. A PR an index does not hold, with the person not involved, costs nothing.

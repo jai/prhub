@@ -14,7 +14,7 @@ import type { Env } from "./env.ts";
 import { canSee, installationOf, keyringOf, oauthAppOf, type PendingSignIn, userIndex } from "./hosted.ts";
 import type { RepoFullName } from "./ids.ts";
 import { type DeliveryTarget, InstallationCore, isInvolved, type Member, storageStore } from "./installation-core.ts";
-import { syncInstallations } from "./installations.ts";
+import { type InstallationAccount, syncInstallations } from "./installations.ts";
 import { consumeLimits, createLimitHitsTable, lastExpiry, type LimitCheck, type LimitDecision } from "./limit-counter.ts";
 import { durationOf, LimitName, limitsOf } from "./limits.ts";
 
@@ -91,8 +91,12 @@ export class UserAccount extends DurableObject<Env> {
     return this.#core.claimInstallationSync(now, gapMs);
   }
 
-  setInstallations(ids: string[], now: number): Promise<void> {
-    return this.#core.setInstallations(ids, now);
+  setInstallations(ids: string[], now: number, accounts: InstallationAccount[]): Promise<void> {
+    return this.#core.setInstallations(ids, now, accounts);
+  }
+
+  installationAccounts(): Promise<InstallationAccount[] | null> {
+    return this.#core.installationAccounts();
   }
 
   /**

@@ -9,6 +9,8 @@ import { detailVersionOf, mergedRow, pullRequest, reviewWeek } from "../src/gith
 import type { RepoFullName, Sha } from "../src/ids.ts";
 import { DEFAULT_CONTEXT } from "../src/key-lines.ts";
 import { stateOf } from "../src/pr-states.ts";
+import { authenticate, hostedAccountConfig } from "../src/hosted.ts";
+import { bearer, hostedWorld, ORIGIN, signIn } from "./hosted-world.ts";
 import { prNode } from "./pr-node.ts";
 
 const WEEK = reviewWeek({ REVIEW_SLA_UTC_OFFSET_HOURS: "7", REVIEW_SLA_HOURS: "9-18", REVIEW_SLA_WEEKDAYS: "1,2,3,4,5" });
@@ -92,8 +94,19 @@ test("GET /device/config", () => {
   matchesFixture("device-config.json", deviceConfig(env, "alex"));
 });
 
-test("GET /device/config on the hosted Worker: the hosted limits", () => {
-  matchesFixture("device-config-hosted.json", deviceConfig({ HOSTED: "on", GITHUB_TOKEN: "ghu_x" } as Env, "octocat"));
+test("GET /device/config on the hosted Worker: the hosted limits, the account and its installations", async () => {
+  const world = hostedWorld();
+  world.github.installations.set(1, { account: "octocat", repos: ["octocat/hello"], type: "User" });
+  world.github.installations.set(2, { account: "acme", repos: ["acme/api", "acme/web"], selection: "selected" });
+  world.github.grant(world.github.user, ["octocat/hello", "acme/api", "acme/web"]);
+  const secret = await signIn(world);
+  const auth = await authenticate(new Request(`${ORIGIN}/device/config`, bearer(secret)), world.workerEnv,
+    world.services);
+  assert.ok("env" in auth);
+  matchesFixture("device-config-hosted.json", {
+    ...deviceConfig({ HOSTED: "on", GITHUB_TOKEN: "ghu_x" } as Env, "octocat"),
+    ...hostedAccountConfig(auth.session, await world.services.account(auth.session.userId).installationAccounts()),
+  });
 });
 
 test("an alert's push payload", () => {

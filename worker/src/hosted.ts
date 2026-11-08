@@ -10,7 +10,9 @@ import { isAnthropicKeyShape, NO_AI, userIdOf } from "./account-core.ts";
 import { bodyOf, parseFinishInput, parseSender } from "./boundary.ts";
 import { type Env, isSet } from "./env.ts";
 import type { RepoFullName, Sha } from "./ids.ts";
-import { type InstallationApi, parseAppDelivery, syncInstallations } from "./installations.ts";
+import {
+  type InstallationAccount, type InstallationApi, parseAppDelivery, syncInstallations,
+} from "./installations.ts";
 import type { LimitCheck, LimitDecision } from "./limit-counter.ts";
 import {
   durationOf, gitHubReserveOf, type GitHubReserve, LimitName, limitReachedAnswer, type Limits, limitsOf, rateWindowOf,
@@ -128,7 +130,8 @@ export interface AnthropicApi {
 
 export type AccountApi = Pick<AccountCore,
   "signIn" | "finish" | "session" | "accessToken" | "tokenAfterUnauthorized" | "signOutEverywhere" | "signOut"
-  | "deleteAccount" | "setAnthropicKey" | "installationIds" | "claimInstallationSync" | "setInstallations">;
+  | "deleteAccount" | "setAnthropicKey" | "installationIds" | "claimInstallationSync" | "setInstallations"
+  | "installationAccounts">;
 
 /** The part of a person's `PrIndex` the hosted routes and installations touch. */
 export interface UserIndexApi {
@@ -436,7 +439,7 @@ export async function deleteAccountRoute(request: Request, services: HostedServi
 /**
  * `POST /github/webhook` on the hosted Worker (docs/api.md, "Webhook routing"). `github_app_authorization` `revoked`
  * signs the person out everywhere. `installation` and `installation_repositories` keep each installation's repos and
- * suspension, and send the person who acted to read their installations again. Pull request, comment, check suite and
+ * suspension, and send the person who acted, whatever they did, to read their installations again. Pull request, comment, check suite and
  * status events go to the installation, which marks them in the index of each member who can see the repo.
  */
 export async function hostedWebhook(
@@ -477,13 +480,14 @@ export async function hostedWebhook(
   };
   if (delivery.kind === "target") {
     await installation.route(delivery.target, now);
-  } else if (delivery.kind === "installation_repositories") {
+    return new Response(null, { status: 202 });
+  }
+  if (delivery.kind === "installation_repositories") {
     if (delivery.removed.length > 0) {
       await installation.reposRemoved(delivery.removed);
     }
     if (delivery.added.length > 0) {
       await installation.reposAdded(delivery.added, now);
-      syncSender(delivery.senderId);
     }
   } else if (delivery.action === "deleted") {
     await installation.forget();
@@ -494,8 +498,9 @@ export async function hostedWebhook(
       await installation.setSuspended(false);
     }
     await installation.reposAdded(delivery.repos, now);
-    syncSender(delivery.senderId);
   }
+  // Whoever acted reads their installations again, so their app's list is current when they come back from GitHub.
+  syncSender(delivery.senderId);
   return new Response(null, { status: 202 });
 }
 
@@ -639,13 +644,17 @@ export async function authenticate(
     : { answer: errorAnswer(503, "github_unavailable", "GitHub could not be asked; try again"), session };
 }
 
-/** What `GET /device/config` adds on the hosted Worker. Whether a key is set, never the key. */
-export function hostedAccountConfig(session: SessionInfo): object {
+/**
+ * What `GET /device/config` adds on the hosted Worker. Whether a key is set, never the key. `installations` once a sync
+ * has read them for a signed-in person.
+ */
+export function hostedAccountConfig(session: SessionInfo, installations: InstallationAccount[] | null = null): object {
   return {
     hosted: true,
     account: {
       state: session.state, login: session.login, user_id: session.userId, anthropic_key: session.hasAnthropicKey,
       ...(session.state === "signed_out" ? { reason: session.reason } : {}),
     },
+    ...(session.state === "signed_in" && installations ? { installations } : {}),
   };
 }

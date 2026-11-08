@@ -503,7 +503,8 @@ async function serveHosted(
     context.waitUntil(syncInstallations(services.account(auth.session.userId), services.installation, services.fetch,
       Date.now(), durationOf(services.limits, LimitName.InstallationSyncOnOpenMinutes))
       .catch((error: unknown) => console.error("installation sync failed", error)));
-    return configRoute(auth.env, context, hostedAccountConfig(auth.session));
+    const installations = await services.account(auth.session.userId).installationAccounts();
+    return configRoute(auth.env, context, hostedAccountConfig(auth.session, installations));
   }
   return serveAuthorized(request, auth.env, context);
 }

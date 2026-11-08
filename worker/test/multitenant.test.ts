@@ -8,7 +8,7 @@ import { askRepoToken, installationRepoToken } from "../src/app-token.ts";
 import { askRecordKey } from "../src/ask-chat.ts";
 import { deviceConfig } from "../src/config.ts";
 import { aiJobs, type Env, prIndex, scopedKey } from "../src/env.ts";
-import { authenticate, canSeeWith, userEnv } from "../src/hosted.ts";
+import { authenticate, canSeeWith, hostedAccountConfig, userEnv } from "../src/hosted.ts";
 import { parseRepoFullName, parseSha, type RepoFullName } from "../src/ids.ts";
 import { parseAppDelivery } from "../src/installations.ts";
 import { gitHubReserveOf, parseLimits, WorkerMode } from "../src/limits.ts";
@@ -204,6 +204,96 @@ test("the person's token decides in doubt: signed out is no, GitHub away or rate
   assert.equal(await canSeeWith(account, repo("acme/secret"), away, world.clock.now, RESERVE), null);
   await account.signOutEverywhere("revoked");
   assert.equal(await canSeeWith(account, repo("acme/api"), world.github.fetch, world.clock.now, RESERVE), false);
+});
+
+// --- What the app shows of each installation --------------------------------------------------------------------
+
+/** What `GET /device/config` adds for the session: the account and the installations the last sync read. */
+async function configOf(world: World, secret: string) {
+  const auth = await authenticate(new Request(`${ORIGIN}/device/config`, bearer(secret)), world.workerEnv,
+    world.services);
+  assert.ok("env" in auth);
+  return hostedAccountConfig(auth.session, await world.services.account(auth.session.userId).installationAccounts()) as
+    { installations?: { account: string; suspended: boolean }[] };
+}
+
+const accountsOf = async (world: World, secret: string) =>
+  (await configOf(world, secret)).installations?.map((entry) => entry.account);
+
+test("/device/config names each installation the person reaches, their own account first, as GitHub has it", async () => {
+  const world = hostedWorld();
+  world.github.installations.set(44, { account: "Zeta", repos: ["zeta/app"] });
+  world.github.installations.set(11, { account: "acme", repos: ["acme/api", "acme/web", "acme/secret"], selection: "selected" });
+  world.github.installations.set(55, { account: "alice", repos: ["alice/dotfiles"], type: "User" });
+  world.github.installations.set(22, { account: "globex", repos: ["globex/web"] });
+  world.github.grant(ALICE, ["zeta/app", "acme/api", "acme/web", "alice/dotfiles"]);
+  const alice = await signIn(world, ALICE);
+  assert.deepEqual((await configOf(world, alice)).installations, [
+    {
+      account: "alice", account_type: "User", avatar_url: "https://avatars.githubusercontent.com/u/55?v=4",
+      installation_id: 55, repository_selection: "all", suspended: false,
+    },
+    {
+      account: "acme", account_type: "Organization", avatar_url: "https://avatars.githubusercontent.com/u/11?v=4",
+      installation_id: 11, repository_selection: "selected", repo_count: 2, suspended: false,
+    },
+    {
+      account: "Zeta", account_type: "Organization", avatar_url: "https://avatars.githubusercontent.com/u/44?v=4",
+      installation_id: 44, repository_selection: "all", suspended: false,
+    },
+  ], "globex is not hers to see; repo_count is what her own token sees of a chosen few");
+});
+
+test("installing on a new org shows in the installer's config at once; uninstalling takes it out", async () => {
+  const world = hostedWorld();
+  world.github.installations.set(11, { account: "acme", repos: ["acme/api"] });
+  world.github.grant(ALICE, ["acme/api", "initech/shared"]);
+  const alice = await signIn(world, ALICE);
+  assert.deepEqual(await accountsOf(world, alice), ["acme"]);
+
+  world.github.installations.set(33, { account: "initech", repos: ["initech/shared"] });
+  await deliver(world, "installation", {
+    action: "created", installation: { id: 33, account: { login: "initech" } }, sender: { id: ALICE.id },
+    repositories: [{ full_name: "initech/shared" }],
+  });
+  assert.deepEqual(await accountsOf(world, alice), ["acme", "initech"], "no wait for the next sync");
+
+  world.github.installations.delete(33);
+  await deliver(world, "installation", {
+    action: "deleted", installation: { id: 33, account: { login: "initech" } }, sender: { id: ALICE.id },
+  });
+  assert.deepEqual(await accountsOf(world, alice), ["acme"]);
+});
+
+test("a suspended installation shows as suspended and keeps its members, so the sync still runs", async () => {
+  const { world, alice } = await twoOrgs();
+  const installation = world.github.installations.get(33);
+  assert.ok(installation);
+  installation.suspended = true;
+  const reposReads = () => world.github.calls.filter((call) => call.url.includes("/user/installations/33/repositories"))
+    .length;
+  const before = reposReads();
+  await deliver(world, "installation", {
+    action: "suspend", installation: { id: 33, account: { login: "initech" } }, sender: { id: ALICE.id },
+  });
+  const listed = (await configOf(world, alice)).installations;
+  assert.deepEqual(listed?.map(({ account, suspended }) => [account, suspended]), [["acme", false], ["initech", true]]);
+  assert.deepEqual([...(await world.installations.get("33")?.members() ?? new Map()).keys()].sort(), ["1001", "2002"]);
+  assert.equal(reposReads(), before, "GitHub lists no repos of a suspended installation, so none are asked for");
+});
+
+test("a signed-out session's config, and one before the first sync, name no installations", async () => {
+  const world = hostedWorld();
+  world.github.installations.set(11, { account: "acme", repos: ["acme/api"] });
+  world.github.grant(ALICE, ["acme/api"]);
+  const alice = await signIn(world, ALICE);
+  await world.stores.get("1001")?.delete(["installation_accounts"]);
+  assert.equal("installations" in await configOf(world, alice), false);
+  await world.services.account("1001").signOutEverywhere("revoked");
+  const auth = await authenticate(new Request(`${ORIGIN}/device/config`, bearer(alice)), world.workerEnv,
+    world.services);
+  assert.ok("answer" in auth && auth.session);
+  assert.equal("installations" in hostedAccountConfig(auth.session, []), false);
 });
 
 // --- Isolation of everything a person holds -------------------------------------------------------------------------
