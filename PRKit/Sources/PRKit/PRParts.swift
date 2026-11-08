@@ -98,6 +98,16 @@ public struct PRCommentText: View {
 
 public struct PRAvatar: View {
     public let author: PullRequestDetail.Author?
+    /// Grows with the text beside it, so its initial is never clipped at a large text size.
+    #if os(macOS)
+    private var size: CGFloat { 20 * MacTextSize.scale }
+    #else
+    @ScaledMetric(relativeTo: .caption2) private var size: CGFloat = 20
+    #endif
+
+    public init(author: PullRequestDetail.Author?) {
+        self.author = author
+    }
 
     public var body: some View {
         AsyncImage(url: author?.avatarUrl.flatMap(URL.init(string:))) { image in
@@ -109,7 +119,7 @@ public struct PRAvatar: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.groundFill)
         }
-        .frame(width: 20, height: 20)
+        .frame(width: size, height: size)
         .clipShape(.circle)
     }
 }
