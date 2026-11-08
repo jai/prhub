@@ -207,6 +207,13 @@ export class AccountCore {
     };
   }
 
+  /** The fingerprints of the sessions still live: the phones whose push registrations stay. */
+  async liveSessionFingerprints(): Promise<string[]> {
+    const now = this.#deps.now();
+    return (await this.#read())?.sessions.filter((session) => this.#isLive(session, now))
+      .map((session) => session.fingerprint) ?? [];
+  }
+
   /** A session lives `session_lifetime_days` from when it was made; after that its phone signs in again. */
   #isLive(session: { created_at: number }, now: number): boolean {
     return now - session.created_at < durationOf(this.#deps.limits, LimitName.SessionLifetimeDays);

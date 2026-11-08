@@ -21,8 +21,14 @@ Every other route (`/prs`, `/prs/merged`, `/prs/{owner}/{repo}/{n}/…`, `/repos
 
 Request bodies are parsed where they arrive (`worker/src/boundary.ts`); one that is not JSON, or not the route's
 shape, answers `400`, and nothing of it is kept. `POST /device/register` takes `{"token": "<APNs token, hex>", "host":
-"production" | "sandbox"}` and keeps the token lowercased; any other token (one the relay would refuse on every push)
-answers `400 {"error": {"code": "validation_error", "message"}}`. `POST /device/event` takes an object with a `kind`
+"production" | "sandbox"}` and keeps the token lowercased, with the fingerprint of the bearer that sent it; any other
+token (one the relay would refuse on every push) answers `400 {"error": {"code": "validation_error", "message"}}`.
+A token registered again belongs to the device that sent it last. Unpairing (`DELETE /device/pair`) and hosted sign-out
+(`POST /auth/signout`) remove that device's registrations, so no alert reaches a phone that left. Once per PR index,
+on its first tick (hosted: the person's first poll), registrations kept before this rule, and those of devices no
+longer paired or signed in, are removed; `/events` records `push_registrations_pruned` with `{removed: [{token, host,
+reason}]}`, `token` being its first 8 hex characters and `reason` `unlinked` or `not_live`. A phone still paired
+registers again at its next launch or foreground. `POST /device/event` takes an object with a `kind`
 (1–64 characters) and, when sent, `changed` as a list of PR ids and `complete` as a boolean; the same `400` otherwise.
 
 ## Pairing
@@ -78,8 +84,10 @@ The app does not retry a `401`: it asks for a new code. A paired secret works at
 
 ### `DELETE /device/pair`
 
-Auth: a paired secret. Forgets that secret; `204`. Other paired secrets keep working. The next request with it answers
-`401`, on every isolate: a paired secret is checked with the PR index on each request.
+Auth: a paired secret. Forgets that secret and its push registrations; `204`. Other paired secrets keep working. The
+next request with it answers `401`, on every isolate: a paired secret is checked with the PR index on each request.
+`/events` records `unpaired` with `{push_registrations: <count removed>}`. On the hosted Worker it removes the session's
+push registrations the same way.
 
 ### What it writes
 
@@ -536,9 +544,10 @@ When GitHub stops honouring the tokens, the Worker sends each registered phone a
 
 ### `POST /auth/signout`
 
-Auth: the session secret, signed in or not. Ends this phone's session; `204`. Other phones stay signed in. When the
-last session ends, the Worker drops the person's tokens and push registrations, so it holds no token for someone with
-no phone signed in.
+Auth: the session secret, signed in or not. Ends this phone's session and removes its push registrations
+(`device_signed_out` in `/events`, with `{push_registrations: <count removed>}`); `204`. Other phones stay signed in.
+When the last session ends, the Worker drops the person's tokens and every push registration, so it holds no token for
+someone with no phone signed in.
 
 ### `PUT /account/anthropic-key`
 

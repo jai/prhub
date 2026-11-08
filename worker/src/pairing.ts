@@ -24,9 +24,14 @@ export function normalizePairingCode(raw: unknown): string | null {
   return CODE.test(code) ? code : null;
 }
 
+/** The bearer of a request, whatever it is. */
+export function bearerOf(header: string | null): string | null {
+  return /^Bearer (.+)$/.exec(header ?? "")?.[1] ?? null;
+}
+
 /** The bearer of a request, when it could be a device secret: 16 to 512 characters. */
 export function deviceSecretOf(header: string | null): string | null {
-  const secret = /^Bearer (.+)$/.exec(header ?? "")?.[1] ?? null;
+  const secret = bearerOf(header);
   return secret !== null && secret.length >= 16 && secret.length <= 512 ? secret : null;
 }
 

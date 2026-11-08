@@ -12,11 +12,11 @@ const SECRET = "s".repeat(32);
 
 /** The index's device tables in memory. */
 function fakeIndex() {
-  const devices = new Map<string, string>();
+  const devices = new Map<string, { host: string; fingerprint: string }>();
   const events: { kind: string; detail: object }[] = [];
   const paired = new Set<string>();
   const index: DeviceIndex & { isPaired(fingerprint: Fingerprint): boolean } = {
-    registerDevice: (token, host) => devices.set(token, host),
+    registerDevice: (token, host, fingerprint) => devices.set(token, { host, fingerprint }),
     record: (kind, detail) => events.push({ kind, detail }),
     unpair: (fingerprint) => paired.delete(fingerprint),
     isPaired: (fingerprint) => paired.has(fingerprint),
@@ -24,7 +24,7 @@ function fakeIndex() {
   return { index, devices, events, paired };
 }
 
-function post(body: string, headers: Record<string, string> = {}): Request {
+function post(body: string, headers: Record<string, string> = { Authorization: `Bearer ${SECRET}` }): Request {
   return new Request("https://worker/device/x", { method: "POST", body, headers });
 }
 
@@ -48,7 +48,10 @@ test("a junk device token is refused with a 400 and never stored", async () => {
   }
   assert.equal(devices.size, 0);
   assert.equal((await registerRoute(post(JSON.stringify({ token: TOKEN.toUpperCase(), host: "sandbox" })), index)).status, 204);
-  assert.deepEqual([...devices], [[TOKEN, "sandbox"]], "kept lowercased, as the relay keeps it");
+  assert.deepEqual([...devices], [[TOKEN, { host: "sandbox", fingerprint: await fingerprintOf(SECRET) }]],
+    "kept lowercased, as the relay keeps it, with the device that sent it");
+  const anonymous = post(JSON.stringify({ token: TOKEN, host: "sandbox" }), {});
+  assert.equal((await registerRoute(anonymous, index)).status, 401);
 });
 
 test("a device event is an object with a kind; changed, when sent, a list of ids", async () => {

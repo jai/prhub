@@ -111,6 +111,7 @@ export class UserAccount extends DurableObject<Env> {
     }
     await this.ctx.storage.setAlarm(Date.now() + pollMs(this.env));
     const index = userIndex(this.env, String(userId));
+    await index.prunePushRegistrationsOnce(await this.#core.liveSessionFingerprints());
     const keys = await this.#core.resealStale();
     if (keys && keys.resealed.length + keys.stale.length > 0) {
       const report = { current: keys.current, resealed: keys.resealed, stale: keys.stale };

@@ -283,6 +283,9 @@ test("signing out ends this phone's session; the last one out takes the tokens a
     { answer: Response }).answer.status, 401);
   assert.ok("env" in await authenticate(new Request(`${ORIGIN}/prs`, bearer(second)), world.workerEnv, world.services));
   assert.equal(world.indexes.get("4242")?.calls.includes("forget_devices"), false);
+  const fingerprint = (secret: string) => createHash("sha256").update(secret).digest("hex");
+  assert.ok(world.indexes.get("4242")?.calls.includes(`forget_push:${fingerprint(first)}`));
+  assert.deepEqual(await world.accounts.get("4242")?.liveSessionFingerprints(), [fingerprint(second)]);
   assert.equal((await world.route("/auth/signout", { method: "POST", ...bearer(second) })).status, 204);
   assert.ok(world.indexes.get("4242")?.calls.includes("forget_devices"));
   assert.deepEqual(await world.services.account("4242").accessToken(), { kind: "signed_out" });

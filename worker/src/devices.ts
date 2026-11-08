@@ -2,11 +2,11 @@
 import type { ApnsHost } from "./apns.ts";
 import { bodyOf, parseDeviceEvent, parseDeviceRegistration } from "./boundary.ts";
 import type { DeviceToken, Fingerprint } from "./ids.ts";
-import { deviceSecretOf, fingerprintOf } from "./pairing.ts";
+import { bearerOf, deviceSecretOf, fingerprintOf } from "./pairing.ts";
 
 /** The part of the PR index these routes use; a test passes a fake. */
 export interface DeviceIndex {
-  registerDevice(token: DeviceToken, host: ApnsHost): unknown;
+  registerDevice(token: DeviceToken, host: ApnsHost, fingerprint: Fingerprint): unknown;
   record(kind: string, detail: { changed?: string[]; complete?: boolean } & Record<string, unknown>): unknown;
   unpair(fingerprint: Fingerprint): unknown;
 }
@@ -15,13 +15,21 @@ function invalid(message: string): Response {
   return Response.json({ error: { code: "validation_error", message } }, { status: 400 });
 }
 
-/** `POST /device/register`. A token the relay would refuse on every push is refused here instead, and never kept. */
+/**
+ * `POST /device/register`. A token the relay would refuse on every push is refused here instead, and never kept. The
+ * token is kept with the bearer's fingerprint, so unpairing or signing out that device takes it along.
+ */
 export async function registerRoute(request: Request, index: DeviceIndex): Promise<Response> {
   const device = parseDeviceRegistration((await bodyOf(request))?.value);
   if (!device) {
     return invalid("token must be the APNs device token in hex; host production or sandbox");
   }
-  await index.registerDevice(device.token, device.host);
+  const bearer = bearerOf(request.headers.get("Authorization"));
+  if (!bearer) {
+    return Response.json({ error: { code: "unauthorized", message: "send the device secret as the bearer" } },
+      { status: 401 });
+  }
+  await index.registerDevice(device.token, device.host, await fingerprintOf(bearer));
   return new Response(null, { status: 204 });
 }
 
@@ -35,7 +43,10 @@ export async function eventRoute(request: Request, index: DeviceIndex): Promise<
   return new Response(null, { status: 204 });
 }
 
-/** `DELETE /device/pair`: the bearer's secret stops working at once, on every isolate (`isPairedSecret`). */
+/**
+ * `DELETE /device/pair`: the bearer's secret stops working at once, on every isolate (`isPairedSecret`), and its push
+ * registrations go.
+ */
 export async function unpairRoute(request: Request, index: DeviceIndex): Promise<Response> {
   const secret = deviceSecretOf(request.headers.get("Authorization"));
   if (secret) {

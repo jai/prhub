@@ -4,13 +4,16 @@ import { DurableObject } from "cloudflare:workers";
 import { alertKey, alertKinds, alertMessage, alertsFor, type HeldStatus } from "./alerts";
 import { createHeldAlertsTable, type HeldRow, holdAlert, releaseAlerts } from "./push-gate";
 import {
+  createPushRegistrationsTable, forgetPushTokensOf, pruneUnlinkedPushTokens, registerPushToken,
+} from "./push-registrations";
+import {
   type ApnsHost, apnsJwt, type PushMessage, pushMode, sendDirect, sendViaPager, sendViaRelay, SYNC_WAKE,
 } from "./apns";
 import { aiConfigOf } from "./config";
 import { aiJobs, type Env, isSet, scopedKey } from "./env";
 import { actingEnvFor } from "./hosted";
 import type { SignedOutReason } from "./account-core";
-import { type PairingRecord, pairingKey, parsePairingRecord } from "./pairing";
+import { fingerprintOf, type PairingRecord, pairingKey, parsePairingRecord } from "./pairing";
 import {
   detailVersionOf, liveDiff, type OpenRowStatus, type PullRequest, type PullRequestRef, readPullRequests, type RowStatus,
   searchListings,
@@ -102,7 +105,6 @@ export class PrIndex extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS pull_requests (id TEXT PRIMARY KEY, repo TEXT, number INTEGER, title TEXT, head TEXT,
         revision TEXT, list TEXT, updated_at TEXT, changed_at INTEGER, diff_state TEXT, diff_tried_at INTEGER);
       CREATE TABLE IF NOT EXISTS dirty (id TEXT PRIMARY KEY, repo TEXT, number INTEGER, generation INTEGER);
-      CREATE TABLE IF NOT EXISTS devices (token TEXT PRIMARY KEY, host TEXT);
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value INTEGER);
       CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, at INTEGER, kind TEXT, detail TEXT);
       CREATE TABLE IF NOT EXISTS writes (ref TEXT PRIMARY KEY, state TEXT, at INTEGER);
@@ -111,6 +113,7 @@ export class PrIndex extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS alerts (key TEXT PRIMARY KEY, at INTEGER);`);
     createLimitHitsTable(this.sql);
     createHeldAlertsTable(this.sql);
+    createPushRegistrationsTable(this.sql);
     const columns = this.sql.exec<{ name: string }>("PRAGMA table_info(pull_requests)").toArray();
     if (!columns.some(({ name }) => name === "version")) {
       this.sql.exec("ALTER TABLE pull_requests ADD COLUMN version TEXT NOT NULL DEFAULT ''");
@@ -232,6 +235,9 @@ export class PrIndex extends DurableObject<Env> {
 
   /** Every minute: the safety net, because GitHub does not retry a failed delivery and personal repos send none. */
   async tick(now: number): Promise<void> {
+    if (!this.meta("user_id")) {
+      this.prunePushRegistrationsOnce(await this.selfHostedDevices());
+    }
     const env = await this.actingEnv();
     if (!env) {
       return;
@@ -439,14 +445,42 @@ export class PrIndex extends DurableObject<Env> {
     return this.sql.exec("SELECT 1 FROM paired WHERE fingerprint = ?", fingerprint).toArray().length > 0;
   }
 
-  /** A device forgets itself: its secret stops working everywhere at once, as every request asks `isPaired`. */
+  /**
+   * A device forgets itself: its secret stops working everywhere at once, as every request asks `isPaired`, and its
+   * push registrations go, so no alert reaches a phone that left.
+   */
   unpair(fingerprint: Fingerprint): void {
     this.sql.exec("DELETE FROM paired WHERE fingerprint = ?", fingerprint);
+    this.addEvent("unpaired", { push_registrations: forgetPushTokensOf(this.sql, fingerprint) });
   }
 
-  registerDevice(token: DeviceToken, host: ApnsHost): void {
-    this.sql.exec(`INSERT INTO devices (token, host) VALUES (?, ?)
-      ON CONFLICT (token) DO UPDATE SET host = excluded.host`, token, host);
+  registerDevice(token: DeviceToken, host: ApnsHost, fingerprint: Fingerprint): void {
+    registerPushToken(this.sql, token, host, fingerprint);
+  }
+
+  /** Hosted: one phone signed out, and its push registrations go with its session. */
+  forgetPushRegistrationsOf(fingerprint: Fingerprint): void {
+    this.addEvent("device_signed_out", { push_registrations: forgetPushTokensOf(this.sql, fingerprint) });
+  }
+
+  /**
+   * Once per index: registrations kept before each was tied to its device, and those of devices no longer paired or
+   * signed in (`live`), go. What went is in `/events` as `push_registrations_pruned`.
+   */
+  prunePushRegistrationsOnce(live: string[]): void {
+    if (this.meta("push_registrations_pruned_at")) {
+      return;
+    }
+    const removed = pruneUnlinkedPushTokens(this.sql, new Set(live));
+    this.setMeta("push_registrations_pruned_at", Date.now());
+    this.addEvent("push_registrations_pruned", { removed });
+  }
+
+  /** Self-hosted: the paired devices, and Jai's app's `APP_TOKEN` when it is set. */
+  private async selfHostedDevices(): Promise<string[]> {
+    const paired = this.sql.exec<{ fingerprint: string }>("SELECT fingerprint FROM paired").toArray()
+      .map((row) => row.fingerprint);
+    return isSet(this.env.APP_TOKEN) ? [...paired, await fingerprintOf(this.env.APP_TOKEN)] : paired;
   }
 
   /** What the phone did. A sync's lag is how long each change it picked up took to reach it. */

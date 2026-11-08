@@ -180,6 +180,8 @@ export class FakeIndex implements UserIndexApi {
   markHead(repo: RepoFullName, sha: Sha) { this.calls.push(`head:${repo}@${sha.slice(0, 7)}`); }
   signedOut(reason: SignedOutReason) { this.calls.push(`signed_out:${reason}`); }
   forgetDevices() { this.calls.push("forget_devices"); }
+  forgetPushRegistrationsOf(fingerprint: string) { this.calls.push(`forget_push:${fingerprint}`); }
+  prunePushRegistrationsOnce(live: string[]) { this.calls.push(`prune_push:${live.length}`); }
   deleteEverything() { this.calls.push("delete"); }
   dropRepos(repos: string[]) { this.calls.push(`drop:${[...repos].sort().join(",")}`); }
   record(kind: string) { this.calls.push(`event:${kind}`); }

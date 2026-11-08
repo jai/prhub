@@ -9,7 +9,7 @@ import type {
 import { isAnthropicKeyShape, NO_AI, userIdOf } from "./account-core.ts";
 import { bodyOf, parseFinishInput, parseSender } from "./boundary.ts";
 import { type Env, isSet } from "./env.ts";
-import type { RepoFullName, Sha } from "./ids.ts";
+import type { Fingerprint, RepoFullName, Sha } from "./ids.ts";
 import {
   type InstallationAccount, type InstallationApi, parseAppDelivery, syncInstallations,
 } from "./installations.ts";
@@ -141,6 +141,8 @@ export interface UserIndexApi {
   markHead(repo: RepoFullName, sha: Sha): unknown;
   signedOut(reason: SignedOutReason): unknown;
   forgetDevices(): unknown;
+  forgetPushRegistrationsOf(fingerprint: Fingerprint): unknown;
+  prunePushRegistrationsOnce(live: string[]): unknown;
   deleteEverything(): unknown;
   dropRepos(repos: string[]): unknown;
   record(kind: string, detail: Record<string, unknown>): unknown;
@@ -391,7 +393,7 @@ export async function finishRoute(request: Request, services: HostedServices): P
 /** A request's session: whose it is, and its fingerprint. Null when the bearer is no session this Worker minted. */
 export async function sessionOf(
   request: Request, services: HostedServices,
-): Promise<(SessionInfo & { fingerprint: string }) | null> {
+): Promise<(SessionInfo & { fingerprint: Fingerprint }) | null> {
   const secret = deviceSecretOf(request.headers.get("Authorization"));
   const userId = userIdOf(secret);
   if (!secret || !userId) {
@@ -402,14 +404,20 @@ export async function sessionOf(
   return session && { ...session, fingerprint };
 }
 
-/** `POST /auth/signout`: this phone's session ends. The last phone out takes the tokens and push registrations along. */
+/**
+ * `POST /auth/signout`: this phone's session ends, and its push registrations go. The last phone out takes the tokens
+ * and every push registration along.
+ */
 export async function signOutRoute(request: Request, services: HostedServices): Promise<Response> {
   const session = await sessionOf(request, services);
   if (!session) {
     return errorAnswer(401, "unauthorized", "send the session secret as the bearer");
   }
+  const index = services.index(session.userId);
   if (await services.account(session.userId).signOut(session.fingerprint)) {
-    await services.index(session.userId).forgetDevices();
+    await index.forgetDevices();
+  } else {
+    await index.forgetPushRegistrationsOf(session.fingerprint);
   }
   return new Response(null, { status: 204 });
 }
