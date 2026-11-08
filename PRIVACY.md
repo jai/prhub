@@ -7,8 +7,8 @@ If you sign in with GitHub, you use the hosted PRHub service instead, and
 [its privacy policy](docs/privacy/hosted.md) applies.
 
 With your own Worker, PRHub sends your data only to a backend that you deploy and control: a pr-worker in your own Cloudflare account. Jai
-does not receive your GitHub token, your PRs or your Anthropic API key. PRHub has no analytics, no tracking, no ads and
-no accounts with Jai.
+does not receive your GitHub token, your PRs or your Anthropic API key. PRHub has no tracking, no ads and no accounts with
+Jai. It sends anonymous usage data, which you can turn off: see [Anonymous usage data](#anonymous-usage-data).
 
 ## What the app sends
 
@@ -23,7 +23,30 @@ there:
 
 The app uses the camera only to read the setup QR code. It keeps no image.
 
-In "Try with sample PRs", the app sends nothing. The sample PRs and what you do with them stay on your phone.
+In "Try with sample PRs", the app sends nothing to GitHub or to a Worker. The sample PRs and what you do with them stay
+on your phone.
+
+## Anonymous usage data
+
+The app tells Jai which screens and features people use, so that he can make PRHub better. It sends this data to
+PostHog, an analytics service that processes it for Jai in its EU region (Frankfurt).
+
+- **What is sent.** Which screen shows, such as the PR list or Settings, and actions such as signing in, pairing a
+  Worker, opening a PR, a sync, and a change to the diff font. Failures send only a short error code, such as
+  `code_refused`. Each event also carries the app version, the iOS version, the device model, the screen size, and the
+  phone's language and time zone.
+- **What is never sent.** Your GitHub username or email, repo and organization names, PR titles, file paths, code,
+  comments, your Worker's address, your push token, and anything that you type. The app cannot attach these: each
+  event can carry only values from a fixed list.
+- **It is anonymous.** The app makes a random ID on your phone. It is not linked to your GitHub account, your Worker
+  or your Apple account. PostHog makes no profile of you and does not find your location from your IP address. The app
+  records no screen content, no taps and no session replays. It does not use the advertising identifier (IDFA) and
+  does not track you across other companies' apps or websites.
+- **Turn it off.** Open **Settings** and turn off **Share anonymous usage**. The app then sends nothing more and
+  forgets its random ID. If you turn it on again, the app makes a new ID.
+- **How long it is kept.** PostHog keeps each event for one year, then deletes it.
+
+Debug builds, test runs and builds of this repo without a PostHog key send nothing.
 
 ## What your pr-worker keeps
 

@@ -48,6 +48,27 @@ pairing the phone, and troubleshooting.
   elsewhere. Nothing here may depend on that config.
 - Commits: conventional (`feat(worker): …`, `fix(relay): …`, `feat(prkit): …`, `fix(app): …`, `docs: …`), signed.
 
+## Analytics
+
+The app sends anonymous usage events to PostHog. PRIVACY.md and docs/privacy/hosted.md promise what they carry, so a
+new event that breaks a rule below is a privacy policy change, not a code change.
+
+- **Add an event.** Add a case to `AnalyticsEvent` (`app/PRHub/Analytics/AnalyticsEvent.swift`), with its name, one
+  snake_case literal, and its properties. Record it with `usage.record(.yourEvent)` where the action finishes. Add the
+  case to `AnalyticsTests.everyEvent` and `kind`; the tests then check its payload. PRKit's events arrive through
+  `PRKitHost.receive` and map in `AnalyticsEvent.init?(_: PRKitEvent)`.
+- **What a property can be.** A case of a closed enum (`CaseIterable`, with `String` raw values), an `Int` or a
+  `Bool`. Never a `String`, a `URL`, a `PullRequestRef` or a dictionary: `AnalyticsTests` fails on one.
+- **Banned in any event:** GitHub logins, user IDs and emails, repo, org and branch names, PR numbers and titles, file
+  paths, code, comments, error messages, Worker hosts, push tokens and anything typed. Send an error as its code.
+- **Screens.** `AnalyticsScreen` names them, generically. PostHog's automatic screen views, taps, session replay,
+  push-token capture and crash reports stay off (`PostHogAnalytics`).
+- **Vendor.** Only `PostHogAnalytics.swift` imports PostHog. Another vendor is another `Analytics` conformance.
+- **Config.** `PRHUB_ANALYTICS_KEY` and `PRHUB_ANALYTICS_HOST` in `app/Config/PRHub.xcconfig`. An empty key sends
+  nothing, and so do Debug builds and tests. Settings' **Share anonymous usage** turns it off.
+- **App Store.** A new kind of data changes the answers in [docs/app-store-privacy.md](docs/app-store-privacy.md) and
+  `app/PRHub/PrivacyInfo.xcprivacy`.
+
 ## Releases
 
 - **PRKit**: tag `vX.Y.Z` on a green main. Apps pin it (`from: "0.1.0"`); Jai's Agent Pager is one of them.
