@@ -98,9 +98,11 @@ final class PRHubHostedUITests: XCTestCase {
         let add = app.descendants(matching: .any)["github-access-add-account"]
         XCTAssertTrue(app.scrollSettings(to: add))
         add.tap()
-        // GitHub's install page opens in Safari; the person installs on acme there and comes back.
-        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 10) || app.wait(for: .runningBackgroundSuspended,
-            timeout: 5))
+        // GitHub's install page opens in Safari, which can take half a minute to start on a CI Simulator; Home leaves
+        // the app at once on an iPhone and an iPad alike. The person installs on acme there and comes back.
+        XCUIDevice.shared.press(.home)
+        let left = expectation(for: NSPredicate { _, _ in self.app.state != .runningForeground }, evaluatedWith: nil)
+        wait(for: [left], timeout: 30)
         app.activate()
         XCTAssertTrue(acme.waitForExistence(timeout: 10), "the config is read again on the way back")
     }
