@@ -165,7 +165,7 @@ func createReleaseWorkflow(product: [String: Any]) async throws {
                     "source": ["isAllMatch": false, "patterns": [["pattern": "main", "isPrefix": false]]],
                     "filesAndFoldersRule": [
                         "mode": "START_IF_ANY_FILE_MATCHES",
-                        "matchers": [["directory": "app", "fileName": "project", "fileExtension": "yml"]],
+                        "matchers": [["directory": "app", "fileName": "project.yml"]],
                     ],
                     "autoCancel": false,
                 ],
