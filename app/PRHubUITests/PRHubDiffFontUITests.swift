@@ -50,7 +50,7 @@ final class PRHubDiffFontUITests: XCTestCase {
         XCTAssertTrue(line.waitForExistence(timeout: 5))
         let before = line.frame.height
 
-        app.tabBars.buttons["Settings"].tap()
+        app.go(to: .settings)
         let preview = app.descendants(matching: .any)["diff-font-preview"]
         XCTAssertTrue(app.scrollSettings(to: preview))
         try picture("diff-font-settings-before")
@@ -64,7 +64,7 @@ final class PRHubDiffFontUITests: XCTestCase {
         XCTAssertTrue(app.scrollSettings(to: preview, up: false))
         try picture("diff-font-settings-after")
 
-        app.tabBars.buttons["PRs"].tap()
+        app.go(to: .prs)
         XCTAssertTrue(waitFor { line.exists && line.frame.height > before }, "the open diff redrew at 16 pt")
         try picture("diff-font-live-update")
     }

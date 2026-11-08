@@ -61,9 +61,10 @@ final class PRHubDiffBarsUITests: XCTestCase {
         waitForBars(shown: false, "scrolling down the code hides the bars")
     }
 
-    /// The tab bar stands for both: they leave and come back together.
+    /// The Settings tab stands for both bars, a phone's tab bar or an iPad's tabs at the top: they leave and come back
+    /// together.
     private func waitForBars(shown: Bool, _ message: String) {
-        let settings = app.tabBars.buttons["Settings"]
+        let settings = app.tab(.settings)
         XCTAssertTrue(waitFor { (settings.exists && settings.isHittable) == shown }, message)
     }
 

@@ -27,10 +27,10 @@ final class PRHubNavigationUITests: XCTestCase {
         app.buttons["pr-review-changes"].tap()
         XCTAssertTrue(app.buttons["diff-files"].waitForExistence(timeout: 5), "the diff")
         XCTAssertFalse(app.buttons["key-lines-context-100"].exists && !isWide, "the panel waits for its button")
-        back()
+        app.back()
         XCTAssertTrue(waitForHittable(app.buttons["pr-review-changes"]), "Back from the diff is the PR")
         if !isWide {
-            back()
+            app.back()
             XCTAssertTrue(waitForHittable(app.staticTexts[checkout]), "and Back from the PR is the list")
         }
     }
@@ -80,7 +80,7 @@ final class PRHubNavigationUITests: XCTestCase {
     func testALinkToAPRsFilesOpensItsDiffWithThePRUnderIt() {
         launch(["-PRHubOpen", "https://github.com/acme/web/pull/412/files"])
         XCTAssertTrue(app.buttons["diff-files"].waitForExistence(timeout: 10), "on the diff")
-        back()
+        app.back()
         XCTAssertTrue(waitForHittable(app.buttons["pr-review-changes"]), "with the PR under it")
     }
 
@@ -141,7 +141,7 @@ final class PRHubNavigationUITests: XCTestCase {
             XCTAssertTrue(app.buttons["key-lines-context-100"].waitForExistence(timeout: 3), "and brings it back")
             window.typeKey(.downArrow, modifierFlags: [.command, .option])
 
-            back()
+            app.back()
             XCTAssertTrue(waitForHittable(app.buttons["pr-review-changes"]), "Back is the PR")
             XCTAssertTrue(waitFor { isBeside(listRow) }, "with the list beside it again")
         }
@@ -200,20 +200,11 @@ final class PRHubNavigationUITests: XCTestCase {
         if !isWide, app.buttons["key-lines-context-100"].exists {
             app.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)).tap()
         }
-        back()
+        app.back()
         XCTAssertTrue(waitForHittable(app.buttons["pr-review-changes"]), "Back from the diff is the PR")
         if !isWide {
-            back()
+            app.back()
             XCTAssertTrue(waitForHittable(app.staticTexts[checkout]), "then the list")
-        }
-    }
-
-    private func back() {
-        let button = app.navigationBars.buttons["BackButton"]
-        if button.waitForExistence(timeout: 2) {
-            button.tap()
-        } else {
-            app.navigationBars.buttons.element(boundBy: 0).tap()
         }
     }
 

@@ -103,10 +103,13 @@ private struct PRHubTabs: View {
                 PRKitRoot(environment.prs)
                     .compactWidthForUITests()
             }
+            .accessibilityIdentifier(PRHubTab.prs.identifier)
             Tab("Settings", systemImage: AppIcon.settings.symbol, value: PRHubTab.settings) {
                 PRHubSettingsView(environment: environment, endSample: endSample)
             }
+            .accessibilityIdentifier(PRHubTab.settings.identifier)
         }
+        .background(TabBarIdentifiers(identifiers: [PRHubTab.prs, .settings].map(\.identifier)))
         .readableContentWidth()
         .prKitEnvironment(environment.prs)
         .alertsOffer(environment.alertPermission)
@@ -142,6 +145,66 @@ extension View {
         } message: {
             Text("PRHub tells you when someone asks for your review, and a tap opens the PR. You can change this in "
                  + "Settings.")
+        }
+    }
+}
+
+extension PRHubTab {
+    /// The tab's accessibility identifier, which the UI tests reach it by (`PRHubPlace`).
+    fileprivate var identifier: String {
+        switch self {
+        case .prs: "prhub-tab-prs"
+        case .settings: "prhub-tab-settings"
+        }
+    }
+}
+
+/// The tabs' accessibility identifiers on a phone's tab bar buttons. `Tab`'s `accessibilityIdentifier` reaches an iPad's
+/// tabs at the top but not a phone's tab bar, whose buttons come from the `UITabBarController`'s items, so this sets
+/// them on the items, in the tabs' order.
+private struct TabBarIdentifiers: UIViewRepresentable {
+    let identifiers: [String]
+
+    func makeUIView(context: Context) -> Probe {
+        Probe(identifiers: identifiers)
+    }
+
+    func updateUIView(_ probe: Probe, context: Context) {
+        probe.apply()
+    }
+
+    final class Probe: UIView {
+        private let identifiers: [String]
+
+        init(identifiers: [String]) {
+            self.identifiers = identifiers
+            super.init(frame: .zero)
+        }
+
+        required init?(coder: NSCoder) {
+            nil
+        }
+
+        /// After this turn of the run loop: the tab bar controller is not in the window yet when the probe is.
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            DispatchQueue.main.async { [weak self] in self?.apply() }
+        }
+
+        func apply() {
+            guard let window else {
+                return
+            }
+            var controllers = [window.rootViewController].compactMap(\.self)
+            while let controller = controllers.popLast() {
+                if let tabs = controller as? UITabBarController {
+                    for (item, identifier) in zip(tabs.tabBar.items ?? [], identifiers) {
+                        item.accessibilityIdentifier = identifier
+                    }
+                    return
+                }
+                controllers += controller.children
+            }
         }
     }
 }

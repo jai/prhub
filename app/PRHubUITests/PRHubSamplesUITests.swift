@@ -35,7 +35,7 @@ final class PRHubSamplesUITests: XCTestCase {
         app.buttons["key-line-next"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["key-line-note"].waitForExistence(timeout: 5))
 
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.back()
         XCTAssertTrue(approve.waitForExistence(timeout: 5))
         approve.tap()
         let send = app.buttons["inline-composer-send"]
@@ -45,7 +45,7 @@ final class PRHubSamplesUITests: XCTestCase {
         XCTAssertTrue(notice.waitForExistence(timeout: 5))
         XCTAssertTrue(notice.label.contains("Nothing was sent to GitHub"))
 
-        app.tabBars.buttons["Settings"].tap()
+        app.go(to: .settings)
         let connect = app.buttons["prhub-connect-own-worker"]
         XCTAssertTrue(connect.waitForExistence(timeout: 5))
         connect.tap()

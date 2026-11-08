@@ -20,7 +20,7 @@ final class PRHubHostedUITests: XCTestCase {
         signIn.tap()
         XCTAssertTrue(app.staticTexts["Show a retry button when checkout fails"].waitForExistence(timeout: 10))
 
-        app.tabBars.buttons["Settings"].tap()
+        app.go(to: .settings)
         let login = app.descendants(matching: .any)["prhub-account-login"]
         XCTAssertTrue(login.waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["prhub-install-app"].exists)

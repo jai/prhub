@@ -1,5 +1,37 @@
 import XCTest
 
+/// The app's places: its tabs, found by their accessibility identifiers (PRHubRootView). A phone shows them in the tab
+/// bar at the bottom; an iPad's regular width shows them at the top, outside any tab bar. Tests reach a place with
+/// `go(to:)` and never through `tabBars`.
+enum PRHubPlace: String {
+    case prs = "prhub-tab-prs"
+    case settings = "prhub-tab-settings"
+}
+
+extension XCUIApplication {
+    /// The place's tab item, on either idiom.
+    @MainActor func tab(_ place: PRHubPlace) -> XCUIElement {
+        descendants(matching: .any).matching(identifier: place.rawValue).firstMatch
+    }
+
+    /// Goes to `place` by its tab.
+    @MainActor func go(to place: PRHubPlace) {
+        let item = tab(place)
+        XCTAssertTrue(item.waitForExistence(timeout: 5), "the \(place) tab")
+        item.tap()
+    }
+
+    /// Back, by the navigation bar's back button; its first button where a bar has no `BackButton`.
+    @MainActor func back() {
+        let button = navigationBars.buttons["BackButton"]
+        if button.waitForExistence(timeout: 2) {
+            button.tap()
+        } else {
+            navigationBars.buttons.element(boundBy: 0).tap()
+        }
+    }
+}
+
 extension XCUIApplication {
     /// Launches PRHub in `appearance`. The app is told too (`-PRHubAppearance`): on CI's Simulator
     /// `XCUIDevice.shared.appearance` left the whole Simulator light.
