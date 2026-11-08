@@ -77,7 +77,10 @@ Connect API cannot make a product.
 
 1. Generate the project: `make -C app project`, then open `app/PRHub.xcodeproj` in Xcode.
 2. **Product → Xcode Cloud → Create Workflow**, choose the PRHub app and grant access to `jai/prhub` when Xcode asks.
-   Skip this step if App Store Connect → PRHub → Xcode Cloud already shows a product.
+   Skip this step if App Store Connect → PRHub → Xcode Cloud already shows a product. Then check that GitHub sends
+   pushes to Xcode Cloud: GitHub → **Settings → Applications → Xcode Cloud → Configure → Repository access** must
+   include `jai/prhub`. The repo is public, so Xcode Cloud can clone it and builds started by hand work without this
+   access, but a push starts no build.
 3. Make the workflow. Either run `swift release/xcode-cloud.swift <key.p8> create-workflow` with `ASC_KEY_ID`,
    `ASC_ISSUER_ID` and `APP_BUNDLE_ID` set, or in Xcode's workflow editor set:
    - **General**: name `PRHub Release` (`app/ci_scripts/release.sh` checks for this name), and select **Clean**.
