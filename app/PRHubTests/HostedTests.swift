@@ -478,6 +478,7 @@ struct HostedConnectionTests {
 
     @Test func theHostedListPointsAtTheAppsInstallPage() {
         let hosted = PRHubPRHost.configuration(DeviceConfig(features: [], hosted: true))
+        #expect(hosted.emptyHint == PRHubPRHost.genericInstallHint)
         #expect(hosted.emptyHint?.link == PRHubBuild.appInstallURL)
         #expect(PRHubPRHost.configuration(DeviceConfig(features: [])).emptyHint == nil)
     }

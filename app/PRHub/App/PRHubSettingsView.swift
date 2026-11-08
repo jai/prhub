@@ -3,7 +3,7 @@ import SwiftUI
 import UIKit
 #endif
 
-/// PRHub's one other screen. Signed in with GitHub: the account, the GitHub App's installs, the person's own
+/// PRHub's one other screen. Signed in with GitHub: the account, where the GitHub App is installed, the person's own
 /// Anthropic key, Sign out and Delete Account. Paired with a pr-worker: that Worker, what it serves
 /// (`GET /device/config`) and Disconnect. Over the samples: what they are, and the way back to onboarding. The diff's
 /// font and the version always.
@@ -82,18 +82,21 @@ struct PRHubSettingsView: View {
                 reviewAlertsLine
             }
         }
-        PRPageBlock(
-            "Organizations",
-            // TODO: list the orgs without the App once `GET /device/config` names them (docs/plans/github-app.md).
-            note: "PRHub sees PRs only where the PRHub GitHub App is installed. An org owner installs it; a member "
-                + "can ask for it on the same page."
-        ) {
-            Link(destination: PRHubBuild.appInstallURL) {
-                Label("Install PRHub App on your orgs", systemImage: AppIcon.installApp.symbol)
-                    .labelStyle(.iconText)
+        if let installations = connection.config?.installations {
+            GitHubAccessBlock(appName: "PRHub", installations: installations, installURL: PRHubBuild.appInstallURL)
+        } else {
+            PRPageBlock(
+                "GitHub access",
+                note: "PRHub sees PRs only where the PRHub GitHub App is installed. An org owner installs it; a member "
+                    + "can ask for it on the same page."
+            ) {
+                Link(destination: PRHubBuild.appInstallURL) {
+                    Label("Install PRHub App on your orgs", systemImage: AppIcon.installApp.symbol)
+                        .labelStyle(.iconText)
+                }
+                .buttonStyle(PRButtonStyle(.secondary))
+                .accessibilityIdentifier("prhub-install-app")
             }
-            .buttonStyle(PRButtonStyle(.secondary))
-            .accessibilityIdentifier("prhub-install-app")
         }
         AnthropicKeySection(connection: connection)
         PRPageBlock(

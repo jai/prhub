@@ -1,7 +1,8 @@
 import XCTest
 
 /// Sign in with GitHub against the fake hosted Worker (`PRHubScreenshots`): sign-in to the list, the Anthropic key,
-/// Delete Account, a refused sign-in, Sign in again, a setup link in a build without self-hosting, and an empty list.
+/// Delete Account, a refused sign-in, Sign in again, a setup link in a build without self-hosting, an empty list, and
+/// where the GitHub App is installed.
 @MainActor
 final class PRHubHostedUITests: XCTestCase {
     private let app = XCUIApplication()
@@ -23,7 +24,7 @@ final class PRHubHostedUITests: XCTestCase {
         app.go(to: .settings)
         let login = app.descendants(matching: .any)["prhub-account-login"]
         XCTAssertTrue(login.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.descendants(matching: .any)["prhub-install-app"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["github-access-add-account"].exists)
 
         let field = app.secureTextFields["prhub-anthropic-key-field"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
@@ -72,6 +73,47 @@ final class PRHubHostedUITests: XCTestCase {
         let status = app.descendants(matching: .any)["onboardingStatus"]
         XCTAssertTrue(status.waitForExistence(timeout: 5))
         XCTAssertTrue(status.label.contains("self-hosted"), status.label)
+    }
+
+    func testSettingsListsEachAccountTheAppIsInstalledOn() {
+        app.launchArguments = ["-PRHubHosted", "-PRHubSettings"]
+        app.launch()
+        let own = app.descendants(matching: .any)["github-installation-octocat"]
+        XCTAssertTrue(own.waitForExistence(timeout: 10))
+        XCTAssertTrue(own.label.contains("All repositories"), own.label)
+        let acme = app.descendants(matching: .any)["github-installation-acme"]
+        XCTAssertTrue(acme.label.contains("2 repositories"), acme.label)
+        let initech = app.descendants(matching: .any)["github-installation-initech"]
+        XCTAssertTrue(app.scrollSettings(to: initech))
+        XCTAssertTrue(initech.label.contains("Suspended"), initech.label)
+        XCTAssertTrue(app.descendants(matching: .any)["github-access-add-account"].exists)
+    }
+
+    func testANewInstallShowsWhenTheAppComesBackFromGitHub() {
+        app.launchArguments = ["-PRHubHosted", "-PRHubSettings", "-PRHubInstallations", "onReturn"]
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["github-installation-octocat"].waitForExistence(timeout: 10))
+        let acme = app.descendants(matching: .any)["github-installation-acme"]
+        XCTAssertFalse(acme.exists)
+        let add = app.descendants(matching: .any)["github-access-add-account"]
+        XCTAssertTrue(app.scrollSettings(to: add))
+        add.tap()
+        // GitHub's install page opens in Safari; the person installs on acme there and comes back.
+        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 10) || app.wait(for: .runningBackgroundSuspended,
+            timeout: 5))
+        app.activate()
+        XCTAssertTrue(acme.waitForExistence(timeout: 10), "the config is read again on the way back")
+    }
+
+    func testAnEmptyListSaysTheAppIsOnNoAccount() {
+        app.launchArguments = ["-PRHubHosted", "-PRHubHostedEmpty", "-PRHubInstallations", "none"]
+        app.launch()
+        let notNow = app.buttons["Not now"]
+        if notNow.waitForExistence(timeout: 5) {
+            notNow.tap()
+        }
+        XCTAssertTrue(app.staticTexts["PRHub isn't installed yet"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["pr-empty-hint-link"].exists)
     }
 
     func testAnEmptyListPointsAtInstallingTheApp() {

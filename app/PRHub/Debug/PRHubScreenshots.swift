@@ -3,6 +3,9 @@ import Foundation
 import PRKit
 import SwiftUI
 import Synchronization
+#if os(iOS)
+import UIKit
+#endif
 
 /// Debug builds only: the launch arguments the UI tests use to put PRHub on screen with no Worker.
 /// - `-PRHubFirstRun`: onboarding, as on a new phone, with a pairing that is always refused and a fake hosted Worker:
@@ -11,7 +14,9 @@ import Synchronization
 ///   one.
 /// - `-PRHubHosted`: signed in on that fake hosted Worker. With `-PRHubSignedOut` GitHub signed the person out; with
 ///   `-PRHubHostedEmpty` the list is empty; with `-PRHubAnthropicKey` a key is set; with `-PRHubSettings` it opens on
-///   Settings.
+///   Settings. The App is installed on `octocat`, on two of acme's repos and, suspended, on initech; with
+///   `-PRHubInstallations none` on no account, and with `-PRHubInstallations onReturn` on `octocat` alone until the
+///   app leaves the foreground (as for GitHub), and on acme too when it comes back.
 /// - `-PRHubPaired`: the PRs and Settings over the sample PRs as if paired, every AI feature on. With `-PRHubNoAI` the
 ///   Worker has no model key; with `-PRHubSettings` it opens on Settings; with `-PRHubLongDiff` For review starts with a
 ///   PR whose one file is longer than the screen, for the diff's bars; with `-PRHubOpen <link>` it opens that PR as a
@@ -93,9 +98,7 @@ enum PRHubScreenshots {
         }
         let defaults = UserDefaults(suiteName: "screenshots-first-run") ?? .standard
         defaults.removePersistentDomain(forName: "screenshots-first-run")
-        let state = FakeAccount(
-            signedOut: arguments.contains("-PRHubSignedOut"), anthropicKey: arguments.contains("-PRHubAnthropicKey")
-        )
+        let state = FakeAccount(arguments: arguments)
         if signedIn {
             defaults.set(try? JSONEncoder().encode(state.config), forKey: WorkerConnection.configKey)
         }
@@ -138,15 +141,62 @@ enum PRHubScreenshots {
 
 /// What the fake hosted Worker holds for its one person.
 private final class FakeAccount: Sendable {
+    /// Where the PRHub App is installed for the person (`-PRHubInstallations`).
+    enum Installations: Sendable {
+        case some, none, onReturn
+
+        init(_ argument: String?) {
+            switch argument {
+            case "none": self = .none
+            case "onReturn": self = .onReturn
+            default: self = .some
+            }
+        }
+    }
+
     private struct State {
         var signedOut: Bool
         var anthropicKey: Bool
+        var installations: Installations
+        var hasLeft = false
     }
 
     private let state: Mutex<State>
 
-    init(signedOut: Bool, anthropicKey: Bool) {
-        state = Mutex(State(signedOut: signedOut, anthropicKey: anthropicKey))
+    /// `-PRHubSignedOut`, `-PRHubAnthropicKey` and `-PRHubInstallations`.
+    init(arguments: [String]) {
+        state = Mutex(State(
+            signedOut: arguments.contains("-PRHubSignedOut"), anthropicKey: arguments.contains("-PRHubAnthropicKey"),
+            installations: Installations(UserDefaults.standard.string(forKey: "PRHubInstallations"))
+        ))
+        watchForGitHub()
+    }
+
+    /// The app leaving the foreground stands in for the person going to GitHub to install the App.
+    private func watchForGitHub() {
+        #if os(iOS)
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+        ) { [self] _ in state.withLock { $0.hasLeft = true } }
+        #endif
+    }
+
+    private static let own = GitHubInstallation(
+        account: PRSampleSet.prHubLogin, accountType: .user, installationID: 101, repositorySelection: .all
+    )
+    private static let acme = GitHubInstallation(
+        account: "acme", accountType: .organization, installationID: 202, repositorySelection: .selected, repoCount: 2
+    )
+    private static let initech = GitHubInstallation(
+        account: "initech", accountType: .organization, installationID: 303, repositorySelection: .all, suspended: true
+    )
+
+    private static func installations(_ state: State) -> [GitHubInstallation] {
+        switch state.installations {
+        case .some: [own, acme, initech]
+        case .none: []
+        case .onReturn: state.hasLeft ? [own, acme] : [own]
+        }
     }
 
     var config: DeviceConfig {
@@ -157,7 +207,8 @@ private final class FakeAccount: Sendable {
             account: DeviceConfig.Account(
                 state: now.signedOut ? .signedOut : .signedIn, login: PRSampleSet.prHubLogin, userId: "4242",
                 anthropicKey: now.anthropicKey, reason: now.signedOut ? "revoked" : nil
-            )
+            ),
+            installations: now.signedOut ? nil : Self.installations(now)
         )
     }
 

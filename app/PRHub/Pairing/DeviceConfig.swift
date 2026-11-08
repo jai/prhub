@@ -36,6 +36,9 @@ struct DeviceConfig: Codable, Equatable, Sendable {
     var hosted: Bool
     /// The hosted Worker's person; nil on a self-hosted one.
     var account: Account?
+    /// The hosted Worker's: where the PRHub App is installed for the person. Nil before the Worker first read them, and
+    /// on a self-hosted Worker.
+    var installations: [GitHubInstallation]?
 
     /// `account` of `GET /device/config` on the hosted Worker.
     struct Account: Codable, Equatable, Sendable {
@@ -82,7 +85,8 @@ struct DeviceConfig: Codable, Equatable, Sendable {
 
     init(
         features: Set<DeviceFeature>, ownerName: String? = nil, appVersionMin: String? = nil, push: String? = nil,
-        login: String? = nil, orgs: [String]? = nil, hosted: Bool = false, account: Account? = nil
+        login: String? = nil, orgs: [String]? = nil, hosted: Bool = false, account: Account? = nil,
+        installations: [GitHubInstallation]? = nil
     ) {
         self.features = features
         self.ownerName = ownerName
@@ -92,6 +96,7 @@ struct DeviceConfig: Codable, Equatable, Sendable {
         self.orgs = orgs
         self.hosted = hosted
         self.account = account
+        self.installations = installations
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -103,6 +108,16 @@ struct DeviceConfig: Codable, Equatable, Sendable {
         case orgs
         case hosted
         case account
+        case installations
+    }
+
+    /// One entry of `installations`: one this build cannot read is left out, not the whole list.
+    private struct LossyInstallation: Decodable {
+        let value: GitHubInstallation?
+
+        init(from decoder: any Decoder) throws {
+            value = try? GitHubInstallation(from: decoder)
+        }
     }
 
     private struct FeatureKey: CodingKey {
@@ -133,6 +148,8 @@ struct DeviceConfig: Codable, Equatable, Sendable {
         orgs = try? container.decodeIfPresent([String].self, forKey: .orgs)
         hosted = (try? container.decodeIfPresent(Bool.self, forKey: .hosted)) == true
         account = try? container.decodeIfPresent(Account.self, forKey: .account)
+        installations = (try? container.decodeIfPresent([LossyInstallation].self, forKey: .installations))?
+            .compactMap(\.value)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -150,6 +167,7 @@ struct DeviceConfig: Codable, Equatable, Sendable {
             try container.encode(hosted, forKey: .hosted)
         }
         try container.encodeIfPresent(account, forKey: .account)
+        try container.encodeIfPresent(installations, forKey: .installations)
     }
 
     func isOn(_ feature: DeviceFeature) -> Bool {

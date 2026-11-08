@@ -3,8 +3,8 @@ import XCTest
 /// Pictures of every screen in light, dark and the largest accessibility text, over the sample PRs: onboarding, the
 /// list, a PR, its diff on a key line, and Settings; then Sign in with GitHub's screens over the fake hosted Worker:
 /// onboarding with every way in, a refused sign-in, the account's Settings with and without a key, Delete Account,
-/// Sign in again and the empty list. Each is an attachment, and a PNG in `SCREENSHOTS_DIR` when the
-/// run sets it (`TEST_RUNNER_SCREENSHOTS_DIR` on xcodebuild's command line).
+/// Sign in again, the empty list, GitHub access and the empty list with the App on no account. Each is an attachment,
+/// and a PNG in `SCREENSHOTS_DIR` when the run sets it (`TEST_RUNNER_SCREENSHOTS_DIR` on xcodebuild's command line).
 @MainActor
 final class PRHubScreenshotTests: XCTestCase {
     private enum Look: String, CaseIterable {
@@ -101,6 +101,19 @@ final class PRHubScreenshotTests: XCTestCase {
         }
         XCTAssertTrue(app.descendants(matching: .any)["pr-empty-hint-link"].waitForExistence(timeout: 10))
         try picture("13-empty-list", look)
+
+        launch(look, ["-PRHubHosted", "-PRHubSettings"])
+        let access = app.descendants(matching: .any)["github-access-add-account"]
+        XCTAssertTrue(access.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.scrollSettings(to: access))
+        try picture("14-github-access", look)
+
+        launch(look, ["-PRHubHosted", "-PRHubHostedEmpty", "-PRHubInstallations", "none"])
+        if notNow.waitForExistence(timeout: 5) {
+            notNow.tap()
+        }
+        XCTAssertTrue(app.descendants(matching: .any)["pr-empty-hint-link"].waitForExistence(timeout: 10))
+        try picture("15-empty-list-not-installed", look)
     }
 
     private func picture(_ step: String, _ look: Look) throws {

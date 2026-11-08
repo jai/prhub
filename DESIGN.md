@@ -144,9 +144,10 @@ all of them are in scope. A new screen adds a row here and a step in `PRHubScree
 | PR description | PRs → a PR | `PRScreen`, `PRDescriptionView`, `PRChangesCard`, `PRStatusCard`, `.prCard()`, `PRCommentText`, `PRThreadCard` |
 | Ask AI | PRs → a PR → the toolbar, or a line's comment box | `PRAskSheet`, `SessionBubble`, `SessionComposer` |
 | PR diff | PRs → a PR → Review changes, or Files changed | `PRDiffScreen`, `DiffTableView`, `PRDiffPage`, `PRNavigator` |
-| Settings | Settings; signed in: account, App installs, Anthropic key, Sign out, Delete account | `PRHubSettingsView`, `PRPageBlock`, `PRValueLine`, `AnthropicKeySection`, `DeleteAccountSheet` |
+| Settings | Settings; signed in: account, GitHub access, Anthropic key, Sign out, Delete account | `PRHubSettingsView`, `PRPageBlock`, `PRValueLine`, `AnthropicKeySection`, `DeleteAccountSheet` |
+| GitHub access | Settings, signed in: each account the PRHub App is installed on (its repositories, Suspended), each opening its settings on GitHub, then Add another account; read again on every foreground | `GitHubAccessBlock`, `GitHubInstallationLine`, `PRAvatar`, `StatusChip` |
 | Diff font | Settings → Diff font: a preview, the size (9 to 20 pt) and the face; every diff and code view follows it | `DiffFontSection`, `PRPageBlock`, `DiffFont` |
-| No PRs yet | PRs, hosted, nothing listed | `PREmptyHint` in `PRsView` |
+| No PRs yet | PRs, hosted, nothing listed: where the App is installed, and where it is missing or suspended | `PREmptyHint` in `PRsView` |
 | iPad | the phone's tabs, every orientation; a regular width puts the list beside the PR | `PRsSplitView`, `PRDiffShortcuts`; `readableContentWidth()` centres scroll views |
 
 ## Overview
@@ -301,6 +302,7 @@ The shared parts. Use these; extend one rather than writing a near-copy. Each is
 | `PRSwipeRow`, `PRSwipeAction` | the one swipe on a row: right for Review changes, left for Remove me | PRKit `Phone/`, `Parts/` |
 | `PRChangesCard` | a PR's way into its diff: Files changed and Review changes | PRKit |
 | `PRPageBlock`, `PRBlockNote`, `PRValueLine` | a page of blocks (onboarding, Sign in again, Settings): a block, the note under it, a setting's name and value | PRKit `Parts/PRPageBlock.swift` |
+| `GitHubAccessBlock`, `GitHubInstallationLine` | where a GitHub App is installed: one line per account, opening its settings on GitHub | PRKit `Parts/GitHubAccessBlock.swift` |
 | `PageHeader`, `ProblemLine` | PRHub's own pages: a title, why something failed | app `Views/PageParts.swift` |
 
 ### Status
