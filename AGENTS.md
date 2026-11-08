@@ -51,6 +51,44 @@ pairing the phone, and troubleshooting.
 ## Releases
 
 - **PRKit**: tag `vX.Y.Z` on a green main. Apps pin it (`from: "0.1.0"`); Jai's Agent Pager is one of them.
-- **PRHub**: `release/ship.sh "<What to Test>"` on a Mac that can sign for the team, with an App Store Connect API key
-  in the environment (the script's header lists what it needs). It numbers the build one past App Store Connect's
-  highest, uploads, waits for VALID, adds the build to the public TestFlight group and submits it for Beta App Review.
+- **PRHub**: a release is one commit on `main` that sets `CURRENT_PROJECT_VERSION` in `app/project.yml` to N, with
+  the subject `chore(release): PRHub build N — <What to Test>`. Take N from `release/next-build.sh`, change nothing
+  else in that commit, and change `CURRENT_PROJECT_VERSION` in no other commit.
+  1. Push the release commit to `main`. Xcode Cloud's **PRHub Release** workflow starts on any change to
+     `app/project.yml` on `main`. `app/ci_scripts` checks that the change is a release, sets the build number to
+     Xcode Cloud's (TestFlight shows that number), generates the project, archives and writes What to Test from the
+     subject. The workflow's post-actions then give the build to the Internal and Public TestFlight groups.
+  2. Run `release/ship.sh` with an App Store Connect API key in the environment (the script's header lists what it
+     needs). It follows Xcode Cloud's build until TestFlight has processed it. Then it adds the build to the Public
+     group and submits the build for Beta App Review, unless the build is already submitted or an earlier build is
+     still in review. It prints `SHIPPED PRHub build <n>`. `--dry-run` does the checks and stops.
+  - With no PRHub Release workflow, or with `--local`, `release/ship.sh` archives and uploads the release on a Mac
+    that can sign for the team. `release/ship.sh "<What to Test>"` with no release waiting ships the current HEAD
+    with N from `next-build.sh` and makes no commit. `PRHUB_SUBMIT=NO` prevents the Beta App Review submission, but
+    only in a local ship. In Xcode Cloud, the Public group's post-action can submit the build.
+  - Xcode Cloud has no `Package.resolved` to read. PRKit is this repo's own package (`path: ..`) and `Package.swift`
+    has no dependencies, so the project resolves with automatic resolution off. If a remote package is added, commit
+    a `Package.resolved` and copy it into the generated project in `app/ci_scripts/ci_post_clone.sh`.
+
+### Setting up Xcode Cloud (once)
+
+The Xcode Cloud product for PRHub must exist first. Xcode makes it, with GitHub access to `jai/prhub`. The App Store
+Connect API cannot make a product.
+
+1. Generate the project: `make -C app project`, then open `app/PRHub.xcodeproj` in Xcode.
+2. **Product → Xcode Cloud → Create Workflow**, choose the PRHub app and grant access to `jai/prhub` when Xcode asks.
+   Skip this step if App Store Connect → PRHub → Xcode Cloud already shows a product.
+3. Make the workflow. Either run `swift release/xcode-cloud.swift <key.p8> create-workflow` with `ASC_KEY_ID`,
+   `ASC_ISSUER_ID` and `APP_BUNDLE_ID` set, or in Xcode's workflow editor set:
+   - **General**: name `PRHub Release` (`app/ci_scripts/release.sh` checks for this name), and select **Clean**.
+   - **Environment**: Xcode version **Latest Release**.
+   - **Start Conditions**: one **Branch Changes** condition on the branch `main`. Set **Files and Folders** to
+     **Any File Matches**, with the file `app/project.yml`. Delete every other start condition.
+   - **Actions**: one **Archive** action for iOS, scheme `PRHub`, deployment preparation **TestFlight and App Store**.
+4. Add the post-actions. The API cannot add them, so use Xcode for this step. In **Product → Xcode Cloud → Manage
+   Workflows**, edit **PRHub Release**:
+   - **Post-Actions → + → TestFlight Internal Testing**, artifact **iOS**, group **Internal**.
+   - **Post-Actions → + → TestFlight External Testing**, artifact **iOS**, group **Public**.
+5. Build numbers: App Store Connect → PRHub → **Xcode Cloud → Settings → Build Number**. Make sure **Next Build
+   Number** is higher than TestFlight's highest PRHub build. `release/next-build.sh` reads both numbers.
+6. Delete or disable any other workflow that archives PRHub, so that only a release commit makes a build.
