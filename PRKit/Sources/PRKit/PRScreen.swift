@@ -51,7 +51,10 @@ struct PRScreen: View {
 
     var body: some View {
         PRLoadedContent(session: session) { content in
-            PRDescriptionView(session: session, detail: content.detail) { opener?.showDiff(of: session) }
+            PRDescriptionView(
+                session: session, detail: content.detail,
+                showDiff: { opener?.showDiff(of: session) }, reviewChanges: { opener?.reviewChanges(of: session) }
+            )
         }
         .id(ObjectIdentifier(session))
         .navigationTitle(session.label)
@@ -73,7 +76,7 @@ struct PRDiffScreen: View {
         PRLoadedContent(session: session) { content in
             switch content.diff {
             case let .document(document, rows):
-                PRDiffPage(session: session, document: document, rows: rows) { opener?.stack.back() }
+                PRDiffPage(session: session, document: document, rows: rows)
             case .tooLarge:
                 ContentUnavailableView(
                     "Diff too large", systemImage: "doc.text.magnifyingglass",

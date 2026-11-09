@@ -3,10 +3,11 @@ import PRKitDesign
 import SwiftUI
 
 /// The way from a PR into its diff, as GitHub has it: a Files changed row with the lines added and removed, and Review
-/// changes. Both push the diff over the PR, so Back from it is the PR.
+/// changes. Both push the diff over the PR, so Back from it is the PR; Review changes opens its panel on the key lines.
 struct PRChangesCard: View {
     let detail: PullRequestDetail
     let showDiff: () -> Void
+    let reviewChanges: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -33,7 +34,7 @@ struct PRChangesCard: View {
             .accessibilityLabel("Files changed, \(detail.changedFiles), \(detail.additions) added, \(detail.deletions) removed")
             .accessibilityIdentifier("pr-files-changed")
             Divider()
-            Button(action: showDiff) {
+            Button(action: reviewChanges) {
                 Label("Review changes", systemImage: AppIcon.reviewChanges.symbol)
                     .labelStyle(.iconText)
                     .frame(maxWidth: .infinity)

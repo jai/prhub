@@ -1,7 +1,7 @@
 import XCTest
 
-/// How a PR's diff is reached and left, over the sample PRs: Review changes pushes the diff over the PR, so Back returns
-/// to the PR; a row's Review shortcut (its button, its swipe and its menu) and a link to a PR's files land on the diff
+/// How a PR's diff is reached and left, over the sample PRs: Review changes pushes the diff over the PR with its panel
+/// open on Key lines, so Back returns to the PR; Files changed leaves the panel to its button; a row's Review shortcut (its button, its swipe and its menu) and a link to a PR's files land on the diff
 /// with the PR under it; the panel opens on Key lines, or on Files with no model. On a wide screen (an iPad) the list
 /// sits beside the PR and a diff takes the whole width, with its panel as a column; a narrow Split View keeps the phone's
 /// layout. Pictures go to `SCREENSHOTS_DIR` when it is set.
@@ -21,25 +21,78 @@ final class PRHubNavigationUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
     }
 
-    func testReviewChangesPushesTheDiffAndBackReturnsToThePR() {
+    func testReviewChangesPushesTheDiffWithKeyLinesOpenAndBackReturnsToThePR() {
         launch()
         openCheckout()
         app.buttons["pr-review-changes"].tap()
-        XCTAssertTrue(app.buttons["diff-files"].waitForExistence(timeout: 5), "the diff")
-        XCTAssertFalse(app.buttons["key-lines-context-100"].exists && !isWide, "the panel waits for its button")
-        app.back()
-        XCTAssertTrue(waitForHittable(app.buttons["pr-review-changes"]), "Back from the diff is the PR")
-        if !isWide {
-            app.back()
-            XCTAssertTrue(waitForHittable(app.staticTexts[checkout]), "and Back from the PR is the list")
-        }
+        assertOnDiffWithKeyLinesOpen()
+        try? picture("nav-review-changes-panel")
+        backToThePRThenTheList()
     }
 
-    func testTheFilesChangedRowOpensTheDiffToo() {
+    func testTheFilesChangedRowOpensTheDiffWithThePanelWaiting() {
         launch()
         openCheckout()
         app.buttons["pr-files-changed"].tap()
         XCTAssertTrue(app.buttons["diff-files"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["key-lines-context-100"].exists && !isWide, "the panel waits for its button")
+    }
+
+    /// The diff sends a review the way the PR's page does: the bar under the code, its box in the bar's place.
+    func testTheDiffHasTheReviewBarAndSendsAReview() {
+        launch()
+        openCheckout()
+        app.buttons["pr-files-changed"].tap()
+        XCTAssertTrue(app.buttons["diff-files"].waitForExistence(timeout: 5))
+        for action in ["pr-review-approve", "pr-review-request-changes", "pr-review-comment"] {
+            XCTAssertTrue(waitForHittable(app.buttons[action]), action)
+        }
+        XCTAssertEqual(app.buttons["pr-review-request-changes"].label, "Request changes")
+        let widths = ["pr-review-approve", "pr-review-request-changes", "pr-review-comment"]
+            .map { app.buttons[$0].frame.width }
+        XCTAssertEqual(widths.max()! - widths.min()!, 0, accuracy: 1, "one bar of equal buttons")
+        try? picture("nav-diff-review-bar")
+        app.buttons["pr-review-approve"].tap()
+        let send = app.buttons["inline-composer-send"]
+        XCTAssertTrue(send.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["pr-review-approve"].exists, "the box takes the bar's place")
+        send.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["pr-notice"].waitForExistence(timeout: 5), "the review went")
+        XCTAssertTrue(waitFor { !send.exists }, "and its box closed")
+    }
+
+    /// One job name in two workflows says its workflow; a job's matrix legs are one line that opens to them.
+    func testTheChecksGroupMatrixLegsAndNameTheirWorkflow() throws {
+        launch()
+        openCheckout()
+        let header = app.buttons["checks-header"]
+        XCTAssertTrue(header.waitForExistence(timeout: 5))
+        header.tap()
+        let group = app.buttons["check-group-visual proof"]
+        XCTAssertTrue(group.waitForExistence(timeout: 3))
+        XCTAssertTrue(group.label.hasPrefix("visual proof, 4 legs"), group.label)
+        XCTAssertTrue(app.buttons["detect-changes, CI"].exists, "a shared name says its workflow")
+        XCTAssertTrue(app.buttons["detect-changes, Preview"].exists)
+        XCTAssertFalse(app.buttons["web 1/4"].exists, "the legs wait under their job")
+        group.tap()
+        XCTAssertTrue(app.buttons["web 1/4"].waitForExistence(timeout: 3), "and open under it")
+        try? picture("nav-checks-grouped")
+    }
+
+    /// At a text size where "Request changes" no longer fits its third, all three buttons show icons, and keep their
+    /// words for VoiceOver.
+    func testTheReviewBarShowsIconsWhenItsWordsDontFit() throws {
+        launch(["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryXXL"])
+        openCheckout()
+        let approve = app.buttons["pr-review-approve"]
+        XCTAssertTrue(approve.waitForExistence(timeout: 5))
+        if !approve.isHittable {
+            app.swipeUp(velocity: .slow)
+        }
+        XCTAssertEqual(approve.label, "Approve")
+        XCTAssertEqual(app.buttons["pr-review-request-changes"].label, "Request changes")
+        XCTAssertEqual(app.buttons["pr-review-comment"].label, "Comment")
+        try? picture("nav-review-bar-xxl")
     }
 
     func testTheRowsReviewButtonLandsOnTheDiffWithKeyLinesOpenAndBackGoesToThePR() {
@@ -87,13 +140,13 @@ final class PRHubNavigationUITests: XCTestCase {
     func testThePanelOpensOnKeyLinesAndOnFilesWhenTheWorkerHasNoModel() {
         launch()
         openCheckout()
-        app.buttons["pr-review-changes"].tap()
+        app.buttons["pr-files-changed"].tap()
         openPanel()
         XCTAssertTrue(app.buttons["key-lines-context-100"].waitForExistence(timeout: 3), "Key lines first")
 
         launch(["-PRHubNoAI"])
         openCheckout()
-        app.buttons["pr-review-changes"].tap()
+        app.buttons["pr-files-changed"].tap()
         openPanel()
         XCTAssertTrue(app.buttons["diff-changed-only"].waitForExistence(timeout: 3), "Files, with no key lines")
         XCTAssertFalse(app.buttons["key-lines-context-100"].exists)
@@ -156,7 +209,7 @@ final class PRHubNavigationUITests: XCTestCase {
         row.tap()
         XCTAssertTrue(waitForHittable(app.buttons["pr-review-changes"]))
         XCTAssertTrue(app.navigationBars.buttons["BackButton"].waitForExistence(timeout: 3), "pushed over the list")
-        app.buttons["pr-review-changes"].tap()
+        app.buttons["pr-files-changed"].tap()
         XCTAssertTrue(app.buttons["diff-files"].waitForExistence(timeout: 5))
         try picture("nav-compact-diff")
         XCTAssertFalse(app.buttons["key-lines-context-100"].exists, "the panel is over the diff, shut")

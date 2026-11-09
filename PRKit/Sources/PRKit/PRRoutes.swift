@@ -91,7 +91,14 @@ struct PullRequestOpener {
         stack.show(PRRoute.opening(session, showsDiff: true))
     }
 
+    /// Files changed: the diff over its PR, the panel waiting for its button.
     func showDiff(of session: PRSession) {
+        stack.show([.diff(session)])
+    }
+
+    /// A PR's Review changes: its diff with the panel open on the key lines, as the Review shortcut lands.
+    func reviewChanges(of session: PRSession) {
+        session.opensPanelOnArrival = true
         stack.show([.diff(session)])
     }
 }

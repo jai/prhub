@@ -33,6 +33,22 @@ extension XCUIApplication {
 }
 
 extension XCUIApplication {
+    /// Closes the diff's panel where it is over the code (a compact width), by a tap on the dim beside it. A column
+    /// beside the code (a regular width) stays.
+    @MainActor func closePanelOverDiff() {
+        guard windows.firstMatch.horizontalSizeClass != .regular,
+              buttons["key-lines-context-100"].waitForExistence(timeout: 3) else {
+            return
+        }
+        coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)).tap()
+        let panel = buttons["key-lines-context-100"]
+        for _ in 0..<20 where panel.exists {
+            RunLoop.current.run(until: Date.now.addingTimeInterval(0.1))
+        }
+    }
+}
+
+extension XCUIApplication {
     /// Launches PRHub in `appearance`. The app is told too (`-PRHubAppearance`): on CI's Simulator
     /// `XCUIDevice.shared.appearance` left the whole Simulator light.
     @MainActor func launch(_ arguments: [String], appearance: XCUIDevice.Appearance) {

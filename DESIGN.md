@@ -141,9 +141,9 @@ all of them are in scope. A new screen adds a row here and a step in `PRHubScree
 | PR list | PRs | `PRsView`, `PRsList`, `PrListBlock`, `PRSectionTitle`, `PRSwipeRow` |
 | Review shortcut | PRs → a row's Review button, its swipe right, or its long-press menu | `PrListBlock`, `PRSwipeRow`, `PullRequestOpener` |
 | PR filter | PRs → Filter | `PRFilterPanel`, `PRSectionTitle` |
-| PR description | PRs → a PR | `PRScreen`, `PRDescriptionView`, `PRChangesCard`, `PRStatusCard`, `.prCard()`, `PRCommentText`, `PRThreadCard` |
+| PR description | PRs → a PR | `PRScreen`, `PRDescriptionView`, `PRChangesCard`, `PRStatusCard`, `PRReviewActions`, `.prCard()`, `PRCommentText`, `PRThreadCard` |
 | Ask AI | PRs → a PR → the toolbar, or a line's comment box | `PRAskSheet`, `SessionBubble`, `SessionComposer` |
-| PR diff | PRs → a PR → Review changes, or Files changed | `PRDiffScreen`, `DiffTableView`, `PRDiffPage`, `PRNavigator` |
+| PR diff | PRs → a PR → Review changes, or Files changed | `PRDiffScreen`, `DiffTableView`, `PRDiffPage`, `PRNavigator`, `PRReviewActions` |
 | Settings | Settings; signed in: account, GitHub access, Anthropic key, Sign out, Delete account | `PRHubSettingsView`, `PRPageBlock`, `PRValueLine`, `AnthropicKeySection`, `DeleteAccountSheet` |
 | GitHub access | Settings, signed in: each account the PRHub App is installed on (its repositories, Suspended), each opening its settings on GitHub, then Add another account; read again on every foreground | `GitHubAccessBlock`, `GitHubInstallationLine`, `PRAvatar`, `StatusChip` |
 | Diff font | Settings → Diff font: a preview, the size (9 to 20 pt) and the face; every diff and code view follows it | `DiffFontSection`, `PRPageBlock`, `DiffFont` |
@@ -265,8 +265,9 @@ ring are capsules and circles.
 A PR and its diff are two screens on one stack, as on GitHub. `PRRoute` names them; `PRNavigation` holds them.
 
 - **PR → diff is a push.** The PR's `PRChangesCard` (Files changed · N, with the lines added and removed, and Review
-  changes) pushes the diff. Back from the diff is the PR, and Back from the PR is where it came from. No segmented
-  control switches them.
+  changes) pushes the diff. Review changes opens its panel on Key lines, as the Review shortcut does; Files changed
+  leaves the panel to its button. Back from the diff is the PR, and Back from the PR is where it came from. No
+  segmented control switches them.
 - **The Review shortcut.** A PR row's Review button (in the state column, under the state), its swipe right and its
   long-press menu push the PR with its diff on top, the panel open on Key lines. Back goes diff → PR → list, never
   skipping one. The menu also has Open, Open in GitHub and Copy link, and whatever the row's swipe holds.
@@ -293,6 +294,7 @@ The shared parts. Use these; extend one rather than writing a near-copy. Each is
 | `PRAuthorLine`, `PRAvatar` | who said it and when | PRKit `PRParts.swift` |
 | `PRCommentText`, `MarkdownText` | what people and agents write | PRKit |
 | `PRButtonStyle` | every button on a row or screen | PRKit `PRParts.swift` |
+| `PRReviewActions`, `PRReviewBar`, `PRReviewComposer` | a review: Approve, Request changes and Comment as one bar, and the box each opens, on a PR's page and under its diff | PRKit `PRReviewActions.swift` |
 | `.prField(isFocused:)` | every field you type in | PRKit `PRParts.swift` |
 | `InlineComposer` | writing on a PR, in place | PRKit `PRParts.swift` |
 | `StatusChip` | state words outside lists | PRKit `Parts/` |
@@ -455,6 +457,20 @@ rules:
 antiPatterns:
   - .bordered, .borderedProminent or .glassProminent on content. Glass only over the diff.
 ---
+name: PRReviewBar
+purpose: Approve, Request changes and Comment, wherever a review is sent: a PR's page and under its diff.
+parts:
+  buttons: { holds: "PRButtonStyle, words from the sides PRStyle.barButtonInset", widths: equal, gap: Space.sm }
+  icons:   { holds: "AppIcon.reviewApproved, .reviewChangesRequested, .reviewCommented", label: "the words, for VoiceOver" }
+rules:
+  - One bar across the width of the content it sits in (the page's cards; the diff's column), each button the same width.
+  - When one button's words don't fit its share, every button shows its icon instead, together.
+  - Approve is primary in toneGood, Request changes secondary in toneBad, Comment secondary. The author sees Comment alone.
+  - What a button opens (PRReviewComposer) opens in place: under the bar on the page, in the bar's place under the diff.
+  - Under the diff it leaves with the bars as you read down, and returns with them.
+antiPatterns:
+  - A second way to send a review. The diff and the page share this one.
+---
 name: StatusChip
 purpose: State words outside lists: a review's state on its comment, a label, Outdated, Pending.
 parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpacity", shape: capsule }
@@ -470,6 +486,11 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
   lines and of its note under the line, 44 pt square. A ticked line's words fade to `PRStyle.doneOpacity` and stay, and
   the list says how many are reviewed. Previous and Next pass over ticked lines until all are ticked. Ticks are the
   Worker's, by head, so each device shows the same ones and a new commit starts again (docs/api.md, "Reviewed key lines").
+- **A PR's checks:** each check once, as the Worker sends them (a check run again is its latest run). A name two
+  workflows share says its workflow after it, quieter: "detect-changes · Test Coverage". A job's matrix legs ("visual
+  proof (web 1/8)") are one line under the job's name with their count and their worst state ("visual proof · 8
+  legs"), opening to the job's own check and each leg; one with a failing leg opens by itself
+  (`PullRequestDetail.checkGroups`).
 - **Room for the code:** on the phone the nav bar and tab bar leave as you scroll down and return as you scroll up, or
   when the keyboard goes. The diff runs under them, so they never move it. They never stay gone with no way back: they
   return at the top, when there is nothing to scroll, when a file folds or opens, on a tap of the status bar or below
@@ -488,8 +509,8 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
 - **Don't** use a list's swipe for a row: rows sit in a plain stack. `PRSwipeRow` is the one swipe, and it pans only
   sideways: right shows Review changes, left Remove me.
 - **Don't** switch a PR and its diff in place. The diff is pushed, so Back is always one screen.
-- **Don't** put glass on content. On a PR's screens it is for the controls that float over the diff: Finish, the
-  panel button and the key line stepper.
+- **Don't** put glass on content. On a PR's screens it is for the controls that float over the diff: the panel button
+  and the key line stepper.
 - **Do** say a repo filter is on, under the switch: a filter can hide most of a list.
 - **Do** check every screen in light, dark and large text (Checking).
 

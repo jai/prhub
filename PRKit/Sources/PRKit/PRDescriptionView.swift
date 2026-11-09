@@ -4,39 +4,12 @@ import SwiftUI
 
 /// Title, labels and status at the top, the actions under them, then the description and every comment in order.
 struct PRDescriptionView: View {
-    /// What a button under the title opens in place.
-    private enum Action: Identifiable {
-        case approve, requestChanges, comment
-
-        var id: Self { self }
-
-        var title: String {
-            switch self {
-            case .approve: "Approve"
-            case .requestChanges: "Request changes"
-            case .comment: "Comment"
-            }
-        }
-
-        var target: PRComposerTarget {
-            switch self {
-            case .approve: .review(.approve)
-            case .requestChanges: .review(.requestChanges)
-            case .comment: .comment
-            }
-        }
-
-        /// With comments waiting, a plain comment is the review that carries them.
-        func target(hasDrafts: Bool) -> PRComposerTarget {
-            self == .comment && hasDrafts ? .review(.comment) : target
-        }
-    }
-
     let session: PRSession
     let detail: PullRequestDetail
-    /// Pushes the diff over this PR.
+    /// Pushes the diff over this PR; Review changes opens its panel on the key lines too.
     let showDiff: () -> Void
-    @State private var action: Action?
+    let reviewChanges: () -> Void
+    @State private var action: PRReviewAction?
     private static let descriptionEditor = "description-editor"
 
     private var folds: FoldSet { session.folds }
@@ -71,9 +44,9 @@ struct PRDescriptionView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Space.md) {
                 header
-                PRChangesCard(detail: detail, showDiff: showDiff)
+                PRChangesCard(detail: detail, showDiff: showDiff, reviewChanges: reviewChanges)
                 PRStatusCard(session: session, detail: detail, folds: folds)
-                actions
+                PRReviewActions(session: session, isAuthor: detail.isAuthor, action: $action)
                 composer
                 description
                 let entries = detail.conversation
@@ -121,65 +94,16 @@ struct PRDescriptionView: View {
         }
     }
 
-    private var actions: some View {
-        VStack(alignment: .leading, spacing: Space.sm) {
-            if !session.drafts.isEmpty {
-                let count = session.drafts.count
-                Text("\(count) pending comment\(count == 1 ? "" : "s") will go with your review")
-                    .font(.appFootnote)
-                    .foregroundStyle(Color.toneWaiting)
-            }
-            actionButtons
-            if let notice = session.notice {
-                Text(notice)
-                    .font(.appFootnote)
-                    .foregroundStyle(notice == session.model.writeNotice ? Color.secondary : Color.toneBad)
-                    .accessibilityIdentifier("pr-notice")
-                    .transition(.fold)
-            }
-        }
-    }
-
-    private var actionButtons: some View {
-        HStack(spacing: Space.sm) {
-            if !detail.isAuthor {
-                Button(Action.approve.title) { open(.approve) }
-                    .buttonStyle(PRButtonStyle(.primary))
-                    .tint(Color.toneGood)
-                Button(Action.requestChanges.title) { open(.requestChanges) }
-                    .buttonStyle(PRButtonStyle(.secondary))
-                    .tint(Color.toneBad)
-            }
-            Button(Action.comment.title) { open(.comment) }
-                .buttonStyle(PRButtonStyle(.secondary))
-        }
-        .lineLimit(1)
-        .minimumScaleFactor(0.8)
-    }
-
     @ViewBuilder private var composer: some View {
         if let action {
-            InlineComposer(
-                text: session.text(for: action.target),
-                placeholder: action == .approve ? "Add a note, or just approve" : "Say something",
-                buttonTitle: action.title, needsText: action != .approve && session.drafts.isEmpty
-            ) { text in
-                try await session.send(text, to: action.target(hasDrafts: !session.drafts.isEmpty))
-                session.discardText(for: action.target)
-                open(nil)
-            } cancel: {
-                session.discardText(for: action.target)
-                open(nil)
+            PRReviewComposer(session: session, action: action) {
+                withAnimation(AppMotion.fold) { self.action = nil }
             }
             .padding(PRStyle.inset)
             .prCard()
             .id(action)
             .transition(.fold)
         }
-    }
-
-    private func open(_ next: Action?) {
-        withAnimation(AppMotion.fold) { action = action == next ? nil : next }
     }
 
     private var description: some View {

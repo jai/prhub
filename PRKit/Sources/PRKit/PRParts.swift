@@ -38,17 +38,20 @@ public struct PRButtonStyle: ButtonStyle {
     }
 
     public let kind: Kind
+    /// Words from the button's sides: `PRStyle.inset`, or `PRStyle.barButtonInset` in a bar of equal buttons.
+    public let inset: CGFloat
     @Environment(\.isEnabled) private var isEnabled
 
-    public init(_ kind: Kind) {
+    public init(_ kind: Kind, inset: CGFloat = PRStyle.inset) {
         self.kind = kind
+        self.inset = inset
     }
 
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.appFootnote.weight(.semibold))
             .foregroundStyle(foreground)
-            .padding(.horizontal, PRStyle.inset)
+            .padding(.horizontal, inset)
             .frame(minHeight: PRStyle.controlHeight)
             .background(background, in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous))
             .contentShape(.rect.inset(by: -6))

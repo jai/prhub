@@ -54,8 +54,10 @@ public struct PullRequestDetail: Decodable, Sendable {
         public let url: String?
         /// GitHub holds the merge for this check. Absent in a detail saved before the Worker said.
         public let required: Bool?
+        /// The Actions workflow that ran it: null for a commit status, absent in a detail saved before the Worker said.
+        public var workflow: String?
 
-        public var id: String { "\(name)\(url ?? "")" }
+        public var id: String { "\(workflow ?? "")\n\(name)\(url ?? "")" }
     }
 
     /// PolicyBot's status on the head, where the repo uses it: the real gate, not GitHub's `reviewDecision`.

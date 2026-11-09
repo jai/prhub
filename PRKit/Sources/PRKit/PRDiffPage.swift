@@ -4,13 +4,14 @@ import SwiftUI
 
 /// The diff, with as little else on screen as can be: the bars leave as you read, Files and Key lines wait in a panel,
 /// and a small capsule steps through the key lines. The panel is over the code on a phone, and a column beside it where
-/// the screen has room. The comment box sits above the keyboard, with the line just over it.
+/// the screen has room. The comment box sits above the keyboard, with the line just over it. The review bar (Approve,
+/// Request changes, Comment) sits under the code and leaves with the bars; what it opens takes its place.
 struct PRDiffPage: View {
     @Bindable var session: PRSession
     let document: DiffDocument
     let rows: DiffRows
-    /// Finish review: back to the PR, where the review is sent.
-    let finish: () -> Void
+    /// What the review bar opened, while its box is open.
+    @State private var reviewAction: PRReviewAction?
     @Environment(\.openURL) private var openURL
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -75,17 +76,32 @@ struct PRDiffPage: View {
             #endif
             .diffExtendsUnderBars()
         }
-        .safeAreaBar(edge: .bottom) {
-            if session.composingLine != nil {
-                composer
-            }
-        }
         .overlay(alignment: .bottom) {
-            if session.composingLine == nil, !session.isKeyboardUp {
+            if session.composingLine == nil, reviewAction == nil, !session.isKeyboardUp {
                 controls
                     .transition(.opacity)
             }
         }
+        .safeAreaBar(edge: .bottom) {
+            Group {
+                if session.composingLine != nil {
+                    composer
+                } else if let reviewAction {
+                    PRReviewComposer(session: session, action: reviewAction) { closeReview() }
+                        .bottomStrip()
+                } else if !session.barsHidden, let detail = session.content?.detail {
+                    PRReviewActions(session: session, isAuthor: detail.isAuthor, action: $reviewAction)
+                        .bottomStrip()
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(AppMotion.fold, value: session.barsHidden)
+        }
+    }
+
+    private func closeReview() {
+        PRPlatform.endEditing()
+        withAnimation(AppMotion.fold) { reviewAction = nil }
     }
 
     private var actions: DiffActions {
@@ -160,51 +176,22 @@ struct PRDiffPage: View {
                     closeComposer()
                 }
             )
-            .padding(Space.sm)
-            .background(Color.groundCard)
-            .overlay(alignment: .top) { Divider() }
+            .bottomStrip()
         }
     }
 
+    /// The key line stepper and the panel button, floating over the code above the review bar.
     private var controls: some View {
-        VStack(alignment: .trailing, spacing: Space.sm) {
-            if let notice = session.notice {
-                Text(notice)
-                    .font(.appFootnote)
-                    .foregroundStyle(Color.toneBad)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .transition(.fold)
+        HStack(spacing: Space.sm) {
+            Spacer(minLength: 0)
+            if !session.keyLineItems.isEmpty {
+                stepper
             }
-            HStack(spacing: Space.sm) {
-                if !session.drafts.isEmpty {
-                    finishReview
-                }
-                Spacer(minLength: 0)
-                if !session.keyLineItems.isEmpty {
-                    stepper
-                }
-                // Rightmost, where the panel it opens slides in from.
-                panelButton
-            }
+            // Rightmost, where the panel it opens slides in from.
+            panelButton
         }
         .padding(.horizontal, Space.md)
         .padding(.bottom, Space.sm)
-    }
-
-    private var finishReview: some View {
-        Button(action: finish) {
-            Text("Finish · \(session.drafts.count)")
-                .font(.appFootnote.weight(.semibold))
-                .foregroundStyle(Color.onAccent)
-                .padding(.horizontal, Space.lg)
-                .frame(minHeight: 44)
-                .contentShape(.capsule)
-        }
-        .buttonStyle(.plain)
-        .glassEffect(.regular.tint(.accentColor).interactive(), in: .capsule)
-        .accessibilityLabel("Finish review, \(session.drafts.count) pending")
-        .accessibilityIdentifier("finish-review")
-        .transition(.fold)
     }
 
     private var panelButton: some View {
@@ -256,5 +243,14 @@ struct PRDiffPage: View {
         .buttonStyle(.plain)
         .accessibilityLabel(label)
         .accessibilityIdentifier(id)
+    }
+}
+
+private extension View {
+    /// What sits under the code: the review bar, the review box or a line's comment box, on the block's ground.
+    func bottomStrip() -> some View {
+        padding(Space.sm)
+            .background(Color.groundCard)
+            .overlay(alignment: .top) { Divider() }
     }
 }

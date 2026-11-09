@@ -49,7 +49,8 @@ final class PRHubDiffBarsUITests: XCTestCase {
         let row = app.staticTexts["Give the deploy team access to staging"]
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.tap()
-        let diff = app.buttons["pr-review-changes"]
+        // Files changed: the diff with its panel waiting, the code all there is.
+        let diff = app.buttons["pr-files-changed"]
         XCTAssertTrue(diff.waitForExistence(timeout: 5))
         diff.tap()
         XCTAssertTrue(app.buttons["file-header-0"].waitForExistence(timeout: 5))

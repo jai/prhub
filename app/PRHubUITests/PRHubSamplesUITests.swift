@@ -31,6 +31,8 @@ final class PRHubSamplesUITests: XCTestCase {
         XCTAssertTrue(approve.waitForExistence(timeout: 5))
 
         app.buttons["pr-review-changes"].tap()
+        XCTAssertTrue(app.buttons["key-lines-context-100"].waitForExistence(timeout: 5), "the panel open on Key lines")
+        app.closePanelOverDiff()
         XCTAssertTrue(app.buttons["key-line-position"].waitForExistence(timeout: 5))
         app.buttons["key-line-next"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["key-line-note"].waitForExistence(timeout: 5))

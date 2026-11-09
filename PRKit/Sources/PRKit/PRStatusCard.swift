@@ -19,7 +19,7 @@ struct PRStatusCard: View {
                 .accessibilityIdentifier("checks-header")
                 if isOpen {
                     VStack(alignment: .leading, spacing: 0) {
-                        ForEach(detail.listedChecks) { check($0) }
+                        ForEach(detail.checkGroups) { PRCheckLines(group: $0, folds: folds) }
                     }
                     .transition(.fold)
                 }
@@ -197,6 +197,13 @@ struct PRStatusCard: View {
         .padding(PRStyle.inset)
         .contentShape(.rect)
     }
+}
+
+/// One line of the checks: a single check, or a job's legs under one line that opens to them; a failing one opens by
+/// itself.
+private struct PRCheckLines: View {
+    let group: PullRequestDetail.CheckGroup
+    let folds: FoldSet
 
     /// Skipped covers cancelled runs too: GitHub's overall state doesn't count them, so neither does the summary.
     private static func color(_ state: String) -> Color {
@@ -217,39 +224,83 @@ struct PRStatusCard: View {
         }
     }
 
-    private func check(_ check: PullRequestDetail.Check) -> some View {
+    @ViewBuilder var body: some View {
+        if group.isGroup {
+            let isOpen = folds.isFlipped("check-group:\(group.id)") != (group.state == "failure")
+            Button { folds.toggle("check-group:\(group.id)") } label: {
+                checkLine(name: group.name, detail: group.detail, state: group.state, required: group.required) {
+                    PRChevron(isCollapsed: !isOpen)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("check-group-\(group.name)")
+            if isOpen {
+                VStack(alignment: .leading, spacing: 0) {
+                    if let job = group.job {
+                        check(job, name: job.name)
+                    }
+                    ForEach(group.legs) { check($0.check, name: $0.label) }
+                }
+                .padding(.leading, Space.lg)
+                .transition(.fold)
+            }
+        } else if let job = group.job {
+            check(job, name: job.name, detail: group.detail)
+        }
+    }
+
+    private func check(_ check: PullRequestDetail.Check, name: String, detail: String? = nil) -> some View {
         Button {
             if let url = check.url.flatMap(URL.init(string:)) {
                 PRPlatform.openExternally(url)
             }
         } label: {
-            HStack(spacing: Space.sm) {
-                Image(systemName: Self.symbol(check.state))
-                    .font(.appCaption)
-                    .foregroundStyle(Self.color(check.state))
-                Text(check.name)
-                    .font(.appCaption)
-                    .lineLimit(1)
-                if check.required != false {
-                    Image(AppIcon.required)
-                        .font(.appCaption2)
-                        .imageScale(.small)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
+            checkLine(name: name, detail: detail, state: check.state, required: check.required) {
                 if check.url != nil {
                     Image(AppIcon.openExternally)
                         .font(.appCaption2)
                         .foregroundStyle(.secondary)
                 }
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(check.required == false ? check.name : "\(check.name), required")
-            .accessibilityValue(check.state)
-            .padding(.horizontal, PRStyle.inset)
-            .padding(.vertical, PRStyle.listRowPadding)
-            .contentShape(.rect)
         }
         .buttonStyle(.plain)
+    }
+
+    /// A check's line: its state, its name, what tells it apart (quieter), whether it is required, and what a tap does.
+    private func checkLine(
+        name: String, detail: String?, state: String, required: Bool?, @ViewBuilder trailing: () -> some View
+    ) -> some View {
+        HStack(spacing: Space.sm) {
+            Image(systemName: Self.symbol(state))
+                .font(.appCaption)
+                .foregroundStyle(Self.color(state))
+            HStack(spacing: Space.xs) {
+                Text(name)
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                if let detail {
+                    Text(verbatim: "· \(detail)")
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .font(.appCaption)
+            if required != false {
+                Image(AppIcon.required)
+                    .font(.appCaption2)
+                    .imageScale(.small)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            trailing()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            [name, detail, required == false ? nil : "required"].compactMap(\.self).joined(separator: ", ")
+        )
+        .accessibilityValue(state)
+        .padding(.horizontal, PRStyle.inset)
+        .padding(.vertical, PRStyle.listRowPadding)
+        .contentShape(.rect)
     }
 }

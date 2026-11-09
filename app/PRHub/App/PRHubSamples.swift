@@ -280,6 +280,18 @@ struct PRHubSample {
             .count
     }
 
+    /// Checks as a big repo has them: one job name in two workflows, and a job's matrix legs beside its own check.
+    private static let groupedChecks = (
+        [#"{"name": "detect-changes", "state": "success", "url": null, "required": false, "workflow": "CI"}"#,
+         #"{"name": "detect-changes", "state": "skipped", "url": null, "required": false, "workflow": "Preview"}"#,
+         #"{"name": "visual proof", "state": "success", "url": null, "required": false, "workflow": "Visual Proof"}"#,
+        ]
+            + (1...4).map {
+                #"{"name": "visual proof (web \#($0)/4)", "state": "success", "url": null, "required": false, "#
+                    + #""workflow": "Visual Proof"}"#
+            }
+    ).joined(separator: ", ")
+
     private var detail: String {
         let isMine = list == "mine"
         let yesterday = Date.now.addingTimeInterval(-86_400).ISO8601Format()
@@ -305,8 +317,9 @@ struct PRHubSample {
                         "state": "\(review == "approved" ? "APPROVED" : "REQUESTED")"}],
          "viewedFiles": [], "labels": [{"name": "sample", "color": "8250DF"}],
          "checks": [{"name": "test", "state": "\(failing ? "failure" : checks == "pending" ? "pending" : "success")",
-                     "url": null, "required": true},
-                    {"name": "lint", "state": "success", "url": null, "required": false}],
+                     "url": null, "required": true, "workflow": "CI"},
+                    {"name": "lint", "state": "success", "url": null, "required": false, "workflow": "CI"},
+                    \(Self.groupedChecks)],
          "comments": {"nodes": \(comments)}, "reviews": {"nodes": \(reviews)}, "reviewThreads": {"nodes": []},
          "title": \(String(reflecting: title))}
         """

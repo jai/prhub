@@ -9,6 +9,9 @@ public enum PRStyle {
     public static let cardRadius = Radius.md
     public static let controlRadius = Radius.sm
     public static let controlHeight: CGFloat = 32
+    /// Words from the sides of a button in a bar of equal buttons (`PRReviewBar`): as close as they come before the bar
+    /// shows its icons instead.
+    public static let barButtonInset = Space.xs
     /// A row that is one tap target: the least a finger needs.
     public static let rowHeight: CGFloat = 44
     /// Between lines of what people write: a review tool's dense text, with room to read.

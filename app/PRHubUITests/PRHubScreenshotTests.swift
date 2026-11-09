@@ -1,7 +1,7 @@
 import XCTest
 
 /// Pictures of every screen in light, dark and the largest accessibility text, over the sample PRs: onboarding, the
-/// list, a PR, its diff on a key line, and Settings; then Sign in with GitHub's screens over the fake hosted Worker:
+/// list, a PR and its grouped checks, its diff with the panel open and on a key line under the review bar, and Settings; then Sign in with GitHub's screens over the fake hosted Worker:
 /// onboarding with every way in, a refused sign-in, the account's Settings with and without a key, Delete Account,
 /// Sign in again, the empty list, GitHub access and the empty list with the App on no account. Each is an attachment,
 /// and a PNG in `SCREENSHOTS_DIR` when the run sets it (`TEST_RUNNER_SCREENSHOTS_DIR` on xcodebuild's command line).
@@ -43,7 +43,19 @@ final class PRHubScreenshotTests: XCTestCase {
         checkout.tap()
         XCTAssertTrue(app.buttons["pr-review-changes"].waitForExistence(timeout: 5))
         try picture("3-pr", look)
+        app.buttons["checks-header"].tap()
+        let group = app.buttons["check-group-visual proof"]
+        XCTAssertTrue(group.waitForExistence(timeout: 5))
+        if !group.isHittable {
+            app.swipeUp(velocity: .slow)
+        }
+        group.tap()
+        XCTAssertTrue(app.buttons["web 1/4"].waitForExistence(timeout: 5))
+        try picture("3-pr-checks", look)
         app.buttons["pr-review-changes"].tap()
+        XCTAssertTrue(app.buttons["key-lines-context-100"].waitForExistence(timeout: 5))
+        try picture("4-diff-panel", look)
+        app.closePanelOverDiff()
         XCTAssertTrue(app.buttons["key-line-next"].waitForExistence(timeout: 5))
         app.buttons["key-line-next"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["key-line-note"].waitForExistence(timeout: 5))
