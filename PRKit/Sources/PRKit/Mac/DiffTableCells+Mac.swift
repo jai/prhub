@@ -251,7 +251,9 @@ extension DiffTableContainer {
                 return nil
             }
             return host(note.id) {
-                PRKeyLineNote(item: note) { [actions] in actions.closeNote() }
+                PRKeyLineNote(
+                    item: note, isReviewed: actions.isReviewed, setReviewed: actions.setReviewed
+                ) { [actions] in actions.closeNote() }
             }
         }
     }

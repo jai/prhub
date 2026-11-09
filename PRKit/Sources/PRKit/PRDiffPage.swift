@@ -45,6 +45,8 @@ struct PRDiffPage: View {
         }
         .sensoryFeedback(.selection, trigger: session.selectedKeyLine?.id)
         .task(id: session.contextLines) { await session.loadKeyLines() }
+        // Each time the diff shows, and at each new head: the ticks made on his other devices.
+        .task(id: session.content?.detail.head) { await session.loadReviewedKeyLines() }
     }
 
     private var isRegularWidth: Bool {
@@ -95,6 +97,8 @@ struct PRDiffPage: View {
             replyText: { session.openText(for: .reply(thread: $0)) },
             compose: { line in withAnimation(AppMotion.fold) { session.composingLine = line } },
             closeNote: { session.closeKeyLine() },
+            isReviewed: { session.isReviewed($0) },
+            setReviewed: { session.setReviewed($1, $0) },
             setBarsHidden: { isHidden in
                 guard session.barsHidden != isHidden else {
                     return

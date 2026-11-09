@@ -103,6 +103,9 @@ struct DiffActions {
     /// A line was picked to comment on, or nil to stop. The box itself is the screen's, above the keyboard.
     let compose: (Int?) -> Void
     let closeNote: () -> Void
+    /// The noted key line's tick, read by the note itself so a tick made in the panel shows under the line too.
+    let isReviewed: (PRKeyLines.Item) -> Bool
+    let setReviewed: (PRKeyLines.Item, Bool) -> Void
     /// The reader scrolled down the code (true) or back up. The phone's bars go and come with it.
     let setBarsHidden: (Bool) -> Void
     let setKeyboardUp: (Bool) -> Void

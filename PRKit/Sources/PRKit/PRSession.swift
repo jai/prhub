@@ -107,6 +107,11 @@ final class PRSession: Hashable {
     var topFile: Int?
     /// The key line being looked at: marked in the list and the diff, with its note under its line, until it's closed.
     private(set) var selectedKeyLine: PRKeyLines.Item?
+    /// The key lines checked off, at the head they were checked at: one at another head shows none
+    /// (`PRSession+Reviewed.swift`).
+    var reviewedKeyLines: PRReviewedKeyLines?
+    /// Ticks made on this device so far: an answer from the Worker asked for before the latest one would undo it.
+    var keyLineMarks = 0
     /// The line of the document being commented on. The comment box sits above the keyboard, not in the diff.
     var composingLine: Int?
     /// The nav bar and tab bar have got out of the way of the code.

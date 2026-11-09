@@ -152,6 +152,8 @@ struct DiffFontPreview: View {
             replyText: { _ in .constant(nil) },
             compose: { _ in },
             closeNote: {},
+            isReviewed: { _ in false },
+            setReviewed: { _, _ in },
             setBarsHidden: { _ in },
             setKeyboardUp: { _ in },
             removeDraft: { _ in },

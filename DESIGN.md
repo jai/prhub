@@ -466,6 +466,10 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
   right closes it. In place: no sheet. A diff's Files and Key lines (`PRNavigator`) use it. It opens on Key lines when
   the PR offers them, else on Files. Where a regular width has room (`PanelStyle`), the diff's panel is a column beside
   the code instead, open until its button puts it away, and a pick in it keeps it open.
+- **A key line's tick:** `PRKeyLineCheck`, `AppIcon.taskOpen` or `.taskDone` in `toneGood`, at the end of its row in Key
+  lines and of its note under the line, 44 pt square. A ticked line's words fade to `PRStyle.doneOpacity` and stay, and
+  the list says how many are reviewed. Previous and Next pass over ticked lines until all are ticked. Ticks are the
+  Worker's, by head, so each device shows the same ones and a new commit starts again (docs/api.md, "Reviewed key lines").
 - **Room for the code:** on the phone the nav bar and tab bar leave as you scroll down and return as you scroll up, or
   when the keyboard goes. The diff runs under them, so they never move it. They never stay gone with no way back: they
   return at the top, when there is nothing to scroll, when a file folds or opens, on a tap of the status bar or below

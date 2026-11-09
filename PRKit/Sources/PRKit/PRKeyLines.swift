@@ -102,16 +102,27 @@ struct PRKeyLinesList: View {
             }
         case let .ready(lines):
             VStack(alignment: .leading, spacing: Space.xs) {
+                if !lines.items.isEmpty {
+                    Text("\(session.reviewedKeyLineCount) of \(lines.items.count) reviewed")
+                        .font(.appCaption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
+                        .accessibilityIdentifier("key-lines-reviewed-count")
+                }
                 ForEach(lines.items) { item in
                     let isSelected = session.selectedKeyLine?.id == item.id
-                    Button { session.show(item) } label: { row(item) }
-                        .buttonStyle(.plain)
-                        .background(
-                            isSelected ? Color(platform: DiffStyle.selectedLine) : .clear,
-                            in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous)
-                        )
-                        .accessibilityAddTraits(isSelected ? .isSelected : [])
-                        .accessibilityIdentifier("key-line-\(item.id)")
+                    HStack(alignment: .top, spacing: 0) {
+                        Button { session.show(item) } label: { row(item) }
+                            .buttonStyle(.plain)
+                            .opacity(session.isReviewed(item) ? PRStyle.doneOpacity : 1)
+                            .accessibilityAddTraits(isSelected ? .isSelected : [])
+                            .accessibilityIdentifier("key-line-\(item.id)")
+                        PRKeyLineCheck(item: item, session: session)
+                    }
+                    .background(
+                        isSelected ? Color(platform: DiffStyle.selectedLine) : .clear,
+                        in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous)
+                    )
                 }
                 if !lines.leftOut.isEmpty {
                     Text("Too big to read: \(lines.leftOut.joined(separator: ", "))")
@@ -215,12 +226,50 @@ extension PRKeyLines.Item {
     }
 }
 
-/// Under its line in the diff, while it's the key line being looked at.
+/// A key line's tick: checked off as reviewed, or not yet. A finger's width, beside the line in the list or its note.
+struct PRKeyLineCheck: View {
+    let isReviewed: Bool
+    let toggle: () -> Void
+    let identifier: String
+
+    init(isReviewed: Bool, identifier: String, toggle: @escaping () -> Void) {
+        self.isReviewed = isReviewed
+        self.identifier = identifier
+        self.toggle = toggle
+    }
+
+    init(item: PRKeyLines.Item, session: PRSession) {
+        isReviewed = session.isReviewed(item)
+        identifier = "key-line-reviewed-\(item.id)"
+        toggle = { [isReviewed] in session.setReviewed(!isReviewed, item) }
+    }
+
+    var body: some View {
+        Button(action: toggle) {
+            Image(systemName: (isReviewed ? AppIcon.taskDone : AppIcon.taskOpen).symbol)
+                .font(.appFootnote)
+                .foregroundStyle(isReviewed ? Color.toneGood : Color.secondary)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: PRStyle.rowHeight, height: PRStyle.rowHeight)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Reviewed")
+        .accessibilityValue(isReviewed ? "checked" : "not checked")
+        .accessibilityIdentifier(identifier)
+    }
+}
+
+/// Under its line in the diff, while it's the key line being looked at, with its tick: check it off where it's read.
 struct PRKeyLineNote: View {
     let item: PRKeyLines.Item
+    /// Read in the body, so the note follows a tick made in the list (`DiffActions.isReviewed`).
+    let isReviewed: (PRKeyLines.Item) -> Bool
+    let setReviewed: (PRKeyLines.Item, Bool) -> Void
     let close: () -> Void
 
     var body: some View {
+        let reviewed = isReviewed(item)
         HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
             Image(systemName: item.symbol)
                 .font(.appCaption)
@@ -228,7 +277,11 @@ struct PRKeyLineNote: View {
             Text(item.why)
                 .font(.appFootnote)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .opacity(reviewed ? PRStyle.doneOpacity : 1)
                 .accessibilityIdentifier("key-line-note")
+            PRKeyLineCheck(isReviewed: reviewed, identifier: "key-line-note-reviewed") {
+                setReviewed(item, !reviewed)
+            }
             Button("Close", systemImage: AppIcon.close.symbol, action: close)
                 .labelStyle(.iconOnly)
                 .font(.appCaption)

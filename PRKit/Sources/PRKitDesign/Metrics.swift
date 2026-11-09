@@ -22,6 +22,8 @@ public enum PRStyle {
     /// A control while pressed, and while it can't be used.
     public static let pressedOpacity = 0.7
     public static let disabledOpacity = 0.4
+    /// Something done with that stays to be read again: a key line checked off as reviewed.
+    public static let doneOpacity = 0.45
     /// A tone's strength behind the thing it colours: a chip's words, a PR's state icon.
     public static let toneGroundOpacity = 0.15
 }

@@ -16,15 +16,27 @@ extension PRSession {
     var offersAsk: Bool { model.configuration.isOn(.askAI) }
     var offersRewrite: Bool { model.configuration.isOn(.rewrite) }
 
-    /// Previous or next key line, going round. With none selected, next is the first and previous the last.
+    /// Previous or next key line not yet checked off, going round; every one once all are. With none selected, next
+    /// is the first and previous the last.
     func stepKeyLine(by step: Int) {
         let items = keyLineItems
-        guard !items.isEmpty else {
+        let open = items.filter { !isReviewed($0) }
+        let stops = open.isEmpty ? items : open
+        guard !stops.isEmpty else {
             return
         }
-        let current = items.firstIndex { $0.id == selectedKeyLine?.id }
-        let next = current.map { ($0 + step + items.count) % items.count } ?? (step > 0 ? 0 : items.count - 1)
-        show(items[next])
+        guard let current = items.firstIndex(where: { $0.id == selectedKeyLine?.id }) else {
+            show(step > 0 ? stops[0] : stops[stops.count - 1])
+            return
+        }
+        // From the one on show, which may itself be checked off, to the next stop in the list's order.
+        for offset in 1...items.count {
+            let item = items[((current + step * offset) % items.count + items.count) % items.count]
+            if stops.contains(where: { $0.id == item.id }) {
+                show(item)
+                return
+            }
+        }
     }
 
     /// How the diff got here, for the panel's foot and the log.
