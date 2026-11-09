@@ -48,7 +48,8 @@
       "name": "test",
       "state": "success",
       "url": "https://github.com/acme/app/actions/runs/1",
-      "required": true
+      "required": true,
+      "workflow": "ci"
     }
   ],
   "comments": {

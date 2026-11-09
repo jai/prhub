@@ -69,6 +69,11 @@ test("a check run again shows once, as its latest run", () => {
   assert.deepEqual(states([
     run("gate", "Meta", "SUCCESS", "2026-11-04T12:33:00Z"), run("gate", "Harness", "FAILURE", "2026-11-04T11:00:00Z"),
   ]), [["gate", "success"], ["gate", "failure"]], "the same name in another workflow is another check");
+  assert.deepEqual(
+    latestChecks([run("gate", "Meta", "SUCCESS", "2026-11-04T12:33:00Z"), run("gate", "Harness", "FAILURE", null)])
+      .map((context) => checkOf(context).workflow),
+    ["Meta", "Harness"], "each says its workflow, so the app can tell them apart",
+  );
 });
 
 test("a row carries Jai's own review", () => {
@@ -118,8 +123,10 @@ test("a required check run again counts by its latest run", () => {
 
 test("a check says whether it is required, and cancelled only matters then", () => {
   const cancelled = { ...unit, conclusion: "CANCELLED" };
-  assert.deepEqual(checkOf(cancelled), { name: "unit", state: "skipped", url: null, required: false });
-  assert.deepEqual(checkOf({ ...cancelled, isRequired: true }), { name: "unit", state: "failure", url: null, required: true });
+  assert.deepEqual(checkOf(cancelled), { name: "unit", state: "skipped", url: null, required: false, workflow: null });
+  assert.deepEqual(
+    checkOf({ ...cancelled, isRequired: true }), { name: "unit", state: "failure", url: null, required: true, workflow: null },
+  );
 });
 
 test("the reviewers are who reviewed, then who is waited on, once each", () => {
@@ -160,13 +167,13 @@ test("a retarget changes the revision, and a branch name stays safe in a file na
 test("check runs and commit statuses read as one shape", () => {
   const run = (status: string, conclusion: string | null) =>
     checkOf({ __typename: "CheckRun", name: "ci", status, conclusion, detailsUrl: "u" });
-  assert.deepEqual(run("COMPLETED", "SUCCESS"), { name: "ci", state: "success", url: "u" , required: false});
+  assert.deepEqual(run("COMPLETED", "SUCCESS"), { name: "ci", state: "success", url: "u", required: false, workflow: null });
   assert.equal(run("COMPLETED", "SKIPPED").state, "skipped");
   assert.equal(run("COMPLETED", "CANCELLED").state, "skipped");
   assert.equal(run("COMPLETED", "FAILURE").state, "failure");
   assert.equal(run("IN_PROGRESS", null).state, "pending");
   const status = checkOf({ __typename: "StatusContext", context: "policy", state: "PENDING", targetUrl: null });
-  assert.deepEqual(status, { name: "policy", state: "pending", url: null , required: false});
+  assert.deepEqual(status, { name: "policy", state: "pending", url: null, required: false, workflow: null });
   assert.equal(checkOf({ __typename: "StatusContext", context: "p", state: "ERROR" }).state, "failure");
 });
 

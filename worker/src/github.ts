@@ -66,6 +66,9 @@ export interface Check {
   url: string | null;
   /** GitHub holds the merge for this check. */
   required: boolean;
+  /** The Actions workflow that ran it; null for a commit status or an app's check. The app tells same-named checks apart
+   * by it and groups a job's matrix legs within it. */
+  workflow: string | null;
 }
 
 /** PolicyBot's status on the head, in its own words. The reasons stay on the page `url` opens. */
@@ -472,7 +475,7 @@ export function checkOf(context: Context): Check {
         : ["CANCELLED", "STALE"].includes(outcome ?? "") && !context.isRequired ? "skipped" : "failure";
   return {
     name: context.name ?? context.context ?? "check", state, url: context.detailsUrl ?? context.targetUrl ?? null,
-    required: context.isRequired ?? false,
+    required: context.isRequired ?? false, workflow: context.checkSuite?.workflowRun?.workflow.name ?? null,
   };
 }
 

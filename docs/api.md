@@ -166,6 +166,10 @@ checked on every run: [`row.json`](fixtures/row.json), [`merged-row.json`](fixtu
   over a merge state that lags, and a draft is `blocked`. `mergeState` (GitHub's raw value) and `reviewDecision` stay
   for app builds that read them; new code reads `merge` and `review`. A detail stored before these fields existed lacks
   them until its PR is read again.
+- A detail's `checks` hold each check once: a check run again (a rerun, or a run per PR event) is its latest run, and
+  the same name in two workflows is two checks. Each has `name`, `state` (`success`, `failure`, `pending`, `skipped`),
+  `url`, `required` and `workflow`: the Actions workflow that ran it, or `null` for a commit status or an app's check.
+  The app tells same-named checks apart by `workflow` and groups a job's matrix legs (`name (leg)`) within one.
 
 ## Configuration
 
