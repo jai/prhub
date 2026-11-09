@@ -98,6 +98,7 @@ public enum AppIcon: String {
     case alertSent = "bell"
     case messageSent = "message"
     case conversation = "text.bubble"
+    case compose = "square.and.pencil"
     case openPullRequest = "arrow.triangle.pull"
     case reviewChanges = "plus.forwardslash.minus"
     case openInGitHub = "safari"

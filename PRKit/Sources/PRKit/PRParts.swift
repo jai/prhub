@@ -279,8 +279,8 @@ extension View {
         .animation(AppMotion.fold, value: isNotUpdated)
     }
 
-    /// The row whose PR is open beside the list, on a wide screen.
-    func selected(_ isSelected: Bool) -> some View {
+    /// The row whose PR (or chat) is open beside the list, on a wide screen.
+    public func selected(_ isSelected: Bool) -> some View {
         overlay {
             if isSelected {
                 Color.groundFill

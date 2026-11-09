@@ -43,6 +43,10 @@ public enum ChatStyle {
     public static let fieldInsets = EdgeInsets(top: 9, leading: 14, bottom: 9, trailing: 14)
     /// The room a bubble leaves on the other side, so whose it is reads at a glance.
     public static let otherSide: CGFloat = 48
+    /// The most of a wide chat's width a bubble takes, so on an iPad or a Mac window it stays a bubble, never a page.
+    /// A chat narrower than `shareFrom` (a phone) only keeps `otherSide`.
+    public static let widestShare: CGFloat = 0.75
+    public static let shareFrom: CGFloat = 480
     public static let radius = Radius.lg
     /// The fade over the page above the field's bar, and the room it leaves over the field.
     public static let barFade: CGFloat = 14
