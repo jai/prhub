@@ -165,6 +165,8 @@ struct ComposerAttachmentTray: View {
             .scaledToFill()
             .frame(width: ChatStyle.attachmentSize, height: ChatStyle.attachmentSize)
             .clipShape(.rect(cornerRadius: Radius.md, style: .continuous))
+            // A light screenshot on the page's grey needs its edge drawn.
+            .overlay(RoundedRectangle(cornerRadius: Radius.md, style: .continuous).strokeBorder(Color.line))
             .overlay(alignment: .topTrailing) {
                 Button {
                     attachments.remove(image.id)
