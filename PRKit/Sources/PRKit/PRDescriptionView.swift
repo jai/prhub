@@ -96,7 +96,7 @@ struct PRDescriptionView: View {
 
     @ViewBuilder private var composer: some View {
         if let action {
-            PRReviewComposer(session: session, action: action) {
+            PRReviewComposer(session: session, action: action, showsPending: false) {
                 withAnimation(AppMotion.fold) { self.action = nil }
             }
             .padding(PRStyle.inset)

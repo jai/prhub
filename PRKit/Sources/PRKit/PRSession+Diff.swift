@@ -95,7 +95,10 @@ extension PRSession {
         }
         if opensPanelOnArrival {
             opensPanelOnArrival = false
-            openPanel(on: .keyLines)
+            // A line's half-written comment stays in view; the panel waits for its button.
+            if composingLine == nil {
+                openPanel(on: .keyLines)
+            }
         }
     }
 

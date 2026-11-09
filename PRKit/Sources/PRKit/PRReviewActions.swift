@@ -109,13 +109,7 @@ struct PRReviewActions: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
-            if !session.drafts.isEmpty {
-                let count = session.drafts.count
-                Text("\(count) pending comment\(count == 1 ? "" : "s") will go with your review")
-                    .font(.appFootnote)
-                    .foregroundStyle(Color.toneWaiting)
-                    .accessibilityIdentifier("pr-pending-comments")
-            }
+            PRPendingComments(count: session.drafts.count)
             PRReviewBar(actions: PRReviewAction.offered(isAuthor: isAuthor)) { next in
                 withAnimation(AppMotion.fold) { action = action == next ? nil : next }
             }
@@ -134,9 +128,21 @@ struct PRReviewActions: View {
 struct PRReviewComposer: View {
     let session: PRSession
     let action: PRReviewAction
+    /// Under the diff the box takes the bar's place, so it says what goes with the review; on the page the bar above
+    /// it already does.
+    var showsPending = true
     let close: () -> Void
 
     var body: some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            if showsPending {
+                PRPendingComments(count: session.drafts.count)
+            }
+            composer
+        }
+    }
+
+    private var composer: some View {
         InlineComposer(
             text: session.text(for: action.target),
             placeholder: action == .approve ? "Add a note, or just approve" : "Say something",
@@ -148,6 +154,20 @@ struct PRReviewComposer: View {
         } cancel: {
             session.discardText(for: action.target)
             close()
+        }
+    }
+}
+
+/// The line comments waiting for the review, over the review's buttons and its box.
+private struct PRPendingComments: View {
+    let count: Int
+
+    var body: some View {
+        if count > 0 {
+            Text("\(count) pending comment\(count == 1 ? "" : "s") will go with your review")
+                .font(.appFootnote)
+                .foregroundStyle(Color.toneWaiting)
+                .accessibilityIdentifier("pr-pending-comments")
         }
     }
 }

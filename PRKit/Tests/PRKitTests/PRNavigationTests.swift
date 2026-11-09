@@ -38,7 +38,27 @@ struct PRNavigationTests {
         #expect(routes == [.pullRequest(session)], "Back from the diff is the PR")
     }
 
-    @Test func aPRsOwnReviewChangesPushesTheDiffWithThePanelShut() {
+    @Test func aPRsOwnReviewChangesOpensKeyLinesUnlessALinesCommentIsOpen() {
+        var routes: [PRRoute] = []
+        let stack = PRStack.routes(Binding(get: { routes }, set: { routes = $0 }))
+        let opener = PullRequestOpener(model: kit.model, stack: stack)
+        opener.open(PRLink(ref: ref))
+        let session = routes[0].session
+        opener.reviewChanges(of: session)
+        #expect(routes == [.pullRequest(session), .diff(session)])
+        session.diffAppeared()
+        #expect(session.isShowingNavigator && session.navigatorPage == .keyLines)
+
+        stack.back()
+        session.diffDisappeared()
+        session.isShowingNavigator = false
+        session.composingLine = 3
+        opener.reviewChanges(of: session)
+        session.diffAppeared()
+        #expect(!session.isPanelOpen, "a half-written comment stays in view")
+    }
+
+    @Test func aPRsFilesChangedPushesTheDiffWithThePanelShut() {
         var routes: [PRRoute] = []
         let stack = PRStack.routes(Binding(get: { routes }, set: { routes = $0 }))
         let opener = PullRequestOpener(model: kit.model, stack: stack)

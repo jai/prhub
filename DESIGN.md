@@ -265,8 +265,8 @@ ring are capsules and circles.
 A PR and its diff are two screens on one stack, as on GitHub. `PRRoute` names them; `PRNavigation` holds them.
 
 - **PR → diff is a push.** The PR's `PRChangesCard` (Files changed · N, with the lines added and removed, and Review
-  changes) pushes the diff. Review changes opens its panel on Key lines, as the Review shortcut does; Files changed
-  leaves the panel to its button. Back from the diff is the PR, and Back from the PR is where it came from. No
+  changes) pushes the diff. Review changes opens its panel on Key lines, as the Review shortcut does, unless a
+  line's comment box is open there; Files changed leaves the panel to its button. Back from the diff is the PR, and Back from the PR is where it came from. No
   segmented control switches them.
 - **The Review shortcut.** A PR row's Review button (in the state column, under the state), its swipe right and its
   long-press menu push the PR with its diff on top, the panel open on Key lines. Back goes diff → PR → list, never
