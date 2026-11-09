@@ -8,7 +8,7 @@ import { askRepoToken, installationRepoToken } from "../src/app-token.ts";
 import { askRecordKey } from "../src/ask-chat.ts";
 import { deviceConfig } from "../src/config.ts";
 import { aiJobs, type Env, prIndex, scopedKey } from "../src/env.ts";
-import { authenticate, canSeeWith, hostedAccountConfig, userEnv } from "../src/hosted.ts";
+import { authenticate, canSeeWith, configInstallations, hostedAccountConfig, userEnv } from "../src/hosted.ts";
 import { parseRepoFullName, parseSha, type RepoFullName } from "../src/ids.ts";
 import { parseAppDelivery } from "../src/installations.ts";
 import { gitHubReserveOf, parseLimits, WorkerMode } from "../src/limits.ts";
@@ -294,6 +294,100 @@ test("a signed-out session's config, and one before the first sync, name no inst
     world.services);
   assert.ok("answer" in auth && auth.session);
   assert.equal("installations" in hostedAccountConfig(auth.session, []), false);
+});
+
+/** `GET /device/config` as the route answers it (`configInstallations`), with `query` on its URL. */
+async function liveConfigOf(world: World, secret: string, query = "") {
+  const request = new Request(`${ORIGIN}/device/config${query}`, bearer(secret));
+  const auth = await authenticate(request, world.workerEnv, world.services);
+  assert.ok("env" in auth);
+  const installations = await configInstallations(request, auth.session, world.services,
+    (promise) => world.waited.push(promise));
+  await Promise.all(world.waited.splice(0));
+  return (hostedAccountConfig(auth.session, installations) as { installations?: { account: string }[] }).installations
+    ?.map((entry) => entry.account);
+}
+
+const installationReads = (world: World) =>
+  world.github.calls.filter((call) => call.url.startsWith("https://api.github.com/user/installations?")).length;
+
+/** Signed in with the sign-in's own read of the installations still on its way, as the app's first config finds it. */
+async function signedInBeforeTheFirstRead(world: World, user: FakeUser): Promise<string> {
+  const secret = await signIn(world, user);
+  const store = world.stores.get(String(user.id));
+  await store?.put("installations", { ids: [], synced_at: world.clock.now - 1_000 });
+  await store?.delete(["installation_accounts"]);
+  return secret;
+}
+
+test("the first config after sign-in reads GitHub before it answers, so an App installed already shows at once", async () => {
+  const world = hostedWorld();
+  world.github.installations.set(11, { account: "acme", repos: ["acme/api"] });
+  world.github.grant(ALICE, ["acme/api"]);
+  const alice = await signedInBeforeTheFirstRead(world, ALICE);
+  const before = installationReads(world);
+  assert.deepEqual(await liveConfigOf(world, alice), ["acme"], "never the install hint for an App already installed");
+  assert.equal(installationReads(world), before + 1);
+  assert.deepEqual(await liveConfigOf(world, alice), ["acme"]);
+  assert.equal(installationReads(world), before + 1, "later opens wait for installation_sync_on_open_minutes");
+});
+
+test("an empty list is read again before the answer, spaced by installation_reads_now_per_minute", async () => {
+  const world = hostedWorld();
+  world.github.grant(ALICE, ["acme/api"]);
+  const alice = await signIn(world, ALICE);
+  world.clock.now += 10_000;
+  assert.deepEqual(await liveConfigOf(world, alice), []);
+  // Installed on acme with no webhook yet: the next open after the gap finds it.
+  world.github.installations.set(11, { account: "acme", repos: ["acme/api"] });
+  world.clock.now += 1_000;
+  assert.deepEqual(await liveConfigOf(world, alice), [], "within the gap: what the Worker holds");
+  world.clock.now += 9_000;
+  assert.deepEqual(await liveConfigOf(world, alice), ["acme"]);
+});
+
+test("?fresh=1, back from GitHub's install pages, reads GitHub before the answer; plain opens keep their ten minutes", async () => {
+  const world = hostedWorld();
+  world.github.installations.set(11, { account: "acme", repos: ["acme/api"] });
+  world.github.grant(ALICE, ["acme/api", "initech/shared"]);
+  const alice = await signIn(world, ALICE);
+  world.github.installations.set(33, { account: "initech", repos: ["initech/shared"] });
+  world.clock.now += 10_000;
+  assert.deepEqual(await liveConfigOf(world, alice), ["acme"], "a plain open answers first and reads later");
+  assert.deepEqual(await liveConfigOf(world, alice, "?fresh=1"), ["acme", "initech"]);
+  const reads = installationReads(world);
+  await liveConfigOf(world, alice, "?fresh=1");
+  assert.equal(installationReads(world), reads, "a second fresh read within the gap reads nothing");
+});
+
+test("installation_reads_now_per_minute set to off leaves no gap between fresh reads", async () => {
+  const world = hostedWorld({ LIMIT_INSTALLATION_READS_NOW_PER_MINUTE: "off" });
+  world.github.installations.set(11, { account: "acme", repos: ["acme/api"] });
+  world.github.grant(ALICE, ["acme/api"]);
+  const alice = await signIn(world, ALICE);
+  const reads = installationReads(world);
+  await liveConfigOf(world, alice, "?fresh=1");
+  await liveConfigOf(world, alice, "?fresh=1");
+  assert.equal(installationReads(world), reads + 2);
+});
+
+test("a read GitHub doesn't answer in time leaves the config as the Worker holds it", async (context) => {
+  const world = hostedWorld();
+  world.github.installations.set(11, { account: "acme", repos: ["acme/api"] });
+  world.github.grant(ALICE, ["acme/api"]);
+  const alice = await signIn(world, ALICE);
+  const fetch = world.services.fetch;
+  world.services.fetch = (input, init) => String(input).includes("/user/installations") ? new Promise(() => {})
+    : fetch(input, init);
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const request = new Request(`${ORIGIN}/device/config?fresh=1`, bearer(alice));
+  const auth = await authenticate(request, world.workerEnv, world.services);
+  assert.ok("env" in auth);
+  world.clock.now += 10_000;
+  const answer = configInstallations(request, auth.session, world.services, () => {});
+  await new Promise((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(8_000);
+  assert.deepEqual((await answer)?.map((entry) => entry.account), ["acme"]);
 });
 
 // --- Isolation of everything a person holds -------------------------------------------------------------------------

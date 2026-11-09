@@ -32,11 +32,10 @@ import { busyAnswer, clientRefOf } from "./write-receipts";
 
 import { Installation, IpLimit, SignIn, UserAccount } from "./account";
 import {
-  authenticate, hostedAccountConfig, hostedMode, publicHostedRoute, servicesOf, userEnv,
+  authenticate, configInstallations, hostedAccountConfig, hostedMode, publicHostedRoute, servicesOf, userEnv,
 } from "./hosted";
-import { syncInstallations } from "./installations";
 import { pairingLimitAnswer, personLimitAnswer, reportedLimitsOf } from "./limit-enforcement";
-import { durationOf, LimitName } from "./limits";
+import { LimitName } from "./limits";
 
 export { AiJobs, Installation, IpLimit, PrIndex, SignIn, UserAccount };
 
@@ -557,11 +556,8 @@ async function serveHosted(
       : auth.answer;
   }
   if (isConfig) {
-    // An app open: the person's installations are read again when the last read is ten minutes old.
-    context.waitUntil(syncInstallations(services.account(auth.session.userId), services.installation, services.fetch,
-      Date.now(), durationOf(services.limits, LimitName.InstallationSyncOnOpenMinutes))
-      .catch((error: unknown) => console.error("installation sync failed", error)));
-    const installations = await services.account(auth.session.userId).installationAccounts();
+    const installations = await configInstallations(request, auth.session, services,
+      (promise) => context.waitUntil(promise));
     return configRoute(auth.env, context, hostedAccountConfig(auth.session, installations));
   }
   return serveAuthorized(request, auth.env, context);

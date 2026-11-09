@@ -16,7 +16,7 @@ import {
 import type { LimitCheck, LimitDecision } from "./limit-counter.ts";
 import {
   durationOf, gitHubReserveOf, type GitHubReserve, LimitName, limitReachedAnswer, type Limits, limitsOf, rateWindowOf,
-  type RateLimitName,
+  type RateLimitName, readNowGapOf,
 } from "./limits.ts";
 import { authorizeUrl, exchangeCode, type Fetch, type OAuthApp, readUser } from "./oauth.ts";
 import { deviceSecretOf, fingerprintOf, sha256Hex } from "./pairing.ts";
@@ -131,7 +131,7 @@ export interface AnthropicApi {
 export type AccountApi = Pick<AccountCore,
   "signIn" | "finish" | "session" | "accessToken" | "tokenAfterUnauthorized" | "signOutEverywhere" | "signOut"
   | "deleteAccount" | "setAnthropicKey" | "installationIds" | "claimInstallationSync" | "setInstallations"
-  | "installationAccounts">;
+  | "installationAccounts" | "installationSyncedAt">;
 
 /** The part of a person's `PrIndex` the hosted routes and installations touch. */
 export interface UserIndexApi {
@@ -654,6 +654,41 @@ export async function authenticate(
   return token.kind === "signed_out"
     ? { answer: errorAnswer(401, "signed_out", "sign in with GitHub again"), session }
     : { answer: errorAnswer(503, "github_unavailable", "GitHub could not be asked; try again"), session };
+}
+
+/** How long `GET /device/config` waits for a read of the installations before it answers with the ones it holds. */
+const READ_NOW_WAIT_MS = 8_000;
+
+/**
+ * The installations `GET /device/config` answers with (docs/api.md, "Hosted sign-in"). GitHub is read before the
+ * answer when the app would otherwise show a list that may be wrong: the first config of a new session, a list that is
+ * empty or not read yet, and `?fresh=1`, which the app sends back from GitHub's install pages. Those reads are spaced
+ * by `installation_reads_now_per_minute`, except a new session's first. Any other open reads GitHub after answering,
+ * once the last read is `installation_sync_on_open_minutes` old.
+ */
+export async function configInstallations(
+  request: Request, session: SessionInfo, services: HostedServices, waitUntil: (promise: Promise<unknown>) => void,
+): Promise<InstallationAccount[] | null> {
+  const account = services.account(session.userId);
+  const held = await account.installationAccounts();
+  const isNewSession = await account.installationSyncedAt() < session.createdAt;
+  const readsNow = isNewSession || !held?.length || new URL(request.url).searchParams.get("fresh") === "1";
+  const gapMs = isNewSession ? 0
+    : readsNow ? readNowGapOf(services.limits) : durationOf(services.limits, LimitName.InstallationSyncOnOpenMinutes);
+  const sync = syncInstallations(account, services.installation, services.fetch, services.now(), gapMs)
+    .catch((error: unknown) => console.error("installation sync failed", error));
+  waitUntil(sync);
+  if (!readsNow) {
+    return held;
+  }
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, READ_NOW_WAIT_MS);
+    void sync.finally(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+  return account.installationAccounts();
 }
 
 /**

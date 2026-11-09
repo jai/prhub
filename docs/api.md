@@ -368,6 +368,7 @@ A var the Worker cannot use does not stop anything. The default serves, and the 
 | `poll_interval_minutes` | `LIMIT_POLL_INTERVAL_MINUTES` | 10 | n/a | Each person's background poll and token refresh |
 | `installation_sync_hours` | `LIMIT_INSTALLATION_SYNC_HOURS` | 6 | n/a | How often the poll reads the person's installations again |
 | `installation_sync_on_open_minutes` | `LIMIT_INSTALLATION_SYNC_ON_OPEN_MINUTES` | 10 | n/a | The least time between installation reads on app open |
+| `installation_reads_now_per_minute` | `LIMIT_INSTALLATION_READS_NOW_PER_MINUTE` | 6 | n/a | Installation reads a config waits for: an empty list, or `?fresh=1` ([Hosted sign-in](#hosted-sign-in)). `off` allowed |
 | `session_lifetime_days` | `LIMIT_SESSION_LIFETIME_DAYS` | 180 | n/a | A phone's session; after it, the phone signs in again |
 | `sessions_max` | `LIMIT_SESSIONS_MAX` | 20 | n/a | Signed-in phones per person; the oldest session goes first |
 | `sign_in_minutes` | `LIMIT_SIGN_IN_MINUTES` | 10 | n/a | From `/auth/github/start` to GitHub's callback |
@@ -635,8 +636,12 @@ A signed-in session's config also names the installations of the PRHub App that 
 
 The list is what the last [installation sync](#webhook-routing) read: at sign-in, on app open every
 `installation_sync_on_open_minutes`, every `installation_sync_hours`, and at once for the person who installed,
-uninstalled, suspended or changed the repos of an installation (its webhook). `installations` is absent before the
-first sync and for a signed-out session. Orgs the person belongs to that have no installation are not listed: a GitHub
+uninstalled, suspended or changed the repos of an installation (its webhook). The config reads GitHub before it
+answers, and answers with that read, when a list it held could be wrong: the first config of a new session, a list
+that is empty or not read yet, and `GET /device/config?fresh=1`, which the app sends when it comes back from GitHub's
+install or installation pages. Those reads are at most `installation_reads_now_per_minute`, spaced evenly, except a
+new session's first; one GitHub has not finished within 8 seconds goes on after the answer, which has the list as it
+was. `installations` is absent before the first sync and for a signed-out session. Orgs the person belongs to that have no installation are not listed: a GitHub
 App's user token lists only orgs where the App is installed (`GET /user/orgs`), and listing all of them would need a
 `read:org` OAuth scope the App does not ask for.
 
@@ -712,7 +717,7 @@ nothing. Each installation has an `Installation` object named `installation:<id>
 its repos each one can see. Who sees what comes only from each person's own token, never an installation token:
 
 - **Joining.** At sign-in, on app open (`GET /device/config`) when the last read is `installation_sync_on_open_minutes`
-  old, and every `installation_sync_hours` from the account's alarm, the Worker reads `GET /user/installations` and
+  old or the list needs reading before the answer (a new session, an empty list, `?fresh=1`), and every `installation_sync_hours` from the account's alarm, the Worker reads `GET /user/installations` and
   `GET /user/installations/{id}/repositories` with the person's token. They join each installation listed, with exactly the repos listed, and leave the ones no
   longer listed. A partial answer changes nothing.
 - **`installation`.** `created`, `new_permissions_accepted` and `unsuspend` record the repos it names. `suspend`
