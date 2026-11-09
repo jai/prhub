@@ -46,6 +46,9 @@ public enum ChatStyle {
     public static let radius = Radius.lg
     /// The fade over the page above the field's bar, and the room it leaves over the field.
     public static let barFade: CGFloat = 14
+    /// A screenshot waiting to go with the message, above the field, and the button that takes it off.
+    public static let attachmentSize: CGFloat = 64
+    public static let attachmentRemove: CGFloat = 22
 }
 
 /// A chip of state words (`StatusChip`).

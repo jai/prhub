@@ -104,6 +104,12 @@ public enum AppIcon: String {
     case copyLink = "link"
     case drillIn = "chevron.right"
 
+    // A screenshot on a message: adding one, and where from.
+    case attach = "paperclip"
+    case attachPhoto = "photo.on.rectangle"
+    case attachFile = "folder"
+    case attachPaste = "doc.on.clipboard"
+
     /// The SF Symbol's name, for an API that takes one.
     public var symbol: String { rawValue }
 }

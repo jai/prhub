@@ -8,6 +8,9 @@ import UIKit
 /// line). Liquid Glass from the system, nothing custom behind it; the field is plain, so the Mac draws no box of its
 /// own inside the glass.
 /// `focused` is the screen's, so a scroll or a tap in the content can put the keyboard away (`dismissesKeyboard`).
+/// With `attachments`, a paperclip beside the field adds screenshots from Photos or Files, a Paste button shows while the
+/// clipboard holds a picture (and on the Mac Command-V in the field attaches it), and the tray above the field shows
+/// them; a message may then be screenshots alone.
 public struct SessionComposer: View {
     /// From the field's bottom up to the middle of its last line: its padding and half a line.
     @ScaledMetric(relativeTo: .body) private var lineMiddle = 20.0
@@ -16,24 +19,54 @@ public struct SessionComposer: View {
     public let send: () -> Void
     public var placeholder = "Reply"
     public let focused: FocusState<Bool>.Binding
+    public let attachments: ComposerAttachments?
+    @State private var clipboard = ClipboardWatch()
+    @Environment(\.scenePhase) private var scenePhase
 
     public init(
         draft: Binding<String>, isSending: Bool, send: @escaping () -> Void, placeholder: String = "Reply",
-        focused: FocusState<Bool>.Binding
+        focused: FocusState<Bool>.Binding, attachments: ComposerAttachments? = nil
     ) {
         _draft = draft
         self.isSending = isSending
         self.send = send
         self.placeholder = placeholder
         self.focused = focused
+        self.attachments = attachments
     }
 
     private var canSend: Bool {
-        !isSending && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !isSending && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || attachments?.isEmpty == false)
     }
 
     public var body: some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            if let attachments {
+                ComposerAttachmentTray(attachments: attachments, canPaste: clipboard.hasPicture && !attachments.isFull)
+            }
+            field
+        }
+        .readableBarWidth()
+        .onAppear { clipboard.check() }
+        .onChange(of: focused.wrappedValue) { clipboard.check() }
+        .onChange(of: scenePhase) { clipboard.check() }
+        #if os(iOS)
+        .onReceive(NotificationCenter.default.publisher(for: UIPasteboard.changedNotification)) { _ in
+            clipboard.check()
+        }
+        #else
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            clipboard.check()
+        }
+        .modifier(OptionalCommandV(attachments: attachments, isActive: focused.wrappedValue))
+        #endif
+    }
+
+    private var field: some View {
         HStack(alignment: .sendButton, spacing: Space.sm) {
+            if let attachments {
+                ComposerAttachButton(attachments: attachments)
+            }
             TextField(placeholder, text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .focused(focused)
@@ -72,9 +105,23 @@ public struct SessionComposer: View {
             .accessibilityLabel("Send reply")
             .accessibilityIdentifier("sessionReplySend")
         }
-        .readableBarWidth()
     }
 }
+
+#if os(macOS)
+private struct OptionalCommandV: ViewModifier {
+    let attachments: ComposerAttachments?
+    let isActive: Bool
+
+    func body(content: Content) -> some View {
+        if let attachments {
+            content.modifier(CommandVPictures(attachments: attachments, isActive: isActive))
+        } else {
+            content
+        }
+    }
+}
+#endif
 
 /// A message field's place above the keyboard or the tab bar: clear of what is behind it, with more room under it
 /// while the keyboard is up. The page shows through glass as clashing text, so the bar has its own backing, which

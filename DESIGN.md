@@ -296,7 +296,7 @@ The shared parts. Use these; extend one rather than writing a near-copy. Each is
 | `.prField(isFocused:)` | every field you type in | PRKit `PRParts.swift` |
 | `InlineComposer` | writing on a PR, in place | PRKit `PRParts.swift` |
 | `StatusChip` | state words outside lists | PRKit `Parts/` |
-| `SessionBubble`, `SessionComposer` | a message in a chat, and its field | PRKit `Parts/` |
+| `SessionBubble`, `SessionComposer` | a message in a chat, and its field; with `ComposerAttachments`, screenshots on it (paperclip for Photos and Files, Paste while the clipboard holds a picture, a tray of thumbnails above the field) | PRKit `Parts/` |
 | `IconText`, `.labelStyle(.iconText)` | an icon and its words | PRKitDesign |
 | `sidePanel` | a panel from the right | PRKit `Parts/SidePanel.swift` |
 | `PRSwipeRow`, `PRSwipeAction` | the one swipe on a row: right for Review changes, left for Remove me | PRKit `Phone/`, `Parts/` |
