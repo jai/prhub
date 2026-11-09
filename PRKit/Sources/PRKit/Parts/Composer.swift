@@ -9,8 +9,8 @@ import UIKit
 /// own inside the glass.
 /// `focused` is the screen's, so a scroll or a tap in the content can put the keyboard away (`dismissesKeyboard`).
 /// With `attachments`, a paperclip beside the field adds screenshots from Photos or Files, and from the clipboard while
-/// it holds a picture (its menu's Paste; on the Mac Command-V in the field too); the tray above the field
-/// shows them, and takes no room while empty. A message may then be screenshots alone.
+/// it holds a picture (its menu's Paste); a picture pasted into the field is attached too (words paste as always). The
+/// tray above the field shows them, and takes no room while empty. A message may then be screenshots alone.
 public struct SessionComposer: View {
     /// From the field's bottom up to the middle of its last line: its padding and half a line.
     @ScaledMetric(relativeTo: .body) private var lineMiddle = 20.0
@@ -37,6 +37,32 @@ public struct SessionComposer: View {
         !isSending && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || attachments?.isEmpty == false)
     }
 
+    /// The words: on the phone a text view that takes a pasted picture, on the Mac a field (Command-V attaches there).
+    @ViewBuilder private var input: some View {
+        #if os(iOS)
+        ChatTextView(text: $draft, placeholder: placeholder, focused: focused, maxLines: 5,
+                     pastePicture: attachments.map { box in { data in Task { await box.add(data) } } })
+            .overlay(alignment: .topLeading) {
+                if draft.isEmpty {
+                    Text(placeholder)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+        #else
+        TextField(placeholder, text: $draft, axis: .vertical)
+            .textFieldStyle(.plain)
+            .lineLimit(1...5)
+            .sendsOnReturn {
+                if canSend {
+                    send()
+                }
+            }
+        #endif
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: Space.xs) {
             if let attachments {
@@ -55,18 +81,10 @@ public struct SessionComposer: View {
             if let attachments {
                 ComposerAttachButton(attachments: attachments)
             }
-            TextField(placeholder, text: $draft, axis: .vertical)
-                .textFieldStyle(.plain)
+            input
                 .focused(focused)
-                .lineLimit(1...5)
                 .padding(ChatStyle.fieldInsets)
                 .glassEffect(in: .rect(cornerRadius: ChatStyle.radius, style: .continuous))
-                .submitLabel(.send)
-                .sendsOnReturn {
-                    if canSend {
-                        send()
-                    }
-                }
                 .alignmentGuide(.sendButton) { field in
                     #if os(macOS)
                     field[.lastTextBaseline]
