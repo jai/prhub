@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseWrite, toggleTask } from "../src/write-input.ts";
+import { gitHubReason, parseWrite, refusalWords, toggleTask } from "../src/write-input.ts";
 
 test("an approval needs no words, every other write does", () => {
   assert.deepEqual(parseWrite({ kind: "review", event: "APPROVE", body: "", commit: "c" }),
@@ -74,4 +74,22 @@ test("a description edit and a checkbox carry what the phone saw, when it sends 
   assert.deepEqual(parseWrite({ kind: "edit_body", body: "new" }), { kind: "edit_body", body: "new", base: null });
   assert.deepEqual(parseWrite({ kind: "checkbox", index: 0, checked: true, task: "ship it" }),
     { kind: "checkbox", index: 0, checked: true, task: "ship it" });
+});
+
+test("a refusal without GitHub's words says what happened and what to do, never a status", () => {
+  for (const status of [401, 403, 404, 409, 410, 422, 429, 500, 502, 503]) {
+    const words = refusalWords(status);
+    assert.doesNotMatch(words, /\d{3}/);
+    assert.match(words, /\. [A-Z].*\.$/);
+  }
+  assert.notEqual(refusalWords(403), refusalWords(404));
+  assert.notEqual(refusalWords(422), refusalWords(502));
+});
+
+test("GitHub's reason reads its errors' words, not their objects", () => {
+  assert.equal(gitHubReason({ message: "Validation Failed", errors: [{ resource: "Issue", code: "custom",
+    message: "Body is too long" }, { code: "missing_field" }, "plain"] }),
+  "Validation Failed: Body is too long: missing_field: plain");
+  assert.equal(gitHubReason({ message: "Not Found" }), "Not Found");
+  assert.equal(gitHubReason(null), "");
 });

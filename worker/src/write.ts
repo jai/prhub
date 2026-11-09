@@ -1,6 +1,6 @@
 import { type Env, githubLogin } from "./env";
 import { getFromGitHub, graphql, postToGitHub, sendToGitHub } from "./github";
-import { parseWrite, toggleTask, type Write } from "./write-input";
+import { gitHubReason, parseWrite, refusalWords, toggleTask, type Write } from "./write-input";
 
 const RESOLVE = `mutation($thread: ID!) { resolveReviewThread(input: { threadId: $thread }) { thread { id } } }`;
 const UNRESOLVE = `mutation($thread: ID!) { unresolveReviewThread(input: { threadId: $thread }) { thread { id } } }`;
@@ -91,14 +91,16 @@ export async function writeToGitHub(repo: string, number: number, input: unknown
       const tookEffect = Object.values(result).every((value) => value !== null);
       return tookEffect ? null : Response.json({ error: "GitHub can't find that." }, { status: 404 });
     } catch (error) {
-      return Response.json({ error: String(error) }, { status: 502 });
+      console.error("write: GitHub GraphQL failed", error);
+      return Response.json({ error: refusalWords(502) }, { status: 502 });
     }
   }
   const response = await sendRest(write, repo, number, env);
   if (response.ok) {
     return null;
   }
-  const answer = await response.json().catch(() => null) as { message?: string; errors?: unknown[] } | null;
-  const reason = [answer?.message, ...(answer?.errors ?? [])].filter(Boolean).join(": ");
-  return Response.json({ error: reason || `GitHub answered ${response.status}.` }, { status: response.status });
+  const answer = await response.json().catch(() => null);
+  const reason = gitHubReason(answer);
+  return Response.json({ error: reason || refusalWords(response.status) }, { status: response.status });
 }
+
