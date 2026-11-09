@@ -26,10 +26,14 @@ public protocol PRKitHost: AnyObject, Sendable {
     /// Where the PR mirror keeps its files (`PRMirrorLocation`): the app group's, so a Notification Service Extension
     /// can prefetch an alert's PR (`PRPushPrefetch`). Nil: the app's caches.
     var mirrorDirectory: URL? { get }
+    /// The empty list's link (`PREmptyHint.link`) is about to open outside the app: the host can read its config again
+    /// when the app comes back.
+    func opensEmptyHintLink(_ url: URL)
 }
 
 extension PRKitHost {
     public var mirrorDirectory: URL? { nil }
+    public func opensEmptyHintLink(_ url: URL) {}
 }
 
 /// The features the PR screens follow and the org filter's starting point. Agent Pager's is `everything`; PRHub's
@@ -79,12 +83,15 @@ public struct PREmptyHint: Equatable, Sendable {
     public var message: String
     public var linkTitle: String
     public var link: URL
+    /// The host is asking whether the words still hold: a spinner shows in place of the link.
+    public var isChecking: Bool
 
-    public init(title: String, message: String, linkTitle: String, link: URL) {
+    public init(title: String, message: String, linkTitle: String, link: URL, isChecking: Bool = false) {
         self.title = title
         self.message = message
         self.linkTitle = linkTitle
         self.link = link
+        self.isChecking = isChecking
     }
 }
 

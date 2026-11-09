@@ -8,12 +8,15 @@ public struct GitHubAccessBlock: View {
     let appName: String
     let installations: [GitHubInstallation]
     let installURL: URL
+    let isChecking: Bool
 
     /// `appName` names the App in the block's words ("PRHub"); `installURL` is its `installations/new` page.
-    public init(appName: String, installations: [GitHubInstallation], installURL: URL) {
+    /// `isChecking` while the host reads the installations again, back from GitHub.
+    public init(appName: String, installations: [GitHubInstallation], installURL: URL, isChecking: Bool = false) {
         self.appName = appName
         self.installations = installations
         self.installURL = installURL
+        self.isChecking = isChecking
     }
 
     public var body: some View {
@@ -22,7 +25,17 @@ public struct GitHubAccessBlock: View {
             note: "\(appName) sees pull requests only where its GitHub App is installed. An org owner installs it; a "
                 + "member can ask for it on the same page. Tap an account to change its repositories on GitHub."
         ) {
-            if installations.isEmpty {
+            if isChecking {
+                HStack(spacing: Space.sm) {
+                    ProgressView()
+                    Text("Checking GitHub…")
+                        .font(.appFootnote)
+                        .foregroundStyle(Color.inkQuiet)
+                }
+                .transition(.fold)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("github-access-checking")
+            } else if installations.isEmpty {
                 Text("\(appName) isn't installed on any of your accounts yet.")
                     .font(.appFootnote)
                     .foregroundStyle(Color.inkQuiet)
@@ -42,6 +55,7 @@ public struct GitHubAccessBlock: View {
             .accessibilityIdentifier("github-access-add-account")
         }
         .animation(AppMotion.fold, value: installations)
+        .animation(AppMotion.fold, value: isChecking)
     }
 }
 

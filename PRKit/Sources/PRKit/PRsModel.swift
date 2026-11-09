@@ -145,6 +145,8 @@ final class PRsModel {
     @ObservationIgnored var apnsEnvironment = ""
     /// Where `PRKitEvent`s go: the host.
     @ObservationIgnored var onEvent: (PRKitEvent) -> Void = { _ in }
+    /// Where the empty list's link goes before it opens: the host (`PRKitHost.opensEmptyHintLink`).
+    @ObservationIgnored var onEmptyHintLink: (URL) -> Void = { _ in }
     /// A queued job refused after Jai left its screen, in its own words, until he dismisses it.
     var lateRefusal: String?
     /// The review on its way from a box that has closed (`PRReviewToast`).

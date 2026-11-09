@@ -265,16 +265,26 @@ struct PRsList: View {
         }
     }
 
-    /// The host's words for a list GitHub left empty, and its link (`PRKitConfiguration.emptyHint`).
+    /// The host's words for a list GitHub left empty, and its link (`PRKitConfiguration.emptyHint`), or a spinner while
+    /// the host checks them.
     private func emptyHint(_ hint: PREmptyHint) -> some View {
         ContentUnavailableView {
             Label(hint.title, systemImage: "arrow.triangle.pull")
         } description: {
             Text(hint.message)
         } actions: {
-            Link(hint.linkTitle, destination: hint.link)
-                .buttonStyle(PRButtonStyle(.primary))
-                .accessibilityIdentifier("pr-empty-hint-link")
+            if hint.isChecking {
+                ProgressView()
+                    .accessibilityIdentifier("pr-empty-hint-checking")
+            } else {
+                Link(hint.linkTitle, destination: hint.link)
+                    .buttonStyle(PRButtonStyle(.primary))
+                    .environment(\.openURL, OpenURLAction { [model] url in
+                        model.onEmptyHintLink(url)
+                        return .systemAction
+                    })
+                    .accessibilityIdentifier("pr-empty-hint-link")
+            }
         }
     }
 

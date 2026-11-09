@@ -20,6 +20,7 @@ public final class PRKitController {
         model.apnsEnvironment = host.apnsEnvironment
         model.featureSource = { host.configuration }
         model.onEvent = { host.receive($0) }
+        model.onEmptyHintLink = { host.opensEmptyHintLink($0) }
         model.logFailures { line in Task { @MainActor in host.log(line) } }
     }
 
