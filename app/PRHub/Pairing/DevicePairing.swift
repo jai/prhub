@@ -40,8 +40,8 @@ enum PairingError: Error, Equatable, Sendable {
             "That code is for an app, not a phone. Run npm run pair without --app for a phone code."
         case .unreachable(let host):
             "Couldn't reach \(host). Check the address and your internet connection."
-        case .server(let status):
-            "The Worker had a problem (HTTP \(status)). Try again in a minute."
+        case .server:
+            "The Worker had a problem on its side. Try again in a minute; if it keeps happening, check its logs."
         case .unreadable:
             "The Worker's answer didn't make sense. Check that the address is your pr-worker."
         case .keychain:

@@ -110,6 +110,7 @@ struct HostedSignInTests {
     ])
     func finishsRefusalsBecomeWords(_ failure: AccountClient.Failure, _ expected: SignInError) {
         #expect(SignInError(finish: failure) == expected)
+        #expect(expected.message?.firstMatch(of: /\d{3}/) == nil)
     }
 }
 
@@ -169,6 +170,7 @@ struct AccountClientTests {
         (.reply(status: 503, body: #"{"error":{"code":"anthropic_unavailable","message":"m"}}"#), .anthropicUnavailable),
         (.reply(status: 401, body: #"{"error":{"code":"signed_out","message":"m"}}"#), .signedOut),
         (.reply(status: 500, body: "oops"), .server(status: 500)),
+        (.reply(status: 200, body: "<html>"), .unreadable),
         (.fail(.notConnectedToInternet), .unreachable),
     ])
     func aRefusedKeySaysWhy(_ answer: StubWorker.Answer, _ expected: AccountActionError) async {
@@ -179,6 +181,7 @@ struct AccountClientTests {
         } catch {
             #expect(AccountActionError(error) == expected)
             #expect(!expected.message.isEmpty)
+            #expect(expected.message.firstMatch(of: /\d{3}/) == nil)
         }
     }
 

@@ -146,6 +146,8 @@ enum AccountActionError: Error, Equatable, Sendable {
     case signedOut
     case unreachable
     case server(status: Int)
+    /// A 2xx whose body isn't the answer: a captive portal, or a Worker newer than this app.
+    case unreadable
 
     init(_ failure: AccountClient.Failure) {
         switch failure {
@@ -155,7 +157,7 @@ enum AccountActionError: Error, Equatable, Sendable {
         case .server(_, 401): self = .signedOut
         case .server(_, let status): self = .server(status: status)
         case .transport, .notConnected: self = .unreachable
-        case .decoding: self = .server(status: 200)
+        case .decoding: self = .unreadable
         }
     }
 
@@ -166,7 +168,8 @@ enum AccountActionError: Error, Equatable, Sendable {
         case .anthropicUnavailable: "Anthropic couldn't be reached to check the key. Try again in a minute."
         case .signedOut: "You're signed out. Sign in with GitHub again."
         case .unreachable: "Couldn't reach PRHub. Check your internet connection and try again."
-        case .server(let status): "PRHub had a problem (HTTP \(status)). Try again in a minute."
+        case .server: "PRHub had a problem on its side. Try again in a minute."
+        case .unreadable: "PRHub's answer didn't make sense. Update PRHub from the App Store and try again."
         }
     }
 }

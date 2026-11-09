@@ -56,6 +56,7 @@ struct PairingTests {
         #expect(worker.requests.with { $0.count } == 1)
         #expect(!expected.message.isEmpty)
         #expect(!expected.message.contains("words for the log"))
+        #expect(expected.message.firstMatch(of: /\b\d{3}\b/) == nil)
     }
 
     @Test func aCodeForAnAppIsNotAPhonesCode() async {
