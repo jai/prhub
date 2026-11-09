@@ -197,12 +197,13 @@ private struct MarkdownTableView: View {
     private func row(_ cells: [AttributedString], isHeader: Bool) -> some View {
         GridRow {
             ForEach(Array(cells.enumerated()), id: \.offset) { column, words in
-                Text(words)
-                    .fontWeight(isHeader ? .semibold : nil)
-                    .multilineTextAlignment(textAlignment(column))
-                    .frame(maxWidth: MarkdownStyle.tableCellMaxWidth, alignment: frameAlignment(column))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, Space.sm)
+                CappedWidth(maxWidth: MarkdownStyle.tableCellMaxWidth) {
+                    Text(words)
+                        .fontWeight(isHeader ? .semibold : nil)
+                        .multilineTextAlignment(textAlignment(column))
+                }
+                .frame(maxWidth: .infinity, alignment: frameAlignment(column))
+                .padding(.horizontal, Space.sm)
                     .padding(.vertical, Space.xs)
                     .gridColumnAlignment(gridAlignment(column))
             }
@@ -261,5 +262,30 @@ private struct MarkdownImage: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Its view at its own width up to `maxWidth`, and wrapped to `maxWidth` past it, with the height that takes. A table in
+/// a sideways scroll offers no width, so a cell's words would otherwise be measured on one line and drawn on several.
+private struct CappedWidth: Layout {
+    let maxWidth: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let view = subviews.first else {
+            return .zero
+        }
+        let width = self.width(view, proposal)
+        return CGSize(width: width, height: view.sizeThatFits(ProposedViewSize(width: width, height: nil)).height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(
+            at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: bounds.height)
+        )
+    }
+
+    private func width(_ view: LayoutSubview, _ proposal: ProposedViewSize) -> CGFloat {
+        let ideal = view.sizeThatFits(.unspecified).width
+        return min(ideal, maxWidth, proposal.width ?? .infinity)
     }
 }

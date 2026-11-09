@@ -83,7 +83,7 @@ public enum MarkdownBlocks {
         var blocks: [MarkdownBlock] = []
         var tables: [Int: Int] = [:]
         for (intent, range) in parsed.runs[\.presentationIntent] {
-            let content = AttributedString(parsed[range])
+            var content = AttributedString(parsed[range])
             if let cell = TableCell(intent) {
                 if let index = tables[cell.table] {
                     blocks[index].add(cell, content)
@@ -99,6 +99,12 @@ public enum MarkdownBlocks {
             var kind = kind(of: intent)
             if kind == .paragraph, let url = onlyImage(content) {
                 kind = .image(url)
+            }
+            if kind == .code {
+                // A fence's last line ends in a newline, which would draw as an empty line.
+                while content.characters.last?.isNewline == true {
+                    content.characters.removeLast()
+                }
             }
             blocks.append(MarkdownBlock(id: nextID, kind: kind, content: content))
             nextID += 1
