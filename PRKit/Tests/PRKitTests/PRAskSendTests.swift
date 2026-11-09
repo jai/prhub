@@ -11,14 +11,17 @@ struct PRAskSendTests {
         var isHolding = true
         private(set) var ids: [String] = []
 
-        func enqueue(prWrite write: PRWrite, to ref: PullRequestRef) async throws -> String { "write" }
-
-        func enqueue(prAIChat question: PRAskQuestion, about ref: PullRequestRef) async throws -> String {
+        func enqueue(_ job: PROutboxJob) async throws -> String {
+            guard case .question = job else {
+                return "write"
+            }
             ids.append("ask-\(ids.count + 1)")
             return ids[ids.count - 1]
         }
 
-        func hasQueuedAIChat(about ref: PullRequestRef) -> Bool { isHolding && !ids.isEmpty }
+        func isQueued(_ kind: PROutboxJob.Kind, about ref: PullRequestRef) -> Bool {
+            kind == .question && isHolding && !ids.isEmpty
+        }
     }
 
     @MainActor
@@ -87,7 +90,7 @@ struct PRAskSendTests {
         while host.held.ids.isEmpty {
             await Task.yield()
         }
-        kit.outboxRefused(id: "ask-1", reason: "This chat reached its spending limit.")
+        kit.outboxRefused(id: "ask-1", kind: .question, reason: "This chat reached its spending limit.")
         let outcome: Result<PRAskOutcome, any Error> = await asked.result
         let send = PRAskSend.after(outcome, of: question, isOnline: true)
         #expect(send == .failed(question, reason: "This chat reached its spending limit."))

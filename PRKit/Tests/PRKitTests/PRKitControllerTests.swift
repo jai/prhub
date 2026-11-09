@@ -54,8 +54,12 @@ struct PRKitControllerTests {
     @Test func aRefusalAfterTheScreenHasGoneIsShownAndTold() {
         let host = Host()
         let kit = PRKitController(host: host)
-        kit.outboxRefused(id: "item-1", reason: "Pull request is locked")
-        #expect(kit.model.refusedWrite == "GitHub refused a write: Pull request is locked")
+        kit.outboxRefused(id: "item-1", kind: .write, reason: "Pull request is locked")
+        #expect(kit.model.lateRefusal == "GitHub refused a write: Pull request is locked")
         #expect(host.events == [.writeRefused("GitHub refused a write: Pull request is locked")])
+        kit.outboxRefused(id: "item-2", kind: .question, reason: "This chat reached its spending limit.")
+        let words = "A question to a PR's AI couldn't be sent: This chat reached its spending limit."
+        #expect(kit.model.lateRefusal == words)
+        #expect(host.events.last == .questionRefused(words))
     }
 }

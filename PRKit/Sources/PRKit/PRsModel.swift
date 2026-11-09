@@ -145,19 +145,19 @@ final class PRsModel {
     @ObservationIgnored var apnsEnvironment = ""
     /// Where `PRKitEvent`s go: the host.
     @ObservationIgnored var onEvent: (PRKitEvent) -> Void = { _ in }
-    /// A write GitHub refused after Jai left its screen, with his words, until he dismisses it.
-    private(set) var refusedWrite: String?
-    /// Outbox answers by item id, until the write that is waiting on one takes it.
-    private var outcomes: [String: Result<Data, PRViewerError>] = [:]
+    /// A queued job refused after Jai left its screen, in its own words, until he dismisses it.
+    var lateRefusal: String?
+    /// Outbox answers by item id, until the screen that is waiting on one takes it.
+    var outcomes: [String: Result<Data, PRWorkerError>] = [:]
     /// Ids a screen is waiting on. Answers to the rest arrive after Jai has moved on.
-    private var waiting: Set<String> = []
-    /// What each write still on the phone said, so a refusal that comes after the screen has gone can quote it.
-    private var queuedSummaries: [String: String] = [:]
+    var waiting: Set<String> = []
+    /// Each job still on the phone, so a refusal that comes after the screen has gone can say what it was.
+    var queued: [String: PROutboxJob] = [:]
     /// How long a screen waits for GitHub's answer before the write carries on without it.
     var answerWait: Duration = .seconds(15)
     /// Whether the device has a network: what a question left in the outbox says while it waits.
     var isOnline: () -> Bool = { PRNetworkPath.shared.isOnline }
-    private let mirror: PRMirror
+    let mirror: PRMirror
     /// The newest sync, and its list fetch while that is out: what a wake waits for, and what a pull waits for.
     private var running: Task<PRSyncOutcome, Never>?
     private var listing: Task<PRSyncOutcome, Never>?
@@ -282,7 +282,7 @@ final class PRsModel {
         workerSyncedAt = nil
         removedRequests = []
         notUpdated = []
-        refusedWrite = nil
+        lateRefusal = nil
         saveAnswers([:])
         UserDefaults.standard.removeObject(forKey: "prOrgFilter")
         // Nothing of a sync still running may show, and nothing it downloads may stay.
@@ -374,7 +374,7 @@ final class PRsModel {
     ) async throws -> Answer {
         if let samples {
             guard kind == "key-lines", let data = samples.keyLines(for: ref) else {
-                throw PRViewerError.refused("Sample PRs don't reach the model.")
+                throw PRLocalRefusal.sampleAI
             }
             return try JSONDecoder().decode(Answer.self, from: data)
         }
@@ -383,7 +383,7 @@ final class PRsModel {
         while !Task.isCancelled {
             if let data = try await client.aiAnswer(path: path, head: head, context: context, retry: retry && isFirst) {
                 if let failure = try? JSONDecoder().decode(PRAIFailure.self, from: data) {
-                    throw PRViewerError.refused(failure.error)
+                    throw PRWorkerError.refused(failure.error)
                 }
                 return try JSONDecoder().decode(Answer.self, from: data)
             }
@@ -437,13 +437,13 @@ final class PRsModel {
             return
         }
         Task {
+            let ref = PullRequestRef(repo: row.repo, number: row.number)
             do {
-                _ = try await write(.removeRequest, to: PullRequestRef(repo: row.repo, number: row.number))
-            } catch PRViewerError.saved {
-                return // It goes when the network does; the row stays away.
+                // Posted or saved to go: the row stays away either way.
+                _ = try await write(.removeRequest, to: ref)
             } catch {
                 removedRequests.remove(row.id)
-                errorMessage = error.localizedDescription
+                refuseLate(PRWrite.removeRequest.refusal(on: ref, reason: error.localizedDescription), of: .write)
             }
         }
     }
@@ -454,107 +454,6 @@ final class PRsModel {
                 ?? PRAskChat(messages: [], isWorking: false, activity: nil, problem: nil, costCents: nil)
         }
         return try await client.askChat(ref)
-    }
-
-    /// The Worker's chat with the question in it, or `.queued` when the host's outbox holds it past `answerWait`: it
-    /// goes on sending it, and the sheet follows it there.
-    func ask(_ question: PRAskQuestion, about ref: PullRequestRef) async throws -> PRAskOutcome {
-        guard let outbox else {
-            return .answered(try await client.ask(question, about: ref))
-        }
-        let id = try await outbox.enqueue(prAIChat: question, about: ref)
-        queuedSummaries[id] = "your question “\(question.question)”"
-        do {
-            return .answered(try JSONDecoder().decode(PRAskChat.self, from: await answer(to: id)))
-        } catch PRViewerError.saved {
-            return .queued
-        }
-    }
-
-    func hasQueuedAIChat(about ref: PullRequestRef) -> Bool {
-        outbox?.hasQueuedAIChat(about: ref) ?? false
-    }
-
-    /// Posts as Jai and answers with the PR as it now stands. The mirror follows on its own, soon after.
-    func write(_ write: PRWrite, to ref: PullRequestRef) async throws -> PullRequestDetail {
-        // A sample row can name a real PR. Nothing done to it may reach GitHub.
-        if let samples {
-            guard samples.answersOnPhone, let detail = sampleWrite(write, to: ref) else {
-                throw PRViewerError.refused("Sample PRs don't write to GitHub.")
-            }
-            return detail
-        }
-        let detail = try PullRequestDetail.decode(await send(write, to: ref))
-        Task { await refresh(.pull) }
-        return detail
-    }
-
-    /// What `write` makes of a sample PR, kept in its file so the PR shows it when it opens again. Nil for a PR that
-    /// is not a sample.
-    private func sampleWrite(_ write: PRWrite, to ref: PullRequestRef) -> PullRequestDetail? {
-        guard let row = rows.first(where: { $0.repo == ref.repo && $0.number == ref.number }) else {
-            return nil
-        }
-        let file = mirror.directory.appending(path: row.detailFileName)
-        guard let stored = try? Data(contentsOf: file) else {
-            return nil
-        }
-        let login = configuration.login ?? "you"
-        let data = PRSampleSet.applying(write, to: stored, login: login)
-        try? data.write(to: file)
-        return try? PullRequestDetail.decode(data)
-    }
-
-    /// Said under a PR's actions after a write: that a sample's went nowhere. Nil for real PRs.
-    var writeNotice: String? {
-        samples?.answersOnPhone == true ? PRSampleSet.notice : nil
-    }
-
-    /// Merge and update branch go now or not at all: Jai should see them happen. The rest are saved first.
-    private func send(_ write: PRWrite, to ref: PullRequestRef) async throws -> Data {
-        guard let outbox, write.isQueued else {
-            return try await client.write(write, to: ref)
-        }
-        let id = try await outbox.enqueue(prWrite: write, to: ref)
-        queuedSummaries[id] = write.summary.map { "\($0) on \(ref.repo)#\(ref.number)" }
-        return try await answer(to: id)
-    }
-
-    /// GitHub's answer if it comes within `answerWait`, else `PRViewerError.saved`: the write goes on without the screen.
-    private func answer(to id: String) async throws -> Data {
-        waiting.insert(id)
-        defer { waiting.remove(id) }
-        let clock = ContinuousClock()
-        let end = clock.now + answerWait
-        while clock.now < end {
-            if let outcome = outcomes.removeValue(forKey: id) {
-                queuedSummaries[id] = nil
-                return try outcome.get()
-            }
-            try? await Task.sleep(nanoseconds: 50_000_000)
-        }
-        throw PRViewerError.saved
-    }
-
-    /// GitHub's answer to an outbox item, for the write waiting on it.
-    func outboxAnswered(id: String, data: Data) {
-        outcomes[id] = .success(data)
-    }
-
-    func outboxRefused(id: String, reason why: String) {
-        if waiting.contains(id) {
-            outcomes[id] = .failure(.refused(why))
-            return
-        }
-        // Words that would otherwise be lost: say what was refused and what it said.
-        let summary = queuedSummaries.removeValue(forKey: id)
-        let words = summary.map { "GitHub refused \($0): \(why)" } ?? "GitHub refused a write: \(why)"
-        refusedWrite = words
-        onEvent(.writeRefused(words))
-    }
-
-    func dismissRefusedWrite() {
-        refusedWrite = nil
     }
 
     /// A PR the phone does not hold, its detail and diff side by side: `row` at its version, which the Worker serves
@@ -592,7 +491,7 @@ extension PRsModel {
                 return try await client.diff(row)
             }
             return try await client.liveDiff(ref)
-        } catch PRViewerError.status(406) {
+        } catch PRWorkerError.tooLarge {
             return nil
         }
     }
@@ -714,23 +613,4 @@ struct PROpenEvent: Encodable, Sendable {
     let preloaded: Bool
     let bytes: Int
     let lines: Int
-}
-
-private extension PRWrite {
-    var isQueued: Bool {
-        switch self {
-        case .merge, .updateBranch: false
-        default: true
-        }
-    }
-
-    /// The words Jai wrote, for a refusal that arrives after he has left the screen. Nil where there are none to lose.
-    var summary: String? {
-        switch self {
-        case let .comment(body), let .reply(_, body), let .line(_, _, _, body, _): "your comment “\(body)”"
-        case let .review(_, body, _, _): body.isEmpty ? "your review" : "your review “\(body)”"
-        case .editBody: "your description edit"
-        case .resolve, .viewed, .removeRequest, .checkbox, .updateBranch, .merge: nil
-        }
-    }
 }

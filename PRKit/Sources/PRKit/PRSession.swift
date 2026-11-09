@@ -127,8 +127,8 @@ final class PRSession: Hashable {
     /// Why the chat could not be read.
     var askError: String?
     var isKeyboardUp = false
-    /// What GitHub refused when nothing on screen was waiting to say so.
-    var notice: String?
+    /// The line under the PR's actions: a write saved for later, a refusal, or a sample's note.
+    var notice: PRNotice?
     private(set) var isUpdatingBranch = false
     private(set) var isMerged = false
     private(set) var isRewriting = false
@@ -294,15 +294,16 @@ final class PRSession: Hashable {
         await perform(.checkbox(index: index, checked: checked, task: task))
     }
 
-    /// True when GitHub took it. Otherwise it says why, where Jai can see it. One saved for later says so too.
+    /// True when GitHub took it or it is saved to go. Otherwise it says why, where Jai can see it.
     @discardableResult private func perform(_ write: PRWrite) async -> Bool {
         notice = nil
         do {
-            setDrafts(drafts, detail: try await model.write(write, to: ref))
-            showWriteNotice()
+            let outcome = try await model.write(write, to: ref)
+            setDrafts(drafts, detail: outcome.posted)
+            show(outcome, of: write)
             return true
         } catch {
-            withAnimation(AppMotion.fold) { notice = error.localizedDescription }
+            withAnimation(AppMotion.fold) { notice = .failed(error.localizedDescription) }
             return false
         }
     }
@@ -349,7 +350,7 @@ final class PRSession: Hashable {
 
     func send(_ text: String, to target: PRComposerTarget) async throws {
         guard let content else {
-            throw PRViewerError.refused("This PR has not loaded yet.")
+            throw PRLocalRefusal.notLoaded
         }
         var goingOut: [PRDraftComment] = []
         if case .review = target {
@@ -358,28 +359,22 @@ final class PRSession: Hashable {
         let write = target.write(
             body: text, head: content.detail.head, drafts: goingOut, description: content.detail.body
         )
-        var detail: PullRequestDetail?
-        do {
-            detail = try await model.write(write, to: ref)
-            showWriteNotice()
-        } catch PRViewerError.saved {
-            // It's in the outbox, words and drafts with it: the box is done with them.
-            withAnimation(AppMotion.fold) { notice = PRViewerError.saved.localizedDescription }
-        }
+        // Posted or saved to go, words and drafts with it: the box is done with them either way.
+        let outcome = try await model.write(write, to: ref)
+        show(outcome, of: write)
         let kept = drafts.filter { !goingOut.contains($0) }
         discardText(for: target)
         if let answer = target.answer {
             model.noteAnswer(answer, on: ref, head: content.detail.head)
         }
-        setDrafts(kept, detail: detail)
+        setDrafts(kept, detail: outcome.posted)
     }
 
     func setResolved(_ resolved: Bool, thread: PullRequestDetail.Thread) async throws {
-        do {
-            setDrafts(drafts, detail: try await model.write(.resolve(thread: thread.id, resolved: resolved), to: ref))
-        } catch PRViewerError.saved {
-            withAnimation(AppMotion.fold) { notice = PRViewerError.saved.localizedDescription }
-        }
+        let write = PRWrite.resolve(thread: thread.id, resolved: resolved)
+        let outcome = try await model.write(write, to: ref)
+        setDrafts(drafts, detail: outcome.posted)
+        show(outcome, of: write)
     }
 
     func addDraft(_ text: String, on target: PRComposerTarget) {
@@ -420,11 +415,13 @@ final class PRSession: Hashable {
 }
 
 extension PRSession {
-    /// A sample PR's write says it went nowhere (`PRSampleSet`). A real one's says nothing.
-    fileprivate func showWriteNotice() {
-        if let words = model.writeNotice {
-            withAnimation(AppMotion.fold) { notice = words }
+    /// What became of a write, under the PR's actions: a sample's note, or that it is saved and still going.
+    fileprivate func show(_ outcome: PRWriteOutcome, of write: PRWrite) {
+        let next: PRNotice? = switch outcome {
+        case .posted: model.writeNotice
+        case let .queued(wait): write.saysWhenQueued ? .queued(noun: write.noun, wait) : nil
         }
+        withAnimation(AppMotion.fold) { notice = next }
     }
 }
 
@@ -479,10 +476,10 @@ extension PRSession {
             let rewrite: PRRewrite = try await model.aiAnswer("rewrite", ref: ref, head: head, retry: true)
             withAnimation(AppMotion.fold) {
                 writing[PRComposerTarget.description.key] = rewrite.body
-                notice = rewrite.hadTicket ? nil : "Written without a ticket: none was found for this PR."
+                notice = rewrite.hadTicket ? nil : .rewroteWithoutTicket
             }
         } catch {
-            withAnimation(AppMotion.fold) { notice = error.localizedDescription }
+            withAnimation(AppMotion.fold) { notice = .failed(error.localizedDescription) }
         }
     }
 }

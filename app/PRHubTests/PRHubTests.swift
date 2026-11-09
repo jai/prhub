@@ -47,7 +47,7 @@ struct PRHubTests {
     @Test func beforePairingNothingIsBuilt() async throws {
         let endpoint = try Self.endpoint()
         let client = PRViewerClient(access: .paired(endpoint: endpoint, secret: { prHubSecret }))
-        await #expect(throws: PRViewerError.notPaired) {
+        await #expect(throws: PRWorkerError.notPaired) {
             try await client.outboxRequest(path: "prs", body: Data())
         }
     }

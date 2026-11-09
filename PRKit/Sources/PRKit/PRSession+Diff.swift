@@ -58,12 +58,11 @@ extension PRSession {
         }
         Task {
             do {
+                // Posted or saved to go: the file stays marked either way.
                 _ = try await model.write(.viewed(pullRequest: id, path: path, viewed: isViewed), to: ref)
-            } catch PRViewerError.saved {
-                return // It goes when the network does; the file stays marked.
             } catch {
                 viewedFiles.formSymmetricDifference([path])
-                notice = error.localizedDescription
+                notice = .failed(error.localizedDescription)
             }
         }
     }

@@ -43,7 +43,7 @@ PRHub's host is `app/PRHub/App/PRHubHost.swift`.
 | `access` | The Worker's base URL and the bearer for each request (`PRViewerAccess`). Read once. |
 | `isInForeground()` | Whether the app is in front: a request then waits for a network. |
 | `configuration` | The features the Worker serves (`askAI`, `keyLines`, `rewrite`, `push`), the org filter's default and the GitHub login. Read each time a screen asks. |
-| `outbox` | A queue that keeps a write until the Worker has it (`PRKitOutbox`), or `nil` to send writes straight to the Worker. The host hands each answer back through `outboxAnswered` and `outboxRefused`. |
+| `outbox` | A queue that keeps each job (`PROutboxJob`: a write, or a question to the PR's AI) until the Worker has it (`PRKitOutbox`), or `nil` to send them straight to the Worker. The host hands each answer back through `outboxAnswered`, and each refusal through `outboxRefused` with the job's kind. A write the Worker hasn't answered within 15 s is saved and still going, not an error: its screen says so in the waiting tone. |
 | `apnsEnvironment` | `production` or `sandbox`, for `POST /device/register`. |
 | `samples` | Made-up PRs with no Worker (`PRSampleSet`), or `nil`. |
 | `launchOptions` | A UI test's or benchmark's request to open a PR; `.none` otherwise. |
@@ -64,7 +64,7 @@ package reads them from the main bundle. PRHub's are in `app/PRHub/Assets.xcasse
   `opensPullRequestLinks(in:)` on it and `showsPullRequests()` inside it; `TabStack` takes a `NavigationPath` or an
   array of one type of screen.
 - Out, to `PRKitHost.receive`: `.opened(ref)`, `.synced(trigger, outcome)`, `.reviewRequests(count)` for a badge,
-  `.writeRefused(words)`.
+  `.writeRefused(words)` and `.questionRefused(words)` for a job refused after its screen had gone.
 
 ## How the PRs stay on the phone
 

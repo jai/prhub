@@ -69,14 +69,14 @@ extension PRSession {
                 if marks == keyLineMarks, answer.head == content?.detail.head {
                     reviewedKeyLines = answer
                 }
-            } catch PRViewerError.status(404) {
+            } catch PRWorkerError.notFound {
                 return
             } catch {
                 // Only this tick goes back, and only if nothing has changed it since.
                 if self.isReviewed(item) == isReviewed {
                     withAnimation(AppMotion.fold) { mark(item, !isReviewed, at: head) }
                 }
-                withAnimation(AppMotion.fold) { notice = error.localizedDescription }
+                withAnimation(AppMotion.fold) { notice = .failed(error.localizedDescription) }
             }
         }
     }

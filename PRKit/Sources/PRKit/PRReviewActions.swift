@@ -114,11 +114,7 @@ struct PRReviewActions: View {
                 withAnimation(AppMotion.fold) { action = action == next ? nil : next }
             }
             if let notice = session.notice {
-                Text(notice)
-                    .font(.appFootnote)
-                    .foregroundStyle(notice == session.model.writeNotice ? Color.secondary : Color.toneBad)
-                    .accessibilityIdentifier("pr-notice")
-                    .transition(.fold)
+                PRNoticeText(notice: notice)
             }
         }
     }

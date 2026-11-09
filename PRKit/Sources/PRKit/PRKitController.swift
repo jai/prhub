@@ -99,9 +99,9 @@ public final class PRKitController {
         model.outboxAnswered(id: id, data: data)
     }
 
-    /// GitHub's refusal of an outbox item, in its own words.
-    public func outboxRefused(id: String, reason: String) {
-        model.outboxRefused(id: id, reason: reason)
+    /// The Worker's refusal of an outbox item, in its own words, with what kind of job it was.
+    public func outboxRefused(id: String, kind: PROutboxJob.Kind, reason: String) {
+        model.outboxRefused(id: id, kind: kind, reason: reason)
     }
 }
 

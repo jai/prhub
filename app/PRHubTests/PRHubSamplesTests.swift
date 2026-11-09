@@ -61,20 +61,20 @@ struct PRHubSamplesTests {
             "key-lines", ref: Self.checkout, head: "sample-412", context: 10, retry: false
         )
         #expect(lines.items.count == 2)
-        await #expect(throws: PRViewerError.refused("Sample PRs don't reach the model.")) {
+        await #expect(throws: PRLocalRefusal.sampleAI) {
             let _: PRRewrite = try await model.aiAnswer("rewrite", ref: Self.checkout, head: "sample-412", retry: true)
         }
     }
 
     @Test func aReviewStaysOnThePhoneAndSaysSo() async throws {
         let model = Self.model()
-        let detail = try await model.write(
+        let detail = try #require(try await model.write(
             .review(.approve, body: "Ship it", commit: "sample-412", comments: []), to: Self.checkout
-        )
+        ).posted)
         let review = try #require(detail.reviews.nodes.last)
         #expect(review.state == "APPROVED" && review.body == "Ship it")
         #expect(review.author?.login == PRSampleSet.prHubLogin)
-        #expect(model.writeNotice == PRSampleSet.notice)
+        #expect(model.writeNotice == .sampleOnly)
         // The PR shows the review when it opens again.
         let row = try #require(model.rows.first { $0.id == "acme/web#412" })
         #expect(model.session(for: row).content?.detail.reviews.nodes.last?.body == "Ship it")
@@ -82,13 +82,15 @@ struct PRHubSamplesTests {
 
     @Test func aCommentJoinsTheConversation() async throws {
         let model = Self.model()
-        let detail = try await model.write(.comment(body: "Nice one"), to: PullRequestRef(repo: "acme/api", number: 88))
+        let detail = try #require(
+            try await model.write(.comment(body: "Nice one"), to: PullRequestRef(repo: "acme/api", number: 88)).posted
+        )
         #expect(detail.comments.nodes.last?.body == "Nice one")
     }
 
     @Test func nothingIsSentFromTheSamples() async throws {
         let client = PRViewerClient(access: .offline)
-        await #expect(throws: PRViewerError.notPaired) {
+        await #expect(throws: PRWorkerError.notPaired) {
             try await client.outboxRequest(path: "prs/acme/web/412/write", body: Data("{}".utf8))
         }
         let model = Self.model()
@@ -102,7 +104,7 @@ struct PRHubSamplesTests {
             samples: PRSampleSet.prHub.samples, mergedReviewed: [], mergedMine: [], answersOnPhone: false
         )
         let model = PRsModel(client: PRViewerClient(access: .offline), samples: refusing)
-        await #expect(throws: PRViewerError.refused("Sample PRs don't write to GitHub.")) {
+        await #expect(throws: PRLocalRefusal.sampleWrite) {
             try await model.write(.comment(body: "x"), to: Self.checkout)
         }
         #expect(model.writeNotice == nil)

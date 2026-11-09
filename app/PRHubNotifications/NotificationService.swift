@@ -42,7 +42,7 @@ final class NotificationService: UNNotificationServiceExtension, @unchecked Send
             // Read, never made: a secret made here would unpair the phone.
             bearer: {
                 guard let secret = try secrets.load() else {
-                    throw PRViewerError.notPaired
+                    throw PRWorkerError.notPaired
                 }
                 return secret
             },

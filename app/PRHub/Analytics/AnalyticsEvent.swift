@@ -180,6 +180,8 @@ extension AnalyticsEvent {
             return nil
         case .writeRefused:
             self = .pullRequestWriteRefused
+        case .questionRefused:
+            return nil
         }
     }
 }

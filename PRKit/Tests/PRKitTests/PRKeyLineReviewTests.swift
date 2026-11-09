@@ -141,7 +141,7 @@ struct PRKeyLineReviewTests {
         #expect(session.isReviewed(item))
         try await settle(session, posts: 1)
         #expect(!session.isReviewed(item))
-        #expect(session.notice == "Too many.")
+        #expect(session.notice == .failed("Too many."))
     }
 
     @Test func aWorkerWithoutTheRouteKeepsTicksOnTheDevice() async throws {

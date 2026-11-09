@@ -81,7 +81,7 @@ extension PRSession {
                 withAnimation(AppMotion.swap) { askError = error.localizedDescription }
             }
             if !isSendingAsk {
-                let next = askSend.following(isQueued: model.hasQueuedAIChat(about: ref), isOnline: model.isOnline())
+                let next = askSend.following(isQueued: model.hasQueuedQuestion(about: ref), isOnline: model.isOnline())
                 if next != askSend {
                     withAnimation(AppMotion.swap) { askSend = next }
                 }

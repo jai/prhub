@@ -78,7 +78,7 @@ extension PRMirror {
             if Task.isCancelled || (error as? URLError)?.code == .cancelled || error is CancellationError {
                 return .cancelled
             }
-            if case let PRViewerError.status(code) = error, [404, 406, 410, 413, 422].contains(code) {
+            if (error as? PRWorkerError)?.isPermanent == true {
                 return .permanent
             }
             return .passing(error.localizedDescription)

@@ -81,15 +81,48 @@ public struct PREmptyHint: Equatable, Sendable {
     }
 }
 
-/// Where a PR write goes when the host keeps writes on the phone until the Worker has them (Agent Pager's
-/// `WriteOutbox`). Each call answers with the item's id; the host hands GitHub's answer or refusal back to
-/// `PRKitController.outboxAnswered` or `outboxRefused` under that id.
+/// What a host's outbox keeps on the phone until the Worker has it: each kind its own job, with its own answer and
+/// its own words when it is refused. Delivery is shared; meaning is not.
+public enum PROutboxJob: Sendable {
+    /// A PR write, posted to GitHub as the user.
+    case write(PRWrite, ref: PullRequestRef)
+    /// A question to the PR's AI. GitHub never sees it.
+    case question(PRAskQuestion, ref: PullRequestRef)
+
+    public enum Kind: Sendable {
+        case write, question
+
+        /// A refusal after the screen has gone, for a job the phone no longer knows more of (the app was restarted).
+        func refusal(reason: String) -> String {
+            switch self {
+            case .write: "GitHub refused a write: \(reason)"
+            case .question: "A question to a PR's AI couldn't be sent: \(reason)"
+            }
+        }
+    }
+
+    public var kind: Kind {
+        switch self {
+        case .write: .write
+        case .question: .question
+        }
+    }
+
+    public var ref: PullRequestRef {
+        switch self {
+        case let .write(_, ref), let .question(_, ref): ref
+        }
+    }
+}
+
+/// Where a job goes when the host keeps it on the phone until the Worker has it (Agent Pager's `WriteOutbox`).
+/// `enqueue` answers with the item's id; the host hands the Worker's answer or refusal back to
+/// `PRKitController.outboxAnswered` or `outboxRefused` under that id, with the job's kind.
 @MainActor
 public protocol PRKitOutbox: AnyObject {
-    func enqueue(prWrite write: PRWrite, to ref: PullRequestRef) async throws -> String
-    func enqueue(prAIChat question: PRAskQuestion, about ref: PullRequestRef) async throws -> String
-    /// Whether a question to this PR's AI chat is still on the phone.
-    func hasQueuedAIChat(about ref: PullRequestRef) -> Bool
+    func enqueue(_ job: PROutboxJob) async throws -> String
+    /// Whether a job of this kind for this PR is still on the phone.
+    func isQueued(_ kind: PROutboxJob.Kind, about ref: PullRequestRef) -> Bool
 }
 
 /// What a UI test or a benchmark launch asks the PRs tab to do once it is showing.
@@ -119,6 +152,8 @@ public enum PRKitEvent: Equatable, Sendable {
     case reviewRequests(Int)
     /// GitHub refused a write after its screen had gone. The PRs tab shows these words until they are dismissed.
     case writeRefused(String)
+    /// A question to a PR's AI couldn't be sent after its sheet had gone. The PRs tab shows these words too.
+    case questionRefused(String)
     /// A PR's content is on screen: how it was opened, whether the phone had it, and how long it took.
     case contentShown(PROpenReport)
 }

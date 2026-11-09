@@ -1,22 +1,75 @@
 import Foundation
 import PRKitNetwork
 
-public enum PRViewerError: LocalizedError, Equatable {
-    case status(Int)
-    case refused(String)
-    /// Not answered yet: it is saved on the phone and goes on its own.
-    case saved
+/// Why the pr-worker didn't answer with what was asked, read once from its status and body. Each case says what
+/// happened and what to do; the status stays in `unexpected` for a log, never on screen.
+public enum PRWorkerError: LocalizedError, Equatable, Sendable {
     /// PRHub before it has paired: nothing was sent.
     case notPaired
+    /// `401`: the bearer was dropped, and the next request reads a new one.
+    case signedOut
+    /// `404`, `410`.
+    case notFound
+    /// `406`, `413`: GitHub won't send something this big.
+    case tooLarge
+    /// `400`, `422`: the Worker couldn't read what the phone sent, so sending it again can't help.
+    case unreadableRequest
+    /// `429`.
+    case limited
+    /// `5xx`.
+    case unavailable
+    case unexpected(status: Int)
+    /// The Worker's own words: GitHub's for a write, the model's for an AI answer. `isPermanent` from its status.
+    case refused(String, isPermanent: Bool = false)
+
+    public init(status: Int) {
+        switch status {
+        case 401: self = .signedOut
+        case 404, 410: self = .notFound
+        case 406, 413: self = .tooLarge
+        case 400, 422: self = .unreadableRequest
+        case 429: self = .limited
+        case 500...599: self = .unavailable
+        default: self = .unexpected(status: status)
+        }
+    }
+
+    /// The Worker's words when its body carries them, else what the status means.
+    public init(status: Int, body: Data) {
+        if let refusal = try? JSONDecoder().decode(WorkerRefusal.self, from: body) {
+            self = .refused(refusal.error, isPermanent: PRWorkerError(status: status).isPermanent)
+        } else {
+            self.init(status: status)
+        }
+    }
+
+    /// Asking again gets the same answer.
+    public var isPermanent: Bool {
+        switch self {
+        case .notFound, .tooLarge, .unreadableRequest: true
+        case let .refused(_, isPermanent): isPermanent
+        case .notPaired, .signedOut, .limited, .unavailable, .unexpected: false
+        }
+    }
 
     public var errorDescription: String? {
         switch self {
-        case let .status(code): "The PR viewer Worker answered \(code)."
-        case let .refused(reason): reason
-        case .saved: "Saved. It goes to GitHub when you're back online."
-        case .notPaired: "This phone isn't connected to a pr-worker."
+        case .notPaired: "This phone isn't connected to a Worker yet. Connect one in Settings."
+        case .signedOut: "The Worker didn't recognise this phone. Try again; if it keeps happening, connect it again."
+        case .notFound: "The Worker can't find this PR. It may have been deleted or moved."
+        case .tooLarge: "This is too large for GitHub to send."
+        case .unreadableRequest: "The Worker couldn't read that request. Update the app and your Worker, then retry."
+        case .limited: "Too many requests for now. Wait a minute and try again."
+        case .unavailable: "The Worker couldn't answer just now. Try again in a minute."
+        case .unexpected: "The Worker gave an answer this app doesn't know. Update the app and your Worker."
+        case let .refused(reason, _): reason
         }
     }
+}
+
+/// `{"error": "…"}`: a PR route's refusal, in words for the phone.
+private struct WorkerRefusal: Decodable {
+    let error: String
 }
 
 public enum PRReviewEvent: String, Sendable {
@@ -203,7 +256,7 @@ public struct PRViewerClient: Sendable {
         var query = ["head": head, "context": String(context)]
         query["retry"] = retry ? "1" : nil
         let (data, response) = try await fetch(authorized(path: path, query: query))
-        try await check(response)
+        try await check(response, body: data)
         return (response as? HTTPURLResponse)?.statusCode == 202 ? nil : data
     }
 
@@ -222,15 +275,8 @@ public struct PRViewerClient: Sendable {
         request.httpBody = try JSONEncoder().encode(write)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let (data, response) = try await fetch(request)
-        if let refusal = try? JSONDecoder().decode(WriteRefusal.self, from: data) {
-            throw PRViewerError.refused(refusal.error)
-        }
-        try await check(response)
+        try await check(response, body: data)
         return data
-    }
-
-    private struct WriteRefusal: Decodable {
-        let error: String
     }
 
     /// One try of an outbox item (`WriteOutbox`): its body already carries its `client_ref`.
@@ -242,9 +288,9 @@ public struct PRViewerClient: Sendable {
         return request
     }
 
-    /// GitHub's refusal in its own words, as the Worker passes it on.
+    /// GitHub's refusal in its own words, as the Worker passes it on, else what the status means.
     public static func refusal(status: Int, body: Data) -> String {
-        (try? JSONDecoder().decode(WriteRefusal.self, from: body))?.error ?? PRViewerError.status(status).localizedDescription
+        PRWorkerError(status: status, body: body).localizedDescription
     }
 
     /// The conversation on this PR with its AI agent; empty until the first question.
@@ -259,10 +305,7 @@ public struct PRViewerClient: Sendable {
         request.httpBody = try JSONEncoder().encode(question)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let (data, response) = try await fetch(request)
-        if let refusal = try? JSONDecoder().decode(WriteRefusal.self, from: data) {
-            throw PRViewerError.refused(refusal.error)
-        }
-        try await check(response)
+        try await check(response, body: data)
         return try JSONDecoder().decode(PRAskChat.self, from: data)
     }
 
@@ -281,10 +324,7 @@ public struct PRViewerClient: Sendable {
         request.httpBody = try JSONEncoder().encode(body)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let (data, response) = try await fetch(request)
-        if let refusal = try? JSONDecoder().decode(WriteRefusal.self, from: data) {
-            throw PRViewerError.refused(refusal.error)
-        }
-        try await check(response)
+        try await check(response, body: data)
         return try JSONDecoder().decode(type, from: data)
     }
 
@@ -293,19 +333,21 @@ public struct PRViewerClient: Sendable {
         request.httpMethod = "POST"
         request.httpBody = try JSONEncoder().encode(body)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        try await check(fetch(request).1)
+        let (data, response) = try await fetch(request)
+        try await check(response, body: data)
     }
 
     /// A `DELETE` of any route on the Worker.
     public func delete(_ path: String) async throws {
         var request = try await authorized(path: path, query: [:])
         request.httpMethod = "DELETE"
-        try await check(fetch(request).1)
+        let (data, response) = try await fetch(request)
+        try await check(response, body: data)
     }
 
     private func authorized(path: String, query: [String: String]) async throws -> URLRequest {
         guard let base = access.baseURL() else {
-            throw PRViewerError.notPaired
+            throw PRWorkerError.notPaired
         }
         let items = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         let url = base.appending(path: path, directoryHint: .notDirectory).appending(queryItems: items)
@@ -320,17 +362,18 @@ public struct PRViewerClient: Sendable {
 
     private func get(path: String, query: [String: String] = [:]) async throws -> Data {
         let (data, response) = try await fetch(authorized(path: path, query: query))
-        try await check(response)
+        try await check(response, body: data)
         return data
     }
 
-    private func check(_ response: URLResponse) async throws {
+    /// A refusal in the Worker's words where its body has them (`{"error": "…"}`), else what the status means.
+    private func check(_ response: URLResponse, body: Data) async throws {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
             if status == 401 {
                 await access.discard()
             }
-            throw PRViewerError.status(status)
+            throw PRWorkerError(status: status, body: body)
         }
     }
 }

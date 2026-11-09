@@ -146,8 +146,8 @@ struct PRsList: View {
                 if !model.rows.isEmpty, let message = model.errorMessage {
                     banner("Not up to date. \(message)")
                 }
-                if let refused = model.refusedWrite {
-                    Button { model.dismissRefusedWrite() } label: {
+                if let refused = model.lateRefusal {
+                    Button { model.dismissLateRefusal() } label: {
                         Label {
                             Text(refused)
                                 .textSelection(.enabled)
@@ -177,7 +177,7 @@ struct PRsList: View {
         }
         .animation(AppMotion.fold, value: model.rows)
         .animation(AppMotion.fold, value: model.errorMessage)
-        .animation(AppMotion.fold, value: model.refusedWrite)
+        .animation(AppMotion.fold, value: model.lateRefusal)
         .animation(AppMotion.fold, value: orgFilter)
         .animation(AppMotion.fold, value: page)
         .animation(AppMotion.fold, value: model.merged)
