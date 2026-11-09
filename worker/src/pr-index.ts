@@ -29,6 +29,10 @@ import { DEFAULT_CONTEXT } from "./key-lines";
 import { consumeLimits, createLimitHitsTable, type LimitCheck, type LimitDecision } from "./limit-counter";
 import { indexedPullRequestsMaxOf, LimitName, limitsOf, retentionOf } from "./limits";
 import { sweepClosedPullRequests } from "./retention";
+import {
+  createReviewedKeyLinesTable, forgetReviewedKeyLinesOf, markKeyLine, pruneReviewedKeyLines, type ReviewedKeyLines,
+  reviewedKeyLines,
+} from "./reviewed-key-lines";
 
 const BUSY_WINDOW_MS = 3_000;
 /** The push that asks a hosted person to sign in again; the app shows Sign in with GitHub when it opens. */
@@ -114,6 +118,7 @@ export class PrIndex extends DurableObject<Env> {
     createLimitHitsTable(this.sql);
     createHeldAlertsTable(this.sql);
     createPushRegistrationsTable(this.sql);
+    createReviewedKeyLinesTable(this.sql);
     const columns = this.sql.exec<{ name: string }>("PRAGMA table_info(pull_requests)").toArray();
     if (!columns.some(({ name }) => name === "version")) {
       this.sql.exec("ALTER TABLE pull_requests ADD COLUMN version TEXT NOT NULL DEFAULT ''");
@@ -258,6 +263,7 @@ export class PrIndex extends DurableObject<Env> {
       }
     }
     this.sql.exec("DELETE FROM alerts WHERE at < ?", now - ALERTS_KEPT_MS);
+    pruneReviewedKeyLines(this.sql, now);
     await this.sweepIfDue(env, now);
     await this.pushIfDue(now);
   }
@@ -407,6 +413,19 @@ export class PrIndex extends DurableObject<Env> {
     for (const row of dirty.filter((one) => names.has(one.repo.toLowerCase()))) {
       this.sql.exec("DELETE FROM dirty WHERE id = ?", row.id);
     }
+    for (const repo of repos) {
+      forgetReviewedKeyLinesOf(this.sql, repo);
+    }
+  }
+
+  /** The key lines checked off on a PR at `head` (`reviewed-key-lines.ts`). */
+  reviewedKeyLines(pr: PrId, head: Sha): ReviewedKeyLines {
+    return reviewedKeyLines(this.sql, pr, head);
+  }
+
+  /** One key line checked off or back on; null when the head holds as many as it may. */
+  markKeyLine(pr: PrId, head: Sha, line: string, reviewed: boolean, now: number): ReviewedKeyLines | null {
+    return markKeyLine(this.sql, pr, head, line, reviewed, now);
   }
 
   /**

@@ -7,8 +7,9 @@ import { z } from "zod";
 import { APNS_HOSTS, type ApnsHost } from "./apns.ts";
 import type { AskInput } from "./ask-chat.ts";
 import type { RowStatus } from "./github.ts";
-import { type DeviceToken, parseRepoFullName, parseSha } from "./ids.ts";
+import { type DeviceToken, parseRepoFullName, parseSha, type Sha } from "./ids.ts";
 import { type AiJob, EFFORTS, SUPPORTED_MODELS } from "./models.ts";
+import { MAX_KEY_LINE_ID } from "./reviewed-key-lines.ts";
 import { PULL_REQUEST_CHECKS, PULL_REQUEST_MERGE_STATES, PULL_REQUEST_REVIEWS } from "./vocab.ts";
 import type { Write } from "./write-input.ts";
 
@@ -177,6 +178,21 @@ export function parseAiJob(stored: string): AiJob | null {
     return null;
   }
 }
+
+// --- Reviewed key lines (reviewed-key-lines.ts) ---------------------------------------------------------------------
+
+export interface KeyLineMark {
+  head: Sha;
+  line: string;
+  reviewed: boolean;
+}
+
+/** `POST /prs/{owner}/{repo}/{n}/key-lines-reviewed`: one key line, by its id, checked off at a head or back on. */
+export const parseKeyLineMark = parser<KeyLineMark>(z.object({
+  head: SHA,
+  line: z.string().min(1).max(MAX_KEY_LINE_ID),
+  reviewed: z.boolean(),
+}));
 
 // --- Hosted sign-in (hosted.ts, account.ts) -------------------------------------------------------------------------
 

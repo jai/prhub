@@ -254,6 +254,23 @@ couldn't be reached. Try again."); one still waiting after 2 minutes says "The q
 again." The next question to that PR replaces a failed one. A copy with the same `client_ref` answers the chat again
 and stores nothing.
 
+## Reviewed key lines
+
+The key lines the person has checked off, kept in their index so each of their devices shows the same ticks. They are
+kept by head: a new commit starts the review again. A key line is named by its id, `path:side:line` (`LEFT` or `RIGHT`),
+the same at every context, so a tick holds when the context changes. The route needs no AI key.
+
+- `GET /prs/{owner}/{repo}/{n}/key-lines-reviewed?head=…` answers `{"head": "…", "reviewed": ["src/a.ts:RIGHT:12"]}`,
+  the ids sorted, with `Cache-Control: no-store`.
+- `POST /prs/{owner}/{repo}/{n}/key-lines-reviewed` with `{"head": "…", "line": "src/a.ts:RIGHT:12", "reviewed": true}`
+  checks one off, or `false` back on, and answers as `GET` does. Sending it twice is the same as once.
+- `400 validation_error` for a head that is not a 40-character commit or a line id that is empty or over 1,100
+  characters; `400 too_many` past 500 ticks at one head.
+
+Ticks at a head no held PR has (an older commit, a PR off the list) go after 30 days; a held PR's ticks at its head stay.
+Losing a repo's access takes its ticks at once, and `DELETE /account` takes them with the rest of the index. An older
+Worker answers `404`: the app then keeps ticks on the device.
+
 ## Limits
 
 Every limit is a `LIMIT_*` var: a whole number in the limit's unit, or `off` where the table allows it. Unset or

@@ -4,7 +4,7 @@ import { statesRoute } from "./pr-states";
 import { AiJobs, type AiJob } from "./ai-jobs";
 import { askChat } from "./ask";
 import { acceptAsk, askPr, withQueued } from "./ask-queue";
-import { bodyOf, parseAskInput } from "./boundary";
+import { bodyOf, parseAskInput, parseKeyLineMark } from "./boundary";
 import { eventRoute, registerRoute, unpairRoute } from "./devices";
 import { aiConfigOf, askConfigured, deviceConfig, feedbackConfigured } from "./config";
 import { aiJobs, askQueue, type Env, githubLogin, isSet, prIndex, scopedKey } from "./env";
@@ -38,7 +38,8 @@ import { durationOf, LimitName } from "./limits";
 
 export { AiJobs, Installation, IpLimit, PrIndex, SignIn, UserAccount };
 
-const PULL_REQUEST_PATH = /^\/prs\/([\w.-]+)\/([\w.-]+)\/(\d+)\/(diff|detail|summary|write|key-lines|rewrite|ask)$/;
+const PULL_REQUEST_PATH =
+  /^\/prs\/([\w.-]+)\/([\w.-]+)\/(\d+)\/(diff|detail|summary|write|key-lines-reviewed|key-lines|rewrite|ask)$/;
 /** GraphQL's `Int`: a bigger number is no PR, and GitHub would refuse the query for it. */
 const MAX_PR_NUMBER = 2_147_483_647;
 const VERSION = /^[\w.:-]{1,200}$/;
@@ -223,6 +224,28 @@ function aiRoute(
 }
 
 /**
+ * `GET` and `POST /prs/{owner}/{repo}/{n}/key-lines-reviewed` (docs/api.md, "Reviewed key lines"): the key lines checked
+ * off at a head, kept in the index so each of the person's devices shows the same ticks.
+ */
+async function reviewedRoute(
+  repo: RepoFullName, number: number, params: URLSearchParams, request: Request, env: Env,
+): Promise<Response> {
+  const pr = prId(repo, number);
+  if (request.method !== "POST") {
+    const head = parseSha(params.get("head"));
+    return head
+      ? Response.json(await prIndex(env).reviewedKeyLines(pr, head), { headers: { "Cache-Control": "no-store" } })
+      : errorAnswer(400, "validation_error", "head must be the PR's head commit");
+  }
+  const mark = parseKeyLineMark((await bodyOf(request))?.value);
+  if (!mark) {
+    return errorAnswer(400, "validation_error", "send {head, line, reviewed}");
+  }
+  const marked = await prIndex(env).markKeyLine(pr, mark.head, mark.line, mark.reviewed, Date.now());
+  return marked ? Response.json(marked) : errorAnswer(400, "too_many", "this PR has as many reviewed lines as it keeps");
+}
+
+/**
  * The conversation on a GET, with the questions the agent doesn't have yet. A question on a POST is stored and answered
  * `202` at once; the agent gets it from the ask queue's alarm (`ask-queue.ts`), so the phone never waits on GitHub or
  * the agent.
@@ -383,6 +406,9 @@ function pullRequestRoute(
   }
   if (kind === "ask") {
     return askConfigured(env) ? askRoute(repo, pr, request, env, context) : Promise.resolve(notConfigured("Ask AI"));
+  }
+  if (kind === "key-lines-reviewed") {
+    return reviewedRoute(repo, pr, params, request, env);
   }
   if (kind === "key-lines" || kind === "rewrite") {
     if (!isSet(env.ANTHROPIC_API_KEY)) {
