@@ -191,7 +191,10 @@ struct PRsList: View {
         }
         .overlay {
             if model.rows.isEmpty, let message = model.errorMessage {
-                ContentUnavailableView("No PRs", systemImage: "arrow.triangle.pull", description: Text(message))
+                ContentUnavailableView(
+                    model.stillDownloading ? "Downloading PRs" : "PRs didn't load", systemImage: "arrow.triangle.pull",
+                    description: Text(message)
+                )
             } else if model.rows.isEmpty, model.workerSyncedAt != nil || model.samples != nil,
                       let hint = model.configuration.emptyHint {
                 emptyHint(hint)

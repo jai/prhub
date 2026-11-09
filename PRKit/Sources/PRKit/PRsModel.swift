@@ -165,6 +165,8 @@ final class PRsModel {
     private var generation = 0
     /// PRs whose newest files failed to download: each shows its last good revision and says so, until a pull.
     private(set) var notUpdated: Set<String> = []
+    /// The last sync ended with PRs still on their way and none failed: they show as each one lands.
+    private(set) var stillDownloading = false
 
     /// Where the mirror says a download or a write failed for good: the host's event log.
     func logFailures(to log: @escaping @Sendable (String) -> Void) {
@@ -276,6 +278,7 @@ final class PRsModel {
         merged = [:]
         mergedError = [:]
         errorMessage = nil
+        stillDownloading = false
         workerSyncedAt = nil
         removedRequests = []
         notUpdated = []
@@ -609,6 +612,7 @@ extension PRsModel {
             }
             return true
         } catch {
+            stillDownloading = false
             errorMessage = error.localizedDescription
             return false
         }
@@ -632,7 +636,10 @@ extension PRsModel {
         notUpdated = result.failed
         removedRequests.formIntersection(rows.map(\.id))
         saveAnswers(localAnswers.filter { id, answer in answer.isNeeded(by: rows.first { $0.id == id }) })
-        errorMessage = result.isComplete ? nil : "Some PRs could not be brought up to date."
+        stillDownloading = !result.isComplete && result.failed.isEmpty
+        errorMessage = result.isComplete ? nil : Self.notUpToDate(
+            listed: result.listed, shown: result.rows.count, failed: result.failed.count
+        )
         if trigger == .foreground, configuration.isOn(.push), let apnsToken {
             let device = PRDeviceRegistration(token: apnsToken, host: apnsEnvironment)
             await post(device, to: "device/register")
@@ -642,6 +649,17 @@ extension PRsModel {
         ))
         onEvent(.reviewRequests(rows.filter { $0.isReviewRequest && !removedRequests.contains($0.id) }.count))
         return changed ? .changed : .unchanged
+    }
+
+    /// What a sync that left PRs behind says: with nothing to show, why the list is empty; else how many are behind.
+    static func notUpToDate(listed: Int, shown: Int, failed: Int) -> String {
+        if failed == 0 {
+            return "Still downloading PRs. Each one shows when it arrives."
+        }
+        if shown == 0 {
+            return "GitHub lists \(listed) PRs, but none could be downloaded to this device. Refresh to try again."
+        }
+        return "\(failed) of \(listed) PRs could not be downloaded and show their last copy. Refresh to try again."
     }
 
     /// A PR's files have landed: its row shows, unless a newer list has begun since.

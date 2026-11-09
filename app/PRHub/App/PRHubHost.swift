@@ -121,7 +121,8 @@ final class PRHubPRHost: PRKitHost {
         let shared = PRMirrorLocation.directory(appGroup: group)
         let old = PRMirrorLocation.directory(appGroup: nil)
         let manager = FileManager.default
-        if shared != old, !manager.fileExists(atPath: shared.path()), manager.fileExists(atPath: old.path()) {
+        if shared != old, !manager.fileExists(atPath: shared.path(percentEncoded: false)),
+           manager.fileExists(atPath: old.path(percentEncoded: false)) {
             try? manager.createDirectory(at: shared.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? manager.moveItem(at: old, to: shared)
         }

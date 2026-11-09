@@ -192,6 +192,23 @@ struct PRMirrorQueueTests {
         _ = await first.value
     }
 
+    /// A Mac's app group folder is under `Library/Group Containers`: a space in the path hides no file.
+    @Test func aMirrorInAFolderWithASpaceShowsItsRowsAndDownloadsThemOnce() async {
+        let rows = [row(1)]
+        await worker.set(list: rows)
+        let directory = URL.temporaryDirectory
+            .appending(path: "Group Containers \(UUID().uuidString)/pr-viewer", directoryHint: .isDirectory)
+        let mirror = mirror(in: directory)
+        _ = await mirror.begin(rows, generation: 1)
+        let first = await mirror.sync(generation: 1)
+        #expect(first?.rows.map(\.id) == rows.map(\.id))
+        #expect(first?.isComplete == true)
+        #expect(PRMirror.savedRows(in: directory).map(\.id) == rows.map(\.id))
+        _ = await mirror.begin(rows, generation: 2)
+        _ = await mirror.sync(generation: 2)
+        #expect(await worker.count("/diff") == 1, "the second sync found the file on disk")
+    }
+
     @Test func noMoreThanSixFilesDownloadAtOnce() async {
         let rows = (1...20).map { row($0) }
         await worker.set(list: rows, delay: .milliseconds(50))

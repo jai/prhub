@@ -43,6 +43,8 @@ actor PRMirror {
 
     struct Result: Sendable {
         let rows: [PullRequestRow]
+        /// How many PRs the list names.
+        let listed: Int
         /// The PRs whose content arrived in this pass.
         let fetched: [String]
         let isComplete: Bool
@@ -117,7 +119,7 @@ actor PRMirror {
 
     private static func isLocal(_ row: PullRequestRow, in directory: URL) -> Bool {
         let exists = { (name: String) in
-            FileManager.default.fileExists(atPath: directory.appending(path: name).path())
+            FileManager.default.fileExists(atPath: directory.appending(path: name).path(percentEncoded: false))
         }
         return exists(row.detailFileName) && (!row.hasDiff || exists(row.diffFileName))
     }
@@ -167,7 +169,7 @@ actor PRMirror {
         let published = publish()
         prune()
         return Result(
-            rows: published, fetched: await fetched.ids,
+            rows: published, listed: list.count, fetched: await fetched.ids,
             isComplete: published.count == list.count && list.allSatisfy(isLocal), failed: failedRows()
         )
     }
@@ -266,6 +268,6 @@ actor PRMirror {
     }
 
     nonisolated func fileExists(_ name: String) -> Bool {
-        FileManager.default.fileExists(atPath: directory.appending(path: name).path())
+        FileManager.default.fileExists(atPath: directory.appending(path: name).path(percentEncoded: false))
     }
 }

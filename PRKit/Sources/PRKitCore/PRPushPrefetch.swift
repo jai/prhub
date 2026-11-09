@@ -1,5 +1,6 @@
 import Foundation
 import PRKitNetwork
+import os
 
 /// Where the PR mirror keeps its files (`PRMirror`): in the app group's container when the host names one, so its
 /// Notification Service Extension writes where the app reads, else in the caches.
@@ -7,12 +8,31 @@ public enum PRMirrorLocation {
     /// The mirror's folder name, as it always was in the caches.
     public static let folderName = "pr-viewer"
 
-    /// `Library/Caches/pr-viewer` in the app group's container, or in the app's own caches without a group.
-    public static func directory(appGroup: String?) -> URL {
-        let container = appGroup.flatMap { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0) }
-        let caches = container.map { $0.appending(path: "Library/Caches", directoryHint: .isDirectory) }
-            ?? URL.cachesDirectory
-        return caches.appending(path: folderName, directoryHint: .isDirectory)
+    private static let logger = Logger(subsystem: "PRKit", category: "mirror")
+    /// The groups already said to have no container: each is said once.
+    private static let groupsWithoutContainer = OSAllocatedUnfairLock(initialState: Set<String>())
+
+    /// `Library/Caches/pr-viewer` in the app group's container, or in the app's own caches without a group. A group
+    /// with no container (a build without the entitlement) is said once in the system log, and the caches are used.
+    public static func directory(
+        appGroup: String?,
+        container: (String) -> URL? = { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0) }
+    ) -> URL {
+        let groupCaches = appGroup.flatMap { group -> URL? in
+            guard let url = container(group) else {
+                if isFirstMiss(of: group) {
+                    logger.error("PR mirror: app group \(group, privacy: .public) has no container; using the caches")
+                }
+                return nil
+            }
+            return url.appending(path: "Library/Caches", directoryHint: .isDirectory)
+        }
+        return (groupCaches ?? URL.cachesDirectory).appending(path: folderName, directoryHint: .isDirectory)
+    }
+
+    /// True the first time `group` is found to have no container.
+    static func isFirstMiss(of group: String) -> Bool {
+        groupsWithoutContainer.withLock { $0.insert(group).inserted }
     }
 }
 
@@ -100,7 +120,7 @@ public struct PRPushPrefetch: Sendable {
     }
 
     private func exists(_ name: String) -> Bool {
-        FileManager.default.fileExists(atPath: directory.appending(path: name).path())
+        FileManager.default.fileExists(atPath: directory.appending(path: name).path(percentEncoded: false))
     }
 
     /// A stored detail and key lines are JSON objects; anything else is not written, and the tap reads the PR itself.
