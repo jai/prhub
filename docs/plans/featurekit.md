@@ -3,17 +3,23 @@
 An app's users ask for changes from inside the app. A request from the app's owner starts a coding session that changes
 the app's repo; a request from anyone else becomes a GitHub issue. Agent Pager and PR Hub both use it.
 
-Status: step 1 done (PRKit v0.9.0, 2026-11-09). Decided by Jai: it lives in jai/prhub; owner → coding session; other
-users → GitHub issue.
+Status: step 1 done (PRKit v0.9.0, 2026-11-09). The Worker is a queue and the agent runs on the owner's Mac subscription
+(2026-11-09). Decided by Jai: it lives in jai/prhub; owner → coding session; other users → GitHub issue; no API spend
+on the owner's sessions (one Managed Agents chat cost $10.43, mostly context re-read while it waited on CI).
 
 ## Today
 
-- `worker/src/feedback.ts`: every request starts a Managed Agents session on one builder agent and one self-hosted
-  environment (`FEEDBACK_AGENT_ID`, `FEEDBACK_ENVIRONMENT_ID`, on `ASK_ANTHROPIC_API_KEY`). The repo, `jai/agent-pager`, is
-  in the agent's system prompt. Jai is the only sender. All threads share one list, `feedback/threads.json`.
+- `worker/src/feedback.ts`: the Worker is the receiver and only queues. `POST /feedback` and `POST /feedback/<id>` keep
+  the message and its screenshots in R2 as pending; `GET` answers the chat. It calls no model
+  ([api.md, Feedback](../api.md#feedback)). On with `FEEDBACK_REPO` and `HUB_TOKEN`. Jai is the only sender.
+- Runner: on the owner's Mac, outbound only. It polls `/feedback/runner/*`, claims a message and hands it to an agent
+  through an adapter. Agent Pager's runner is its threads hub on the Mac mini, with an Orca adapter: a fresh clone per
+  chat on Borg Cube 03 and Claude Code launched there by `orca agent launch`; a reply goes into the same Orca chat; the
+  agent's words come back from its transcript, the same read the Agents tab uses. The chat is an Agents thread too
+  (jai/agent-pager `docs/api/feedback.md`).
 - App: `FeatureRequestsView` and `FeatureClient` in PRKit's `FeatureKit` target, on the `/feedback` routes; Agent
-  Pager's Feedback tab shows it. Composer, image attachments and chat bubbles are PRKit's.
-- Builder: `builder/worker.mjs` in jai/agent-pager, a LaunchAgent on the owner's Mac.
+  Pager's Feedback tab shows it. Composer, image attachments and chat bubbles are PRKit's. The contract did not change
+  with the runner, so the app did not either.
 
 ## Shape
 
@@ -30,7 +36,7 @@ FeatureRequestsView(client: featureClient)   // list → conversation; New start
   "agent-pager": {
     "repo": "jai/agent-pager",
     "owners": ["jai"],                       // GitHub logins
-    "owner": { "action": "session", "agent_id": "agent_…", "environment_id": "env_…" },
+    "owner": { "action": "session", "runner": "agent-pager-hub" },
     "user":  { "action": "issue", "labels": ["feature-request"] }
   },
   "prhub": { "repo": "jai/prhub", "owners": ["jai"], "owner": { "action": "session", … }, "user": { "action": "issue" } }
@@ -41,7 +47,7 @@ FeatureRequestsView(client: featureClient)   // list → conversation; New start
 
 ```ts
 type Sender = { login: string | null; role: "owner" | "user" };
-type Action = { action: "session"; agent_id: string; environment_id: string }
+type Action = { action: "session"; runner: string }       // the runner that takes this app's owner sessions
             | { action: "issue"; labels: string[] }
             | { action: "off" };
 
@@ -53,7 +59,7 @@ function senderOf(request: Request, env: Env, app: FeatureApp): Promise<Sender>;
 /** One route for both roles; the role picks the action. */
 function submit(app: FeatureApp, sender: Sender, input: FeedbackInput, env: Env): Promise<FeatureThread>;
 
-// Owner: today's feedback.ts, with the repo passed in instead of written in the prompt.
+// Owner: today's feedback.ts: keep the message for the app's runner.
 function startSession(app: FeatureApp, action: SessionAction, input: FeedbackInput, env: Env): Promise<FeatureThread>;
 // User: one Messages call writes a title and body from the words and screenshots, then the GitHub App opens the issue.
 function openIssue(app: FeatureApp, action: IssueAction, sender: Sender, input: FeedbackInput, env: Env): Promise<FeatureThread>;
@@ -72,12 +78,12 @@ interface FeatureThread { id: string; kind: "session" | "issue"; title: string; 
   the same chat bubbles and composer as Ask and Agents threads (one component per thing).
 - `FeatureClient`: wraps the routes above. The host app provides base URL and auth, just as `PRKitHost` does.
 
-### Builder
+### Runner
 
-- `builder/worker.mjs` moves to `jai/prhub/builder/` and takes the environment id and clone path from config, so one Mac
-  can host each app's builder as its own LaunchAgent.
-- The repo and clone path go in the session's first message, not the agent's system prompt, so one agent definition
-  serves every app.
+- The Worker hands out work; a runner on the owner's machine pulls it (no inbound ports) and starts the agent through an
+  adapter. Agent Pager's runner (threads hub, Orca adapter) is the first. Another adapter (a terminal agent, another
+  machine) changes the runner, never the Worker or the app.
+- The repo, the clone and the agent's brief belong to the runner, so one Worker serves every app.
 
 ### Screenshots on issues
 
@@ -98,8 +104,9 @@ Each step ships on its own.
 2. Worker: `featurekit/` with config, `senderOf` and per-sender threads; `startSession` is today's `feedback.ts`.
    `/feedback` becomes an alias.
 3. User path: `openIssue` through the PRHub GitHub App; issue threads in the app.
-4. Builder: per-app config, moved to jai/prhub.
-5. PR Hub: turn it on (`prhub` entry, builder LaunchAgent for jai/prhub, screen in Settings).
+4. Runner: Worker as queue, Agent Pager's threads hub as runner, Orca adapter (done 2026-11-09). Next: the runner takes
+   a per-app config (repo, clone prefix, brief) so it serves PR Hub too.
+5. PR Hub: turn it on (`prhub` entry, runner config for jai/prhub, screen in Settings).
 
 ## Open questions
 

@@ -136,7 +136,7 @@ Auth: a paired secret or `APP_TOKEN`. `Cache-Control: no-store`. The app reads i
 | `features.ask_ai` | `ASK_AGENT_ID`, `ASK_ENVIRONMENT_ID`, `ASK_VAULT_ID`, `ASK_CREDENTIAL_ID` and a key (`ASK_ANTHROPIC_API_KEY` or `ANTHROPIC_API_KEY`) | Shows Ask on a PR and a line |
 | `features.key_lines` | `ANTHROPIC_API_KEY` | Shows the Key lines panel and capsule |
 | `features.rewrite` | `ANTHROPIC_API_KEY` | Shows Rewrite on the description |
-| `features.feedback` | `FEEDBACK_AGENT_ID`, `FEEDBACK_ENVIRONMENT_ID`, `ASK_ANTHROPIC_API_KEY`: Jai's Worker only | Shows Feedback |
+| `features.feedback` | `FEEDBACK_REPO` and `HUB_TOKEN`: Jai's Worker only ([Feedback](#feedback)) | Shows Feedback |
 | `features.push` | the relay (`PUSH_RELAY_URL`, `PUSH_RELAY_KEY`), or direct APNs (`APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8`, `APNS_BUNDLE_ID`) | Registers for push; off: syncs on open and foreground only |
 | `features.webhooks` | `WEBHOOK_SECRET` | Diagnostics only: updates in seconds rather than about a minute |
 | `login` | the GitHub login the Worker acts as; `null` if GitHub could not be asked | "Your PRs", and whose review a row shows |
@@ -149,6 +149,47 @@ The example leaves out `limits`; [`device-config.json`](fixtures/device-config.j
 and `ask` are shortened: each lists the same `allowed` entries as `key_lines`. A key the app
 does not know is ignored; a feature the Worker does not send is off. Routes for a feature that is off
 answer `404 {"error": "<feature> is not set up on this Worker."}`. Answers: `200` · `401`.
+
+## Feedback
+
+Requests for changes to the app, from the app (FeatureKit, [plan](plans/featurekit.md)). The Worker only keeps them:
+a runner on the owner's Mac polls for them, starts or tells a coding agent there, and sends the agent's words back.
+The Worker never calls a model or the runner. Jai's Worker only (`FEEDBACK_REPO`, `HUB_TOKEN`); elsewhere the app's routes
+answer `404` and the runner's `401`. Agent Pager's runner, its agent and its contract: [jai/agent-pager docs/api/feedback.md](https://github.com/jai/agent-pager/blob/main/docs/api/feedback.md).
+
+App routes (app auth):
+
+| Route | Body | Answer |
+|---|---|---|
+| `GET /feedback` | | `{threads: [{id, title, createdAt}], builderOnline}`, newest first |
+| `POST /feedback` | `{text, build?, images?, client_ref?}` | the new chat |
+| `GET /feedback/{id}` | | the chat; `404` none |
+| `POST /feedback/{id}` | as above | the chat, with the message added |
+
+- A chat: `{id, messages: [{id, role: "you" \| "agent", text, anchor: null, images}], isWorking, activity, problem,
+  costCents: null, model: null, effort: null, builderOnline, thread}`. `thread` is `{host, id}`, the agent's Agents
+  thread, once the runner has found it.
+- `text` at most 8,000 characters; `images` up to four JPEG or PNG `{media_type, data}` of at most 1.5 MB decoded.
+  Neither: `400`. A repeat `client_ref` keeps the message once.
+- `isWorking` from a send until the agent's turn ends; `problem` says why the last message was not passed on.
+  `builderOnline`: the runner polled in the last 90 seconds and said its Mac answers.
+
+Runner routes (`POST`, bearer `HUB_TOKEN`, JSON body):
+
+| Route | Body | Answer |
+|---|---|---|
+| `/feedback/runner/poll` | `{orca}`: whether the agents' Mac answers | `{work: [{chat, message, first, at}]}`, oldest first |
+| `/feedback/runner/claim` | `{chat, message}` | `{ok, text, build, first, title, images}`; `409` not pending; `404` |
+| `/feedback/runner/result` | `{chat, message, status: "delivered" \| "failed", detail?}` | `{ok}`; `409` not claimed |
+| `/feedback/runner/agent` | `{chat, messages: [{id, text, at}], isWorking, activity, thread}` | `{ok}`; `404` no chat |
+
+- A message is `pending` → `delivering` (claim) → `delivered` or `failed` (result). A claim is a compare-and-swap on
+  the message's R2 version, so it succeeds once. One left `delivering` for 15 minutes shows as failed and is never
+  offered again.
+- `agent` replaces the agent's side of the chat: all its messages so far (at most 500, 20,000 characters each).
+- Storage (R2 `DIFFS`): `feedback/chats.json`, `feedback/chats/<id>/m/<at>-<message>.json`, their screenshots under
+  `img/`, the agent's side in `agent.json`, the queue in `feedback/pending/`, the runner's last poll in
+  `feedback/runner.json`.
 
 ## Rows and details
 
@@ -198,7 +239,7 @@ var reads as unset.
 | `SETUP_STATE` | secret | Turns on `/github/setup` and `/github/callback` for making a webhook App |
 | `GITHUB_APP_OWNER`, `GITHUB_APP_NAME` | var | The org that owns the webhook App (unset: the person's account) and its name (unset: `<login>-pr-review`) |
 | `PR_INDEX_LOCATION` | var | Durable Object location hint for the index |
-| `APP_TOKEN`, `HUB_TOKEN`, `APNS_*`, `AGENT_PAGER_URL`, `AGENT_PAGER_PUSH_TOKEN`, `FEEDBACK_*`, `LINEAR_API_KEY` | | Jai's Worker; not set on a self-hosted one. With both `AGENT_PAGER_*` set, every push goes to that Worker's `POST /pr-push` instead of a device; unset, pager mode is off (`LINEAR_API_KEY` works for anyone with Linear) |
+| `APP_TOKEN`, `HUB_TOKEN`, `APNS_*`, `AGENT_PAGER_URL`, `AGENT_PAGER_PUSH_TOKEN`, `FEEDBACK_REPO`, `LINEAR_API_KEY` | | Jai's Worker; not set on a self-hosted one. With both `AGENT_PAGER_*` set, every push goes to that Worker's `POST /pr-push` instead of a device; unset, pager mode is off (`LINEAR_API_KEY` works for anyone with Linear) |
 
 The webhook App's manifest points at the origin `/github/setup` was opened on, so it is right on any Worker. Its
 credentials stay in R2 at `setup/github-app.json` until read once (`POST /github/app-credentials`, or

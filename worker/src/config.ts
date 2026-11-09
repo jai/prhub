@@ -39,9 +39,9 @@ export function askConfigured(env: Env): boolean {
     && (isSet(env.ASK_ANTHROPIC_API_KEY) || isSet(env.ANTHROPIC_API_KEY));
 }
 
-/** Jai's alone: the builder agent changes his app. A self-hosted Worker never sets these. */
+/** Jai's alone: the runner on his Mac takes feedback to a coding agent. A self-hosted Worker never sets these. */
 export function feedbackConfigured(env: Env): boolean {
-  return isSet(env.FEEDBACK_AGENT_ID) && isSet(env.FEEDBACK_ENVIRONMENT_ID) && isSet(env.ASK_ANTHROPIC_API_KEY);
+  return isSet(env.FEEDBACK_REPO) && isSet(env.HUB_TOKEN);
 }
 
 /** Each feature is on when what serves it is configured; nothing is a separate switch. */

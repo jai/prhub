@@ -12,7 +12,8 @@ import { aiStoreKey } from "./ai-run";
 import { detailVersionOf, fetchDiff, liveDiff, mergedPullRequests, pullRequestSummary, readPullRequests } from "./github";
 import { parseRepoFullName, parseSha, prId, type RepoFullName } from "./ids";
 import {
-  feedbackChat, feedbackList, isFeedbackId, parseFeedbackInput, sendFeedback, startFeedback,
+  addFeedback, feedbackChat, feedbackList, isFeedbackId, parseAgentSide, parseFeedbackInput, r2Store, runnerAgent,
+  runnerClaim, runnerPoll, runnerResult,
 } from "./feedback";
 import { DEFAULT_CONTEXT } from "./key-lines";
 import { type AiConfig, type AiFeature, resolveChoice } from "./models";
@@ -289,16 +290,22 @@ async function askRoute(
 }
 
 const FEEDBACK_PATH = /^\/feedback(?:\/([^/]+))?$/;
+const RUNNER_PATH = /^\/feedback\/runner\/(poll|claim|result|agent)$/;
 
-/** The list on a GET of /feedback and new feedback on a POST; one piece's chat, and a reply to it, on /feedback/{id}. */
+/**
+ * The list on a GET of /feedback and new feedback on a POST; one chat, and a reply to it, on /feedback/{id}. Each POST
+ * only keeps the message for the runner (docs/api.md, "Feedback").
+ */
 async function feedbackRoute(id: string | undefined, request: Request, env: Env): Promise<Response> {
   if (id !== undefined && !isFeedbackId(id)) {
     return new Response("not found\n", { status: 404 });
   }
+  const store = r2Store(env.DIFFS);
   let receipt: string | null = null;
   try {
     if (request.method !== "POST") {
-      return Response.json(id ? await feedbackChat(id, env) : await feedbackList(env));
+      const answer = id ? await feedbackChat(store, id, Date.now()) : await feedbackList(store, Date.now());
+      return answer ? Response.json(answer) : Response.json({ error: "Not found." }, { status: 404 });
     }
     const body = (await bodyOf(request))?.value;
     const input = parseFeedbackInput(body);
@@ -311,26 +318,58 @@ async function feedbackRoute(id: string | undefined, request: Request, env: Env)
     if (claim === "busy") {
       return busyAnswer();
     }
-    let target = id;
+    let target: string | null | undefined = id;
     if (claim === "go") {
-      if (target) {
-        await sendFeedback(target, input, env);
-      } else {
-        target = await startFeedback(input, env);
-      }
+      target = await addFeedback(store, id ?? null, input, Date.now());
       if (receipt) {
-        await prIndex(env).finishWrite(receipt, true, Date.now());
+        await prIndex(env).finishWrite(receipt, target !== null, Date.now());
       }
+    } else if (!target) {
+      // A repeat of new feedback already kept: the newest chat is it.
+      target = (await feedbackList(store, Date.now())).threads[0]?.id;
     }
-    if (!target) {
-      // A repeat of new feedback already sent: the newest thread is it.
-      target = (await feedbackList(env)).threads[0]?.id;
-    }
-    return target ? Response.json(await feedbackChat(target, env)) : Response.json({ error: "Not found." }, { status: 404 });
+    const chat = target ? await feedbackChat(store, target, Date.now()) : null;
+    return chat ? Response.json(chat) : Response.json({ error: "Not found." }, { status: 404 });
   } catch (error) {
     console.error("feedback failed", error);
-    return Response.json({ error: "The builder agent couldn't be reached. Try again." }, { status: 502 });
+    if (receipt) {
+      await prIndex(env).finishWrite(receipt, false, Date.now());
+    }
+    return Response.json({ error: "Your feedback couldn't be kept. Try again." }, { status: 502 });
   }
+}
+
+/** The runner on Jai's Mac (`HUB_TOKEN`): it polls, claims a message, says how its delivery went, and sends the agent's side. */
+async function runnerRoute(kind: string, request: Request, env: Env): Promise<Response> {
+  const store = r2Store(env.DIFFS);
+  const body = ((await bodyOf(request))?.value ?? null) as Record<string, unknown> | null;
+  const chat = typeof body?.chat === "string" ? body.chat : "";
+  const message = typeof body?.message === "string" ? body.message : "";
+  const now = Date.now();
+  if (kind === "poll") {
+    return Response.json({ work: await runnerPoll(store, body?.orca === true, now) });
+  }
+  if (kind === "claim") {
+    const claimed = await runnerClaim(store, chat, message, now);
+    return claimed.ok ? Response.json(claimed)
+      : Response.json({ error: claimed.status === 404 ? "no such message" : "not pending" }, { status: claimed.status });
+  }
+  if (kind === "result") {
+    const delivered = body?.status === "delivered";
+    const detail = typeof body?.detail === "string" ? body.detail.slice(0, 300) : null;
+    if (!delivered && body?.status !== "failed") {
+      return Response.json({ error: "status is delivered or failed" }, { status: 400 });
+    }
+    const status = await runnerResult(store, chat, message, delivered, detail);
+    return Response.json(status === 200 ? { ok: true } : { error: status === 404 ? "no such message" : "not delivering" },
+      { status });
+  }
+  const agent = parseAgentSide(body, now);
+  if (!agent) {
+    return Response.json({ error: "not an agent side" }, { status: 400 });
+  }
+  const status = await runnerAgent(store, chat, agent);
+  return Response.json(status === 200 ? { ok: true } : { error: "no such chat" }, { status });
 }
 
 /** `GET /prs/{owner}/{repo}/{n}/summary`: a picker row for any PR, read live, so a typed number shows what it opens. */
@@ -553,6 +592,11 @@ export default {
     }
     if (pathname === "/github/callback") {
       return finishAppCreation(searchParams, env);
+    }
+    const runner = RUNNER_PATH.exec(pathname);
+    if (runner && request.method === "POST") {
+      return hasToken(request, env.HUB_TOKEN) && feedbackConfigured(env) ? runnerRoute(runner[1], request, env)
+        : new Response("unauthorized\n", { status: 401 });
     }
     if (pathname === "/prs/states" && request.method === "POST") {
       return hasToken(request, env.HUB_TOKEN) ? statesRoute(request, env)

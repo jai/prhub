@@ -94,7 +94,7 @@ export function userEnv(env: Env, user: { userId: string; login: string; token: 
     ASK_GITHUB_APP_ID: undefined,
     ASK_GITHUB_APP_KEY: undefined,
     ASK_GITHUB_TOKEN: undefined,
-    FEEDBACK_AGENT_ID: undefined,
+    FEEDBACK_REPO: undefined,
     AGENT_PAGER_URL: undefined,
     LINEAR_API_KEY: undefined,
     GITHUB_RATE: undefined,

@@ -26,7 +26,7 @@ export interface Env extends LimitVars {
   PR_ALERTS?: string;
   /** Jai's app's bearer, from his Pager Worker. Unset on a self-hosted Worker: paired devices only. */
   APP_TOKEN?: string;
-  /** The threads hub's, for `POST /prs/states` alone. */
+  /** The threads hub's, for `POST /prs/states` and, as Feedback's runner, `/feedback/runner/*`. */
   HUB_TOKEN?: string;
   /** Optional webhooks (`/github/webhook`): without the secret the route is off and the one-minute poll does it all. */
   WEBHOOK_SECRET?: string;
@@ -63,9 +63,11 @@ export interface Env extends LimitVars {
   ASK_GITHUB_APP_KEY?: string;
   /** A read-only PAT for the Ask agent, so it never holds the write token. */
   ASK_GITHUB_TOKEN?: string;
-  /** Feedback (`feedback.ts`), Jai's alone, on Ask's key: the builder agent and a self-hosted environment. */
-  FEEDBACK_AGENT_ID?: string;
-  FEEDBACK_ENVIRONMENT_ID?: string;
+  /**
+   * Feedback (`feedback.ts`), Jai's alone: the repo his app's feedback changes. Set, the Worker keeps feedback for the
+   * runner on his Mac, which takes it with `HUB_TOKEN`.
+   */
+  FEEDBACK_REPO?: string;
   /** AI model choice (`models.ts`): allowed models, the effort cap, and each feature's default. Unset: all, high, built in. */
   AI_MODELS_ALLOWED?: string;
   AI_EFFORT_MAX?: string;
