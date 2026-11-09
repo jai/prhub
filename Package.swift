@@ -13,6 +13,9 @@ let package = Package(
         .library(name: "PRKitDesign", targets: ["PRKitDesign"]),
         // The screens, their models and the host API.
         .library(name: "PRKit", targets: ["PRKit"]),
+        // Feature requests from inside an app, each a conversation with an agent that changes it
+        // (docs/plans/featurekit.md).
+        .library(name: "FeatureKit", targets: ["FeatureKit"]),
     ],
     targets: [
         // The transport and the deadline, package-only: a host's own network types keep their names.
@@ -24,6 +27,8 @@ let package = Package(
             name: "PRKit", dependencies: ["PRKitCore", "PRKitDesign", "PRKitNetwork"], path: "PRKit/Sources/PRKit",
             resources: [.copy("Resources/Fonts")]
         ),
+        .target(name: "FeatureKit", dependencies: ["PRKit"], path: "PRKit/Sources/FeatureKit"),
+        .testTarget(name: "FeatureKitTests", dependencies: ["FeatureKit"], path: "PRKit/Tests/FeatureKitTests"),
         .testTarget(name: "PRKitTests", dependencies: ["PRKit", "PRKitNetwork"], path: "PRKit/Tests/PRKitTests"),
     ]
 )

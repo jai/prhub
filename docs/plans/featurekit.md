@@ -3,15 +3,16 @@
 An app's users ask for changes from inside the app. A request from the app's owner starts a coding session that changes
 the app's repo; a request from anyone else becomes a GitHub issue. Agent Pager and PR Hub both use it.
 
-Status: planned, 2026-11-09. Decided by Jai: it lives in jai/prhub; owner → coding session; other users → GitHub issue.
+Status: step 1 done (PRKit v0.8.0, 2026-11-09). Decided by Jai: it lives in jai/prhub; owner → coding session; other
+users → GitHub issue.
 
 ## Today
 
 - `worker/src/feedback.ts`: every request starts a Managed Agents session on one builder agent and one self-hosted
   environment (`FEEDBACK_AGENT_ID`, `FEEDBACK_ENVIRONMENT_ID`, on `ASK_ANTHROPIC_API_KEY`). The repo, `jai/agent-pager`, is
   in the agent's system prompt. Jai is the only sender. All threads share one list, `feedback/threads.json`.
-- App: Feedback screen and model in Agent Pager (`ios/AgentPager/Feedback/`); composer, image attachments and chat
-  bubbles in PRKit.
+- App: `FeatureRequestsView` and `FeatureClient` in PRKit's `FeatureKit` target, on the `/feedback` routes; Agent
+  Pager's Feedback tab shows it. Composer, image attachments and chat bubbles are PRKit's.
 - Builder: `builder/worker.mjs` in jai/agent-pager, a LaunchAgent on the owner's Mac.
 
 ## Shape

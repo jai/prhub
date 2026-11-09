@@ -2,7 +2,7 @@
 # design-lint.sh — fails if view code types a font size, colour, padding, gap, corner, animation or SF Symbol name that
 # DESIGN.md's tokens and AppIcon own. Run it before every push; CI runs it too.
 #
-#   scripts/design-lint.sh [path ...]     (default: PRKit/Sources/PRKit and app/PRHub)
+#   scripts/design-lint.sh [path ...]     (default: PRKit/Sources/PRKit, PRKit/Sources/FeatureKit and app/PRHub)
 #
 # PRKit/Sources/PRKitDesign is where the values live, so it is never scanned. A line may keep a literal with a reason
 # on it or on the line above: `// design-lint: allow <why>`. A whole file may wait on the list in
@@ -12,7 +12,7 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
-[ $# -gt 0 ] || set -- PRKit/Sources/PRKit app/PRHub
+[ $# -gt 0 ] || set -- PRKit/Sources/PRKit PRKit/Sources/FeatureKit app/PRHub
 
 allow_file=scripts/design-lint-allow.txt
 files=$(find "$@" -name '*.swift' -not -path '*/PRKitDesign/*' | sort)
