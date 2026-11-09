@@ -295,7 +295,7 @@ The shared parts. Use these; extend one rather than writing a near-copy. Each is
 | `PRSectionTitle` | a section's title on the page's grey | PRKit `Parts/` |
 | `.prCard()` | a box on a PR's page | PRKit `PRParts.swift` |
 | `PRAuthorLine`, `PRAvatar` | who said it and when | PRKit `PRParts.swift` |
-| `PRCommentText`, `MarkdownText` | what people and agents write | PRKit |
+| `PRCommentText`, `MarkdownText` | what people and agents write, in GitHub's Markdown: one renderer for descriptions, comments and chat | PRKit `Parts/Markdown*.swift` |
 | `PRButtonStyle` | every button on a row or screen | PRKit `PRParts.swift` |
 | `PRReviewActions`, `PRReviewBar`, `PRReviewComposer` | a review: Approve, Request changes and Comment as one bar, and the box each opens, on a PR's page and under its diff | PRKit `PRReviewActions.swift` |
 | `.prField(isFocused:)` | every field you type in | PRKit `PRParts.swift` |
@@ -494,6 +494,12 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
   proof (web 1/8)") are one line under the job's name with their count and their worst state ("visual proof · 8
   legs"), opening to the job's own check and each leg; one with a failing leg opens by itself
   (`PullRequestDetail.checkGroups`).
+- **Markdown:** `MarkdownText` draws GitHub's flavour everywhere words are written: headings, nested and task lists
+  (a description's tasks tick), quotes, rules, and bold, italic, strikethrough, `code` and links inline. A table is one
+  grid, its header on `groundFill`, a hairline between rows, columns aligned as written; wider than the text it
+  scrolls sideways, and a cell wraps at `MarkdownStyle.tableCellMaxWidth`. Fenced code scrolls sideways in the diff
+  font. An image fits the width up to `MarkdownStyle.imageMaxHeight`, its alt text while it loads or when it can't be
+  read. `<details>` is a fold that opens in place under its summary. Other HTML is dropped, keeping its words.
 - **Room for the code:** on the phone the nav bar and tab bar leave as you scroll down and return as you scroll up, or
   when the keyboard goes. The diff runs under them, so they never move it. They never stay gone with no way back: they
   return at the top, when there is nothing to scroll, when a file folds or opens, on a tap of the status bar or below

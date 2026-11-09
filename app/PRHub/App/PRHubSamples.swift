@@ -53,8 +53,7 @@ extension PRSampleSet {
             PRHubSample(
                 repo: "acme/api", number: 88, title: "Rate-limit the password reset endpoint", list: "review",
                 author: "hubot", checks: "failing", review: "required", merge: "behind", dueHoursAgo: 26,
-                body: "Limits password reset requests to five an hour for each email address, so the endpoint can't "
-                    + "be used to flood someone's inbox.",
+                body: rateLimitBody,
                 diff: rateLimitDiff, keyLines: rateLimitKeyLines, comment: nil
             ).sample,
             PRHubSample(
@@ -86,6 +85,32 @@ extension PRSampleSet {
         ],
         mergedReviewed: [], mergedMine: [], answersOnPhone: true
     )
+
+    /// GitHub's Markdown at full stretch, as a big repo's descriptions have it: a table with aligned columns, tasks,
+    /// code, a quote and a fold. Escaped for the detail's JSON.
+    private static let rateLimitBody = """
+        Limits password reset requests to five an hour for each email address, so the endpoint can't be used to \
+        flood someone's inbox.
+
+        | Requests in an hour, per email address | Today | This PR |
+        | :--- | :---: | ---: |
+        | 1 to 5 | Sent | Sent |
+        | 6 and over | Sent, every time | **429**, with ~~no~~ a `Retry-After` |
+
+        - [x] Unit tests for the window's edges
+        - [ ] Tried against staging
+
+        ```ts
+        if (await limiter.count(email, { window: '1h' }) >= 5) return tooMany(res, 'Try again in an hour')
+        ```
+
+        > The limit counts by email address, not by IP, so a shared office network is never locked out.
+
+        <details><summary>How the window is kept</summary>
+
+        Each request adds a row with its time; rows older than an hour drop out when the next one is counted.
+        </details>
+        """.replacingOccurrences(of: "\n", with: "\\n")
 
     private static let checkoutDiff = """
     diff --git a/src/checkout/CheckoutError.tsx b/src/checkout/CheckoutError.tsx

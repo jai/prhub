@@ -61,40 +61,6 @@ final class PRHubNavigationUITests: XCTestCase {
         XCTAssertTrue(waitFor { !send.exists }, "and its box closed")
     }
 
-    /// One job name in two workflows says its workflow; a job's matrix legs are one line that opens to them.
-    func testTheChecksGroupMatrixLegsAndNameTheirWorkflow() throws {
-        launch()
-        openCheckout()
-        let header = app.buttons["checks-header"]
-        XCTAssertTrue(header.waitForExistence(timeout: 5))
-        header.tap()
-        let group = app.buttons["check-group-visual proof"]
-        XCTAssertTrue(group.waitForExistence(timeout: 3))
-        XCTAssertTrue(group.label.hasPrefix("visual proof, 4 legs"), group.label)
-        XCTAssertTrue(app.buttons["detect-changes, CI"].exists, "a shared name says its workflow")
-        XCTAssertTrue(app.buttons["detect-changes, Preview"].exists)
-        XCTAssertFalse(app.buttons["web 1/4"].exists, "the legs wait under their job")
-        group.tap()
-        XCTAssertTrue(app.buttons["web 1/4"].waitForExistence(timeout: 3), "and open under it")
-        try? picture("nav-checks-grouped")
-    }
-
-    /// At a text size where "Request changes" no longer fits its third, all three buttons show icons, and keep their
-    /// words for VoiceOver.
-    func testTheReviewBarShowsIconsWhenItsWordsDontFit() throws {
-        launch(["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryXXL"])
-        openCheckout()
-        let approve = app.buttons["pr-review-approve"]
-        XCTAssertTrue(approve.waitForExistence(timeout: 5))
-        if !approve.isHittable {
-            app.swipeUp(velocity: .slow)
-        }
-        XCTAssertEqual(approve.label, "Approve")
-        XCTAssertEqual(app.buttons["pr-review-request-changes"].label, "Request changes")
-        XCTAssertEqual(app.buttons["pr-review-comment"].label, "Comment")
-        try? picture("nav-review-bar-xxl")
-    }
-
     func testTheRowsReviewButtonLandsOnTheDiffWithKeyLinesOpenAndBackGoesToThePR() {
         launch()
         let review = app.buttons["pr-row-review-\(checkoutRef)"]

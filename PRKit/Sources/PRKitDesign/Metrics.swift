@@ -75,4 +75,8 @@ public enum MarkdownStyle {
     /// A quote's words from its bar, and the bar's width.
     public static let quoteInset: CGFloat = 10
     public static let quoteBar: CGFloat = 3
+    /// A table cell's widest, before its words wrap; a table wider than the text scrolls sideways.
+    public static let tableCellMaxWidth: CGFloat = 240
+    /// An image's tallest, so a screenshot in a description doesn't take the whole screen.
+    public static let imageMaxHeight: CGFloat = 360
 }

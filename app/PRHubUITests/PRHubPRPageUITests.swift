@@ -1,0 +1,114 @@
+import XCTest
+
+/// A PR's page over the sample PRs: its checks, with a job's matrix legs under one line and a shared name told apart by
+/// its workflow; the review bar's icons when its words don't fit; and a description in GitHub's Markdown. Pictures go to
+/// `SCREENSHOTS_DIR` when it is set.
+@MainActor
+final class PRHubPRPageUITests: XCTestCase {
+    private let app = XCUIApplication()
+    private let checkout = "Show a retry button when checkout fails"
+
+    override func setUp() {
+        continueAfterFailure = false
+        XCUIDevice.shared.appearance = .light
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    /// One job name in two workflows says its workflow; a job's matrix legs are one line that opens to them.
+    func testTheChecksGroupMatrixLegsAndNameTheirWorkflow() throws {
+        launch()
+        openCheckout()
+        let header = app.buttons["checks-header"]
+        XCTAssertTrue(header.waitForExistence(timeout: 5))
+        header.tap()
+        let group = app.buttons["check-group-visual proof"]
+        XCTAssertTrue(group.waitForExistence(timeout: 3))
+        XCTAssertTrue(group.label.hasPrefix("visual proof, 4 legs"), group.label)
+        XCTAssertTrue(app.buttons["detect-changes, CI"].exists, "a shared name says its workflow")
+        XCTAssertTrue(app.buttons["detect-changes, Preview"].exists)
+        XCTAssertFalse(app.buttons["web 1/4"].exists, "the legs wait under their job")
+        group.tap()
+        XCTAssertTrue(app.buttons["web 1/4"].waitForExistence(timeout: 3), "and open under it")
+        try? picture("nav-checks-grouped")
+    }
+
+    /// A description in GitHub's Markdown: its table one grid that scrolls sideways, not a line per cell, and a
+    /// `<details>` fold that opens in place.
+    func testADescriptionDrawsGitHubsMarkdown() throws {
+        launch()
+        let row = app.staticTexts["Rate-limit the password reset endpoint"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.tap()
+        let table = app.scrollViews["markdown-table"]
+        XCTAssertTrue(table.waitForExistence(timeout: 5), "the table is one block")
+        XCTAssertTrue(table.staticTexts["Requests in an hour, per email address"].exists, "its header")
+        XCTAssertTrue(table.staticTexts["6 and over"].exists, "and its rows")
+        let fold = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'markdown-details-'")).firstMatch
+        XCTAssertTrue(fold.waitForExistence(timeout: 3))
+        if !fold.isHittable {
+            app.swipeUp(velocity: .slow)
+        }
+        XCTAssertEqual(fold.value as? String, "closed")
+        try? picture("nav-markdown")
+        fold.tap()
+        XCTAssertTrue(waitFor { fold.value as? String == "open" }, "the fold opens in place")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Each request adds a row'"))
+            .firstMatch.waitForExistence(timeout: 3))
+        try? picture("nav-markdown-open")
+    }
+
+    /// At a text size where "Request changes" no longer fits its third, all three buttons show icons, and keep their
+    /// words for VoiceOver.
+    func testTheReviewBarShowsIconsWhenItsWordsDontFit() throws {
+        launch(["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryXXL"])
+        openCheckout()
+        let approve = app.buttons["pr-review-approve"]
+        XCTAssertTrue(approve.waitForExistence(timeout: 5))
+        if !approve.isHittable {
+            app.swipeUp(velocity: .slow)
+        }
+        XCTAssertEqual(approve.label, "Approve")
+        XCTAssertEqual(app.buttons["pr-review-request-changes"].label, "Request changes")
+        XCTAssertEqual(app.buttons["pr-review-comment"].label, "Comment")
+        try? picture("nav-review-bar-xxl")
+    }
+
+    // MARK: - Helpers
+
+    private func launch(_ arguments: [String] = []) {
+        app.terminate()
+        app.launchArguments = ["-PRHubPaired"] + arguments
+        app.launch()
+    }
+
+    private func openCheckout() {
+        let row = app.staticTexts[checkout]
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.tap()
+        XCTAssertTrue(app.buttons["pr-review-changes"].waitForExistence(timeout: 5))
+    }
+
+    private func waitFor(timeout: TimeInterval = 5, _ condition: () -> Bool) -> Bool {
+        let end = Date.now.addingTimeInterval(timeout)
+        while Date.now < end {
+            if condition() {
+                return true
+            }
+            RunLoop.current.run(until: Date.now.addingTimeInterval(0.1))
+        }
+        return condition()
+    }
+
+    private func picture(_ name: String) throws {
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        guard let folder = ProcessInfo.processInfo.environment["SCREENSHOTS_DIR"], !folder.isEmpty else {
+            return
+        }
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        try screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "\(folder)/\(name)-light.png"))
+    }
+}

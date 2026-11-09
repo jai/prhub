@@ -207,17 +207,27 @@ public enum PRMarkdown {
         return nil
     }
 
+    /// HTML GitHub draws that Markdown has no word for: dropped, keeping what is between. `<details>` and `<summary>`
+    /// stay for `MarkdownBlocks`, which folds them; `<img>` becomes a Markdown image first.
     private static let webOnlyTags = """
-    details|summary|br|sub|sup|p|div|img|picture|source|a|b|i|em|strong|span|kbd|hr|ul|ol|li|h[1-6]|\
+    br|sub|sup|p|div|img|picture|source|a|b|i|em|strong|span|kbd|hr|ul|ol|li|h[1-6]|\
     table|tr|td|th|tbody|thead|relative-time
     """
 
+    /// GitHub's Markdown as `MarkdownText` reads it: no HTML comments, a badge's image dropped for its link, `<img>` as
+    /// a Markdown image, other web-only tags gone, and tasks as ☐ and ☑︎.
     public static func clean(_ source: String) -> String {
-        var text = source
+        var text = source.replacing(/(?i)<img\b[^>]*>/) { tag in
+            let attributes = String(tag.output)
+            guard let src = attributes.firstMatch(of: /(?i)\bsrc="([^"]+)"/)?.1 else {
+                return ""
+            }
+            let alt = attributes.firstMatch(of: /(?i)\balt="([^"]*)"/)?.1 ?? ""
+            return "\n\n![\(alt)](\(src))\n\n"
+        }
         let rules: [(String, String)] = [
             (#"(?s)<!--.*?-->"#, ""),
             (#"\[!\[([^\]]*)\]\([^)]*\)\]\(([^)]*)\)"#, "[$1]($2)"),
-            (#"!\[([^\]]*)\]\([^)]*\)"#, "$1"),
             ("(?i)</?(\(webOnlyTags))\\b[^>]*>", ""),
             (#"(?m)^(\s*[-*]) \[[xX]\] "#, "$1 ☑︎ "),
             (#"(?m)^(\s*[-*]) \[ \] "#, "$1 ☐ "),

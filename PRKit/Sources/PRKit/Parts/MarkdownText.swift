@@ -2,8 +2,10 @@ import PRKitCore
 import PRKitDesign
 import SwiftUI
 
-/// An agent's Markdown drawn as it reads: paragraphs, headings, nested bullet and numbered lists, code blocks, quotes
-/// and rules, with bold, italic, `code` and links inside them. Each block is selectable text in the font around it.
+/// Markdown drawn as GitHub draws it: paragraphs, headings, nested bullet, numbered and task lists, fenced code and
+/// tables that scroll sideways when wide, quotes, rules, images and `<details>` sections that open in place, with bold,
+/// italic, strikethrough, `code` and links inside them. The one renderer for descriptions, comments and chat; each block
+/// is selectable text in the font around it.
 public struct MarkdownText: View {
     public let blocks: [MarkdownBlock]
     /// For small text, whose headings would otherwise tower over it.
@@ -13,6 +15,8 @@ public struct MarkdownText: View {
     private let checkboxes: [Int: Int]
     /// Room kept clear beside the first block only, for buttons over its top corner: the rest uses the full width.
     private let firstBlockInset: CGFloat
+    /// The `<details>` sections opened.
+    @State private var folds = FoldSet()
 
     public init(
         _ source: String, headingFont: Font? = nil, firstBlockInset: CGFloat = 0,
@@ -23,31 +27,21 @@ public struct MarkdownText: View {
         self.headingFont = headingFont
         self.firstBlockInset = firstBlockInset
         self.onCheckbox = onCheckbox
-        checkboxes = Dictionary(uniqueKeysWithValues: parsed.filter(Self.isCheckbox).enumerated().map {
-            ($1.id, $0)
-        })
+        checkboxes = Dictionary(uniqueKeysWithValues: parsed.flatMap(\.flattened).filter(Self.isCheckbox).enumerated()
+            .map { ($1.id, $0) })
     }
 
     private static func isCheckbox(_ block: MarkdownBlock) -> Bool {
         guard case .listItem = block.kind else {
             return false
         }
-        return checkedState(block) != nil
-    }
-
-    /// `PRMarkdown.clean` draws a task as one of these. Nil for an ordinary list item.
-    private static func checkedState(_ block: MarkdownBlock) -> Bool? {
-        switch block.content.characters.first {
-        case "☐": false
-        case "☑︎": true
-        default: nil
-        }
+        return MarkdownBlockView.checkedState(block) != nil
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
             ForEach(blocks) { block in
-                row(block)
+                MarkdownBlockView(block: block, context: context)
                     .padding(.trailing, block.id == blocks.first?.id ? firstBlockInset : 0)
             }
         }
@@ -55,47 +49,52 @@ public struct MarkdownText: View {
         .textSelection(.enabled)
     }
 
-    @ViewBuilder
-    private func row(_ block: MarkdownBlock) -> some View {
+    private var context: MarkdownBlockView.Context {
+        .init(headingFont: headingFont, checkboxes: checkboxes, onCheckbox: onCheckbox, folds: folds)
+    }
+}
+
+/// One block of `MarkdownText`, and the blocks inside it.
+private struct MarkdownBlockView: View {
+    struct Context {
+        let headingFont: Font?
+        let checkboxes: [Int: Int]
+        let onCheckbox: ((Int, Bool) -> Void)?
+        let folds: FoldSet
+    }
+
+    let block: MarkdownBlock
+    let context: Context
+
+    /// `PRMarkdown.clean` draws a task as one of these. Nil for an ordinary list item.
+    static func checkedState(_ block: MarkdownBlock) -> Bool? {
+        switch block.content.characters.first {
+        case "☐": false
+        case "☑︎": true
+        default: nil
+        }
+    }
+
+    var body: some View {
         switch block.kind {
         case .paragraph:
             Text(block.content)
         case .heading(let level):
             Text(block.content)
-                .font(headingFont ?? (level <= 2 ? .appHeadline : .appSubheadline.weight(.semibold)))
+                .font(context.headingFont ?? (level <= 2 ? .appHeadline : .appSubheadline.weight(.semibold)))
+                .accessibilityAddTraits(.isHeader)
         case .listItem(let marker, let depth):
-            Group {
-                if let onCheckbox, let index = checkboxes[block.id], let isChecked = Self.checkedState(block) {
-                    Button { onCheckbox(index, !isChecked) } label: {
-                        HStack(alignment: .firstTextBaseline, spacing: MarkdownStyle.markerGap) {
-                            Image(isChecked ? AppIcon.taskDone : AppIcon.taskOpen)
-                                .foregroundStyle(isChecked ? Color.accentColor : Color.secondary)
-                            // After the box and the space that follows it, so wrapped lines line up with the first.
-                            let box = block.content.index(afterCharacter: block.content.startIndex)
-                            let words = block.content[box...].characters.prefix(while: \.isWhitespace).count
-                            Text(AttributedString(block.content[block.content.index(box, offsetByCharacters: words)...]))
-                                .multilineTextAlignment(.leading)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityValue(isChecked ? "checked" : "unchecked")
-                    .accessibilityIdentifier("pr-checkbox-\(index)")
-                } else {
-                    HStack(alignment: .firstTextBaseline, spacing: MarkdownStyle.markerGap) {
-                        Text(marker)
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                        Text(block.content)
-                    }
-                }
-            }
-            .padding(.leading, CGFloat(depth - 1) * MarkdownStyle.indent)
+            listItem(marker: marker)
+                .padding(.leading, CGFloat(depth - 1) * MarkdownStyle.indent)
         case .code:
-            Text(block.content)
-                .diffCodeFont(step: Font.appleSize(.footnote) - DiffFont.standard.size)
-                .padding(Space.sm)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.fill.tertiary, in: .rect(cornerRadius: Radius.md))
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(block.content)
+                    .diffCodeFont(step: Font.appleSize(.footnote) - DiffFont.standard.size)
+                    .fixedSize()
+                    .padding(Space.sm)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.fill.tertiary, in: .rect(cornerRadius: Radius.md))
         case .quote:
             Text(block.content)
                 .foregroundStyle(.secondary)
@@ -107,6 +106,160 @@ public struct MarkdownText: View {
                 }
         case .rule:
             Divider()
+        case let .table(table):
+            MarkdownTableView(table: table)
+        case let .image(url):
+            MarkdownImage(url: url, alt: String(block.content.characters))
+        case let .details(inner):
+            details(inner)
         }
+    }
+
+    @ViewBuilder private func listItem(marker: String) -> some View {
+        if let onCheckbox = context.onCheckbox, let index = context.checkboxes[block.id],
+           let isChecked = Self.checkedState(block) {
+            Button { onCheckbox(index, !isChecked) } label: {
+                HStack(alignment: .firstTextBaseline, spacing: MarkdownStyle.markerGap) {
+                    Image(isChecked ? AppIcon.taskDone : AppIcon.taskOpen)
+                        .foregroundStyle(isChecked ? Color.accentColor : Color.secondary)
+                    // After the box and the space that follows it, so wrapped lines line up with the first.
+                    let box = block.content.index(afterCharacter: block.content.startIndex)
+                    let words = block.content[box...].characters.prefix(while: \.isWhitespace).count
+                    Text(AttributedString(block.content[block.content.index(box, offsetByCharacters: words)...]))
+                        .multilineTextAlignment(.leading)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(isChecked ? "checked" : "unchecked")
+            .accessibilityIdentifier("pr-checkbox-\(index)")
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: MarkdownStyle.markerGap) {
+                Text(marker)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                Text(block.content)
+            }
+        }
+    }
+
+    /// GitHub's fold: the summary, a chevron, and what it holds once opened.
+    private func details(_ inner: [MarkdownBlock]) -> some View {
+        let id = "markdown-details-\(block.id)"
+        let isOpen = context.folds.isFlipped(id)
+        return VStack(alignment: .leading, spacing: Space.sm) {
+            Button { context.folds.toggle(id) } label: {
+                HStack(alignment: .firstTextBaseline, spacing: MarkdownStyle.markerGap) {
+                    PRChevron(isCollapsed: !isOpen)
+                    Text(block.content)
+                        .fontWeight(.semibold)
+                        .multilineTextAlignment(.leading)
+                }
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(isOpen ? "open" : "closed")
+            .accessibilityIdentifier(id)
+            if isOpen {
+                VStack(alignment: .leading, spacing: Space.sm) {
+                    ForEach(inner) { MarkdownBlockView(block: $0, context: context) }
+                }
+                .padding(.leading, MarkdownStyle.indent)
+                .transition(.fold)
+            }
+        }
+    }
+}
+
+/// A GitHub table: a header on the fill, a hairline between rows, each column aligned as its `:---:` says. Wider than
+/// the text, it scrolls sideways; a long cell wraps at `MarkdownStyle.tableCellMaxWidth`.
+private struct MarkdownTableView: View {
+    let table: MarkdownTable
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+                row(table.header, isHeader: true)
+                ForEach(table.rows.indices, id: \.self) { index in
+                    Divider()
+                    row(table.rows[index], isHeader: false)
+                }
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                    .strokeBorder(Color.line, lineWidth: PRStyle.hairline)
+            )
+            .clipShape(.rect(cornerRadius: Radius.sm, style: .continuous))
+        }
+        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        .accessibilityIdentifier("markdown-table")
+    }
+
+    private func row(_ cells: [AttributedString], isHeader: Bool) -> some View {
+        GridRow {
+            ForEach(Array(cells.enumerated()), id: \.offset) { column, words in
+                Text(words)
+                    .fontWeight(isHeader ? .semibold : nil)
+                    .multilineTextAlignment(textAlignment(column))
+                    .frame(maxWidth: MarkdownStyle.tableCellMaxWidth, alignment: frameAlignment(column))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Space.sm)
+                    .padding(.vertical, Space.xs)
+                    .gridColumnAlignment(gridAlignment(column))
+            }
+        }
+        .background(isHeader ? Color.groundFill : Color.clear)
+    }
+
+    private func alignment(_ column: Int) -> MarkdownTable.Alignment {
+        table.alignments.indices.contains(column) ? table.alignments[column] : .leading
+    }
+
+    private func textAlignment(_ column: Int) -> TextAlignment {
+        switch alignment(column) {
+        case .leading: .leading
+        case .center: .center
+        case .trailing: .trailing
+        }
+    }
+
+    private func frameAlignment(_ column: Int) -> Alignment {
+        switch alignment(column) {
+        case .leading: .leading
+        case .center: .center
+        case .trailing: .trailing
+        }
+    }
+
+    private func gridAlignment(_ column: Int) -> HorizontalAlignment {
+        switch alignment(column) {
+        case .leading: .leading
+        case .center: .center
+        case .trailing: .trailing
+        }
+    }
+}
+
+/// An image on its own line, as wide as the text and no taller than `MarkdownStyle.imageMaxHeight`; its alt text while
+/// it loads and when it can't be read (a private repo's attachment needs GitHub's sign-in).
+private struct MarkdownImage: View {
+    let url: URL
+    let alt: String
+
+    var body: some View {
+        AsyncImage(url: url, transaction: Transaction(animation: AppMotion.swap)) { phase in
+            if let image = phase.image {
+                image
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxHeight: MarkdownStyle.imageMaxHeight, alignment: .leading)
+                    .clipShape(.rect(cornerRadius: Radius.sm, style: .continuous))
+                    .accessibilityLabel(alt)
+            } else {
+                Label(alt.isEmpty ? "Image" : alt, systemImage: AppIcon.attachPhoto.symbol)
+                    .labelStyle(.iconText)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

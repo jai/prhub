@@ -229,7 +229,7 @@ struct PRMirrorTests {
         #expect(PullRequestRef(url: try #require(URL(string: "https://linear.app/a/issue/ABC-1"))) == nil)
     }
 
-    @Test func githubMarkdownLosesWhatOnlyAWebPageDraws() {
+    @Test func githubMarkdownLosesWhatOnlyAWebPageDrawsAndKeepsImagesAndFolds() {
         let source = """
         <!-- template -->
         [![Gate](https://x/badge.png 'Gate')](https://x/report)
@@ -242,11 +242,12 @@ struct PRMirrorTests {
         """
         #expect(PRMarkdown.clean(source) == """
         [Gate](https://x/report)
-        shot
+        ![shot](https://x/a.png)
         Oct 31
-        More
+        <details><summary>More</summary>
         - ☑︎ done
         - ☐ open
+        </details>
         """)
     }
 
