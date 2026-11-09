@@ -78,6 +78,11 @@ interface FeatureThread { id: string; kind: "session" | "issue"; title: string; 
 - The repo and clone path go in the session's first message, not the agent's system prompt, so one agent definition
   serves every app.
 
+### Screenshots on issues
+
+GitHub's API has no image upload, so the Worker stores each screenshot in R2 under an unguessable key and links it in
+the issue body. It keeps them while the issue is open.
+
 ## Alternative considered
 
 - **Config file in each app's repo** (`featurekit.yml`, read through the GitHub App). It suits a public product better,
@@ -97,8 +102,6 @@ Each step ships on its own.
 
 ## Open questions
 
-- Screenshots on an issue: GitHub's API has no image upload. Choice: store them in R2 behind an unguessable URL that
-  lasts as long as the issue is open, or commit them to a `feature-requests` branch. R2 is simpler.
 - Spam and cost for user requests: a per-user daily limit (`limits.ts` already exists) and an issue-writing model call
   well under a cent.
 - Whether a PR Hub user may see an issue they filed once it's closed (link only, or status too).
