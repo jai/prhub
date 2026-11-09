@@ -202,13 +202,14 @@ private struct MarkdownTableView: View {
                         .fontWeight(isHeader ? .semibold : nil)
                         .multilineTextAlignment(textAlignment(column))
                 }
-                .frame(maxWidth: .infinity, alignment: frameAlignment(column))
                 .padding(.horizontal, Space.sm)
-                    .padding(.vertical, Space.xs)
-                    .gridColumnAlignment(gridAlignment(column))
+                .padding(.vertical, Space.xs)
+                // Each cell fills its row and column, so the header's fill has no gaps.
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: frameAlignment(column))
+                .background(isHeader ? Color.groundFill : Color.clear)
+                .gridColumnAlignment(gridAlignment(column))
             }
         }
-        .background(isHeader ? Color.groundFill : Color.clear)
     }
 
     private func alignment(_ column: Int) -> MarkdownTable.Alignment {
