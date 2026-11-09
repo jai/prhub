@@ -155,6 +155,8 @@ final class PRsModel {
     private var queuedSummaries: [String: String] = [:]
     /// How long a screen waits for GitHub's answer before the write carries on without it.
     var answerWait: Duration = .seconds(15)
+    /// Whether the device has a network: what a question left in the outbox says while it waits.
+    var isOnline: () -> Bool = { PRNetworkPath.shared.isOnline }
     private let mirror: PRMirror
     /// The newest sync, and its list fetch while that is out: what a wake waits for, and what a pull waits for.
     private var running: Task<PRSyncOutcome, Never>?
@@ -451,13 +453,19 @@ final class PRsModel {
         return try await client.askChat(ref)
     }
 
-    func ask(_ question: PRAskQuestion, about ref: PullRequestRef) async throws -> PRAskChat {
+    /// The Worker's chat with the question in it, or `.queued` when the host's outbox holds it past `answerWait`: it
+    /// goes on sending it, and the sheet follows it there.
+    func ask(_ question: PRAskQuestion, about ref: PullRequestRef) async throws -> PRAskOutcome {
         guard let outbox else {
-            return try await client.ask(question, about: ref)
+            return .answered(try await client.ask(question, about: ref))
         }
         let id = try await outbox.enqueue(prAIChat: question, about: ref)
         queuedSummaries[id] = "your question “\(question.question)”"
-        return try JSONDecoder().decode(PRAskChat.self, from: await answer(to: id))
+        do {
+            return .answered(try JSONDecoder().decode(PRAskChat.self, from: await answer(to: id)))
+        } catch PRViewerError.saved {
+            return .queued
+        }
     }
 
     func hasQueuedAIChat(about ref: PullRequestRef) -> Bool {

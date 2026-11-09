@@ -12,19 +12,22 @@ struct PRAskSheet: View {
     /// The chat's, then the question on its way, until the chat has it.
     private var messages: [PRAskChat.Message] {
         let sent = session.askChat?.messages ?? []
-        guard let pending = session.askPending, !sent.contains(where: { $0.isJai && $0.text == pending }) else {
+        guard let question = session.askSend.question,
+              sent.last(where: \.isJai)?.text != question.question else {
             return sent
         }
-        return sent + [PRAskChat.Message(id: "pending", role: "you", text: pending, anchor: nil)]
+        let anchor = question.anchor.map { "\($0.path):\($0.line)" }
+        return sent + [PRAskChat.Message(id: "pending", role: "you", text: question.question, anchor: anchor)]
     }
-    private var isWorking: Bool { session.isSendingAsk || session.askChat?.isWorking == true }
+    /// The agent at work on a question it has. A question still on its way says so instead.
+    private var isWorking: Bool { session.askSend == .idle && session.askChat?.isWorking == true }
 
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
                 ChatScroll {
                     LazyVStack(alignment: .leading, spacing: Space.sm) {
-                        if messages.isEmpty, !isWorking {
+                        if messages.isEmpty, !isWorking, session.askSend == .idle {
                             Text("Ask about this PR. The AI reads the whole repo at this PR's head, and can't change anything.")
                                 .font(.appFootnote)
                                 .foregroundStyle(.secondary)
@@ -37,6 +40,7 @@ struct PRAskSheet: View {
                     .padding(.vertical, Space.sm)
                     .animation(AppMotion.fold, value: messages)
                     .animation(AppMotion.fold, value: isWorking)
+                    .animation(AppMotion.swap, value: session.askSend)
                 }
                 .dismissesKeyboard($isWriting)
                 .onChange(of: messages.count) {
@@ -55,10 +59,12 @@ struct PRAskSheet: View {
             }
         }
         // Follows from each send too: a question sets the agent working after the first read has ended.
-        .task(id: session.askChat?.isWorking == true || session.isSendingAsk) { await session.followAsk() }
+        .task(id: session.askChat?.isWorking == true || session.isSendingAsk || session.askSend.isOnItsWay) {
+            await session.followAsk()
+        }
         .askSheetSize()
         // Only when there is nothing yet: words from a line's box are already on their way.
-        .onAppear { isWriting = messages.isEmpty && session.askDraft.isEmpty && session.askPending == nil }
+        .onAppear { isWriting = messages.isEmpty && session.askDraft.isEmpty && session.askSend == .idle }
     }
 
     private static let end = "end"
@@ -69,6 +75,48 @@ struct PRAskSheet: View {
     }
 
     @ViewBuilder private var status: some View {
+        switch session.askSend {
+        case .sending:
+            quietMark("Sending…", icon: .sending)
+                .accessibilityIdentifier("pr-ask-sending")
+        case .waitingForNetwork:
+            quietMark("Will send when you're online", icon: .offline)
+                .accessibilityIdentifier("pr-ask-offline")
+        case let .failed(_, reason):
+            failure(reason)
+        case .idle:
+            chatStatus
+        }
+    }
+
+    /// Where a question on its way stands: grey, as the chat's own progress is. Nothing is wrong yet.
+    private func quietMark(_ words: String, icon: AppIcon) -> some View {
+        IconText(words, icon: icon)
+            .font(.appCaption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.horizontal, PRStyle.inset)
+            .transition(.fold)
+    }
+
+    /// Why a question didn't go, and the way to send it again.
+    private func failure(_ reason: String) -> some View {
+        VStack(alignment: .trailing, spacing: Space.xs) {
+            Text(reason)
+                .font(.appFootnote)
+                .foregroundStyle(Color.toneBad)
+                .multilineTextAlignment(.trailing)
+            Button("Try again", systemImage: AppIcon.refresh.symbol) { retry() }
+                .buttonStyle(PRButtonStyle(.secondary))
+                .accessibilityIdentifier("pr-ask-retry")
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .padding(.horizontal, PRStyle.inset)
+        .transition(.fold)
+        .accessibilityIdentifier("pr-ask-failed")
+    }
+
+    @ViewBuilder private var chatStatus: some View {
         if isWorking {
             HStack(spacing: Space.sm) {
                 ProgressView().controlSize(.small)
@@ -79,10 +127,14 @@ struct PRAskSheet: View {
             .padding(.horizontal, PRStyle.inset)
             .accessibilityIdentifier("pr-ask-working")
         } else if let problem = session.askChat?.problem {
-            Text(problem)
-                .font(.appFootnote)
-                .foregroundStyle(Color.toneBad)
-                .padding(.horizontal, PRStyle.inset)
+            if session.askChat?.unsentQuestion != nil {
+                failure(problem)
+            } else {
+                Text(problem)
+                    .font(.appFootnote)
+                    .foregroundStyle(Color.toneBad)
+                    .padding(.horizontal, PRStyle.inset)
+            }
         } else if let cents = session.askChat?.costCents, !messages.isEmpty {
             Text("\((Double(cents) / 100).formatted(.currency(code: "USD"))) so far, of $2")
                 .font(.appCaption)
@@ -110,7 +162,8 @@ struct PRAskSheet: View {
                         .buttonStyle(.plain)
                 }
             }
-            if let error = session.askError {
+            // Offline, the chat can't be read either: the question's own mark already says why.
+            if let error = session.askError, session.askSend == .idle {
                 Text(error)
                     .font(.appFootnote)
                     .foregroundStyle(Color.toneBad)
@@ -126,6 +179,10 @@ struct PRAskSheet: View {
     private func send() {
         isWriting = false
         Task { await session.sendAsk() }
+    }
+
+    private func retry() {
+        Task { await session.retryAsk() }
     }
 }
 

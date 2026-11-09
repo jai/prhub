@@ -114,11 +114,12 @@ final class PRSession: Hashable {
     /// Asking the PR's AI agent (`PRSession+Ask.swift`).
     var isShowingAsk = false
     var askDraft = ""
-    /// A question on its way, shown as sent until the chat has it.
-    var askPending: String?
+    /// The last question between its send and the chat having it, shown as sent meanwhile (`PRAskSend`).
+    var askSend = PRAskSend.idle
     var askAnchor: PRAskQuestion.Anchor?
     var askChat: PRAskChat?
     var isSendingAsk = false
+    /// Why the chat could not be read.
     var askError: String?
     var isKeyboardUp = false
     /// What GitHub refused when nothing on screen was waiting to say so.

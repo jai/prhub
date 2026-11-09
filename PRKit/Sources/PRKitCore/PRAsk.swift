@@ -1,7 +1,7 @@
 import Foundation
 
 /// A question on its way to the PR's AI agent (`worker/src/ask.ts`).
-public struct PRAskQuestion: Encodable, Sendable {
+public struct PRAskQuestion: Encodable, Equatable, Sendable {
     public struct Anchor: Encodable, Equatable, Sendable {
         public let path: String
         public let line: Int

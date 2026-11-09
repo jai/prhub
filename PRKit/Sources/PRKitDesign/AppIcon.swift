@@ -88,6 +88,7 @@ public enum AppIcon: String {
     case copy = "doc.on.doc"
     case done = "checkmark"
     case sending = "arrow.up.circle"
+    case offline = "wifi.slash"
     case delivered = "checkmark.circle"
     case toolCall = "wrench.and.screwdriver"
     case resets = "arrow.counterclockwise"

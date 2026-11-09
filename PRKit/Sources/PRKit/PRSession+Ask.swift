@@ -1,5 +1,7 @@
 import Foundation
 import PRKitCore
+import PRKitDesign
+import SwiftUI
 
 extension PRSession {
     static let askPollInterval: Duration = .seconds(2)
@@ -21,48 +23,83 @@ extension PRSession {
         return PRAskQuestion.Anchor(path: path, line: line, side: side.rawValue, code: String(code.prefix(500)))
     }
 
-    /// The words leave the box at once, as a sent message, and come back to it if they can't go. The anchor goes with one
-    /// question: the next is about the PR unless he picks a line.
+    /// The words leave the box at once, as a sent message. The anchor goes with one question: the next is about the PR
+    /// unless he picks a line.
     func sendAsk() async {
-        let question = askDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let head = content?.detail.head, !question.isEmpty, !isSendingAsk else {
+        let words = askDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let head = content?.detail.head, !words.isEmpty, !isSendingAsk else {
+            return
+        }
+        askDraft = ""
+        let question = PRAskQuestion(question: words, head: head, anchor: askAnchor)
+        askAnchor = nil
+        await send(question)
+    }
+
+    /// A question that could not go, sent again: from the phone, or one the Worker could not hand to the agent.
+    func retryAsk() async {
+        if case let .failed(question, _) = askSend {
+            await send(question)
+        } else if let words = askChat?.unsentQuestion, let head = content?.detail.head {
+            await send(PRAskQuestion(question: words, head: head, anchor: nil))
+        }
+    }
+
+    private func send(_ question: PRAskQuestion) async {
+        guard !isSendingAsk else {
             return
         }
         isSendingAsk = true
         askError = nil
-        askPending = question
-        askDraft = ""
-        defer {
-            isSendingAsk = false
-            askPending = nil
-        }
+        withAnimation(AppMotion.swap) { askSend = .sending(question) }
+        defer { isSendingAsk = false }
+        let outcome: Result<PRAskOutcome, any Error>
         do {
-            askChat = try await model.ask(
-                PRAskQuestion(question: question, head: head, anchor: askAnchor), about: ref
-            )
-            askAnchor = nil
-        } catch PRViewerError.saved {
-            askAnchor = nil
-            askError = PRViewerError.saved.localizedDescription
+            outcome = .success(try await model.ask(question, about: ref))
         } catch {
-            askDraft = question
-            askError = error.localizedDescription
+            outcome = .failure(error)
+        }
+        withAnimation(AppMotion.swap) {
+            if case let .success(.answered(chat)) = outcome {
+                askChat = chat
+            }
+            askSend = .after(outcome, of: question, isOnline: model.isOnline())
         }
     }
 
-    /// While the sheet shows: the conversation, every 2 seconds while the agent works, and once otherwise.
+    /// While the sheet shows: the conversation, every 2 seconds while the agent works or a question is on its way, and
+    /// once otherwise. A question in the outbox is on its way, not an error.
     func followAsk() async {
         while !Task.isCancelled {
             do {
-                askChat = try await model.askChat(ref)
-                askError = model.hasQueuedAIChat(about: ref) ? PRViewerError.saved.localizedDescription : nil
+                let chat = try await model.askChat(ref)
+                withAnimation(AppMotion.swap) {
+                    askChat = chat
+                    askError = nil
+                }
             } catch {
-                askError = error.localizedDescription
+                withAnimation(AppMotion.swap) { askError = error.localizedDescription }
             }
-            guard askChat?.isWorking == true || isSendingAsk || model.hasQueuedAIChat(about: ref) else {
+            if !isSendingAsk {
+                let next = askSend.following(isQueued: model.hasQueuedAIChat(about: ref), isOnline: model.isOnline())
+                if next != askSend {
+                    withAnimation(AppMotion.swap) { askSend = next }
+                }
+            }
+            guard askChat?.isWorking == true || isSendingAsk || askSend.isOnItsWay else {
                 return
             }
             try? await Task.sleep(for: Self.askPollInterval)
         }
+    }
+}
+
+extension PRAskChat {
+    /// The question the Worker kept but could not hand to the agent (`worker/src/ask-queue.ts`), for Try again.
+    var unsentQuestion: String? {
+        guard !isWorking, problem != nil, let last = messages.last, last.isJai, last.id.hasPrefix("queued:") else {
+            return nil
+        }
+        return last.text
     }
 }
