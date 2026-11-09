@@ -245,6 +245,15 @@ So a question at another model or effort than the PR's current session starts a 
 shows is that new one; the earlier conversation is no longer shown. `GET …/ask` reports the session's `model` and
 `effort` beside `costCents`.
 
+**Asking.** `POST …/ask` stores the question and answers `202` with the chat as `GET …/ask` last read it, the question
+at its end and `isWorking` true. It never waits on GitHub or the agent: the person's ask queue (an `AiJobs` object of
+its own) mints the repo token, starts or wakes the session and sends the question from its alarm, one question at a
+time, in order. Until the agent has a question, `GET …/ask` shows it at the chat's end, working. A question the agent
+could not get stays there with `isWorking` false and the reason in `problem` (a refusal in its own words, else "The AI
+couldn't be reached. Try again."); one still waiting after 2 minutes says "The question didn't reach the AI. Try
+again." The next question to that PR replaces a failed one. A copy with the same `client_ref` answers the chat again
+and stores nothing.
+
 ## Limits
 
 Every limit is a `LIMIT_*` var: a whole number in the limit's unit, or `off` where the table allows it. Unset or

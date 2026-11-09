@@ -8,7 +8,7 @@ import type {
 } from "./account-core.ts";
 import { isAnthropicKeyShape, NO_AI, userIdOf } from "./account-core.ts";
 import { bodyOf, parseFinishInput, parseSender } from "./boundary.ts";
-import { type Env, isSet } from "./env.ts";
+import { askQueueName, type Env, isSet } from "./env.ts";
 import type { Fingerprint, RepoFullName, Sha } from "./ids.ts";
 import {
   type InstallationAccount, type InstallationApi, parseAppDelivery, syncInstallations,
@@ -226,7 +226,11 @@ export function servicesOf(env: Env): HostedServices {
     index: (userId) => userIndex(env, userId),
     installation: (id) => installationOf(env, id),
     deleteStored: (userId) => deletePrefix(env.DIFFS, `users/${userId}/`),
-    forgetJobs: (userId) => env.AI_JOBS.get(env.AI_JOBS.idFromName(userObjectName(userId))).forget(),
+    forgetJobs: async (userId) => {
+      const name = userObjectName(userId);
+      await env.AI_JOBS.get(env.AI_JOBS.idFromName(name)).forget();
+      await env.AI_JOBS.get(env.AI_JOBS.idFromName(askQueueName(name))).forget();
+    },
     limitIp: (ipHash, checks, key, now) => {
       const namespace = env.IP_LIMITS as DurableObjectNamespace<IpLimit>;
       return namespace.get(namespace.idFromName(`ip:${ipHash}`)).consume(checks, key, now);

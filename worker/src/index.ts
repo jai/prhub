@@ -2,11 +2,12 @@
 // Contract: docs/api.md.
 import { statesRoute } from "./pr-states";
 import { AiJobs, type AiJob } from "./ai-jobs";
-import { ask, askChat, AskRefused } from "./ask";
+import { askChat } from "./ask";
+import { acceptAsk, askPr, withQueued } from "./ask-queue";
 import { bodyOf, parseAskInput } from "./boundary";
 import { eventRoute, registerRoute, unpairRoute } from "./devices";
 import { aiConfigOf, askConfigured, deviceConfig, feedbackConfigured } from "./config";
-import { aiJobs, type Env, githubLogin, isSet, prIndex, scopedKey } from "./env";
+import { aiJobs, askQueue, type Env, githubLogin, isSet, prIndex, scopedKey } from "./env";
 import { aiStoreKey } from "./ai-run";
 import { detailVersionOf, fetchDiff, liveDiff, mergedPullRequests, pullRequestSummary, readPullRequests } from "./github";
 import { parseRepoFullName, parseSha, prId, type RepoFullName } from "./ids";
@@ -221,56 +222,47 @@ function aiRoute(
   return aiAnswer({ kind, repo, number, head, context, choice: chosen.choice }, params.get("retry") === "1", env);
 }
 
-/** The conversation on a GET, a question on a POST, and the reason in its own words when one can't go. */
+/**
+ * The conversation on a GET, with the questions the agent doesn't have yet. A question on a POST is stored and answered
+ * `202` at once; the agent gets it from the ask queue's alarm (`ask-queue.ts`), so the phone never waits on GitHub or
+ * the agent.
+ */
 async function askRoute(
   repo: RepoFullName, number: number, request: Request, env: Env, context: ExecutionContext,
 ): Promise<Response> {
-  let receipt: string | null = null;
-  try {
-    if (request.method !== "POST") {
-      return Response.json(await askChat(repo, number, env));
+  const pr = askPr(repo, number);
+  if (request.method !== "POST") {
+    try {
+      const chat = await askChat(repo, number, env);
+      return Response.json(withQueued(chat, await askQueue(env).readAsks(pr, chat), Date.now()));
+    } catch (error) {
+      console.error("ask chat failed", error);
+      return Response.json({ error: "The AI couldn't be reached. Try again." }, { status: 502 });
     }
-    const body = (await bodyOf(request))?.value;
-    const input = parseAskInput(body);
-    if (!input) {
-      return Response.json({ error: "That question can't be sent." }, { status: 400 });
-    }
-    const { model, effort } = (body ?? {}) as { model?: unknown; effort?: unknown };
-    const chosen = choiceOf("ask", { model, effort }, env, context);
-    if (!chosen.ok) {
-      return chosen.answer;
-    }
-    const ref = clientRefOf(body);
-    receipt = ref && `ask:${prId(repo, number)}:${ref}`;
-    const claim = receipt ? await prIndex(env).claimWrite(receipt, Date.now()) : "go";
-    if (claim === "busy") {
-      return busyAnswer();
-    }
-    const limited = claim === "go"
-      ? await personLimitAnswer(env, [LimitName.AskQuestionsPerHour, LimitName.AskQuestionsPerDay], receipt) : null;
-    if (limited) {
-      if (receipt) {
-        await prIndex(env).finishWrite(receipt, false, Date.now());
-      }
-      return limited;
-    }
-    if (claim === "go") {
-      await ask(repo, number, input, chosen.choice, env);
-      if (receipt) {
-        await prIndex(env).finishWrite(receipt, true, Date.now());
-      }
-    }
-    return Response.json(await askChat(repo, number, env));
-  } catch (error) {
-    if (error instanceof AskRefused && receipt) {
-      await prIndex(env).finishWrite(receipt, false, Date.now());
-    }
-    if (error instanceof AskRefused) {
-      return Response.json({ error: error.message }, { status: 422 });
-    }
-    console.error("ask failed", error);
-    return Response.json({ error: "The AI couldn't be reached. Try again." }, { status: 502 });
   }
+  const body = (await bodyOf(request))?.value;
+  const input = parseAskInput(body);
+  if (!input) {
+    return Response.json({ error: "That question can't be sent." }, { status: 400 });
+  }
+  const { model, effort } = (body ?? {}) as { model?: unknown; effort?: unknown };
+  const chosen = choiceOf("ask", { model, effort }, env, context);
+  if (!chosen.ok) {
+    return chosen.answer;
+  }
+  const ref = clientRefOf(body);
+  const receipt = ref && `ask:${prId(repo, number)}:${ref}`;
+  const question = {
+    id: ref ?? crypto.randomUUID(), repo, number, input, choice: chosen.choice, at: Date.now(), error: null,
+  };
+  const userId = isSet(env.SIGNED_IN_USER_ID) ? env.SIGNED_IN_USER_ID : null;
+  return acceptAsk({
+    claim: (key) => prIndex(env).claimWrite(key, Date.now()),
+    finish: (key, sent) => prIndex(env).finishWrite(key, sent, Date.now()),
+    limited: (key) => personLimitAnswer(env, [LimitName.AskQuestionsPerHour, LimitName.AskQuestionsPerDay], key),
+    queue: (stored) => askQueue(env).queueAsk(stored, pr, userId),
+    busy: busyAnswer,
+  }, question, receipt);
 }
 
 const FEEDBACK_PATH = /^\/feedback(?:\/([^/]+))?$/;

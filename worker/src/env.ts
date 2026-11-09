@@ -140,6 +140,15 @@ export function aiJobs(env: Env): DurableObjectStub<AiJobs> {
   return env.AI_JOBS.get(env.AI_JOBS.idFromName(objectName(env)));
 }
 
+/** Ask's questions: an `AiJobs` of their own, so none waits behind a key lines or rewrite job (`ask-queue.ts`). */
+export function askQueue(env: Env): DurableObjectStub<AiJobs> {
+  return env.AI_JOBS.get(env.AI_JOBS.idFromName(askQueueName(objectName(env))));
+}
+
+export function askQueueName(jobsName: string): string {
+  return `${jobsName}/ask`;
+}
+
 export function prIndex(env: Env): DurableObjectStub<PrIndex> {
   const locationHint = isSet(env.PR_INDEX_LOCATION) ? env.PR_INDEX_LOCATION as DurableObjectLocationHint : undefined;
   return env.PR_INDEX.get(env.PR_INDEX.idFromName(objectName(env)), locationHint ? { locationHint } : undefined);
