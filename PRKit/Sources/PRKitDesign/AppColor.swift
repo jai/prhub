@@ -20,7 +20,7 @@ extension Color {
     /// Text, and quiet text (meta, a count, what someone did).
     public static var ink: Color { .primary }
     public static var inkQuiet: Color { .secondary }
-    /// Words and spinners on the accent or a tone: a primary button, a swipe action, the person's own chat bubble. White
+    /// Words and spinners on the accent or a tone: a primary button, a swipe action. White
     /// in light; black in dark, where the tones are bright enough that white on them fails contrast (DESIGN.md,
     /// `on-accent`).
     public static var onAccent: Color {
@@ -30,6 +30,9 @@ extension Color {
         Color(nsColor: NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? .black : .white })
         #endif
     }
+    /// Words on the person's own chat bubble: white in light and dark, Jai's call over `onAccent`'s contrast rule
+    /// (DESIGN.md, `on-bubble`).
+    public static var onBubble: Color { .white }
 
     /// The page, and a block or box on it. Both, always: `.background` is black on black in dark.
     public static var groundPage: Color {

@@ -41,7 +41,7 @@ public struct SessionBubble<Accessory: View>: View {
             }
             .font(.appCallout)
             .padding(ChatStyle.bubbleInsets)
-            .foregroundStyle(isMine ? Color.onAccent : Color.ink)
+            .foregroundStyle(isMine ? Color.onBubble : Color.ink)
             .background(
                 isMine ? AnyShapeStyle(.tint) : AnyShapeStyle(.fill.secondary),
                 in: .rect(cornerRadius: ChatStyle.radius, style: .continuous)
