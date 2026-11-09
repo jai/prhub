@@ -78,7 +78,7 @@ extension PRSession {
                     askError = nil
                 }
             } catch {
-                withAnimation(AppMotion.swap) { askError = error.localizedDescription }
+                withAnimation(AppMotion.swap) { askError = PRAskReadProblem(error) }
             }
             if !isSendingAsk {
                 let next = askSend.following(isQueued: model.hasQueuedQuestion(about: ref), isOnline: model.isOnline())
@@ -86,7 +86,8 @@ extension PRSession {
                     withAnimation(AppMotion.swap) { askSend = next }
                 }
             }
-            guard askChat?.isWorking == true || isSendingAsk || askSend.isOnItsWay else {
+            // A failed read is read again: the chat shows once the Worker answers.
+            guard askChat?.isWorking == true || isSendingAsk || askSend.isOnItsWay || askError != nil else {
                 return
             }
             try? await Task.sleep(for: Self.askPollInterval)

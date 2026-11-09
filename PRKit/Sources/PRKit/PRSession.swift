@@ -125,7 +125,7 @@ final class PRSession: Hashable {
     var askChat: PRAskChat?
     var isSendingAsk = false
     /// Why the chat could not be read.
-    var askError: String?
+    var askError: PRAskReadProblem?
     var isKeyboardUp = false
     /// The line under the PR's actions: a write saved for later, a refusal, or a sample's note.
     var notice: PRNotice?

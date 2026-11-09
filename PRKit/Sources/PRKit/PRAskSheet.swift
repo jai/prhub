@@ -163,10 +163,11 @@ struct PRAskSheet: View {
                 }
             }
             // Offline, the chat can't be read either: the question's own mark already says why.
-            if let error = session.askError, session.askSend == .idle {
-                Text(error)
+            if let problem = session.askError, session.askSend == .idle {
+                Text(problem.words)
                     .font(.appFootnote)
-                    .foregroundStyle(Color.toneBad)
+                    .foregroundStyle(problem.isFailure ? Color.toneBad : Color.secondary)
+                    .accessibilityIdentifier("pr-ask-read-problem")
             }
             SessionComposer(
                 draft: $session.askDraft, isSending: session.isSendingAsk, send: send,

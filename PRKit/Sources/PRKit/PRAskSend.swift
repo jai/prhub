@@ -58,6 +58,29 @@ enum PRAskSend: Equatable {
     }
 }
 
+/// Why the Ask sheet couldn't read the chat. It is read again every 2 seconds while the sheet shows.
+enum PRAskReadProblem: Equatable {
+    /// No answer from the Worker at all: offline, or the Worker is down. Quiet: nothing is lost.
+    case unreachable
+    /// The Worker answered with a refusal, in its words.
+    case failed(String)
+
+    init(_ error: any Error) {
+        self = error is URLError ? .unreachable : .failed(error.localizedDescription)
+    }
+
+    var words: String {
+        switch self {
+        case .unreachable: "Can't reach the Worker. The chat shows again when it's back."
+        case let .failed(reason): reason
+        }
+    }
+
+    var isFailure: Bool {
+        self != .unreachable
+    }
+}
+
 /// Whether the device has a network now, from the system's own path monitor: one for the process.
 final class PRNetworkPath: @unchecked Sendable {
     static let shared = PRNetworkPath()
