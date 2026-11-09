@@ -12,7 +12,7 @@ Status: planned, 2026-11-09. Decided by Jai: it lives in jai/prhub; owner → co
   in the agent's system prompt. Jai is the only sender. All threads share one list, `feedback/threads.json`.
 - App: Feedback screen and model in Agent Pager (`ios/AgentPager/Feedback/`); composer, image attachments and chat
   bubbles in PRKit.
-- Builder: `builder/worker.mjs` in jai/agent-pager, a LaunchAgent on Borg Cube 04.
+- Builder: `builder/worker.mjs` in jai/agent-pager, a LaunchAgent on the owner's Mac.
 
 ## Shape
 
@@ -29,7 +29,7 @@ FeatureRequestsView(client: featureClient)   // list → conversation; New start
   "agent-pager": {
     "repo": "jai/agent-pager",
     "owners": ["jai"],                       // GitHub logins
-    "owner": { "action": "session", "agent_id": "agent_…", "environment_id": "env_01AwXTTXDvkHLWAHFP91AW28" },
+    "owner": { "action": "session", "agent_id": "agent_…", "environment_id": "env_…" },
     "user":  { "action": "issue", "labels": ["feature-request"] }
   },
   "prhub": { "repo": "jai/prhub", "owners": ["jai"], "owner": { "action": "session", … }, "user": { "action": "issue" } }
