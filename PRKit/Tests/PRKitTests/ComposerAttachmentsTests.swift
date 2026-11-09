@@ -5,8 +5,8 @@ import Testing
 import UniformTypeIdentifiers
 @testable import PRKit
 
-/// A screenshot on a message: made small enough to send, and the tray's limit.
-@MainActor
+/// A screenshot on a message: made small enough to send, and the tray's limit. Off the main actor but for the tray, so
+/// drawing and encoding pictures never holds up the PR screens' tests, which run on it beside these.
 @Suite(.serialized)
 struct ComposerAttachmentsTests {
     /// A PNG of stripes, drawn rather than computed pixel by pixel: the suite runs beside PRKit's timing tests, so it
@@ -44,9 +44,9 @@ struct ComposerAttachmentsTests {
         #expect(ComposerImageEncoder.encode(Data("not a picture".utf8)) == nil)
     }
 
-    @Test func theTrayHoldsFourAndEmptiesWhenTaken() async throws {
-        let attachments = ComposerAttachments()
+    @Test @MainActor func theTrayHoldsFourAndEmptiesWhenTaken() async throws {
         let png = try stripedPNG(width: 40, height: 40)
+        let attachments = ComposerAttachments()
         for _ in 0..<5 {
             await attachments.add(png)
         }
