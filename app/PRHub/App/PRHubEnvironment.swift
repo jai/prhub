@@ -64,11 +64,12 @@ final class PRHubEnvironment {
     init(
         connection: WorkerConnection, access: PRViewerAccess = .offline, samples: PRSampleSet? = nil,
         isSample: Bool = false, alertPermission: PRHubAlertPermission = PRHubAlertPermission(),
-        usage: UsageAnalytics = .disabled()
+        usage: UsageAnalytics = .disabled(), outbox: (any PRKitOutbox)? = nil
     ) {
         self.alertPermission = alertPermission
         self.usage = usage
         let host = PRHubPRHost(access: access, samples: samples, usage: usage)
+        host.outbox = outbox
         self.connection = connection
         prs = PRKitController(host: host)
         self.isSample = isSample

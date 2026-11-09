@@ -3,7 +3,7 @@
 import Foundation
 
 /// PRHub's side of the PR screens (`PRKitHost`): the pr-worker it paired with, the features that Worker's
-/// `GET /device/config` serves, and no outbox: a write goes to the Worker or not at all.
+/// `GET /device/config` serves, and no outbox outside a Debug check.
 @MainActor
 final class PRHubPRHost: PRKitHost {
     let access: PRViewerAccess
@@ -98,7 +98,8 @@ final class PRHubPRHost: PRKitHost {
         link: PRHubBuild.appInstallURL
     )
 
-    var outbox: (any PRKitOutbox)? { nil }
+    /// None in a release: a write goes to the Worker or not at all. A Debug build's `-PRHubOutboxCheck` sets one.
+    var outbox: (any PRKitOutbox)?
     var apnsEnvironment: String { APNSEnvironment.current() }
     var launchOptions: PRKitLaunchOptions { .none }
     func receive(_ event: PRKitEvent) {
