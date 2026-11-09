@@ -144,7 +144,7 @@ enum PRHubScreenshots {
                 pair: { _, _ in throw PairingClient.Failure.server("pairing_code_invalid", 401) },
                 save: { _ in }
             ),
-            fetchConfig: { state.config }, forgetSecret: {}, defaults: defaults, build: build, hosted: hosted
+            fetchConfig: { _ in state.config }, forgetSecret: {}, defaults: defaults, build: build, hosted: hosted
         )
         let samples: PRSampleSet = arguments.contains("-PRHubHostedEmpty")
             ? PRSampleSet(samples: [], mergedReviewed: [], mergedMine: [], answersOnPhone: true) : .prHub

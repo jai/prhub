@@ -50,8 +50,10 @@ struct AccountClient: Sendable {
         try await URLSession(configuration: .ephemeral).data(for: request)
     }
 
-    func deviceConfig() async throws(Failure) -> DeviceConfig {
-        try decode(DeviceConfig.self, try await send("GET", "device/config"))
+    /// `fresh`: the hosted Worker reads the installations from GitHub before it answers (`?fresh=1`).
+    func deviceConfig(fresh: Bool = false) async throws(Failure) -> DeviceConfig {
+        let query = fresh ? [URLQueryItem(name: "fresh", value: "1")] : []
+        return try decode(DeviceConfig.self, try await send("GET", "device/config", query: query))
     }
 
     /// `POST /auth/github/finish`, with no bearer: the code and the verifier are the proof.
@@ -81,12 +83,17 @@ struct AccountClient: Sendable {
         _ = try await send("DELETE", "account/anthropic-key")
     }
 
-    private func send(_ method: String, _ path: String, body: Data? = nil, authorized: Bool = true)
-        async throws(Failure) -> Data {
+    private func send(
+        _ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil, authorized: Bool = true
+    ) async throws(Failure) -> Data {
         guard let base = worker() else {
             throw .notConnected
         }
-        var request = URLRequest(url: base.appending(path: path), timeoutInterval: 30)
+        var url = base.appending(path: path)
+        if !query.isEmpty {
+            url.append(queryItems: query)
+        }
+        var request = URLRequest(url: url, timeoutInterval: 30)
         request.httpMethod = method
         if authorized {
             let secret: String

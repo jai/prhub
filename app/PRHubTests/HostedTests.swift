@@ -185,6 +185,16 @@ struct AccountClientTests {
         }
     }
 
+    @Test func aFreshConfigAsksTheWorkerToReadTheInstallationsFirst() async throws {
+        let body = #"{"features":{},"hosted":true}"#
+        let stub = StubWorker([.reply(status: 200, body: body), .reply(status: 200, body: body)])
+        _ = try await Self.client(stub).deviceConfig()
+        _ = try await Self.client(stub).deviceConfig(fresh: true)
+        let urls = stub.requests.with { $0 }.map { $0.url?.absoluteString ?? "" }
+        #expect(urls.map { $0.hasSuffix("/device/config") } == [true, false])
+        #expect(urls[1].hasSuffix("/device/config?fresh=1"))
+    }
+
     @Test func aConfigsRefusalKeepsItsCode() async {
         let stub = StubWorker([.reply(status: 401, body: #"{"error":{"code":"signed_out","message":"m"}}"#)])
         await #expect(throws: AccountClient.Failure.server("signed_out", 401)) {
@@ -279,6 +289,10 @@ struct HostedConnectionTests {
         let configError = Shared<AccountClient.Failure?>(nil)
         let secret = Shared<String?>(nil)
         let calls = Shared<[String]>([])
+        /// Each `GET /device/config`: whether it asked for `fresh=1`.
+        let configReads = Shared<[Bool]>([])
+        /// While true, a config read waits before it answers.
+        let holdsConfig = Shared(false)
         let signInResult = Shared(SignInResult(secret: "4242.new", login: "octocat", userId: "4242"))
         let signInError = Shared<SignInError?>(nil)
         let actionError = Shared<AccountClient.Failure?>(nil)
@@ -334,7 +348,11 @@ struct HostedConnectionTests {
                 Issue.record("no pairing in this build")
                 throw PairingClient.Failure.transport
             }, save: { _ in }),
-            fetchConfig: {
+            fetchConfig: { fresh in
+                fake.configReads.with { $0.append(fresh) }
+                while fake.holdsConfig.with({ $0 }) {
+                    try await Task.sleep(for: .milliseconds(5))
+                }
                 if let error = fake.configError.with({ $0 }) {
                     throw error
                 }
@@ -357,6 +375,29 @@ struct HostedConnectionTests {
         #expect(connection.isHosted && !connection.showsOnboarding && !connection.needsSignInAgain)
         #expect(connection.config?.account?.login == "octocat")
         #expect(connection.phase == .idle)
+    }
+
+    @Test func backFromGitHubsInstallPagesTheConfigIsReadFreshOnceWhileItSaysChecking() async throws {
+        let fake = Fake()
+        let connection = try Self.connection(fake, paired: true)
+        await connection.refreshConfig()
+        connection.leavesForGitHub(URL(string: "https://github.com/acme/api/pull/7")!)
+        await connection.refreshConfig()
+        #expect(fake.configReads.with { $0 } == [false, false], "a PR link is not GitHub's install pages")
+
+        connection.leavesForGitHub(PRHubBuild.appInstallURL)
+        fake.holdsConfig.with { $0 = true }
+        let reading = Task { await connection.refreshConfig() }
+        while fake.configReads.with({ $0.count }) < 3 {
+            await Task.yield()
+        }
+        #expect(connection.isCheckingInstallations, "Checking GitHub while the Worker reads")
+        fake.holdsConfig.with { $0 = false }
+        await reading.value
+        #expect(fake.configReads.with { $0 } == [false, false, true])
+        #expect(!connection.isCheckingInstallations)
+        await connection.refreshConfig()
+        #expect(fake.configReads.with { $0 }.last == false, "only the first foreground after GitHub")
     }
 
     @Test func aFailedOrCancelledSignInKeepsNothing() async throws {
@@ -505,7 +546,7 @@ struct HostedConnectionTests {
         let connection = WorkerConnection(
             endpoint: endpoint,
             pairing: DevicePairing(pair: { _, _ in throw PairingClient.Failure.transport }, save: { _ in }),
-            fetchConfig: { DeviceConfig(features: [.push], login: "alex") }, forgetSecret: {},
+            fetchConfig: { _ in DeviceConfig(features: [.push], login: "alex") }, forgetSecret: {},
             defaults: UserDefaults(suiteName: "prhub-hosted-\(UUID().uuidString)")!, build: Self.build
         )
         await connection.refreshConfig()

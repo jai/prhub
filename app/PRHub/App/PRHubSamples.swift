@@ -24,7 +24,7 @@ extension PRHubEnvironment {
         let connection = WorkerConnection(
             endpoint: WorkerEndpoint(fixed: worker),
             pairing: DevicePairing(pair: { _, _ in throw URLError(.badURL) }, save: { _ in }),
-            fetchConfig: { config }, forgetSecret: {}, defaults: defaults
+            fetchConfig: { _ in config }, forgetSecret: {}, defaults: defaults
         )
         return PRHubEnvironment(
             connection: connection, access: access, samples: samples, isSample: isSample, usage: usage, outbox: outbox

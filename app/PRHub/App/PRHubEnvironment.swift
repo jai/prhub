@@ -58,6 +58,8 @@ final class PRHubEnvironment {
         isSample = false
         let connection = connection
         host.config = { connection.config }
+        host.isCheckingInstallations = { connection.isCheckingInstallations }
+        host.leavesForGitHub = { connection.leavesForGitHub($0) }
     }
 
     /// Over `access` (none: nothing is sent) and, for "Try with sample PRs", `samples`.
@@ -75,6 +77,8 @@ final class PRHubEnvironment {
         self.isSample = isSample
         navigation = PRHubNavigation(pullRequests: prs)
         host.config = { connection.config }
+        host.isCheckingInstallations = { connection.isCheckingInstallations }
+        host.leavesForGitHub = { connection.leavesForGitHub($0) }
     }
 
     /// Pairing posts the code to the setup link's Worker once, and never retries: a code is single use. A pr-worker
@@ -95,7 +99,7 @@ final class PRHubEnvironment {
         let account = AccountClient(worker: { endpoint.url }, bearer: { try secrets.loadOrCreate() })
         return WorkerConnection(
             endpoint: endpoint, pairing: pairing,
-            fetchConfig: { try await account.deviceConfig() },
+            fetchConfig: { fresh in try await account.deviceConfig(fresh: fresh) },
             forgetSecret: { try secrets.delete() },
             unpair: unpair,
             defaults: defaults, build: build, usage: usage,

@@ -23,6 +23,12 @@ struct PRHubBuild: Equatable, Sendable {
     /// Opens Settings (`PRHubRootView`), where the hosted Worker takes the person's Anthropic key.
     static let settingsURL = URL(string: "prhub://settings")!
 
+    /// A github.com page where the App is installed or its installation changed: `appInstallURL`, or an installation's
+    /// settings (`GitHubInstallation.settingsURL`).
+    static func isInstallationPage(_ url: URL) -> Bool {
+        url.host() == "github.com" && url.pathComponents.contains("installations")
+    }
+
     init(hostedURL: URL?, signInWithGitHub: Bool, selfHosted: Bool, samples: Bool) {
         self.hostedURL = hostedURL
         self.signInWithGitHub = signInWithGitHub

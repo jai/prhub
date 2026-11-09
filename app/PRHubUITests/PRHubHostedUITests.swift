@@ -136,6 +136,26 @@ final class PRHubHostedUITests: XCTestCase {
         XCTAssertTrue(acme.waitForExistence(timeout: 10), "the config is read again on the way back")
     }
 
+    func testBackFromGitHubTheEmptyListNamesTheNewInstall() {
+        app.launchArguments = ["-PRHubHosted", "-PRHubHostedEmpty", "-PRHubInstallations", "onReturn"]
+        app.launch()
+        let notNow = app.buttons["Not now"]
+        if notNow.waitForExistence(timeout: 5) {
+            notNow.tap()
+        }
+        let link = app.descendants(matching: .any)["pr-empty-hint-link"]
+        XCTAssertTrue(link.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'acme'")).firstMatch.exists)
+        link.tap()
+        XCUIDevice.shared.press(.home)
+        let left = expectation(for: NSPredicate { _, _ in self.app.state != .runningForeground }, evaluatedWith: nil)
+        wait(for: [left], timeout: 30)
+        app.activate()
+        let named = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'octocat and acme'")).firstMatch
+        XCTAssertTrue(named.waitForExistence(timeout: 10), "the config is read fresh on the way back")
+        XCTAssertTrue(link.exists, "the hint's link is back once the check is done")
+    }
+
     func testAnEmptyListSaysTheAppIsOnNoAccount() {
         app.launchArguments = ["-PRHubHosted", "-PRHubHostedEmpty", "-PRHubInstallations", "none"]
         app.launch()

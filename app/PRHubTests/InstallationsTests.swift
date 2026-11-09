@@ -81,6 +81,23 @@ struct InstallationsTests {
         #expect(!everywhere.message.contains("own account") && !everywhere.message.contains("suspended"))
     }
 
+    @Test func backFromGitHubTheEmptyListSaysItIsCheckingAndOffersNoLink() {
+        let checking = PRHubPRHost.configuration(Self.hosted([]), isCheckingInstallations: true).emptyHint
+        #expect(checking == PRHubPRHost.checkingHint && checking?.isChecking == true)
+        let checked = PRHubPRHost.configuration(Self.hosted([Self.acme])).emptyHint
+        #expect(checked?.isChecking == false && checked?.title == "No PRs yet")
+        let selfHosted = DeviceConfig(features: [], login: "octocat")
+        #expect(PRHubPRHost.configuration(selfHosted, isCheckingInstallations: true).emptyHint == nil)
+    }
+
+    @Test func theInstallPagesAreTheAppsInstallAndEachInstallationsSettings() {
+        #expect(PRHubBuild.isInstallationPage(PRHubBuild.appInstallURL))
+        #expect(PRHubBuild.isInstallationPage(Self.own.settingsURL))
+        #expect(PRHubBuild.isInstallationPage(Self.acme.settingsURL))
+        #expect(!PRHubBuild.isInstallationPage(URL(string: "https://github.com/acme/api/pull/7")!))
+        #expect(!PRHubBuild.isInstallationPage(URL(string: "https://example.com/settings/installations/1")!))
+    }
+
     @Test func anEmptyListWhereEveryInstallationIsSuspendedOpensItsSettings() {
         let hint = PRHubPRHost.installHint(Self.hosted([Self.initech]))
         #expect(hint.title == "PRHub is suspended")

@@ -75,6 +75,14 @@ struct PRHubSettingsView: View {
 
     // MARK: - Signed in with GitHub
 
+    /// GitHub's install and installation pages open in the browser as usual; coming back reads the config fresh.
+    private var leavingForGitHub: OpenURLAction {
+        OpenURLAction { [connection] url in
+            connection.leavesForGitHub(url)
+            return .systemAction
+        }
+    }
+
     @ViewBuilder private var accountBlocks: some View {
         let account = connection.config?.account
         PRPageBlock("GitHub") {
@@ -84,8 +92,12 @@ struct PRHubSettingsView: View {
                 reviewAlertsLine
             }
         }
-        if let installations = connection.config?.installations {
-            GitHubAccessBlock(appName: "PRHub", installations: installations, installURL: PRHubBuild.appInstallURL)
+        if connection.config?.installations != nil || connection.isCheckingInstallations {
+            GitHubAccessBlock(
+                appName: "PRHub", installations: connection.config?.installations ?? [],
+                installURL: PRHubBuild.appInstallURL, isChecking: connection.isCheckingInstallations
+            )
+            .environment(\.openURL, leavingForGitHub)
         } else {
             PRPageBlock(
                 "GitHub access",
@@ -99,6 +111,7 @@ struct PRHubSettingsView: View {
                 .buttonStyle(PRButtonStyle(.secondary))
                 .accessibilityIdentifier("prhub-install-app")
             }
+            .environment(\.openURL, leavingForGitHub)
         }
         AnthropicKeySection(connection: connection)
         PRPageBlock(

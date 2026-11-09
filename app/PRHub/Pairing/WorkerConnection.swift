@@ -47,11 +47,17 @@ final class WorkerConnection {
     /// The hosted Worker said this session is signed out: the `signed_out` push, a `401 signed_out`, or the config's
     /// `account.state`. The next config read sets it again.
     private(set) var isSignedOutOfGitHub = false
+    /// Back from GitHub's install or installation pages: the hosted Worker is reading the installations again, so the
+    /// list and Settings say Checking GitHub rather than what the last config said.
+    private(set) var isCheckingInstallations = false
     let build: PRHubBuild
 
     @ObservationIgnored private let endpoint: WorkerEndpoint
     @ObservationIgnored private let pairing: DevicePairing
-    @ObservationIgnored private let fetchConfig: @Sendable () async throws -> DeviceConfig
+    /// `GET /device/config`; `true` asks the hosted Worker to read the installations first (`?fresh=1`).
+    @ObservationIgnored private let fetchConfig: @Sendable (_ fresh: Bool) async throws -> DeviceConfig
+    /// A GitHub install or installation page opened from the app; the next foreground reads the config fresh.
+    @ObservationIgnored private var hasLeftForGitHub = false
     @ObservationIgnored private let forgetSecret: @Sendable () throws -> Void
     /// `DELETE /device/pair` with this phone's secret, before Disconnect forgets it. Failures are the Worker's to
     /// outlive: its record goes when another device pairs.
@@ -64,7 +70,7 @@ final class WorkerConnection {
 
     init(
         endpoint: WorkerEndpoint, pairing: DevicePairing,
-        fetchConfig: @escaping @Sendable () async throws -> DeviceConfig,
+        fetchConfig: @escaping @Sendable (_ fresh: Bool) async throws -> DeviceConfig,
         forgetSecret: @escaping @Sendable () throws -> Void, unpair: (@Sendable () async -> Void)? = nil,
         defaults: UserDefaults = .standard, build: PRHubBuild = .current, usage: UsageAnalytics = .disabled(),
         hosted: Hosted? = nil
@@ -184,18 +190,32 @@ final class WorkerConnection {
         }
     }
 
-    /// `GET /device/config`, at launch, at every foreground and after pairing. A failed read keeps the last one.
+    /// `GET /device/config`, at launch, at every foreground and after pairing. A failed read keeps the last one. Back
+    /// from GitHub's install pages, the hosted Worker reads the installations before it answers, and the app says it is
+    /// checking until then.
     func refreshConfig() async {
         guard host != nil else {
             return
         }
-        await readConfig()
+        let isBackFromGitHub = hasLeftForGitHub && isHosted
+        hasLeftForGitHub = false
+        isCheckingInstallations = isBackFromGitHub
+        await readConfig(fresh: isBackFromGitHub)
+        isCheckingInstallations = false
     }
 
-    private func readConfig() async {
+    /// A link about to open outside the app: one to the GitHub App's install or installation pages makes the next
+    /// foreground's config fresh, as GitHub does not always send the browser back.
+    func leavesForGitHub(_ url: URL) {
+        if PRHubBuild.isInstallationPage(url) {
+            hasLeftForGitHub = true
+        }
+    }
+
+    private func readConfig(fresh isFresh: Bool = false) async {
         let fresh: DeviceConfig
         do {
-            fresh = try await fetchConfig()
+            fresh = try await fetchConfig(isFresh)
         } catch AccountClient.Failure.server(let code, 401) where isHosted {
             sessionRefused(code: code)
             return
