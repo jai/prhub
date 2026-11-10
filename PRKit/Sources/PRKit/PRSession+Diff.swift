@@ -13,6 +13,9 @@ extension PRSession {
 
     /// The Worker's AI features, as `GET /device/config` has them in PRHub; all three in Jai's build.
     var offersKeyLines: Bool { model.configuration.isOn(.keyLines) }
+
+    /// Why key lines are off and how to turn them on, while they are (`PRKitConfiguration.keyLinesHint`).
+    var keyLinesHint: PREmptyHint? { offersKeyLines ? nil : model.configuration.keyLinesHint }
     var offersAsk: Bool { model.configuration.isOn(.askAI) }
     var offersRewrite: Bool { model.configuration.isOn(.rewrite) }
 

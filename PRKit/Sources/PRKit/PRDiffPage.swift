@@ -45,7 +45,10 @@ struct PRDiffPage: View {
             PRNavigator(session: session, document: document, files: rows.files)
         }
         .sensoryFeedback(.selection, trigger: session.selectedKeyLine?.id)
-        .task(id: session.contextLines) { await session.loadKeyLines() }
+        // Again once key lines turn on, as when the person adds their Anthropic key with the diff open.
+        .task(id: KeyLinesAsk(context: session.contextLines, isOffered: session.offersKeyLines)) {
+            await session.loadKeyLines()
+        }
         // Each time the diff shows, and at each new head: the ticks made on his other devices.
         .task(id: session.content?.detail.head) { await session.loadReviewedKeyLines() }
     }
@@ -244,6 +247,11 @@ struct PRDiffPage: View {
         .accessibilityLabel(label)
         .accessibilityIdentifier(id)
     }
+}
+
+private struct KeyLinesAsk: Hashable {
+    let context: Int
+    let isOffered: Bool
 }
 
 private extension View {

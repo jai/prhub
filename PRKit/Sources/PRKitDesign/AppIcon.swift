@@ -76,6 +76,7 @@ public enum AppIcon: String {
 
     // A PR's page: asking AI, its checks, what people wrote.
     case askAI = "questionmark.bubble"
+    case keyLinesOff = "key"
     case required = "asterisk"
     case openExternally = "arrow.up.right"
     case taskDone = "checkmark.square.fill"

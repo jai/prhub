@@ -173,8 +173,8 @@ struct PRNavigator: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Files alone when the Worker has no key lines (PRHub without a model key).
-            if session.offersKeyLines {
+            // Files alone when the Worker has no key lines and the host has no way to turn them on.
+            if showsKeyLinesPage {
                 Picker("Navigator", selection: $session.navigatorPage) {
                     ForEach(PRNavigatorPage.allCases) { Text($0.rawValue).tag($0) }
                 }
@@ -183,18 +183,26 @@ struct PRNavigator: View {
                 .padding(PRStyle.inset)
                 Divider()
             }
-            switch session.offersKeyLines ? session.navigatorPage : .files {
+            switch showsKeyLinesPage ? session.navigatorPage : .files {
             case .files:
                 PRFileList(files: files, viewed: session.viewedFiles) { session.show(file: $0) }
                 Divider()
                 filesFoot
             case .keyLines:
-                PRKeyLinesList(session: session)
+                if let hint = session.keyLinesHint {
+                    PRKeyLinesOff(hint: hint)
+                } else {
+                    PRKeyLinesList(session: session)
+                }
             }
         }
         .background(Color.groundCard)
         // The panel sets its own width: a wide screen's readable margins are not for it.
         .contentMargins(.horizontal, 0, for: .scrollContent)
+    }
+
+    private var showsKeyLinesPage: Bool {
+        session.offersKeyLines || session.keyLinesHint != nil
     }
 
     private var filesFoot: some View {
@@ -213,6 +221,23 @@ struct PRNavigator: View {
         }
         .padding(PRStyle.inset)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// The Key lines page while key lines are off: the host's words for why, and its link that turns them on.
+struct PRKeyLinesOff: View {
+    let hint: PREmptyHint
+
+    var body: some View {
+        ContentUnavailableView {
+            Label(hint.title, systemImage: AppIcon.keyLinesOff.symbol)
+        } description: {
+            Text(hint.message)
+        } actions: {
+            Link(hint.linkTitle, destination: hint.link)
+                .buttonStyle(PRButtonStyle(.primary))
+                .accessibilityIdentifier("key-lines-off")
+        }
     }
 }
 

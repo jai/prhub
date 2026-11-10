@@ -47,12 +47,19 @@ public struct PRKitConfiguration: Equatable, Sendable {
     public var login: String?
     /// What the PR list says once the Worker has synced and has no PRs; nil says nothing.
     public var emptyHint: PREmptyHint?
+    /// What the panel's Key lines page says while key lines are off, and the link that turns them on; nil leaves the
+    /// panel on Files alone.
+    public var keyLinesHint: PREmptyHint?
 
-    public init(features: Set<Feature>, orgDefault: PROrgDefault, login: String? = nil, emptyHint: PREmptyHint? = nil) {
+    public init(
+        features: Set<Feature>, orgDefault: PROrgDefault, login: String? = nil, emptyHint: PREmptyHint? = nil,
+        keyLinesHint: PREmptyHint? = nil
+    ) {
         self.features = features
         self.orgDefault = orgDefault
         self.login = login
         self.emptyHint = emptyHint
+        self.keyLinesHint = keyLinesHint
     }
 
     /// Every feature, and every owner in the list until someone picks a filter.
@@ -65,8 +72,8 @@ public struct PRKitConfiguration: Equatable, Sendable {
     }
 }
 
-/// The host's words for an empty PR list, and a link that may fill it: PRHub's hosted service points at installing its
-/// GitHub App.
+/// The host's words for something PRKit can't show yet, and a link that may fix it: PRHub's hosted service points an
+/// empty list at installing its GitHub App, and key lines at the person's Anthropic key.
 public struct PREmptyHint: Equatable, Sendable {
     public var title: String
     public var message: String
