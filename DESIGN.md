@@ -143,7 +143,7 @@ all of them are in scope. A new screen adds a row here and a step in `PRHubScree
 | PR list | PRs | `PRsView`, `PRsList`, `PrListBlock`, `PRSectionTitle`, `PRSwipeRow` |
 | Review shortcut | PRs → a row's Review button, its swipe right, or its long-press menu | `PrListBlock`, `PRSwipeRow`, `PullRequestOpener` |
 | PR filter | PRs → Filter | `PRFilterPanel`, `PRSectionTitle` |
-| PR description | PRs → a PR | `PRScreen`, `PRDescriptionView`, `PRChangesCard`, `PRStatusCard`, `PRReviewActions`, `.prCard()`, `PRCommentText`, `PRThreadCard` |
+| PR description | PRs → a PR: its title, who it is from, its tickets, then status, review and conversation | `PRScreen`, `PRDescriptionView`, `ObjectReferenceLines`, `PRChangesCard`, `PRStatusCard`, `PRReviewActions`, `.prCard()`, `PRCommentText`, `PRThreadCard` |
 | Ask AI | PRs → a PR → the toolbar, or a line's comment box | `PRAskSheet`, `SessionBubble`, `SessionComposer` |
 | PR diff | PRs → a PR → Review changes, or Files changed | `PRDiffScreen`, `DiffTableView`, `PRDiffPage`, `PRNavigator`, `PRReviewActions` |
 | Settings | Settings; signed in: account, GitHub access, Anthropic key, Sign out, Delete account | `PRHubSettingsView`, `PRPageBlock`, `PRValueLine`, `AnthropicKeySection`, `DeleteAccountSheet` |
@@ -291,6 +291,7 @@ The shared parts. Use these; extend one rather than writing a near-copy. Each is
 |---|---|---|
 | `PrListBlock`, `PullRequestRow`, `TicketRow` | an item in a list: its PRs, note and ticket | PRKit `Lists/` |
 | `PullRequestLine`, `TicketLine` | a PR or ticket on one line, under something else | PRKit `Lists/ObjectLines.swift` |
+| `ObjectReferenceLines`, `ObjectReferenceLine` | the PRs or tickets something names, a line each, each opening its page: a PR's tickets, Agent Pager's thread accessory | PRKit `Lists/ObjectLines.swift` |
 | `PrStateIcon`, `PrStatusMarks`, `PrJaiMarkLabel` | a PR's state, its signals, what you did | PRKit `Lists/PrListParts.swift` |
 | `PRSectionTitle` | a section's title on the page's grey | PRKit `Parts/` |
 | `.prCard()` | a box on a PR's page | PRKit `PRParts.swift` |
@@ -380,6 +381,28 @@ parts:
 rules:
   - One to a block, always last, on the rail.
   - No accent, no semibold, no chip.
+```
+
+### PR header
+
+```text
+name: PRDescriptionView.header
+purpose: What the PR is, who it is from and what it is for, at the top of its page.
+parts:
+  title:   { holds: "the PR's title without the brackets of tickets shown below", font: appTitle3 semibold }
+  state:   { holds: PrStateIcon, column: state }
+  ref:     { holds: "repo#N", font: appCaption quiet }
+  byline:  { holds: "PRAvatar and '<who> wants <branch> in <base>'", font: appCaption quiet }
+  tickets: { holds: "ObjectReferenceLines of TicketLine, awaitsLinear false", optional: true }
+  labels:  { holds: StatusChip per label, scrolls sideways, optional: true }
+rules:
+  - Who: the author's profile name, else their login. A bot's PR says "(bot)" after the bot's login, and leads with
+    the person it was opened for when the Worker found one: "Mona Lisa via hubot (bot)". The face is that person's.
+  - Tickets are the title's (in brackets) and then the branch's, as the Worker sends them, with Linear's state where it
+    could ask. Without Linear a ticket is its key alone: no "Resolving…" that never resolves.
+antiPatterns:
+  - A ticket key both in the title and on a ticket line.
+  - A bot shown as if a person wrote the PR.
 ```
 
 ### Comment

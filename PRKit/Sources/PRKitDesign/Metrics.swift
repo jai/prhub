@@ -14,6 +14,8 @@ public enum PRStyle {
     public static let barButtonInset = Space.xs
     /// A row that is one tap target: the least a finger needs.
     public static let rowHeight: CGFloat = 44
+    /// Between the lines of PRs and tickets something names (`ObjectReferenceLines`).
+    public static let referenceGap: CGFloat = 6
     /// Between lines of what people write: a review tool's dense text, with room to read.
     public static let bodyLineSpacing: CGFloat = 3
     /// Above and below a reviewer's or a check's line inside the status box.

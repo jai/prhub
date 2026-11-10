@@ -7,6 +7,7 @@ import XCTest
 final class PRHubPRPageUITests: XCTestCase {
     private let app = XCUIApplication()
     private let checkout = "Show a retry button when checkout fails"
+    private let rateLimit = "Rate-limit the password reset endpoint [API-88] [SEC-12]"
 
     override func setUp() {
         continueAfterFailure = false
@@ -36,9 +37,7 @@ final class PRHubPRPageUITests: XCTestCase {
     /// `<details>` fold that opens in place.
     func testADescriptionDrawsGitHubsMarkdown() throws {
         launch()
-        let row = app.staticTexts["Rate-limit the password reset endpoint"]
-        XCTAssertTrue(row.waitForExistence(timeout: 10))
-        row.tap()
+        openRateLimit()
         let table = app.scrollViews["markdown-table"]
         XCTAssertTrue(table.waitForExistence(timeout: 5), "the table is one block")
         XCTAssertTrue(table.staticTexts["Requests in an hour, per email address"].exists, "its header")
@@ -73,7 +72,31 @@ final class PRHubPRPageUITests: XCTestCase {
         try? picture("nav-review-bar-xxl")
     }
 
+    /// The tickets the title names, each with Linear's state, and the title without their brackets; a bot's PR names
+    /// the person it was opened for, and says it is a bot's.
+    func testThePageShowsItsTicketsAndWhoItIsFrom() throws {
+        launch()
+        openRateLimit()
+        XCTAssertTrue(app.staticTexts["Rate-limit the password reset endpoint"].waitForExistence(timeout: 5),
+                      "the title leaves out the tickets shown under it")
+        let author = app.descendants(matching: .any)["pr-author"].firstMatch
+        XCTAssertTrue(author.waitForExistence(timeout: 5))
+        XCTAssertTrue(author.label.contains("Mona Lisa via hubot (bot) wants hubot/sample-88 in main"), author.label)
+        let tickets = app.descendants(matching: .any)["pr-tickets"].firstMatch
+        XCTAssertTrue(tickets.exists)
+        for words in ["API-88", "Throttle password reset emails", "In Progress", "SEC-12", "Todo"] {
+            XCTAssertTrue(tickets.staticTexts[words].exists, words)
+        }
+        try? picture("nav-tickets-author")
+    }
+
     // MARK: - Helpers
+
+    private func openRateLimit() {
+        let row = app.staticTexts[rateLimit]
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.tap()
+    }
 
     private func launch(_ arguments: [String] = []) {
         app.terminate()

@@ -65,7 +65,7 @@ struct PRDescriptionView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
             HStack(alignment: .top, spacing: Space.sm) {
-                Text(session.title)
+                Text(detail.title(session.title))
                     .font(.appTitle3.weight(.semibold))
                     .frame(maxWidth: .infinity, alignment: .leading)
                 PrStateIcon(state: detail.listState)
@@ -74,13 +74,25 @@ struct PRDescriptionView: View {
                 .font(.appCaption)
                 .foregroundStyle(.secondary)
             HStack(spacing: Space.xs) {
-                PRAvatar(author: detail.author)
-                Text("\(detail.author?.login ?? "ghost") wants \(detail.headBranch) in \(detail.base)")
+                PRAvatar(author: detail.bylineAvatar)
+                Text("\(detail.byline) wants \(detail.headBranch) in \(detail.base)")
                     .font(.appCaption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("pr-author")
+            tickets
             labels
+        }
+    }
+
+    /// The tickets the title and branch name, each opening Linear; the title above leaves their brackets out.
+    @ViewBuilder private var tickets: some View {
+        if let tickets = detail.tickets, !tickets.isEmpty {
+            ObjectReferenceLines(references: tickets.map(ObjectReference.init), awaitsLinear: false)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("pr-tickets")
         }
     }
 

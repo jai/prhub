@@ -51,10 +51,12 @@ extension PRSampleSet {
                 comment: ("hubot", "Should the button say why it failed?")
             ).sample,
             PRHubSample(
-                repo: "acme/api", number: 88, title: "Rate-limit the password reset endpoint", list: "review",
-                author: "hubot", checks: "failing", review: "required", merge: "behind", dueHoursAgo: 26,
-                body: rateLimitBody,
-                diff: rateLimitDiff, keyLines: rateLimitKeyLines, comment: nil
+                repo: "acme/api", number: 88, title: "Rate-limit the password reset endpoint [API-88] [SEC-12]",
+                list: "review", author: "hubot", checks: "failing", review: "required", merge: "behind",
+                dueHoursAgo: 26, body: rateLimitBody,
+                diff: rateLimitDiff, keyLines: rateLimitKeyLines, comment: nil,
+                bot: #"{"login": "mona", "name": "Mona Lisa", "avatarUrl": null, "source": "body"}"#,
+                tickets: rateLimitTickets
             ).sample,
             PRHubSample(
                 repo: "acme/mobile", number: 57, title: "fix: Keep the cart when the app is closed", list: "review",
@@ -85,6 +87,14 @@ extension PRSampleSet {
         ],
         mergedReviewed: [], mergedMine: [], answersOnPhone: true
     )
+
+    /// The two tickets the rate limit's title names, as the Worker has them from Linear.
+    private static let rateLimitTickets = """
+        [{"key": "API-88", "url": "https://linear.app/acme/issue/API-88", "title": "Throttle password reset emails",
+          "state": "In Progress", "state_type": "started", "state_color": "#f2c94c", "found": true},
+         {"key": "SEC-12", "url": "https://linear.app/acme/issue/SEC-12", "title": "Stop reset email floods",
+          "state": "Todo", "state_type": "unstarted", "state_color": "#e2e2e2", "found": true}]
+        """
 
     /// GitHub's Markdown at full stretch, as a big repo's descriptions have it: a table with aligned columns, tasks,
     /// code, a quote and a fold. Escaped for the detail's JSON.
@@ -283,6 +293,10 @@ struct PRHubSample {
     let keyLines: String
     /// Someone's comment on the PR: login and words.
     let comment: (String, String)?
+    /// Set, the author is a bot that opened the PR for this person (the detail's `requestedBy`).
+    var bot: String?
+    /// The detail's `tickets`, as JSON.
+    var tickets = "[]"
 
     var sample: PRSampleSet.Sample {
         let row = PullRequestRow(
@@ -334,7 +348,8 @@ struct PRHubSample {
         {"id": null, "url": "https://github.com/\(repo)/pull/\(number)", "state": "open", "head": "sample-\(number)",
          "base": "main", "headBranch": "\(author)/sample-\(number)",
          "author": {"login": "\(author)", "avatarUrl": null},
-         "isAuthor": \(isMine), "body": "\(body)",
+         "isAuthor": \(isMine), "authorIsBot": \(bot != nil), "requestedBy": \(bot ?? "null"),
+         "tickets": \(tickets), "body": "\(body)",
          "additions": \(count("+")), "deletions": \(count("-")), "changedFiles": \(count("diff --git")),
          "reviewDecision": "\(review == "approved" ? "APPROVED" : "REVIEW_REQUIRED")",
          "mergeState": "\(merge.uppercased())",
