@@ -147,8 +147,11 @@ interface CommonStatus {
  * what is true of it alone: a due time on the review list, a merge time on a merged row.
  */
 export type RowStatus = CommonStatus & (
-  /** `reviewDueAt`: one working day from when Jai could first see the request (`reviewDueAt`); null without an SLA. */
-  | { list: "review"; reviewDueAt: string | null }
+  /**
+   * `requestedAt`: when review was last asked of Jai himself (null when only a team was asked). `reviewDueAt`: one
+   * working day from when he could first see it (`reviewDueAt`); null without an SLA.
+   */
+  | { list: "review"; requestedAt: string | null; reviewDueAt: string | null }
   | { list: "reviewed" }
   | { list: "mine" }
   | { list: "merged"; mergedAt: string | null }
@@ -530,15 +533,15 @@ export function verdictOf(
   };
 }
 
-/** A row's status on one of the open lists; the due time is kept on the review list alone. */
+/** A row's status on one of the open lists; the request and due times are kept on the review list alone. */
 export function rowStatus(
   list: OpenList, author: string | null, checks: ChecksSummary, review: ReviewState, merge: MergeState,
-  mine?: LatestReview, reviewDueAt: string | null = null,
+  mine?: LatestReview, reviewDueAt: string | null = null, requestedAt: string | null = null,
 ): OpenRowStatus {
   const common = {
     author, checks, review, merge, jaiReview: mine?.state.toLowerCase() ?? null, jaiReviewedAt: mine?.submittedAt ?? null,
   };
-  return list === "review" ? { list, ...common, reviewDueAt } : { list, ...common };
+  return list === "review" ? { list, ...common, requestedAt, reviewDueAt } : { list, ...common };
 }
 
 export interface RequestEvent { createdAt?: string; requestedReviewer?: { login?: string } | null }
@@ -619,6 +622,7 @@ export function pullRequest(
     updatedAt: node.updatedAt,
     status: list && rowStatus(
       list, node.author?.login ?? null, checks, review, merge, jaiReview(node, login), reviewDueAt(requestedAt, week),
+      requestedAt,
     ),
     requestedAt,
     ticketKeys,
