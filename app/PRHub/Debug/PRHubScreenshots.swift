@@ -20,7 +20,9 @@ import UIKit
 /// - `-PRHubPaired`: the PRs and Settings over the sample PRs as if paired, every AI feature on. With `-PRHubNoAI` the
 ///   Worker has no model key; with `-PRHubSettings` it opens on Settings; with `-PRHubLongDiff` For review starts with a
 ///   PR whose one file is longer than the screen, for the diff's bars; with `-PRHubOpen <link>` it opens that PR as a
-///   link would (`…/pull/N/files` on its diff); with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View.
+///   link would (`…/pull/N/files` on its diff); with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View;
+///   with `-PRHubRefuseFirstReview` the first review sent is refused, so its toast shows Retry, and each review takes
+///   3 seconds to answer.
 ///
 /// Every one starts at the default diff font, whatever an earlier run chose in Settings; `-prkit.diffFont face:size`
 /// sets one for the run. `-PRHubAppearance dark` (or `light`) sets the run's appearance whatever the Simulator's is: on
@@ -62,9 +64,15 @@ enum PRHubScreenshots {
         }
         let features: Set<DeviceFeature> = arguments.contains("-PRHubNoAI")
             ? [.push] : [.askAI, .keyLines, .rewrite, .push]
+        var samples: PRSampleSet = arguments.contains("-PRHubLongDiff") ? .prHubLongDiff : .prHub
+        if arguments.contains("-PRHubRefuseFirstReview") {
+            samples.refusesFirstReview = "GitHub didn't answer in time."
+            // Long enough for a loaded test Mac, and a recording, to see each step.
+            samples.reviewDelay = .seconds(3)
+        }
         let environment = PRHubEnvironment.offline(
             config: DeviceConfig(features: features, login: PRSampleSet.prHubLogin),
-            samples: arguments.contains("-PRHubLongDiff") ? .prHubLongDiff : .prHub,
+            samples: samples,
             worker: URL(string: "https://pr-review.octocat.workers.dev")!, defaultsSuite: "screenshots-paired",
             isSample: false, usage: .live()
         )

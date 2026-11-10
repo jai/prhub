@@ -32,6 +32,11 @@ public struct PRSampleSet: Sendable {
     public let answersOnPhone: Bool
     /// Every sample PR's Ask AI conversation; none when nil.
     public var askChat: PRAskChat?
+    /// How long a review sent from its box takes to answer, as a Worker's would: long enough to see it go.
+    public var reviewDelay = Duration.milliseconds(900)
+    /// Set, the first review sent from its box is refused in these words, and Retry sends it: a UI test's or a
+    /// recording's way to show a refusal on sample PRs.
+    public var refusesFirstReview: String?
 
     public init(
         samples: [Sample], mergedReviewed: [PullRequestRow], mergedMine: [PullRequestRow], answersOnPhone: Bool

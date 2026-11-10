@@ -24,7 +24,10 @@ extension PRsModel {
 
     /// Posts as Jai: the PR as it now stands, or the write saved on the phone and still going. The mirror follows on
     /// its own, soon after.
-    func write(_ write: PRWrite, to ref: PullRequestRef) async throws -> PRWriteOutcome {
+    /// `queued` hears the outbox's id for it, when it is saved there.
+    func write(
+        _ write: PRWrite, to ref: PullRequestRef, queued: (String) -> Void = { _ in }
+    ) async throws -> PRWriteOutcome {
         // A sample row can name a real PR. Nothing done to it may reach GitHub.
         if let samples {
             guard samples.answersOnPhone, let detail = sampleWrite(write, to: ref) else {
@@ -32,7 +35,7 @@ extension PRsModel {
             }
             return .posted(detail)
         }
-        let outcome = try await send(write, to: ref)
+        let outcome = try await send(write, to: ref, queued: queued)
         if case .posted = outcome {
             Task { await refresh(.pull) }
         }
@@ -61,13 +64,16 @@ extension PRsModel {
     }
 
     /// Merge and update branch go now or not at all: Jai should see them happen. The rest are saved first.
-    private func send(_ write: PRWrite, to ref: PullRequestRef) async throws -> PRWriteOutcome {
+    private func send(
+        _ write: PRWrite, to ref: PullRequestRef, queued saved: (String) -> Void
+    ) async throws -> PRWriteOutcome {
         guard let outbox, write.isQueued else {
             return .posted(try PullRequestDetail.decode(await client.write(write, to: ref)))
         }
         let job = PROutboxJob.write(write, ref: ref)
         let id = try await outbox.enqueue(job)
         queued[id] = job
+        saved(id)
         switch try await answer(to: id) {
         case let .answered(data): return .posted(try PullRequestDetail.decode(data))
         case .stillGoing: return .queued(isOnline() ? .sending : .waitingForNetwork)
@@ -98,6 +104,7 @@ extension PRsModel {
     func outboxAnswered(id: String, data: Data) {
         guard waiting.contains(id) else {
             queued[id] = nil
+            _ = reviewLanded(job: id, data: data)
             return
         }
         outcomes[id] = .success(data)
@@ -108,6 +115,11 @@ extension PRsModel {
     func outboxRefused(id: String, kind: PROutboxJob.Kind, reason why: String) {
         if waiting.contains(id) {
             outcomes[id] = .failure(.refused(why))
+            return
+        }
+        if case let .write(write, ref) = queued[id], reviewRefused(job: id, reason: why) {
+            queued[id] = nil
+            onEvent(.writeRefused(write.refusal(on: ref, reason: why)))
             return
         }
         let words = switch queued.removeValue(forKey: id) {

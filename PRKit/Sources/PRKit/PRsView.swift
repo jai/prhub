@@ -15,6 +15,7 @@ struct PRsView: View {
 
     var body: some View {
         layout
+            .overlay(alignment: .top) { PRReviewToastView(model: model) }
             .background {
                 if let session = navigation.diffOnShow {
                     PRDiffShortcuts(session: session)

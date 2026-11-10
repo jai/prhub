@@ -147,6 +147,10 @@ final class PRsModel {
     @ObservationIgnored var onEvent: (PRKitEvent) -> Void = { _ in }
     /// A queued job refused after Jai left its screen, in its own words, until he dismisses it.
     var lateRefusal: String?
+    /// The review on its way from a box that has closed (`PRReviewToast`).
+    var reviewToast: PRReviewToast?
+    /// A sample set's one refused review has been refused (`PRSampleSet.refusesFirstReview`).
+    var sampleReviewRefused = false
     /// Outbox answers by item id, until the screen that is waiting on one takes it.
     var outcomes: [String: Result<Data, PRWorkerError>] = [:]
     /// Ids a screen is waiting on. Answers to the rest arrive after Jai has moved on.

@@ -144,6 +144,7 @@ all of them are in scope. A new screen adds a row here and a step in `PRHubScree
 | Review shortcut | PRs → a row's Review button, its swipe right, or its long-press menu | `PrListBlock`, `PRSwipeRow`, `PullRequestOpener` |
 | PR filter | PRs → Filter | `PRFilterPanel`, `PRSectionTitle` |
 | PR description | PRs → a PR: its title, who it is from, its tickets, then status, review and conversation | `PRScreen`, `PRDescriptionView`, `ObjectReferenceLines`, `PRChangesCard`, `PRStatusCard`, `PRReviewActions`, `.prCard()`, `PRCommentText`, `PRThreadCard` |
+| Review in the background | PRs → a PR → Approve, Request changes or Comment → send: the box closes, the toast follows the review | `PRReviewComposer`, `PRReviewToastView` |
 | Ask AI | PRs → a PR → the toolbar, or a line's comment box | `PRAskSheet`, `SessionBubble`, `SessionComposer` |
 | PR diff | PRs → a PR → Review changes, or Files changed | `PRDiffScreen`, `DiffTableView`, `PRDiffPage`, `PRNavigator`, `PRReviewActions` |
 | Settings | Settings; signed in: account, GitHub access, Anthropic key, Sign out, Delete account | `PRHubSettingsView`, `PRPageBlock`, `PRValueLine`, `AnthropicKeySection`, `DeleteAccountSheet` |
@@ -299,6 +300,7 @@ The shared parts. Use these; extend one rather than writing a near-copy. Each is
 | `PRCommentText`, `MarkdownText` | what people and agents write, in GitHub's Markdown: one renderer for descriptions, comments and chat | PRKit `Parts/Markdown*.swift` |
 | `PRButtonStyle` | every button on a row or screen | PRKit `PRParts.swift` |
 | `PRReviewActions`, `PRReviewBar`, `PRReviewComposer` | a review: Approve, Request changes and Comment as one bar, and the box each opens, on a PR's page and under its diff | PRKit `PRReviewActions.swift` |
+| `PRReviewToastView` | a review on its way after its box closed: Submitting, then what landed, or why it didn't with Retry | PRKit `PRReviewToast.swift` |
 | `.prField(isFocused:)` | every field you type in | PRKit `PRParts.swift` |
 | `InlineComposer` | writing on a PR, in place | PRKit `PRParts.swift` |
 | `StatusChip` | state words outside lists | PRKit `Parts/` |
@@ -403,6 +405,31 @@ rules:
 antiPatterns:
   - A ticket key both in the title and on a ticket line.
   - A bot shown as if a person wrote the PR.
+```
+
+### Toast
+
+```text
+name: PRReviewToastView
+purpose: A review on its way after its box closed. It follows the review to GitHub's answer, over whatever is open.
+parts:
+  box:    { holds: "groundCard, Radius.md, hairline, ToastStyle's shadow, ToastStyle.maxWidth at most", place: "top, centred, Space.lg from the sides" }
+  mark:   { holds: "a spinner while sending; AppIcon.done toneGood, .offline toneWaiting, .problem toneBad" }
+  words:  { font: appFootnote semibold, lines: 3, holds: "Submitting review… (Posting comment…), Approved, Changes requested, Comment posted, Saved on this phone…, Review not sent. <why>" }
+  retry:  { holds: PRButtonStyle(.secondary), only: failed }
+  close:  { holds: AppIcon.close, only: failed }
+states: [sending, waitingForNetwork, done, failed]
+rules:
+  - The box it came from closes at once, read-only while it goes. The review goes through the host's outbox, so it
+    survives the app leaving the foreground; a late answer or refusal still reaches the toast.
+  - It slides in from the top and fades (AppMotion.fold); its words and mark change in place (AppMotion.swap). Done
+    stays ToastStyle.dwell, then fades. Failed stays until Retry or close, and gives the line comments back to the PR.
+  - Opaque, never glass: over the nav bar, glass let the title's words show through its own. One at a time; a new
+    review replaces it.
+  - Success and failure each have their .sensoryFeedback.
+antiPatterns:
+  - A notice under the review bar for a review the toast is following.
+  - Red for a review still going: offline is waiting, slow is still sending.
 ```
 
 ### Comment

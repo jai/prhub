@@ -90,6 +90,35 @@ final class PRHubPRPageUITests: XCTestCase {
         try? picture("nav-tickets-author")
     }
 
+    /// Approve closes its box at once; the toast says Submitting review…, then Approved, then goes. A refused review
+    /// stays on the toast with the reason, and Retry sends it.
+    func testAReviewGoesInTheBackgroundWithAToast() throws {
+        launch(["-PRHubRefuseFirstReview"])
+        openCheckout()
+        let approve = app.buttons["pr-review-approve"]
+        if !approve.isHittable {
+            app.swipeUp(velocity: .slow)
+        }
+        approve.tap()
+        let send = app.buttons["inline-composer-send"]
+        XCTAssertTrue(send.waitForExistence(timeout: 5))
+        send.tap()
+        XCTAssertTrue(waitFor(timeout: 1) { !send.exists }, "the box closes at once")
+        let words = app.staticTexts["pr-review-toast-words"]
+        XCTAssertTrue(words.waitForExistence(timeout: 2))
+        XCTAssertEqual(words.label, "Submitting review…", "while the review goes, before any answer")
+        try? picture("nav-toast-submitting")
+        let retry = app.buttons["pr-review-toast-retry"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 5), "a refusal stays, with Retry")
+        XCTAssertEqual(words.label, "Review not sent. GitHub didn't answer in time.")
+        try? picture("nav-toast-failed")
+        retry.tap()
+        XCTAssertTrue(waitFor { words.label == "Submitting review…" }, words.label)
+        XCTAssertTrue(waitFor(timeout: 8) { words.label == "Approved" }, words.label)
+        try? picture("nav-toast-approved")
+        XCTAssertTrue(waitFor(timeout: 6) { !words.exists }, "it fades once GitHub has it")
+    }
+
     // MARK: - Helpers
 
     private func openRateLimit() {

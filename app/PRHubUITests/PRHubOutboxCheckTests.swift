@@ -2,8 +2,9 @@ import XCTest
 
 /// The outbox's states on a Simulator, against a stand-in Worker that a control port takes up and down
 /// (`-PRHubOutboxCheck`, PRHubOutboxCheck.swift). `PRHUB_OUTBOX_CHECK` is the stand-in's URL; its control port is the
-/// next one. A comment posts at once; a review sent while the Worker is down waits in the waiting tone, never red, and
-/// lands when it is back; a question waits quietly; a write refused after its screen has gone says so on the list.
+/// next one. A comment posts at once; a review sent while the Worker is down stays "Submitting review…" on its toast,
+/// never red, and lands when it is back; a question waits quietly; a comment refused after its screen has gone says so
+/// on its toast, with Retry.
 /// CI runs none of it.
 @MainActor
 final class PRHubOutboxCheckTests: XCTestCase {
@@ -30,16 +31,18 @@ final class PRHubOutboxCheckTests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText("Online comment")
         app.buttons["inline-composer-send"].tap()
-        let notice = app.staticTexts["pr-notice"]
-        XCTAssertFalse(notice.waitForExistence(timeout: 3), "a posted comment says nothing")
+        let toast = app.staticTexts["pr-review-toast-words"]
+        XCTAssertTrue(toast.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitFor { toast.label == "Comment posted" }, toast.label)
 
-        // Worker down: a review waits, saved, in the waiting tone.
+        // Worker down: a review goes on sending, never red.
         try awaitTask { try await setWorker("down") }
         app.buttons["Approve"].tap()
         XCTAssertTrue(app.buttons["inline-composer-send"].waitForExistence(timeout: 5))
         app.buttons["inline-composer-send"].tap()
-        XCTAssertTrue(notice.waitForExistence(timeout: 25))
-        XCTAssertEqual(notice.label, "Your review is saved on this phone and on its way to GitHub.")
+        XCTAssertTrue(waitFor { toast.label == "Submitting review…" }, toast.label)
+        sleep(20)
+        XCTAssertEqual(toast.label, "Submitting review…", "past the outbox's wait it still says so")
 
         // A question while the Worker is down: Sending…, nothing red.
         app.buttons["pr-ask"].tap()
@@ -69,17 +72,24 @@ final class PRHubOutboxCheckTests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText("Please refuse this")
         app.buttons["inline-composer-send"].tap()
-        let saved = app.staticTexts.matching(
-            NSPredicate(format: "label == 'Your comment is saved on this phone and on its way to GitHub.'")
-        ).firstMatch
-        XCTAssertTrue(saved.waitForExistence(timeout: 25))
+        XCTAssertTrue(waitFor { toast.label == "Posting comment…" }, toast.label)
+        sleep(20)
         app.back()
         try awaitTask { try await setWorker("up") }
-        let refusal = app.staticTexts.matching(
-            NSPredicate(format: "label BEGINSWITH 'GitHub refused your comment “Please refuse this”'")
-        ).firstMatch
-        XCTAssertTrue(refusal.waitForExistence(timeout: 20))
+        XCTAssertTrue(waitFor(timeout: 20) { toast.label.hasPrefix("Comment not sent.") }, toast.label)
+        XCTAssertTrue(app.buttons["pr-review-toast-retry"].exists)
         sleep(3)
+    }
+
+    private func waitFor(timeout: TimeInterval = 10, _ condition: () -> Bool) -> Bool {
+        let end = Date.now.addingTimeInterval(timeout)
+        while Date.now < end {
+            if condition() {
+                return true
+            }
+            RunLoop.current.run(until: Date.now.addingTimeInterval(0.2))
+        }
+        return condition()
     }
 
     private func awaitTask(_ body: @escaping @Sendable () async throws -> Void) throws {

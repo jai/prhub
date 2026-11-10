@@ -62,6 +62,19 @@ public enum ChatStyle {
     public static let attachmentRemove: CGFloat = 22
 }
 
+/// The review's toast at the top of the PRs tab (`PRReviewToastView`).
+public enum ToastStyle {
+    /// Its widest, so on an iPad or a Mac it stays a toast, never a banner.
+    public static let maxWidth: CGFloat = 480
+    /// How long it stays once GitHub has the review, before it fades.
+    public static let dwell = Duration.seconds(2)
+    /// It floats over the nav bar and the page: a soft shadow lifts it off both, where glass let their words show
+    /// through its own.
+    public static let shadowOpacity = 0.15
+    public static let shadowRadius: CGFloat = 12
+    public static let shadowY: CGFloat = 4
+}
+
 /// A chip of state words (`StatusChip`).
 public enum ChipStyle {
     public static let horizontal = Space.sm

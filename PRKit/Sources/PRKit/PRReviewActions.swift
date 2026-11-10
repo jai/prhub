@@ -120,7 +120,8 @@ struct PRReviewActions: View {
     }
 }
 
-/// The words for the review the bar opened, in place. Sending it, or Cancel, closes it.
+/// The words for the review the bar opened, in place. Cancel closes it; sending it locks the words and closes it at
+/// once, and the review goes on in the background with its toast (`PRReviewToast`).
 struct PRReviewComposer: View {
     let session: PRSession
     let action: PRReviewAction
@@ -128,6 +129,8 @@ struct PRReviewComposer: View {
     /// it already does.
     var showsPending = true
     let close: () -> Void
+    /// Sent: the box is read-only while it closes.
+    @State private var isSent = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
@@ -144,13 +147,15 @@ struct PRReviewComposer: View {
             placeholder: action == .approve ? "Add a note, or just approve" : "Say something",
             buttonTitle: action.title, needsText: action != .approve && session.drafts.isEmpty
         ) { text in
-            try await session.send(text, to: action.target(hasDrafts: !session.drafts.isEmpty))
+            try session.submitReview(text, to: action.target(hasDrafts: !session.drafts.isEmpty))
+            isSent = true
             session.discardText(for: action.target)
             close()
         } cancel: {
             session.discardText(for: action.target)
             close()
         }
+        .disabled(isSent)
     }
 }
 

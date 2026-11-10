@@ -370,6 +370,42 @@ final class PRSession: Hashable {
         setDrafts(kept, detail: outcome.posted)
     }
 
+    /// Sends a review from its box, which closes at once (`PRsModel.submitReview`): its words and line comments go with
+    /// it, and the toast follows it to GitHub. A refusal puts both back, so the box opens on the words again.
+    func submitReview(_ text: String, to target: PRComposerTarget) throws {
+        guard let content else {
+            throw PRLocalRefusal.notLoaded
+        }
+        var goingOut: [PRDraftComment] = []
+        if case .review = target {
+            goingOut = drafts
+        }
+        let head = content.detail.head
+        let write = target.write(body: text, head: head, drafts: goingOut, description: content.detail.body)
+        discardText(for: target)
+        setDrafts(drafts.filter { !goingOut.contains($0) })
+        notice = nil
+        model.submitReview(write, to: ref, drafts: goingOut, head: head, answer: target.answer) { [weak self] phase, detail in
+            guard let self else {
+                return
+            }
+            switch phase {
+            case .done:
+                discardText(for: target)
+                setDrafts(drafts, detail: detail)
+                withAnimation(AppMotion.fold) { notice = model.writeNotice }
+            case .failed:
+                writing[target.key] = text
+                setDrafts(draftStore.load(ref))
+            case .sending:
+                discardText(for: target)
+                setDrafts(draftStore.load(ref))
+            case .waitingForNetwork:
+                break
+            }
+        }
+    }
+
     func setResolved(_ resolved: Bool, thread: PullRequestDetail.Thread) async throws {
         let write = PRWrite.resolve(thread: thread.id, resolved: resolved)
         let outcome = try await model.write(write, to: ref)
