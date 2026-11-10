@@ -72,8 +72,10 @@ export interface Env extends LimitVars {
   AI_MODELS_ALLOWED?: string;
   AI_EFFORT_MAX?: string;
   AI_DEFAULTS?: string;
-  /** Optional: a rewrite goes on without the ticket when it is not set. */
+  /** Optional: a rewrite goes on without the ticket, and a PR's tickets without their Linear state, when it is not set. */
   LINEAR_API_KEY?: string;
+  /** Accounts GitHub calls users that open PRs for someone else, comma-separated: their PRs say so (`requester.ts`). */
+  BOT_AUTHORS?: string;
   /** The rewrite's writing guide: `owner/repo@ref` and the comma-separated paths in it. Unset: the built-in guide. */
   GUIDE_REPO?: string;
   GUIDE_FILES?: string;

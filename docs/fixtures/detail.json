@@ -12,6 +12,19 @@
     "name": "Alex Doe"
   },
   "isAuthor": false,
+  "authorIsBot": false,
+  "requestedBy": null,
+  "tickets": [
+    {
+      "key": "ENG-7",
+      "url": null,
+      "title": null,
+      "state": null,
+      "state_type": null,
+      "state_color": null,
+      "found": null
+    }
+  ],
   "body": "Retries a failed upload twice.",
   "additions": 40,
   "deletions": 6,

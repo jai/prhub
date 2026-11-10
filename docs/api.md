@@ -211,6 +211,16 @@ checked on every run: [`row.json`](fixtures/row.json), [`merged-row.json`](fixtu
   the same name in two workflows is two checks. Each has `name`, `state` (`success`, `failure`, `pending`, `skipped`),
   `url`, `required` and `workflow`: the Actions workflow that ran it, or `null` for a commit status or an app's check.
   The app tells same-named checks apart by `workflow` and groups a job's matrix legs (`name (leg)`) within one.
+- A detail's `tickets` are the Linear issues its title names in brackets (`[ENG-1686] [CORE-12]`, `[ENG-1, CORE-2]`),
+  then those its branch name names (`eng-1686-retry`, `alex/core-12`), each once, in a list ticket's shape: `key`, `url`,
+  `title`, `state`, `state_type`, `state_color`, `found`. With `LINEAR_API_KEY` the Worker asks Linear when it reads
+  the PR: a title's key Linear has no issue for is `found: false`, and a key only the branch names shows only once
+  Linear has it. Without the key, or when Linear does not answer, `found` is null and only the title's keys show.
+- `author.name` is the name on a user's profile. `authorIsBot` is true for a GitHub App, a `[bot]` login or an account
+  `BOT_AUTHORS` names. On a bot's PR, `requestedBy` is the human it was opened for, first found: a `Co-authored-by`
+  trailer on its last 20 commits that is no coding agent, a "Requested by" line in its body (`@login` or a name), else
+  its first assignee that is no bot. It is `{login, name, avatarUrl, source}`, `source` being `co_author`, `body` or
+  `assignee`, and null on a person's own PR or when nothing is recorded.
 
 ## Configuration
 
@@ -239,6 +249,7 @@ var reads as unset.
 | `SETUP_STATE` | secret | Turns on `/github/setup` and `/github/callback` for making a webhook App |
 | `GITHUB_APP_OWNER`, `GITHUB_APP_NAME` | var | The org that owns the webhook App (unset: the person's account) and its name (unset: `<login>-pr-review`) |
 | `PR_INDEX_LOCATION` | var | Durable Object location hint for the index |
+| `BOT_AUTHORS` | var | Accounts GitHub calls users that open PRs for someone else, comma-separated logins. Their PRs say they are a bot's (`authorIsBot`) and name who asked (`requestedBy`). Unset: only GitHub Apps and `[bot]` logins |
 | `APP_TOKEN`, `HUB_TOKEN`, `APNS_*`, `AGENT_PAGER_URL`, `AGENT_PAGER_PUSH_TOKEN`, `FEEDBACK_REPO`, `LINEAR_API_KEY` | | Jai's Worker; not set on a self-hosted one. With both `AGENT_PAGER_*` set, every push goes to that Worker's `POST /pr-push` instead of a device; unset, pager mode is off (`LINEAR_API_KEY` works for anyone with Linear) |
 
 The webhook App's manifest points at the origin `/github/setup` was opened on, so it is right on any Worker. Its

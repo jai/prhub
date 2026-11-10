@@ -83,7 +83,8 @@ test("a row of GET /prs/merged", () => {
 });
 
 test("a detail, as the index keeps it", () => {
-  matchesFixture("detail.json", read({ mergeable: "CONFLICTING", mergeStateStatus: "CLEAN" }).detail);
+  matchesFixture("detail.json",
+    read({ mergeable: "CONFLICTING", mergeStateStatus: "CLEAN", title: "Add the retry to the uploader [ENG-7]" }).detail);
 });
 
 test("GET /device/config", () => {

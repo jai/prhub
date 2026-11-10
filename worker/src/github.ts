@@ -7,6 +7,8 @@ import {
 } from "./ids.ts";
 import { peopleOf } from "./policy-github.ts";
 import { PEOPLE_FIELDS, type PeopleDecision, type PeopleNode } from "./policy-people.ts";
+import { botAuthorsOf, isBotAuthor, type RequestedBy, requestedByOf } from "./requester.ts";
+import { lookUpTickets, resolvedTickets, type Ticket, ticketKeysOf } from "./tickets.ts";
 import type {
   CheckState, ChecksSummary, MergeState, OpenList, PolicyState, PullRequestState, ReviewState,
 } from "./vocab.ts";
@@ -95,8 +97,14 @@ export interface Detail {
   head: string;
   base: string;
   headBranch: string;
-  author: Author | null;
+  author: (Author & { __typename: string; name?: string | null }) | null;
   isAuthor: boolean;
+  /** The author is a bot (`isBotAuthor`): a GitHub App, a `[bot]` login, or an account `BOT_AUTHORS` names. */
+  authorIsBot: boolean;
+  /** The human a bot opened it for, where one is recorded (`requestedByOf`); null for a person's own PR. */
+  requestedBy: RequestedBy | null;
+  /** The Linear issues its title (in brackets) and branch name, as Linear has them where the Worker can ask. */
+  tickets: Ticket[];
   body: string;
   additions: number;
   deletions: number;
@@ -162,6 +170,8 @@ export interface PullRequest {
   /** Null when it belongs on none of the lists, and then it has no status. */
   status: OpenRowStatus | null;
   detail: Detail;
+  /** The ticket keys its title and branch name, before Linear is asked (`readPullRequests` asks). */
+  ticketKeys: { title: string[]; branch: string[] };
   /** When review was last asked of the user, for alerts (`alerts.ts`). */
   requestedAt: string | null;
 }
@@ -201,8 +211,11 @@ interface Node extends Pick<PeopleNode, "peopleComments" | "committers"> {
   mergeable: string;
   mergeStateStatus: string;
   viewerDidAuthor: boolean;
-  author: (Author & { __typename: string }) | null;
+  author: (Author & { __typename: string; name?: string | null }) | null;
   repository: { nameWithOwner: string; viewerDefaultMergeMethod: string | null };
+  assignees?: { nodes: { login: string; name?: string | null; avatarUrl?: string | null }[] };
+  /** The last commits' messages, for a co-author trailer naming who asked a bot for the PR. */
+  trailers?: { nodes: { commit: { message: string } }[] };
   reviewRequests: { nodes: { requestedReviewer: { login?: string; avatarUrl?: string; name?: string } | null }[] };
   requestEvents: { nodes: RequestEvent[] };
   files: { nodes: { path: string; viewerViewedState: string }[] } | null;
@@ -232,8 +245,10 @@ const COMMENT = `id ${AUTHOR} body createdAt`;
 const FIELDS = `fragment Fields on PullRequest {
   id number title body state isDraft url headRefOid headRefName baseRefName updatedAt additions deletions changedFiles
   reviewDecision mergeable mergeStateStatus viewerDidAuthor
-  author { __typename login avatarUrl(size: 80) }
+  author { __typename login avatarUrl(size: 80) ... on User { name } }
   repository { nameWithOwner viewerDefaultMergeMethod }
+  assignees(first: 5) { nodes { login name avatarUrl(size: 80) } }
+  trailers: commits(last: 20) { nodes { commit { message } } }
   reviewRequests(first: 20) { nodes { requestedReviewer {
     ... on User { login avatarUrl(size: 80) }
     ... on Team { name }
@@ -585,12 +600,15 @@ export function reviewDueAt(requestedAt: string | null, week: ReviewWeek | null)
 /** A PR read from GitHub, as the index stores it and the phone shows it. Rows and the detail share one verdict. */
 export function pullRequest(
   node: Node, login: string, wasAsked: boolean, week: ReviewWeek | null, people: PeopleDecision | null,
+  bots: ReadonlySet<string> = new Set(),
 ): PullRequest {
   const { checks, review, decision, policy, overall, contexts } = verdictOf(node, people);
   const merge = mergeOf(node.mergeable, node.mergeStateStatus);
   const list = listOf(node, login, wasAsked);
   const requestedAt = reviewRequestedAt(node.requestEvents.nodes, login);
   const head = shaOf(node.headRefOid);
+  const ticketKeys = ticketKeysOf(node.title, node.headRefName);
+  const authorIsBot = isBotAuthor(node.author, bots);
   return {
     repo: repoOf(node.repository.nameWithOwner),
     number: node.number,
@@ -603,10 +621,13 @@ export function pullRequest(
       list, node.author?.login ?? null, checks, review, merge, jaiReview(node, login), reviewDueAt(requestedAt, week),
     ),
     requestedAt,
+    ticketKeys,
     detail: {
       id: node.id, url: node.url, state: detailState(node), head: node.headRefOid, base: node.baseRefName,
       headBranch: node.headRefName,
-      author: node.author, isAuthor: node.viewerDidAuthor, body: node.body, additions: node.additions,
+      author: node.author, isAuthor: node.viewerDidAuthor, authorIsBot,
+      requestedBy: authorIsBot ? requestedByOf(node, bots) : null, tickets: resolvedTickets(ticketKeys, new Map()),
+      body: node.body, additions: node.additions,
       deletions: node.deletions, changedFiles: node.changedFiles, reviewDecision: decision,
       mergeState: node.mergeStateStatus, merge, review, mergeMethod: node.repository.viewerDefaultMergeMethod, policy,
       reviewers: reviewersOf(node),
@@ -734,14 +755,23 @@ export async function readPullRequests(
     githubLogin(env),
   ]);
   const week = reviewWeek(env);
+  const bots = botAuthorsOf(env);
   const people = await Promise.all(refs.map((ref, index) => {
     const node = data[`p${index}`]?.pullRequest;
     return node ? peopleOf(ref.repo, node, env).catch(() => null) : null;
   }));
-  return new Map(refs.map((ref, index) => {
+  const read = refs.map((ref, index) => {
     const node = data[`p${index}`]?.pullRequest;
-    return [ref.id, node ? pullRequest(node, login, asked.has(ref.id), week, people[index] ?? null) : null];
-  }));
+    return node ? pullRequest(node, login, asked.has(ref.id), week, people[index] ?? null, bots) : null;
+  });
+  const keys = [...new Set(read.flatMap((pr) => pr ? [...pr.ticketKeys.title, ...pr.ticketKeys.branch] : []))];
+  const issues = await lookUpTickets(keys, env);
+  for (const pr of read) {
+    if (pr) {
+      pr.detail.tickets = resolvedTickets(pr.ticketKeys, issues);
+    }
+  }
+  return new Map(refs.map((ref, index) => [ref.id, read[index] ?? null]));
 }
 
 /** A picker row for any PR, open or not (`GET /prs/{owner}/{repo}/{n}/summary`). */
