@@ -1,0 +1,18 @@
+{
+  "name": "prhub-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:e2e": "e2e run --exclude-tag bugbash",
+    "typecheck": "tsc -p ."
+  },
+  "devDependencies": {
+    "@e2e-dev/mobile": "^0.12.6",
+    "@types/node": "^26.6.4",
+    "ai": "^7.0.0",
+    "@ai-sdk/openai": "*",
+    "e2e": "^0.23.0",
+    "typescript": "^7.0.2",
+    "zod": "^4.1.8"
+  }
+}

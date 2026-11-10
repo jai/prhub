@@ -3,9 +3,9 @@
 #
 #   scripts/scrub.sh [path ...]     (default: the whole repo)
 #
-# Scans every tracked or untracked text file but .git, node_modules, lockfiles and this script. Two values are allowed
-# where they appear: the public URLs of the shared relay and the hosted Worker. PRHub's bundle ID, team ID and App
-# Store Connect app ID are public and are not on the list.
+# Scans every tracked or untracked text file but .git, node_modules, lockfiles, e2e run output (.e2e) and this
+# script. Two values are allowed where they appear: the public URLs of the shared relay and the hosted Worker. PRHub's
+# bundle ID, team ID and App Store Connect app ID are public and are not on the list.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -38,7 +38,7 @@ EOF
 # setting (app/Config/PRHub.xcconfig).
 allowed='https://(agent-pager-relay|prhub)\.jai-f89\.workers\.dev|\bprhub\.jai-f89\.workers\.dev'
 
-files=$(find "$@" \( -name .git -o -name node_modules -o -name .build -o -name DerivedData -o -name build -o -name tmp \) -prune -o \
+files=$(find "$@" \( -name .git -o -name node_modules -o -name .build -o -name DerivedData -o -name build -o -name tmp -o -name .e2e \) -prune -o \
   -type f ! -name package-lock.json ! -name Package.resolved ! -path ./scripts/scrub.sh ! -path scripts/scrub.sh -print)
 
 # shellcheck disable=SC2086

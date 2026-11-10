@@ -1,0 +1,3 @@
+node_modules/
+# Run output: reports, results, cache, bug-bash logs.
+.e2e/
