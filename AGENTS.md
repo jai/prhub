@@ -18,7 +18,8 @@ pairing the phone, and troubleshooting.
 
 - Layout: `PRKit/` with the root `Package.swift` (the PR screens as a Swift package), `app/` (the PRHub app,
   XcodeGen), `worker/` (the Worker), `relay/` (the push relay), `deploy/` (template, `setup.sh`, deployment guide,
-  `github-app/`), `docs/` (contracts, `fixtures/`, plans), `release/` (TestFlight), `scripts/` (repo checks).
+  `github-app/`), `docs/` (contracts, `fixtures/`, plans), `release/` (TestFlight), `scripts/` (repo checks),
+  `e2e/` (agentic bug bashes and repro tests on the Simulator, [e2e/README.md](e2e/README.md)).
 - Contracts: [docs/api.md](docs/api.md) (pairing, `/device/config`, every var and secret) and
   [docs/push-relay.md](docs/push-relay.md). Whoever changes API behaviour updates the contract in the same commit.
 - **Push to `main`, then deploy. No pull requests.** GitHub enforces it: no new branches (except `ci/…` and
