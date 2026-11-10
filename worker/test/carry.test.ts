@@ -13,7 +13,8 @@ const HEAD = "a".repeat(40) as Sha;
 
 function index() {
   const sql = memorySql();
-  sql.exec("CREATE TABLE pull_requests (id TEXT PRIMARY KEY, repo TEXT, number INTEGER, head TEXT, list TEXT)");
+  sql.exec(`CREATE TABLE pull_requests (id TEXT PRIMARY KEY, repo TEXT, number INTEGER, head TEXT, list TEXT,
+    revision TEXT, diff_state TEXT, diff_tried_at INTEGER)`);
   createReviewedKeyLinesTable(sql);
   createAskTables(sql);
   return sql;
@@ -45,6 +46,16 @@ test("a PR held on Recently Reviewed comes across held there, and only those", (
   assert.deepEqual(exported.reviewedPullRequests, [{ id: "acme/api#7", repo: "acme/api", number: 7 }]);
   assert.deepEqual(writeCarriedIndexState(after, exported), { reviewedKeyLines: 0, reviewedPullRequests: 1 });
   assert.deepEqual(readCarriedIndexState(after).reviewedPullRequests, exported.reviewedPullRequests);
+  assert.deepEqual(after.exec("SELECT diff_state FROM pull_requests").toArray(), [{ diff_state: "pending" }],
+    "its diff is fetched, so the list never names a PR with no diff state");
+});
+
+test("a row carried with no diff state is given one when the import runs again", () => {
+  const after = index();
+  after.exec("INSERT INTO pull_requests (id, repo, number, list) VALUES (?, ?, ?, ?)", "acme/api#7", "acme/api", 7, "reviewed");
+  writeCarriedIndexState(after, { reviewedKeyLines: [], reviewedPullRequests: [] });
+  assert.deepEqual(after.exec("SELECT diff_state, diff_tried_at FROM pull_requests").toArray(),
+    [{ diff_state: "pending", diff_tried_at: 0 }]);
 });
 
 test("Ask's queue and chats move with their ids, failures included", () => {

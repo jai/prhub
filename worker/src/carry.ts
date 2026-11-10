@@ -44,16 +44,19 @@ export function readCarriedIndexState(sql: LimitSql): CarriedIndexState {
 }
 
 /**
- * Adds the ticks and the Recently Reviewed PRs the index lacks. A PR comes in as held on `reviewed`, so its next read
- * keeps it there while Jai's review stands; the caller marks each one to be read.
+ * Adds the ticks and the Recently Reviewed PRs the index lacks. A PR comes in as held on `reviewed` with its diff still
+ * to fetch, so its next read keeps it there while Jai's review stands; the caller marks each one to be read.
  */
 export function writeCarriedIndexState(sql: LimitSql, state: CarriedIndexState): CarriedIndexCounts {
   for (const { pr, head, line, at } of state.reviewedKeyLines) {
     sql.exec("INSERT OR IGNORE INTO reviewed_key_lines (pr, head, line, at) VALUES (?, ?, ?, ?)", pr, head, line, at);
   }
   for (const { id, repo, number } of state.reviewedPullRequests) {
-    sql.exec("INSERT OR IGNORE INTO pull_requests (id, repo, number, list) VALUES (?, ?, ?, 'reviewed')", id, repo, number);
+    sql.exec(`INSERT OR IGNORE INTO pull_requests (id, repo, number, list, revision, diff_state, diff_tried_at)
+      VALUES (?, ?, ?, 'reviewed', '', 'pending', 0)`, id, repo, number);
   }
+  // A row carried before this fix came in with no diff state, which the index never set again: it wants its diff now.
+  sql.exec("UPDATE pull_requests SET diff_state = 'pending', diff_tried_at = 0 WHERE diff_state IS NULL");
   return {
     reviewedKeyLines: countOf(sql, "SELECT count(*) AS count FROM reviewed_key_lines"),
     reviewedPullRequests: countOf(sql, "SELECT count(*) AS count FROM pull_requests WHERE list = 'reviewed'"),
