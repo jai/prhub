@@ -122,13 +122,13 @@ test("the chat is Jai's messages and the agent's in time order, working until th
   assert.equal(delivered.isWorking, true, "delivered, and the runner has not looked since");
   const side = parseAgentSide({
     messages: [{ id: "a1", text: "On it.", at: "2026-11-09T10:00:20Z" }], isWorking: true, activity: "Running tests",
-    thread: { host: "borg-cube-03", id: "orca-claude:abc" },
+    thread: { host: "build-mac", id: "orca-claude:abc" },
   }, Date.parse("2026-11-09T10:00:30Z"))!;
   assert.equal(await runnerAgent(store, chat, side), 200);
   const working = (await feedbackChat(store, chat, Date.parse("2026-11-09T10:00:31Z")))!;
   assert.deepEqual(working.messages.map(({ role, text }) => `${role}: ${text}`), ["you: Bigger clock", "agent: On it."]);
   assert.equal(working.activity, "Running tests");
-  assert.deepEqual(working.thread, { host: "borg-cube-03", id: "orca-claude:abc" });
+  assert.deepEqual(working.thread, { host: "build-mac", id: "orca-claude:abc" });
   await runnerAgent(store, chat, { ...side, isWorking: false, activity: null, updatedAt: Date.parse("2026-11-09T10:01:00Z") });
   const done = (await feedbackChat(store, chat, Date.parse("2026-11-09T10:01:01Z")))!;
   assert.equal(done.isWorking, false);

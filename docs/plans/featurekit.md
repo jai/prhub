@@ -14,7 +14,7 @@ on the owner's sessions (one Managed Agents chat cost $10.43, mostly context re-
   ([api.md, Feedback](../api.md#feedback)). On with `FEEDBACK_REPO` and `HUB_TOKEN`. Jai is the only sender.
 - Runner: on the owner's Mac, outbound only. It polls `/feedback/runner/*`, claims a message and hands it to an agent
   through an adapter. Agent Pager's runner is its threads hub on the Mac mini, with an Orca adapter: a fresh clone per
-  chat on Borg Cube 03 and Claude Code launched there by `orca agent launch`; a reply goes into the same Orca chat; the
+  chat on the owner's build Mac and Claude Code launched there by `orca agent launch`; a reply goes into the same Orca chat; the
   agent's words come back from its transcript, the same read the Agents tab uses. The chat is an Agents thread too
   (jai/agent-pager `docs/api/feedback.md`).
 - App: `FeatureRequestsView` and `FeatureClient` in PRKit's `FeatureKit` target, on the `/feedback` routes; Agent
