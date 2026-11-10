@@ -20,6 +20,8 @@ struct PRHubBuild: Equatable, Sendable {
 
     /// Where an org owner installs the PRHub GitHub App, or a member asks for it.
     static let appInstallURL = URL(string: "https://github.com/apps/prhub-app/installations/new")!
+    /// Opens Settings (`PRHubRootView`), where the hosted Worker takes the person's Anthropic key.
+    static let settingsURL = URL(string: "prhub://settings")!
 
     init(hostedURL: URL?, signInWithGitHub: Bool, selfHosted: Bool, samples: Bool) {
         self.hostedURL = hostedURL

@@ -25,7 +25,8 @@ final class PRHubPRHost: PRKitHost {
     }
 
     /// What the PR screens follow of a Worker's config: its features, its `orgs` as the filter's default (else every
-    /// owner), its login, and on the hosted Worker the empty list's pointer to where the GitHub App is missing.
+    /// owner), its login, and on the hosted Worker the empty list's pointer to where the GitHub App is missing and, with
+    /// no Anthropic key, the Key lines page's pointer to Settings.
     static func configuration(_ config: DeviceConfig?) -> PRKitConfiguration {
         let all: [PRKitConfiguration.Feature: DeviceFeature] = [
             .askAI: .askAI, .keyLines: .keyLines, .rewrite: .rewrite, .push: .push,
@@ -34,9 +35,19 @@ final class PRHubPRHost: PRKitHost {
             features: Set(all.filter { config?.isOn($0.value) == true }.keys),
             orgDefault: .following(orgs: config?.orgs),
             login: config?.login,
-            emptyHint: config.flatMap { $0.hosted ? installHint($0) : nil }
+            emptyHint: config.flatMap { $0.hosted ? installHint($0) : nil },
+            keyLinesHint: config.flatMap { $0.hosted && !$0.isOn(.keyLines) ? anthropicKeyHint : nil }
         )
     }
+
+    /// The hosted Worker runs key lines on the person's own Anthropic key only.
+    static let anthropicKeyHint = PREmptyHint(
+        title: "Key lines need your Anthropic key",
+        message: "PRHub reads each change with your own Anthropic key, billed to your Anthropic account. Add it in "
+            + "Settings, under AI, and key lines show here.",
+        linkTitle: "Add your key in Settings",
+        link: PRHubBuild.settingsURL
+    )
 
     /// The hosted Worker sees only repos where the PRHub App is installed, so an empty list says where it is and
     /// where it is missing: on no account, suspended, or not on the person's own.

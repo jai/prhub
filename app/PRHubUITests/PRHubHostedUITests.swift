@@ -46,6 +46,35 @@ final class PRHubHostedUITests: XCTestCase {
         XCTAssertTrue(signIn.waitForExistence(timeout: 10), "back on onboarding, with nothing kept")
     }
 
+    /// Key lines run on the person's own key: without one the panel's Key lines page says so and opens Settings, and
+    /// once the key is saved the same diff shows its key lines.
+    func testKeyLinesWithNoKeyLeadToSettingsAndShowOnceTheKeyIsSet() {
+        app.launchArguments = ["-PRHubHosted"]
+        app.launch()
+        let row = app.staticTexts["Show a retry button when checkout fails"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.tap()
+        let reviewChanges = app.buttons["pr-review-changes"]
+        XCTAssertTrue(reviewChanges.waitForExistence(timeout: 5))
+        reviewChanges.tap()
+        let off = app.descendants(matching: .any)["key-lines-off"]
+        XCTAssertTrue(off.waitForExistence(timeout: 5), "Key lines points at Settings")
+        XCTAssertFalse(app.buttons["key-lines-context-100"].exists)
+        off.tap()
+
+        let field = app.secureTextFields["prhub-anthropic-key-field"]
+        XCTAssertTrue(app.scrollSettings(to: field), "on Settings, at the key")
+        field.tap()
+        field.typeText("key-0123456789abcdefghij")
+        app.buttons["prhub-anthropic-key-save"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["prhub-anthropic-key-set"].waitForExistence(timeout: 5))
+
+        app.go(to: .prs)
+        XCTAssertTrue(app.buttons["key-lines-context-100"].waitForExistence(timeout: 5), "the key lines, on the diff")
+        XCTAssertFalse(off.exists)
+        XCTAssertTrue(app.descendants(matching: .any)["key-lines-reviewed-count"].waitForExistence(timeout: 5))
+    }
+
     func testARefusedSignInSaysWhyUnderItsButton() {
         app.launchArguments = ["-PRHubFirstRun", "-PRHubSignInDenied"]
         app.launch()

@@ -51,6 +51,10 @@ struct PRHubRootView: View {
             wasShowing && !isShowing && connection.isPaired
         }
         .onOpenURL { url in
+            if url == PRHubBuild.settingsURL {
+                environment.navigation.selectedTab = .settings
+                return
+            }
             // A setup link ends the samples: it is the user's own Worker.
             if environment.sample != nil {
                 environment.endSample()

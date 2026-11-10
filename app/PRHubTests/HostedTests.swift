@@ -521,4 +521,14 @@ struct HostedConnectionTests {
         #expect(hosted.emptyHint?.link == PRHubBuild.appInstallURL)
         #expect(PRHubPRHost.configuration(DeviceConfig(features: [])).emptyHint == nil)
     }
+
+    /// Signed in with no Anthropic key, the Key lines page says to add one, and opens Settings to do it.
+    @Test func theHostedWorkerWithNoKeyPointsKeyLinesAtSettings() {
+        let noKey = PRHubPRHost.configuration(DeviceConfig(features: [.push], hosted: true))
+        #expect(!noKey.isOn(.keyLines))
+        #expect(noKey.keyLinesHint == PRHubPRHost.anthropicKeyHint)
+        #expect(noKey.keyLinesHint?.link == PRHubBuild.settingsURL)
+        #expect(PRHubPRHost.configuration(DeviceConfig(features: [.keyLines], hosted: true)).keyLinesHint == nil)
+        #expect(PRHubPRHost.configuration(DeviceConfig(features: [.push])).keyLinesHint == nil)
+    }
 }
