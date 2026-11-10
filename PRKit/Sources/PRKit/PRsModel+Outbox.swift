@@ -81,14 +81,17 @@ extension PRsModel {
         defer { waiting.remove(id) }
         let clock = ContinuousClock()
         let end = clock.now + answerWait
-        while clock.now < end {
+        // Looked for once more after the last wait: an answer that came during it would otherwise be held and lost.
+        while true {
             if let outcome = outcomes.removeValue(forKey: id) {
                 queued[id] = nil
                 return .answered(try outcome.get())
             }
+            guard clock.now < end else {
+                return .stillGoing
+            }
             try? await Task.sleep(nanoseconds: 50_000_000)
         }
-        return .stillGoing
     }
 
     /// The Worker's answer to an outbox item, for the screen waiting on it.
