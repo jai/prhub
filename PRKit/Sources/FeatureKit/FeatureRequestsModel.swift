@@ -163,7 +163,11 @@ public final class FeatureRequestsModel {
         var chat = chats[id] ?? FeatureChat(
             id: id, messages: [], isWorking: false, activity: nil, problem: nil, costCents: 0, builderOnline: true
         )
-        chat.messages.append(.init(id: "\(chat.messages.count + 1)", role: "you", text: message.text, anchor: nil))
+        let sent = "\(chat.messages.count + 1)"
+        chat.messages.append(.init(id: sent, role: "you", text: message.text, anchor: nil))
+        if !message.images.isEmpty {
+            chat.screenshots[sent] = message.images.count
+        }
         chat.isWorking = true
         chat.activity = "Reading the app"
         chats[id] = chat
