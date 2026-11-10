@@ -1,15 +1,18 @@
 // One person's state that GitHub can't give back, carried from one Worker to another when the index moves: the reviewed
-// key-line ticks (`PrIndex`) and Ask's queue (`AiJobs`). `GET /export` reads it, `POST /import` adds what the index
+// key-line ticks and the PRs held on Recently Reviewed (`PrIndex`), and Ask's queue (`AiJobs`). `GET /export` reads it, `POST /import` adds what the index
 // lacks; both answer the counts the index holds, so a move can compare them. One-person Workers only.
 import { z } from "zod";
 import { askQueue, type Env, isSet, prIndex } from "./env.ts";
 import type { LimitSql } from "./limit-counter.ts";
 
 const reviewedKeyLineRow = z.object({ pr: z.string(), head: z.string(), line: z.string(), at: z.number() });
+const reviewedPullRequestRow = z.object({ id: z.string(), repo: z.string(), number: z.number() });
 const askRow = z.object({ id: z.string(), pr: z.string(), ask: z.string(), at: z.number(), error: z.string().nullable() });
 const askChatRow = z.object({ pr: z.string(), chat: z.string(), at: z.number() });
 
-const carriedIndexState = z.object({ reviewedKeyLines: z.array(reviewedKeyLineRow) });
+const carriedIndexState = z.object({
+  reviewedKeyLines: z.array(reviewedKeyLineRow), reviewedPullRequests: z.array(reviewedPullRequestRow),
+});
 const carriedAskState = z.object({ asks: z.array(askRow), askChats: z.array(askChatRow) });
 const carriedState = carriedIndexState.extend(carriedAskState.shape);
 
@@ -17,24 +20,44 @@ export type CarriedIndexState = z.infer<typeof carriedIndexState>;
 export type CarriedAskState = z.infer<typeof carriedAskState>;
 export type CarriedState = z.infer<typeof carriedState>;
 
-export interface CarriedCounts {
+export interface CarriedIndexCounts {
   reviewedKeyLines: number;
+  reviewedPullRequests: number;
+}
+
+export interface CarriedCounts extends CarriedIndexCounts {
   asks: number;
   askChats: number;
+}
+
+function countOf(sql: LimitSql, query: string): number {
+  return sql.exec<{ count: number }>(query).toArray()[0]?.count ?? 0;
 }
 
 export function readCarriedIndexState(sql: LimitSql): CarriedIndexState {
   return {
     reviewedKeyLines: sql.exec<z.infer<typeof reviewedKeyLineRow>>(
       "SELECT pr, head, line, at FROM reviewed_key_lines ORDER BY pr, head, line").toArray(),
+    reviewedPullRequests: sql.exec<z.infer<typeof reviewedPullRequestRow>>(
+      "SELECT id, repo, number FROM pull_requests WHERE list = 'reviewed' ORDER BY id").toArray(),
   };
 }
 
-export function writeCarriedIndexState(sql: LimitSql, state: CarriedIndexState): number {
+/**
+ * Adds the ticks and the Recently Reviewed PRs the index lacks. A PR comes in as held on `reviewed`, so its next read
+ * keeps it there while Jai's review stands; the caller marks each one to be read.
+ */
+export function writeCarriedIndexState(sql: LimitSql, state: CarriedIndexState): CarriedIndexCounts {
   for (const { pr, head, line, at } of state.reviewedKeyLines) {
     sql.exec("INSERT OR IGNORE INTO reviewed_key_lines (pr, head, line, at) VALUES (?, ?, ?, ?)", pr, head, line, at);
   }
-  return sql.exec<{ count: number }>("SELECT count(*) AS count FROM reviewed_key_lines").toArray()[0]?.count ?? 0;
+  for (const { id, repo, number } of state.reviewedPullRequests) {
+    sql.exec("INSERT OR IGNORE INTO pull_requests (id, repo, number, list) VALUES (?, ?, ?, 'reviewed')", id, repo, number);
+  }
+  return {
+    reviewedKeyLines: countOf(sql, "SELECT count(*) AS count FROM reviewed_key_lines"),
+    reviewedPullRequests: countOf(sql, "SELECT count(*) AS count FROM pull_requests WHERE list = 'reviewed'"),
+  };
 }
 
 export function readCarriedAskState(sql: LimitSql): CarriedAskState {
@@ -51,9 +74,10 @@ export function writeCarriedAskState(sql: LimitSql, state: CarriedAskState): { a
   for (const { pr, chat, at } of state.askChats) {
     sql.exec("INSERT OR IGNORE INTO ask_chats (pr, chat, at) VALUES (?, ?, ?)", pr, chat, at);
   }
-  const count = (table: string) =>
-    sql.exec<{ count: number }>(`SELECT count(*) AS count FROM ${table}`).toArray()[0]?.count ?? 0;
-  return { asks: count("asks"), askChats: count("ask_chats") };
+  return {
+    asks: countOf(sql, "SELECT count(*) AS count FROM asks"),
+    askChats: countOf(sql, "SELECT count(*) AS count FROM ask_chats"),
+  };
 }
 
 async function exportCarriedState(env: Env): Promise<CarriedState> {
@@ -61,9 +85,11 @@ async function exportCarriedState(env: Env): Promise<CarriedState> {
 }
 
 async function importCarriedState(env: Env, state: CarriedState): Promise<CarriedCounts> {
-  const reviewedKeyLines = await prIndex(env).importCarried({ reviewedKeyLines: state.reviewedKeyLines });
+  const indexed = await prIndex(env).importCarried({
+    reviewedKeyLines: state.reviewedKeyLines, reviewedPullRequests: state.reviewedPullRequests,
+  });
   const asked = await askQueue(env).importCarried({ asks: state.asks, askChats: state.askChats });
-  return { reviewedKeyLines, ...asked };
+  return { ...indexed, ...asked };
 }
 
 /** `GET /export` and `POST /import`, or null for any other route. Never on the hosted Worker. */

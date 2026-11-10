@@ -524,9 +524,11 @@ Another Worker can serve one person's PRs on that person's token, with this code
 ### `GET /export` and `POST /import`
 
 For moving one person's index to another Worker, on a one-person Worker only, with the usual bearer. `GET /export`
-answers what GitHub can't give back: `{reviewedKeyLines: [{pr, head, line, at}], asks: [{id, pr, ask, at, error}],
-askChats: [{pr, chat, at}]}`. `POST /import` takes that body, adds the rows the index lacks (a row it has stays as it
-is), and answers `{reviewedKeyLines, asks, askChats}`: how many of each the index now holds. Any other body is
+answers what GitHub can't give back: `{reviewedKeyLines: [{pr, head, line, at}], reviewedPullRequests: [{id, repo,
+number}], asks: [{id, pr, ask, at, error}], askChats: [{pr, chat, at}]}`. `reviewedPullRequests` are the PRs held on
+Recently Reviewed. `POST /import` takes that body, adds the rows the index lacks (a row it has stays as it is), reads
+each carried PR from GitHub again, and answers `{reviewedKeyLines, reviewedPullRequests, asks, askChats}`: how many of
+each the index now holds. Any other body is
 `400 validation_error`.
 
 ## Hosted sign-in

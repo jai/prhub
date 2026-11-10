@@ -30,7 +30,9 @@ import { DEFAULT_CONTEXT } from "./key-lines";
 import { consumeLimits, createLimitHitsTable, type LimitCheck, type LimitDecision } from "./limit-counter";
 import { indexedPullRequestsMaxOf, LimitName, limitsOf, retentionOf } from "./limits";
 import { sweepClosedPullRequests } from "./retention";
-import { type CarriedIndexState, readCarriedIndexState, writeCarriedIndexState } from "./carry";
+import {
+  type CarriedIndexCounts, type CarriedIndexState, readCarriedIndexState, writeCarriedIndexState,
+} from "./carry";
 import {
   createReviewedKeyLinesTable, forgetReviewedKeyLinesOf, markKeyLine, pruneReviewedKeyLines, type ReviewedKeyLines,
   reviewedKeyLines,
@@ -521,9 +523,17 @@ export class PrIndex extends DurableObject<Env> {
     return readCarriedIndexState(this.sql);
   }
 
-  /** What `exportCarried` gave on the Worker before, added where missing. Answers how many ticks this index holds. */
-  importCarried(state: CarriedIndexState): number {
-    return writeCarriedIndexState(this.sql, state);
+  /** What `exportCarried` gave on the Worker before, added where missing, each carried PR then read from GitHub. */
+  async importCarried(state: CarriedIndexState): Promise<CarriedIndexCounts> {
+    const counts = writeCarriedIndexState(this.sql, state);
+    for (const { repo, number } of state.reviewedPullRequests) {
+      const name = parseRepoFullName(repo);
+      if (name) {
+        this.markDirty(prId(name, number), name, number);
+      }
+    }
+    await this.ensureAlarm(0);
+    return counts;
   }
 
   pushState(): Record<string, number> {
