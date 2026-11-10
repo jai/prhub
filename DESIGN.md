@@ -145,7 +145,7 @@ all of them are in scope. A new screen adds a row here and a step in `PRHubScree
 | PR filter | PRs → Filter | `PRFilterPanel`, `PRSectionTitle` |
 | PR description | PRs → a PR: its title, who it is from, its tickets, then status, review and conversation | `PRScreen`, `PRDescriptionView`, `ObjectReferenceLines`, `PRChangesCard`, `PRStatusCard`, `PRReviewActions`, `.prCard()`, `PRCommentText`, `PRThreadCard` |
 | Review in the background | PRs → a PR → Approve, Request changes or Comment → send: the box closes, the toast follows the review | `PRReviewComposer`, `PRReviewToastView` |
-| Ask AI | PRs → a PR → the toolbar, or a line's comment box | `PRAskSheet`, `SessionBubble`, `SessionComposer` |
+| Ask AI | PRs → a PR → the toolbar, a line's comment box, or a key line's Explain | `PRAskSheet`, `SessionBubble`, `SessionComposer` |
 | PR diff | PRs → a PR → Review changes, or Files changed | `PRDiffScreen`, `DiffTableView`, `PRDiffPage`, `PRNavigator`, `PRReviewActions` |
 | Settings | Settings; signed in: account, GitHub access, Anthropic key, Sign out, Delete account | `PRHubSettingsView`, `PRPageBlock`, `PRValueLine`, `AnthropicKeySection`, `DeleteAccountSheet` |
 | GitHub access | Settings, signed in: each account the PRHub App is installed on (its repositories, Suspended), each opening its settings on GitHub, then Add another account; read again on every foreground | `GitHubAccessBlock`, `GitHubInstallationLine`, `PRAvatar`, `StatusChip` |
@@ -535,8 +535,12 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
   right closes it. In place: no sheet. A diff's Files and Key lines (`PRNavigator`) use it. It opens on Key lines when
   the PR offers them, else on Files. Where a regular width has room (`PanelStyle`), the diff's panel is a column beside
   the code instead, open until its button puts it away, and a pick in it keeps it open.
-- **A key line's tick:** `PRKeyLineCheck`, `AppIcon.taskOpen` or `.taskDone` in `toneGood`, at the end of its row in Key
-  lines and of its note under the line, 44 pt square. A ticked line's words fade to `PRStyle.doneOpacity` and stay, and
+- **A key line:** a heading line, then why it matters across the whole width. The heading holds its kind as a
+  `StatusChip` (Risk in `toneBad`; Decision, Logic quiet), its path and line (scrolling sideways, never cut), Explain
+  (`AppIcon.askAI`: Ask AI about that line, asked to explain it) and its tick. Its note under the line in the diff
+  has the same heading, with Close instead of the path and Explain.
+- **A key line's tick:** `PRKeyLineCheck`, `AppIcon.taskOpen` or `.taskDone` in `toneGood`, at the end of its heading
+  in Key lines and in its note under the line, 44 pt square. A ticked line's words fade to `PRStyle.doneOpacity` and stay, and
   the list says how many are reviewed. Previous and Next pass over ticked lines until all are ticked. Ticks are the
   Worker's, by head, so each device shows the same ones and a new commit starts again (docs/api.md, "Reviewed key lines").
 - **A PR's checks:** each check once, as the Worker sends them (a check run again is its latest run). A name two
