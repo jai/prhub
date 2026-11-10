@@ -3,11 +3,11 @@
 
 Run it on a Mac where Jai is signed in to github.com in the default browser:
 
-    python3 -I deploy/github-app/create.py [--worker https://<custom domain>]
+    python3 -I deploy/github-app/create.py [--worker https://<custom domain>] [--name "PRHub Test"]
 
 It opens a page that posts manifest.json to github.com/settings/apps/new. After Jai clicks Create, GitHub returns
 to this script, which trades the one-time code for the App's credentials and writes them, mode 0600, to
-tmp/github-app/prhub-app.json. It prints no secret. Steps after that: docs/plans/github-app.md, "Creating the App".
+tmp/github-app/prhub-app.json (with --name, tmp/github-app/<name>.json). It prints no secret. Steps after that: docs/plans/github-app.md, "Creating the App".
 """
 
 import argparse
@@ -30,10 +30,12 @@ PLACEHOLDER = "https://prhub.jai-f89.workers.dev"
 NEW_APP_URL = "https://github.com/settings/apps/new"
 
 
-def manifest_for(worker: str, redirect: str) -> dict:
+def manifest_for(worker: str, redirect: str, name: str | None = None) -> dict:
     text = (HERE / "manifest.json").read_text().replace(PLACEHOLDER, worker)
     manifest = json.loads(text)
     manifest["redirect_url"] = redirect
+    if name:
+        manifest["name"] = name
     return manifest
 
 
@@ -52,6 +54,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--worker", default=PLACEHOLDER,
                         help="the hosted Worker's origin, https://host with no path")
+    parser.add_argument("--name", help="the App's name instead of the manifest's, for a test copy (\"PRHub Test\")")
     parser.add_argument("--port", type=int, default=53682, help="local port for GitHub's redirect")
     parser.add_argument("--dry-run", action="store_true", help="print the manifest and exit")
     args = parser.parse_args()
@@ -60,7 +63,7 @@ def main() -> int:
     if not worker.startswith("https://") or urllib.parse.urlparse(worker).path:
         parser.error("--worker must be https://<host>, with no path")
     redirect = f"http://127.0.0.1:{args.port}/created"
-    manifest = manifest_for(worker, redirect)
+    manifest = manifest_for(worker, redirect, args.name)
     if args.dry_run:
         print(json.dumps(manifest, indent=2))
         return 0
@@ -69,7 +72,7 @@ def main() -> int:
     out_dir = repo / "tmp" / "github-app"
     out_dir.mkdir(parents=True, exist_ok=True)
     os.chmod(out_dir, 0o700)
-    out_file = out_dir / "prhub-app.json"
+    out_file = out_dir / (f"{args.name.lower().replace(' ', '-')}.json" if args.name else "prhub-app.json")
     state = secrets.token_urlsafe(24)
     result: dict = {}
 
