@@ -10,6 +10,7 @@ import { parseAiJob } from "./boundary";
 import { prId } from "./ids";
 import { type Env, prIndex } from "./env";
 import { type AiJob, aiKey } from "./models";
+import { type CarriedAskState, readCarriedAskState, writeCarriedAskState } from "./carry";
 
 export { type AiJob, aiKey };
 
@@ -62,6 +63,20 @@ export class AiJobs extends DurableObject<Env> {
     if (await this.ctx.storage.getAlarm() === null) {
       await this.ctx.storage.setAlarm(Date.now());
     }
+  }
+
+  /** Ask's queue and chats, for a move to another Worker (`carry.ts`). */
+  exportCarried(): CarriedAskState {
+    return readCarriedAskState(this.sql);
+  }
+
+  /** What `exportCarried` gave on the Worker before, added where missing; a queued question is handed over as usual. */
+  async importCarried(state: CarriedAskState): Promise<{ asks: number; askChats: number }> {
+    const counts = writeCarriedAskState(this.sql, state);
+    if (counts.asks > 0 && await this.ctx.storage.getAlarm() === null) {
+      await this.ctx.storage.setAlarm(Date.now());
+    }
+    return counts;
   }
 
   /** Delete Account: no queued job runs, or stores an answer, for a person who is gone. */

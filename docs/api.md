@@ -507,6 +507,28 @@ row first with `PRPushPrefetch` into `PRMirrorLocation.directory(appGroup:)`, th
 detail and diff side by side, and only a PR on no list is read live. Jai's Agent Pager app gets the same payload on its
 own topic.
 
+## Library
+
+Another Worker can serve one person's PRs on that person's token, with this code inside it (`worker/src/lib.ts`):
+
+- `serveOwner(request, env, context, isHostAuthorized)`: every route of a one-person Worker, with the paths as here.
+  The host strips its own prefix first. `isHostAuthorized` says the host has checked the caller with its own
+  credentials; `/github/webhook` (signature), `/prs/states` and `/feedback/runner/*` (`HUB_TOKEN`) still check theirs,
+  and `APP_TOKEN` is still accepted.
+- `tickOwnerIndex(env, time)`: what the one-minute cron does.
+- `PrIndex` and `AiJobs`: the host binds them as `PR_INDEX` and `AI_JOBS`, with R2 as `DIFFS`, and names its other
+  vars as in "Configuration". It exports a subclass of `PrIndex` that overrides `deliverByHost(message)`: each push
+  (`PushMessage`) goes to the host, which answers APNs' status and reason (`PushOutcome`). The index then never
+  pushes itself.
+
+### `GET /export` and `POST /import`
+
+For moving one person's index to another Worker, on a one-person Worker only, with the usual bearer. `GET /export`
+answers what GitHub can't give back: `{reviewedKeyLines: [{pr, head, line, at}], asks: [{id, pr, ask, at, error}],
+askChats: [{pr, chat, at}]}`. `POST /import` takes that body, adds the rows the index lacks (a row it has stays as it
+is), and answers `{reviewedKeyLines, asks, askChats}`: how many of each the index now holds. Any other body is
+`400 validation_error`.
+
 ## Hosted sign-in
 
 `HOSTED=on` makes the Worker the hosted PRHub (`https://prhub.jai-f89.workers.dev`), which everyone signs in to with

@@ -27,6 +27,7 @@ import { createAppPage, finishAppCreation } from "./setup";
 import { type LiveRead, serveVersioned } from "./versioned";
 import { parseDelivery, verifySignature } from "./webhook";
 import { writeToGitHub } from "./write";
+import { carryRoute } from "./carry";
 import { busyAnswer, clientRefOf } from "./write-receipts";
 
 import { Installation, IpLimit, SignIn, UserAccount } from "./account";
@@ -568,7 +569,7 @@ async function serveHosted(
 
 export default {
   async fetch(request: Request, env: Env, context: ExecutionContext): Promise<Response> {
-    const { pathname, searchParams } = new URL(request.url);
+    const { pathname } = new URL(request.url);
     if (pathname === "/") {
       return new Response("hello world\n");
     }
@@ -581,37 +582,54 @@ export default {
     if (hosted.kind === "on") {
       return serveHosted(request, env, context, hosted.app);
     }
-    if (pathname === "/github/webhook" && request.method === "POST") {
-      return receiveWebhook(request, env);
-    }
-    if (pathname === "/github/setup") {
-      return createAppPage(request, searchParams, env);
-    }
-    if (pathname === "/device/pair" && request.method === "POST") {
-      return pairRoute(request, env);
-    }
-    if (pathname === "/github/callback") {
-      return finishAppCreation(searchParams, env);
-    }
-    const runner = RUNNER_PATH.exec(pathname);
-    if (runner && request.method === "POST") {
-      return hasToken(request, env.HUB_TOKEN) && feedbackConfigured(env) ? runnerRoute(runner[1], request, env)
-        : new Response("unauthorized\n", { status: 401 });
-    }
-    if (pathname === "/prs/states" && request.method === "POST") {
-      return hasToken(request, env.HUB_TOKEN) ? statesRoute(request, env)
-        : new Response("unauthorized\n", { status: 401 });
-    }
-    if (!(await isAuthorized(request, env))) {
-      return new Response("unauthorized\n", { status: 401 });
-    }
-    return serveAuthorized(request, env, context);
+    return serveOwner(request, env, context, false);
   },
 
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
     // Hosted: each person's account ticks their own index (`UserAccount.alarm`); there is no one person to poll for.
     if (hostedMode(env).kind === "off") {
-      await prIndex(env).tick(controller.scheduledTime);
+      await tickOwnerIndex(env, controller.scheduledTime);
     }
   },
 };
+
+/** One person's PRs on their own token: this Worker unhosted, or a host that imports the library (`lib.ts`). */
+export function tickOwnerIndex(env: Env, time: number): Promise<void> {
+  return prIndex(env).tick(time);
+}
+
+/**
+ * Every route of a one-person Worker. `isHostAuthorized`: a host that imports the library (`lib.ts`) has checked the
+ * caller with its own credentials; the routes that carry their own (webhook, hub, `APP_TOKEN`) still check them.
+ */
+export async function serveOwner(
+  request: Request, env: Env, context: ExecutionContext, isHostAuthorized: boolean,
+): Promise<Response> {
+  const { pathname, searchParams } = new URL(request.url);
+  if (pathname === "/github/webhook" && request.method === "POST") {
+    return receiveWebhook(request, env);
+  }
+  if (pathname === "/github/setup") {
+    return createAppPage(request, searchParams, env);
+  }
+  if (pathname === "/device/pair" && request.method === "POST") {
+    return pairRoute(request, env);
+  }
+  if (pathname === "/github/callback") {
+    return finishAppCreation(searchParams, env);
+  }
+  const runner = RUNNER_PATH.exec(pathname);
+  if (runner && request.method === "POST") {
+    return hasToken(request, env.HUB_TOKEN) && feedbackConfigured(env) ? runnerRoute(runner[1], request, env)
+      : new Response("unauthorized\n", { status: 401 });
+  }
+  if (pathname === "/prs/states" && request.method === "POST") {
+    return hasToken(request, env.HUB_TOKEN) ? statesRoute(request, env)
+      : new Response("unauthorized\n", { status: 401 });
+  }
+  if (!isHostAuthorized && !(await isAuthorized(request, env))) {
+    return new Response("unauthorized\n", { status: 401 });
+  }
+  const carried = await carryRoute(pathname, request, env);
+  return carried ?? serveAuthorized(request, env, context);
+}

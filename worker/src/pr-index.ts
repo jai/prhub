@@ -7,7 +7,8 @@ import {
   createPushRegistrationsTable, forgetPushTokensOf, pruneUnlinkedPushTokens, registerPushToken,
 } from "./push-registrations";
 import {
-  type ApnsHost, apnsJwt, type PushMessage, pushMode, sendDirect, sendViaPager, sendViaRelay, SYNC_WAKE,
+  type ApnsHost, apnsJwt, type PushMessage, pushMode, type PushOutcome, sendDirect, sendViaPager, sendViaRelay,
+  SYNC_WAKE,
 } from "./apns";
 import { aiConfigOf } from "./config";
 import { aiJobs, type Env, isSet, scopedKey } from "./env";
@@ -29,6 +30,7 @@ import { DEFAULT_CONTEXT } from "./key-lines";
 import { consumeLimits, createLimitHitsTable, type LimitCheck, type LimitDecision } from "./limit-counter";
 import { indexedPullRequestsMaxOf, LimitName, limitsOf, retentionOf } from "./limits";
 import { sweepClosedPullRequests } from "./retention";
+import { type CarriedIndexState, readCarriedIndexState, writeCarriedIndexState } from "./carry";
 import {
   createReviewedKeyLinesTable, forgetReviewedKeyLinesOf, markKeyLine, pruneReviewedKeyLines, type ReviewedKeyLines,
   reviewedKeyLines,
@@ -514,6 +516,16 @@ export class PrIndex extends DurableObject<Env> {
   }
 
   /** Why a push did or did not go, as of now. */
+  /** The reviewed key-line ticks, for a move to another Worker (`carry.ts`). */
+  exportCarried(): CarriedIndexState {
+    return readCarriedIndexState(this.sql);
+  }
+
+  /** What `exportCarried` gave on the Worker before, added where missing. Answers how many ticks this index holds. */
+  importCarried(state: CarriedIndexState): number {
+    return writeCarriedIndexState(this.sql, state);
+  }
+
   pushState(): Record<string, number> {
     const count = (table: string) => this.sql.exec<{ n: number }>(`SELECT count(*) AS n FROM ${table}`).one().n;
     const production = this.sql.exec<{ n: number }>(
@@ -668,7 +680,21 @@ export class PrIndex extends DurableObject<Env> {
    * registers on the sandbox host, and its pushes would read as the phone's. True when Apple took it for any device. A
    * token Apple calls dead is forgotten.
    */
+  /**
+   * A Worker that imports this index (`lib.ts`) delivers its pushes itself, to its own devices: it overrides this. Null:
+   * this Worker pushes, as `pushMode` says.
+   */
+  protected deliverByHost(_message: PushMessage): Promise<PushOutcome> | null {
+    return null;
+  }
+
   private async sendToDevices(message: PushMessage, kind: string, detail: object): Promise<boolean> {
+    const byHost = this.deliverByHost(message);
+    if (byHost) {
+      const { status, reason } = await byHost;
+      this.addEvent(kind, { ...detail, via: "host", status, reason });
+      return status === 200;
+    }
     const mode = pushMode(this.env);
     if (mode === "none") {
       return false;

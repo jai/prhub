@@ -50,6 +50,14 @@ are made up, and nothing that you do with them reaches GitHub.
 Open PRHub and scan the QR code that your agent printed. Or open the `prhub://setup?...` link on your iPhone. A
 pairing code works once and expires after 30 minutes. For a new code, ask your agent.
 
+## Workers layout
+
+Being changed ([docs/plans/workers-rearchitecture.md](docs/plans/workers-rearchitecture.md)): PRHub becomes hosted
+only. The target is one Worker, `prhub`, with a test copy, `prhub-test`, and the PR code also as a library that another
+Worker imports (`worker/src/lib.ts`). Self-hosting and the push relay below are on their way out.
+
+Current move: 1, the library (2026-11-10).
+
 ## What's here
 
 - `app/`: the PRHub iPhone app (XcodeGen, `app/project.yml`): pairing, Settings and the sample PRs around PRKit.
