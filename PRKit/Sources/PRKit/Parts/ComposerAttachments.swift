@@ -120,24 +120,19 @@ struct ComposerPicture: Transferable {
     }
 }
 
-/// The screenshots above the field: each with a button that takes it off, a Paste button while the clipboard holds a
-/// picture, and why the last one could not be added.
+/// The screenshots above the field, each with a button that takes it off, and why the last one could not be added. Empty,
+/// it takes no room.
 struct ComposerAttachmentTray: View {
     let attachments: ComposerAttachments
-    let canPaste: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.xs) {
-            if !attachments.images.isEmpty || canPaste {
+            if !attachments.images.isEmpty {
                 ScrollView(.horizontal) {
                     HStack(spacing: Space.sm) {
                         ForEach(attachments.images) { image in
                             thumbnail(image)
                                 .transition(.scale.combined(with: .opacity))
-                        }
-                        if canPaste {
-                            ComposerPasteButton(attachments: attachments)
-                                .transition(.opacity)
                         }
                     }
                     .padding(.top, Space.sm)
@@ -155,7 +150,6 @@ struct ComposerAttachmentTray: View {
             }
         }
         .animation(AppMotion.fold, value: attachments.images.map(\.id))
-        .animation(AppMotion.fold, value: canPaste)
         .animation(AppMotion.fold, value: attachments.problem)
     }
 
@@ -189,34 +183,20 @@ struct ComposerAttachmentTray: View {
     }
 }
 
-/// The system's Paste button, which reads the clipboard without asking: one tap puts a copied screenshot on the message.
-private struct ComposerPasteButton: View {
-    let attachments: ComposerAttachments
-
-    var body: some View {
-        PasteButton(payloadType: ComposerPicture.self) { pictures in
-            Task { @MainActor in
-                for picture in pictures {
-                    await attachments.add(picture.data)
-                }
-            }
-        }
-        .labelStyle(.titleAndIcon)
-        .buttonBorderShape(.roundedRectangle(radius: Radius.md))
-        .frame(height: ChatStyle.attachmentSize)
-        .accessibilityIdentifier("composerAttachmentPaste")
-    }
-}
-
-/// The paperclip beside the field: a screenshot from Photos or from Files.
+/// The paperclip beside the field: a screenshot from Photos or from Files, and while the clipboard holds a picture,
+/// that one.
 struct ComposerAttachButton: View {
     let attachments: ComposerAttachments
+    @State private var clipboard = ClipboardWatch()
     @State private var choosingPhotos = false
     @State private var choosingFiles = false
     @State private var photos: [PhotosPickerItem] = []
 
     var body: some View {
         Menu {
+            if clipboard.hasPicture {
+                pasteItem
+            }
             Button("Photos", systemImage: AppIcon.attachPhoto.symbol) { choosingPhotos = true }
                 .accessibilityIdentifier("composerAttachPhotos")
             Button("Files", systemImage: AppIcon.attachFile.symbol) { choosingFiles = true }
@@ -227,6 +207,7 @@ struct ComposerAttachButton: View {
                 .frame(width: 22, height: 22) // design-lint: allow the send button's own glyph frame, beside it
         }
         .menuIndicator(.hidden)
+        .task { await clipboard.watch() }
         .buttonStyle(.glass)
         .buttonBorderShape(.circle)
         .disabled(attachments.isFull)
@@ -273,30 +254,62 @@ struct ComposerAttachButton: View {
     }
 }
 
-/// Whether the clipboard holds a picture, checked without reading it (which would ask), whenever it may have changed.
+extension ComposerAttachButton {
+    /// "Paste screenshot": the system's Paste control on the phone, which reads the clipboard without asking.
+    private var pasteItem: some View {
+        PasteButton(payloadType: ComposerPicture.self) { pictures in
+            Task { @MainActor in
+                for picture in pictures {
+                    await attachments.add(picture.data)
+                }
+            }
+        }
+        .accessibilityIdentifier("composerAttachPaste")
+    }
+}
+
+/// Whether the clipboard holds a picture, while the paperclip is on screen. Its change count is read each second:
+/// another app's copy posts nothing here, and the count is cheap and never asks Jai.
 @MainActor
 @Observable
 final class ClipboardWatch {
     private(set) var hasPicture = false
+    @ObservationIgnored private var seen: Int?
 
-    func check() {
-        #if os(iOS)
-        hasPicture = UIPasteboard.general.hasImages
-        #else
-        hasPicture = ClipboardPicture.isWaiting
-        #endif
+    func watch() async {
+        while !Task.isCancelled {
+            let count = ClipboardPicture.changeCount
+            if count != seen {
+                seen = count
+                hasPicture = ClipboardPicture.isWaiting
+            }
+            try? await Task.sleep(for: .seconds(1))
+        }
     }
 }
 
-#if os(macOS)
-/// A screenshot on the Mac's clipboard: a picture, or a copied image file, with no words to paste instead.
+/// A screenshot on the clipboard: on the phone a picture, on the Mac a picture or a copied image file. Asked without
+/// reading it, which on the phone would ask Jai first.
 enum ClipboardPicture {
-    private static let pictureTypes: [NSPasteboard.PasteboardType] = [.png, .tiff]
+    @MainActor static var changeCount: Int {
+        #if os(iOS)
+        UIPasteboard.general.changeCount
+        #else
+        NSPasteboard.general.changeCount
+        #endif
+    }
 
-    static var isWaiting: Bool {
+    @MainActor static var isWaiting: Bool {
+        #if os(iOS)
+        UIPasteboard.general.hasImages
+        #else
         let board = NSPasteboard.general
         return board.availableType(from: pictureTypes) != nil || imageFile(board) != nil
+        #endif
     }
+
+    #if os(macOS)
+    private static let pictureTypes: [NSPasteboard.PasteboardType] = [.png, .tiff]
 
     /// The picture's bytes, when Command-V should attach it rather than paste words.
     static func take() -> Data? {
@@ -314,7 +327,10 @@ enum ClipboardPicture {
         let urls = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]
         return urls?.first { UTType(filenameExtension: $0.pathExtension)?.conforms(to: .image) == true }
     }
+    #endif
 }
+
+#if os(macOS)
 
 /// Command-V in the field: the field takes only words, so a screenshot on the clipboard is caught before it and
 /// attached. Words on the clipboard paste as always.

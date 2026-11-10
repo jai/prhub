@@ -9,13 +9,17 @@ public struct FeatureRequestsView: View {
     @State private var model: FeatureRequestsModel
     /// The wide layout's open conversation.
     @State private var selection: FeatureRoute?
+    /// The narrow layout's conversations, pushed by value onto a stack of its own, so they stay open whatever is
+    /// presented over them: More's controller dropped its pushes when a full-screen Files or Photos picker closed
+    /// (iOS 27.2).
+    @State private var path: [FeatureRoute] = []
     /// The narrow layout's next new conversation: one route until its first message makes it a thread.
     @State private var newRoute = FeatureRoute.new(UUID())
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
-    /// Whether More's navigation bar is already over the tab (the phone, with more tabs than the bar holds). Its
-    /// pushes are the stack then: a stack of our own under it would show two bars, each with its back button.
-    @State private var isUnderMore = true
+    /// More's way back to its list, while the tab is under More (the phone, with more tabs than the bar holds). More's
+    /// own bar is hidden then, so the stack's is the only one.
+    @State private var more: MoreNavigation?
     #endif
 
     /// A model the host keeps, so drafts and open chats outlive the screen.
@@ -36,37 +40,46 @@ public struct FeatureRequestsView: View {
         #if os(iOS)
         if sizeClass == .regular {
             split
-        } else if isUnderMore {
-            stack
-                .background(NavigationControllerProbe { isUnderMore = $0 })
         } else {
-            NavigationStack { stack }
+            stack
+                .background(MoreNavigationProbe { more = $0 })
         }
         #else
         split
         #endif
     }
 
-    /// The list, a conversation pushed over it by its row, and New pushing an empty one.
+    /// The list, a conversation pushed over it by its row, and New pushing an empty one: the one started and still
+    /// empty, else a fresh one.
     private var stack: some View {
-        FeatureListView(model: model, selected: nil, isStacked: true) { _ in }
-            .featureTitle("Feedback")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    NavigationLink {
-                        FeatureChatView(model: model, route: newRoute)
-                    } label: {
-                        Label("New feedback", systemImage: AppIcon.compose.symbol)
+        NavigationStack(path: $path) {
+            FeatureListView(model: model, selected: nil, isStacked: true) { _ in }
+                .inlineNavigationTitle()
+                .featureTitle("Feedback")
+                .toolbar {
+                    #if os(iOS)
+                    if let more {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button(action: more.back) {
+                                Image(systemName: AppIcon.back.symbol)
+                            }
+                            .accessibilityLabel("More")
+                            .accessibilityIdentifier("feedback-back-to-more")
+                        }
                     }
-                    .accessibilityIdentifier("feedback-new")
+                    #endif
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("New feedback", systemImage: AppIcon.compose.symbol) {
+                            newRoute = model.compose(reusing: newRoute)
+                            path = [newRoute]
+                        }
+                        .accessibilityIdentifier("feedback-new")
+                    }
                 }
-            }
-            .onAppear {
-                // Back from a new conversation that became a thread: it is in the list now, and New starts afresh.
-                if model.thread(for: newRoute) != nil {
-                    newRoute = .new(UUID())
+                .navigationDestination(for: FeatureRoute.self) { route in
+                    FeatureChatView(model: model, route: route)
                 }
-            }
+        }
     }
 
     private var split: some View {
@@ -110,8 +123,7 @@ public struct FeatureRequestsView: View {
 }
 
 extension View {
-    /// A Feedback screen's title. More's bar takes a pushed screen's toolbar but not its `navigationTitle`, so on the
-    /// phone the title is the bar's principal item as well.
+    /// A Feedback screen's title, on the phone in the bar's principal place in the app's own type.
     @ViewBuilder func featureTitle(_ title: String) -> some View {
         #if os(iOS)
         navigationTitle(title)
@@ -188,7 +200,7 @@ private struct FeatureListView: View {
     @ViewBuilder
     private func row(route: FeatureRoute, title: String, date: Date?, isSelected: Bool) -> some View {
         if isStacked {
-            NavigationLink { FeatureChatView(model: model, route: route) } label: {
+            NavigationLink(value: route) {
                 rowLabel(title: title, date: date, isSelected: false)
             }
             .buttonStyle(.plain)
