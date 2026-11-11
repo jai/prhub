@@ -6,7 +6,7 @@ import { prId, type RepoFullName } from "./ids";
 import { askRepoToken, InstallationTokenRefused } from "./app-token";
 import { onSubscription } from "./agent-container";
 import { askSystemPrompt } from "./ask-setup";
-import { askOnSubscription, isSubscriptionRecord, subscriptionChat } from "./ask-subscription";
+import { askOnSubscription, isSubscriptionRecord, prDiff, subscriptionChat } from "./ask-subscription";
 import { askBudgetOf, limitsOf } from "./limits";
 import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models";
 
@@ -39,6 +39,7 @@ interface AskRecord {
 }
 
 export class AskRefused extends Error {}
+
 
 function client(env: Env): Anthropic {
   return new Anthropic({ apiKey: isSet(env.ASK_ANTHROPIC_API_KEY) ? env.ASK_ANTHROPIC_API_KEY : env.ANTHROPIC_API_KEY });
@@ -129,7 +130,7 @@ export async function ask(repo: RepoFullName, number: number, input: AskInput, c
       throw error instanceof InstallationTokenRefused ? new AskRefused(error.message) : error;
     });
     return askOnSubscription(repo, number, input, choice, env, {
-      system: askSystemPrompt(env.GITHUB_LOGIN ?? null, "subscription"), token,
+      system: askSystemPrompt(env.GITHUB_LOGIN ?? null, "subscription"), token, diff: () => prDiff(repo, number, input.head, env),
       budgetUsd: askBudgetOf(limitsOf(env)) / 100,
     });
   }

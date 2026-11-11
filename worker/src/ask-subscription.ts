@@ -4,7 +4,8 @@
 import { type AgentAnswer, askContainer } from "./agent-container.ts";
 import { type AskChat, type AskInput, type AskMessage, askPrompt, askRecordKey } from "./ask-chat.ts";
 import { type Env, scopedKey } from "./env.ts";
-import type { RepoFullName } from "./ids.ts";
+import { liveDiff } from "./github.ts";
+import { isRevisionOf, type RepoFullName, type Sha } from "./ids.ts";
 import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models.ts";
 
 /** A turn that has run this long is taken as lost: the job that ran it ended without saying so. */
@@ -66,7 +67,9 @@ const STOPS: Record<string, string> = {
  */
 export async function askOnSubscription(
   repo: RepoFullName, number: number, input: AskInput, choice: ModelChoice, env: Env,
-  services: { system: string; token: () => Promise<string>; budgetUsd: number; now?: () => number },
+  services: {
+    system: string; token: () => Promise<string>; diff: () => Promise<string>; budgetUsd: number; now?: () => number;
+  },
 ): Promise<void> {
   const now = services.now ?? Date.now;
   const key = askRecordKey(repo, number, env);
@@ -87,7 +90,7 @@ export async function askOnSubscription(
     const answer = await askContainer<AskAnswer>("/ask", JSON.stringify({
       system: services.system, prompt: askPrompt(input, null), model: choice.model, effort: choice.effort,
       scope: env.SIGNED_IN_USER_ID ?? "self", repo, number,
-      head: input.head, token: await services.token(), session: record.session, entries: entries ?? [],
+      head: input.head, token: await services.token(), diff: await services.diff(), session: record.session, entries: entries ?? [],
       budgetUsd: services.budgetUsd,
     }), env.AGENT!);
     if (answer.error) {
@@ -113,4 +116,39 @@ export async function askOnSubscription(
     console.error("ask on subscription failed", error);
   }
   await env.DIFFS.put(key, JSON.stringify(record));
+}
+
+/** The diff the agent reads first, cut at `DIFF_KEPT` bytes. */
+const DIFF_KEPT = 400_000;
+
+/**
+ * The PR's diff at `head`, read no further than `DIFF_KEPT` bytes. Empty when GitHub won't give one, or when the PR has
+ * moved past `head`: a newer commit's diff beside an older checkout would mislead.
+ */
+export async function prDiff(repo: RepoFullName, number: number, head: Sha, env: Env): Promise<string> {
+  const { response, version } = await liveDiff(repo, number, env);
+  if (!response.ok || !response.body || !version || !isRevisionOf(version, head)) {
+    await response.body?.cancel();
+    return "";
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (size < DIFF_KEPT) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    const kept = value.slice(0, DIFF_KEPT - size);
+    chunks.push(kept);
+    size += kept.byteLength;
+  }
+  await reader.cancel();
+  const bytes = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
 }
