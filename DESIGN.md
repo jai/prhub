@@ -417,14 +417,16 @@ parts:
   box:    { holds: "groundCard, Radius.md, hairline, ToastStyle's shadow, ToastStyle.maxWidth at most", place: "top, centred, Space.lg from the sides" }
   mark:   { holds: "a spinner while sending; AppIcon.done toneGood, .offline toneWaiting, .problem toneBad" }
   words:  { font: appFootnote semibold, lines: 3, holds: "Submitting review… (Posting comment…), Approved, Changes requested, Comment posted, Saved on this phone…, Review not sent. <why>" }
+  bar:    { holds: "ToastStyle.progressHeight along its foot: the tint easing to ToastStyle.progressWhileSending while it goes, toneGood and full once landed", only: "sending, done" }
   retry:  { holds: PRButtonStyle(.secondary), only: failed }
   close:  { holds: AppIcon.close, only: failed }
 states: [sending, waitingForNetwork, done, failed]
 rules:
   - The box it came from closes at once, read-only while it goes. The review goes through the host's outbox, so it
     survives the app leaving the foreground; a late answer or refusal still reaches the toast.
-  - It slides in from the top and fades (AppMotion.fold); its words and mark change in place (AppMotion.swap). Done
-    stays ToastStyle.dwell, then fades. Failed stays until Retry or close, and gives the line comments back to the PR.
+  - It slides down from ToastStyle.travel above, past the top of the screen, and back up the same way, fading
+    (AppMotion.fold); its words, mark and bar change in place (AppMotion.swap). Done stays ToastStyle.dwell, then goes.
+    A line's Comment now and a reply go through it too, and it shows over a PR pushed on any tab. Failed stays until Retry or close, and gives the line comments back to the PR.
   - Opaque, never glass: over the nav bar, glass let the title's words show through its own. One at a time; a new
     review replaces it.
   - Success and failure each have their .sensoryFeedback.
