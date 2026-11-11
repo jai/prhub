@@ -376,9 +376,12 @@ public struct TabStack<Path: Equatable, Root: View>: View {
                 }
                 leftOpen = nil
                 path = empty
+                // On the next turn of the run loop, when the new stack is up, and without the push animation: the
+                // screens are simply there, as if they had never gone.
                 Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(50))
-                    path = open
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) { path = open }
                 }
             }
         #endif
