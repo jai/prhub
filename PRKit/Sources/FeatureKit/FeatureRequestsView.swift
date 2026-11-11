@@ -4,19 +4,10 @@ import SwiftUI
 import UIKit
 #endif
 
-/// Where `FeatureRequestsView` puts its conversations.
-public enum FeatureNavigation: Sendable {
-    /// A tab of its own: it brings its navigation, a stack where the screen is narrow and a split view where it is wide.
-    case own
-    /// Pushed onto the host's `NavigationStack`: no stack of its own, and each conversation pushes onto the host's.
-    case host
-}
-
-/// A chat channel's conversations, each with an agent on the owner's Mac (Feedback: an agent that makes the change,
-/// tests it and ships a build). Conversation first, as Messages is: the screen lists the conversations, New starts
-/// one, and the first message makes it a thread that goes on in place. `FeatureNavigation.own`: where the screen is
-/// narrow (a phone, Slide Over) a stack, the list with a conversation pushed over it, and where it is wide (an iPad, the
-/// Mac) the list beside the conversation picked. `.host`: the list in the host's stack, a conversation pushed over it.
+/// Feature requests ("Feedback"), to an agent that makes the change, tests it and ships a build. Conversation first, as
+/// Messages is: the screen lists the conversations, New starts one, and the first message makes it a thread that goes
+/// on in place. Where the screen is narrow (a phone, Slide Over) a stack: the list, a conversation pushed over it. Where
+/// it is wide (an iPad, the Mac) the list beside the conversation picked. A tab of its own: it brings its navigation.
 public struct FeatureRequestsView: View {
     @State private var model: FeatureRequestsModel
     /// The wide layout's open conversation.
@@ -27,9 +18,6 @@ public struct FeatureRequestsView: View {
     @State private var path: [FeatureRoute] = []
     /// The narrow layout's next new conversation: one route until its first message makes it a thread.
     @State private var newRoute = FeatureRoute.new(UUID())
-    /// `.host`'s conversation pushed onto the host's stack.
-    @State private var pushed: FeatureRoute?
-    private let navigation: FeatureNavigation
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     /// More's way back to its list, while the tab is under More (the phone, with more tabs than the bar holds). More's
@@ -38,13 +26,12 @@ public struct FeatureRequestsView: View {
     #endif
 
     /// A model the host keeps, so drafts and open chats outlive the screen.
-    public init(model: FeatureRequestsModel, navigation: FeatureNavigation = .own) {
+    public init(model: FeatureRequestsModel) {
         _model = State(initialValue: model)
-        self.navigation = navigation
     }
 
-    public init(client: FeatureClient, wording: FeatureWording = .feedback, navigation: FeatureNavigation = .own) {
-        self.init(model: FeatureRequestsModel(client: client, wording: wording), navigation: navigation)
+    public init(client: FeatureClient) {
+        self.init(model: FeatureRequestsModel(client: client))
     }
 
     public var body: some View {
@@ -54,49 +41,24 @@ public struct FeatureRequestsView: View {
 
     @ViewBuilder private var layout: some View {
         #if os(iOS)
-        if navigation == .host {
-            hosted
-        } else if sizeClass == .regular {
+        if sizeClass == .regular {
             split
         } else {
             stack
                 .background(MoreNavigationProbe { more = $0 })
         }
         #else
-        if navigation == .host {
-            hosted
-        } else {
-            split
-        }
+        split
         #endif
-    }
-
-    /// The list in the host's stack; a row or New pushes its conversation onto it.
-    private var hosted: some View {
-        FeatureListView(model: model, selected: nil, isStacked: true, pushesByValue: false) { pushed = $0 }
-            .inlineNavigationTitle()
-            .featureTitle(model.wording.title)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button(model.wording.newChat, systemImage: AppIcon.compose.symbol) {
-                        newRoute = model.compose(reusing: newRoute)
-                        pushed = newRoute
-                    }
-                    .accessibilityIdentifier("feedback-new")
-                }
-            }
-            .navigationDestination(item: $pushed) { route in
-                FeatureChatView(model: model, route: route)
-            }
     }
 
     /// The list, a conversation pushed over it by its row, and New pushing an empty one: the one started and still
     /// empty, else a fresh one.
     private var stack: some View {
         NavigationStack(path: $path) {
-            FeatureListView(model: model, selected: nil, isStacked: true, pushesByValue: true) { _ in }
+            FeatureListView(model: model, selected: nil, isStacked: true) { _ in }
                 .inlineNavigationTitle()
-                .featureTitle(model.wording.title)
+                .featureTitle("Feedback")
                 .toolbar {
                     #if os(iOS)
                     if let more {
@@ -110,7 +72,7 @@ public struct FeatureRequestsView: View {
                     }
                     #endif
                     ToolbarItem(placement: .primaryAction) {
-                        Button(model.wording.newChat, systemImage: AppIcon.compose.symbol) {
+                        Button("New feedback", systemImage: AppIcon.compose.symbol) {
                             newRoute = model.compose(reusing: newRoute)
                             path = [newRoute]
                         }
@@ -125,15 +87,15 @@ public struct FeatureRequestsView: View {
 
     private var split: some View {
         NavigationSplitView {
-            FeatureListView(model: model, selected: selection, isStacked: false, pushesByValue: false) { route in
+            FeatureListView(model: model, selected: selection, isStacked: false) { route in
                 withAnimation(AppMotion.swap) { selection = route }
             }
             // The app's readable width is the window's; this column is narrower than it.
             .contentMargins(.horizontal, 0, for: .scrollContent)
-            .navigationTitle(model.wording.title)
+            .navigationTitle("Feedback")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button(model.wording.newChat, systemImage: AppIcon.compose.symbol) {
+                    Button("New feedback", systemImage: AppIcon.compose.symbol) {
                         withAnimation(AppMotion.fold) { selection = model.compose(reusing: selection) }
                     }
                     .accessibilityIdentifier("feedback-new")
@@ -148,8 +110,8 @@ public struct FeatureRequestsView: View {
                             .transition(.opacity)
                     } else {
                         ContentUnavailableView(
-                            model.wording.noneOpen, systemImage: AppIcon.conversation.symbol,
-                            description: Text(model.wording.noneOpenHint)
+                            "No feedback open", systemImage: AppIcon.conversation.symbol,
+                            description: Text("Pick a conversation, or start new feedback.")
                         )
                         .transition(.opacity)
                     }
@@ -187,8 +149,6 @@ private struct FeatureListView: View {
     let selected: FeatureRoute?
     /// Pushed rows carry a chevron; rows beside their conversation are marked instead.
     let isStacked: Bool
-    /// Pushed by value onto the view's own stack; else `open` takes the row.
-    let pushesByValue: Bool
     let open: (FeatureRoute) -> Void
 
     private var unsent: FeatureRoute? {
@@ -204,15 +164,15 @@ private struct FeatureListView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Space.xs) {
                 if !model.list.builderOnline {
-                    BuilderNote(whileOffline: model.wording.whileOffline)
+                    BuilderNote()
                         .padding(.bottom, Space.xs)
                 }
                 if let unsent {
-                    row(route: unsent, title: model.wording.newChat, date: nil, isSelected: true)
+                    row(route: unsent, title: "New feedback", date: nil, isSelected: true)
                         .transition(.fold)
                 }
                 if model.list.threads.isEmpty, unsent == nil {
-                    Text(model.wording.emptyPrompt)
+                    Text("Say what to change in the app. An agent makes the change, tests it and ships a build.")
                         .font(.appFootnote)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, Space.lg)
@@ -242,7 +202,7 @@ private struct FeatureListView: View {
 
     @ViewBuilder
     private func row(route: FeatureRoute, title: String, date: Date?, isSelected: Bool) -> some View {
-        if pushesByValue {
+        if isStacked {
             NavigationLink(value: route) {
                 rowLabel(title: title, date: date, isSelected: false)
             }
@@ -281,13 +241,11 @@ private struct FeatureListView: View {
     }
 }
 
-/// Without the builder Mac polling, a message waits in the queue. It says so, so a silent chat isn't a mystery.
+/// Without the builder Mac polling, feedback waits in the queue. It says so, so a silent chat isn't a mystery.
 private struct BuilderNote: View {
-    let whileOffline: String
-
     var body: some View {
         Label {
-            Text("The builder Mac is offline. \(whileOffline)")
+            Text("The builder Mac is offline. Feedback waits until it is back.")
         } icon: {
             Image(systemName: AppIcon.paused.symbol)
         }
@@ -330,10 +288,10 @@ struct FeatureChatView: View {
             ChatScroll {
                 LazyVStack(alignment: .leading, spacing: Space.sm) {
                     if chat?.builderOnline == false || (isNew && !model.list.builderOnline) {
-                        BuilderNote(whileOffline: model.wording.whileOffline)
+                        BuilderNote()
                     }
                     if messages.isEmpty {
-                        Text(model.wording.emptyPrompt)
+                        Text("Say what to change in the app. An agent makes the change, tests it and ships a build.")
                             .font(.appFootnote)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -366,7 +324,7 @@ struct FeatureChatView: View {
         .background(HomePalette.screenBackground)
         .safeAreaBar(edge: .bottom) { composer }
         .inlineNavigationTitle()
-        .featureTitle(model.title(for: route) ?? model.wording.newChat)
+        .featureTitle(model.title(for: route) ?? "New feedback")
         .task(id: thread) {
             if thread == nil {
                 isWriting = true
@@ -429,7 +387,7 @@ struct FeatureChatView: View {
             }
             SessionComposer(
                 draft: model.binding(for: box), isSending: model.isSending(box), send: send,
-                placeholder: thread == nil ? model.wording.placeholder : "Reply", focused: $isWriting,
+                placeholder: thread == nil ? "What should change?" : "Reply", focused: $isWriting,
                 attachments: model.attachments(for: box)
             )
         }

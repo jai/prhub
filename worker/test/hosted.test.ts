@@ -341,7 +341,7 @@ test("a person's env acts with their token, under their own objects and R2 prefi
   assert.equal(scopedKey(person, "o/r/1/abc.diff"), "users/4242/o/r/1/abc.diff");
   assert.equal(scopedKey(base, "o/r/1/abc.diff"), "o/r/1/abc.diff", "a self-hosted Worker's keys are as they were");
   assert.deepEqual(deviceConfig(person, "octocat").features,
-    { ask_ai: false, key_lines: false, rewrite: false, feedback: false, finder: false, push: false, webhooks: false });
+    { ask_ai: false, key_lines: false, rewrite: false, feedback: false, push: false, webhooks: false });
 });
 
 test("only a login in SUBSCRIPTION_LOGINS runs AI on the Worker's subscription", () => {

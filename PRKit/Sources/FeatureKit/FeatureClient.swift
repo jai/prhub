@@ -107,55 +107,38 @@ public struct FeatureSamples: Sendable {
     }
 }
 
-/// A chat channel on the Worker (docs/api.md, "Chat channels"): its routes' root, `GET/POST <path>` and
-/// `GET/POST <path>/<id>`.
-public struct FeatureChannel: Hashable, Sendable {
-    public let path: String
-
-    public init(path: String) {
-        self.path = path
-    }
-
-    /// Changes to the app.
-    public static let feedback = FeatureChannel(path: "feedback")
-    /// Finding a lost coding thread.
-    public static let finder = FeatureChannel(path: "finder")
-}
-
-/// One chat channel's routes on the Worker. The host gives where they are and the bearer, as `PRKitHost.access` does.
+/// The Worker's feature-request routes. The host gives where they are and the bearer, as `PRKitHost.access` does.
 public struct FeatureClient: Sendable {
+    /// The routes' root on the Worker: `GET/POST feedback` and `GET/POST feedback/<id>`.
+    static let root = "feedback"
+
     let viewer: PRViewerClient
-    public let channel: FeatureChannel
     /// Set: nothing leaves the device (`FeatureSamples`).
     public let samples: FeatureSamples?
 
     /// `isInForeground` decides whether a request waits for a network: in the app, while someone is looking at it.
     public init(
-        access: PRViewerAccess, isInForeground: @escaping @Sendable () async -> Bool,
-        channel: FeatureChannel = .feedback, samples: FeatureSamples? = nil
+        access: PRViewerAccess, isInForeground: @escaping @Sendable () async -> Bool, samples: FeatureSamples? = nil
     ) {
-        self.init(
-            viewer: PRViewerClient(access: access, isInForeground: isInForeground), channel: channel, samples: samples
-        )
+        self.init(viewer: PRViewerClient(access: access, isInForeground: isInForeground), samples: samples)
     }
 
     /// Over a client the host already has (PRKit's), sharing its connection.
-    public init(viewer: PRViewerClient, channel: FeatureChannel = .feedback, samples: FeatureSamples? = nil) {
+    public init(viewer: PRViewerClient, samples: FeatureSamples? = nil) {
         self.viewer = viewer
-        self.channel = channel
         self.samples = samples
     }
 
     func list() async throws -> FeatureList {
-        try await viewer.read(channel.path, as: FeatureList.self)
+        try await viewer.read(Self.root, as: FeatureList.self)
     }
 
     func chat(_ thread: String) async throws -> FeatureChat {
-        try await viewer.read("\(channel.path)/\(thread)", as: FeatureChat.self)
+        try await viewer.read("\(Self.root)/\(thread)", as: FeatureChat.self)
     }
 
-    /// To the thread, or as a new chat when there is none: that makes the thread.
+    /// To the thread, or as a new request when there is none: that makes the thread.
     func send(_ message: FeatureMessage, to thread: String?) async throws -> FeatureChat {
-        try await viewer.send(thread.map { "\(channel.path)/\($0)" } ?? channel.path, message, as: FeatureChat.self)
+        try await viewer.send(thread.map { "\(Self.root)/\($0)" } ?? Self.root, message, as: FeatureChat.self)
     }
 }

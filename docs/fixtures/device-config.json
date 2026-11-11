@@ -4,7 +4,6 @@
     "key_lines": true,
     "rewrite": true,
     "feedback": false,
-    "finder": false,
     "push": true,
     "webhooks": false
   },

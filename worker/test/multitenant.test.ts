@@ -443,7 +443,7 @@ test("a person's own Anthropic key turns AI on for them alone, sealed and never 
   assert.equal(aliceAuth.env.ANTHROPIC_API_KEY, ALICE_KEY);
   assert.equal(bobAuth.env.ANTHROPIC_API_KEY, undefined, "never the operator's key, never Alice's");
   assert.deepEqual(deviceConfig(aliceAuth.env, "alice").features,
-    { ask_ai: false, key_lines: true, rewrite: true, feedback: false, finder: false, push: false, webhooks: false });
+    { ask_ai: false, key_lines: true, rewrite: true, feedback: false, push: false, webhooks: false });
   assert.equal(deviceConfig(bobAuth.env, "bob").features.key_lines, false);
   assert.equal(aliceAuth.session.hasAnthropicKey, true);
 

@@ -1,27 +1,10 @@
 import type { AskChat, AskMessage } from "./ask-chat.ts";
 
 /**
- * The app's chats with an agent on the owner's Mac, one engine for every channel (docs/api.md, "Chat channels"). The
- * Worker only keeps them: each message waits here until the channel's runner takes it, starts or tells a coding agent
- * on the owner's Mac, and brings the agent's words back. Nothing here calls a model. The runner reaches out to the
- * Worker; the Worker never reaches the runner.
+ * Feedback on the app, from the app (docs/api.md, "Feedback"). The Worker only keeps it: each message waits here until
+ * the owner's runner takes it, starts or tells a coding agent on the owner's Mac, and brings the agent's words back.
+ * Nothing here calls a model. The runner reaches out to the Worker; the Worker never reaches the runner.
  */
-
-/**
- * The channels. A channel's name is its route segment and its R2 prefix, so each has its own chats, queue and runner
- * heartbeat. `feedback`: changes to the app. `finder`: finding a lost coding thread.
- */
-export const CHAT_CHANNELS = {
-  feedback: { label: "Feedback", listServedEvent: "feedback_list_served", refused: "That feedback can't be sent.",
-    notKept: "Your feedback couldn't be kept. Try again." },
-  finder: { label: "Finder", listServedEvent: "finder_list_served", refused: "That message can't be sent.",
-    notKept: "Your message couldn't be kept. Try again." },
-} as const;
-export type ChatChannel = keyof typeof CHAT_CHANNELS;
-
-export function isChatChannel(name: string): name is ChatChannel {
-  return Object.hasOwn(CHAT_CHANNELS, name);
-}
 
 const MAX_TEXT = 8_000;
 /** Screenshots on one message: how many, and each one's size decoded. The app sends JPEGs of at most 1568 px. */
@@ -40,11 +23,10 @@ const DELIVERY_STUCK_MS = 15 * 60_000;
 const MAX_AGENT_MESSAGES = 500;
 const MAX_AGENT_TEXT = 20_000;
 
-// Within a channel's store (`channelStore`): `feedback/chats.json` in R2 for the feedback channel.
-const LIST_KEY = "chats.json";
-const RUNNER_KEY = "runner.json";
-const PENDING_PREFIX = "pending/";
-const chatPrefix = (chat: string) => `chats/${chat}/`;
+const LIST_KEY = "feedback/chats.json";
+const RUNNER_KEY = "feedback/runner.json";
+const PENDING_PREFIX = "feedback/pending/";
+const chatPrefix = (chat: string) => `feedback/chats/${chat}/`;
 const messageKey = (chat: string, message: StoredMessage) => `${chatPrefix(chat)}m/${message.at}-${message.id}.json`;
 const imageKey = (chat: string, message: string, index: number) => `${chatPrefix(chat)}img/${message}/${index}.json`;
 const agentKey = (chat: string) => `${chatPrefix(chat)}agent.json`;
@@ -154,17 +136,6 @@ export function r2Store(bucket: R2Bucket): FeedbackStore {
   };
 }
 
-/** One channel's part of a store: every key under `<channel>/`. */
-export function channelStore(store: FeedbackStore, channel: ChatChannel): FeedbackStore {
-  const root = `${channel}/`;
-  return {
-    get: (key) => store.get(root + key),
-    put: (key, value, ifEtag) => store.put(root + key, value, ifEtag),
-    list: async (prefix) => (await store.list(root + prefix)).map((key) => key.slice(root.length)),
-    delete: (key) => store.delete(root + key),
-  };
-}
-
 export function isFeedbackId(id: string): boolean {
   return CHAT_ID.test(id);
 }
@@ -261,13 +232,11 @@ export async function feedbackList(store: FeedbackStore, now: number) {
   return { threads: list, builderOnline: status.online, builderStatus: status };
 }
 
-/** The one log line a list read leaves (`<channel>_list_served`): what the app was told about the builder, and why. */
-export function listServedLog(
-  status: BuilderStatus, threadCount: number, now: number, channel: ChatChannel = "feedback",
-): string {
+/** The one log line a list read leaves (`feedback_list_served`): what the app was told about the builder, and why. */
+export function listServedLog(status: BuilderStatus, threadCount: number, now: number): string {
   const age = status.lastPollAt === null ? null : Math.round((now - Date.parse(status.lastPollAt)) / 1000);
   return JSON.stringify({
-    event: CHAT_CHANNELS[channel].listServedEvent, builderOnline: status.online, runnerPollAgeSeconds: age, detail: status.detail,
+    event: "feedback_list_served", builderOnline: status.online, runnerPollAgeSeconds: age, detail: status.detail,
     threads: threadCount,
   });
 }

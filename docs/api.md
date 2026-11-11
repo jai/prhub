@@ -137,7 +137,6 @@ Auth: a paired secret or `APP_TOKEN`. `Cache-Control: no-store`. The app reads i
 | `features.key_lines` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ANTHROPIC_API_KEY` | Shows the Key lines panel and capsule |
 | `features.rewrite` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ANTHROPIC_API_KEY` | Shows Rewrite on the description |
 | `features.feedback` | `FEEDBACK_REPO` and `HUB_TOKEN`: Jai's Worker only ([Feedback](#feedback)) | Shows Feedback |
-| `features.finder` | the same as `feedback` ([Chat channels](#chat-channels)) | Shows the Finder chat (Agent Pager's "Find threads") |
 | `features.push` | the relay (`PUSH_RELAY_URL`, `PUSH_RELAY_KEY`), or direct APNs (`APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8`, `APNS_BUNDLE_ID`) | Registers for push; off: syncs on open and foreground only |
 | `features.webhooks` | `WEBHOOK_SECRET` | Diagnostics only: updates in seconds rather than about a minute |
 | `login` | the GitHub login the Worker acts as; `null` if GitHub could not be asked | "Your PRs", and whose review a row shows |
@@ -151,66 +150,49 @@ and `ask` are shortened: each lists the same `allowed` entries as `key_lines`. A
 does not know is ignored; a feature the Worker does not send is off. Routes for a feature that is off
 answer `404 {"error": "<feature> is not set up on this Worker."}`. Answers: `200` · `401`.
 
-## Chat channels
+## Feedback
 
-A chat channel is the app's chat with a coding agent on the owner's Mac (FeatureKit, [plan](plans/featurekit.md)). The
-Worker only keeps the messages: the channel's runner on the owner's Mac polls for them, starts or tells a coding agent
-there, and sends the agent's words back. The Worker never calls a model or a runner. Every channel has the same routes,
-bodies and answers, below with `<channel>` for its name, and its own chats, queue and runner heartbeat.
-
-| Channel | For |
-|---|---|
-| `feedback` | Changes to the app ([Feedback](#feedback)) |
-| `finder` | Finding a lost coding thread: Agent Pager's "Find threads". Its agent links each thread it finds as `agentpager://thread/<host>/<id>` |
-
-Both are on Jai's Worker only (`FEEDBACK_REPO`, `HUB_TOKEN`; `features.feedback` and `features.finder`); elsewhere
-the app's routes answer `404` and the runner's `401`.
+Requests for changes to the app, from the app (FeatureKit, [plan](plans/featurekit.md)). The Worker only keeps them:
+a runner on the owner's Mac polls for them, starts or tells a coding agent there, and sends the agent's words back.
+The Worker never calls a model or the runner. Jai's Worker only (`FEEDBACK_REPO`, `HUB_TOKEN`); elsewhere the app's routes
+answer `404` and the runner's `401`. Agent Pager's runner, its agent and its contract: [jai/agent-pager docs/api/feedback.md](https://github.com/jai/agent-pager/blob/main/docs/api/feedback.md).
 
 App routes (app auth):
 
 | Route | Body | Answer |
 |---|---|---|
-| `GET /<channel>` | | `{threads: [{id, title, createdAt}], builderOnline, builderStatus}`, newest first |
-| `POST /<channel>` | `{text, build?, images?, client_ref?}` | the new chat |
-| `GET /<channel>/{id}` | | the chat; `404` none |
-| `POST /<channel>/{id}` | as above | the chat, with the message added |
+| `GET /feedback` | | `{threads: [{id, title, createdAt}], builderOnline, builderStatus}`, newest first |
+| `POST /feedback` | `{text, build?, images?, client_ref?}` | the new chat |
+| `GET /feedback/{id}` | | the chat; `404` none |
+| `POST /feedback/{id}` | as above | the chat, with the message added |
 
 - A chat: `{id, messages: [{id, role: "you" \| "agent", text, anchor: null, images}], isWorking, activity, problem,
-  costCents: null, model: null, effort: null, builderOnline, thread}`. `id` is `fb_` and 16 hex digits on every
-  channel. `thread` is `{host, id}`, the agent's Agents thread, once the runner has found it.
-- `text` at most 8,000 characters; `images` (optional) up to four JPEG or PNG `{media_type, data}` of at most 1.5 MB
-  decoded. Neither: `400`. A repeat `client_ref` keeps the message once.
+  costCents: null, model: null, effort: null, builderOnline, thread}`. `thread` is `{host, id}`, the agent's Agents
+  thread, once the runner has found it.
+- `text` at most 8,000 characters; `images` up to four JPEG or PNG `{media_type, data}` of at most 1.5 MB decoded.
+  Neither: `400`. A repeat `client_ref` keeps the message once.
 - `isWorking` from a send until the agent's turn ends; `problem` says why the last message was not passed on.
-  `builderOnline`: the channel's runner polled in the last 90 seconds and said its agent host answers. `builderStatus`
-  says why not: `{online, lastPollAt, detail}`, `detail` the runner's own reason (at most 200 characters) or that it
-  went quiet. Each list read logs one line, `{"event":"<channel>_list_served", builderOnline, runnerPollAgeSeconds,
-  detail, threads}`.
+  `builderOnline`: the runner polled in the last 90 seconds and said its Mac answers. `builderStatus` says why not:
+  `{online, lastPollAt, detail}`, `detail` the runner's own reason (at most 200 characters) or that it went quiet.
+  Each list read logs one line, `{"event":"feedback_list_served", builderOnline, runnerPollAgeSeconds, detail,
+  threads}`.
 
 Runner routes (`POST`, bearer `HUB_TOKEN`, JSON body):
 
 | Route | Body | Answer |
 |---|---|---|
-| `/<channel>/runner/poll` | `{orca, detail?}`: whether this channel's agent host answers, and why not | `{work: [{chat, message, first, at}]}`, oldest first |
-| `/<channel>/runner/claim` | `{chat, message}` | `{ok, text, build, first, title, images}`; `409` not pending; `404` |
-| `/<channel>/runner/result` | `{chat, message, status: "delivered" \| "failed", detail?}` | `{ok}`; `409` not claimed |
-| `/<channel>/runner/agent` | `{chat, messages: [{id, text, at}], isWorking, activity, thread}` | `{ok}`; `404` no chat |
+| `/feedback/runner/poll` | `{orca, detail?}`: whether the agents' Mac answers, and why not | `{work: [{chat, message, first, at}]}`, oldest first |
+| `/feedback/runner/claim` | `{chat, message}` | `{ok, text, build, first, title, images}`; `409` not pending; `404` |
+| `/feedback/runner/result` | `{chat, message, status: "delivered" \| "failed", detail?}` | `{ok}`; `409` not claimed |
+| `/feedback/runner/agent` | `{chat, messages: [{id, text, at}], isWorking, activity, thread}` | `{ok}`; `404` no chat |
 
-- `orca` keeps its name from the first runner, whose agents run in Orca: it means "this channel's agent host
-  answers", whatever runs the agents.
-- A poll is the channel's heartbeat: a `finder` poll says nothing about `feedback`'s builder, and the other way round.
 - A message is `pending` → `delivering` (claim) → `delivered` or `failed` (result). A claim is a compare-and-swap on
   the message's R2 version, so it succeeds once. One left `delivering` for 15 minutes shows as failed and is never
   offered again.
 - `agent` replaces the agent's side of the chat: all its messages so far (at most 500, 20,000 characters each).
-- Storage (R2 `DIFFS`), under the channel's name: `<channel>/chats.json`, `<channel>/chats/<id>/m/<at>-<message>.json`,
-  their screenshots under `img/`, the agent's side in `agent.json`, the queue in `<channel>/pending/`, the runner's last
-  poll in `<channel>/runner.json`.
-
-### Feedback
-
-The `feedback` channel: requests for changes to the app. `/feedback`, `/feedback/{id}` and
-`/feedback/runner/poll|claim|result|agent`, as above, kept under `feedback/` as they always were. Agent Pager's runner,
-its agent and its contract: [jai/agent-pager docs/api/feedback.md](https://github.com/jai/agent-pager/blob/main/docs/api/feedback.md).
+- Storage (R2 `DIFFS`): `feedback/chats.json`, `feedback/chats/<id>/m/<at>-<message>.json`, their screenshots under
+  `img/`, the agent's side in `agent.json`, the queue in `feedback/pending/`, the runner's last poll in
+  `feedback/runner.json`.
 
 ## Rows and details
 

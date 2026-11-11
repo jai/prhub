@@ -60,8 +60,6 @@ public enum AppIcon: String {
     case viewFilterOn = "line.3.horizontal.decrease.circle.fill"
     case moveUp = "arrow.up"
     case remove = "minus"
-    /// Asking an agent to find a coding thread that was lost.
-    case findThreads = "sparkle.magnifyingglass"
 
     // Settings: the account, the Worker, alerts and the diff font.
     case signIn = "person.crop.circle"
