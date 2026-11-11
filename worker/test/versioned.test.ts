@@ -165,6 +165,7 @@ test("on the subscription, key lines come from the Agent SDK container, never th
   assert.equal(asked.length, 1);
   assert.equal(asked[0].model, "claude-sonnet-5-5");
   assert.equal((asked[0].schema as { type: string }).type, "object");
+  assert.equal("$schema" in (asked[0].schema as object), false, "Claude Code rejects a $schema it does not know");
   const stored = JSON.parse(store.puts[0].value) as { items: unknown[]; costCents: number; model: string };
   assert.deepEqual(stored.items, []);
   assert.equal(stored.costCents, 1.23);

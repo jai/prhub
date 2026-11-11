@@ -26,7 +26,8 @@ async function run({ system, prompt, model, effort, schema }) {
   return {
     subtype: result.subtype,
     output: result.structured_output ?? null,
-    model: Object.keys(result.modelUsage ?? {})[0] ?? model,
+    // Claude Code also calls a small model for its own chores; the answer is the asked model's when it ran.
+    model: model in (result.modelUsage ?? {}) ? model : Object.keys(result.modelUsage ?? {})[0] ?? model,
     tokens: {
       input: (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0),
       output: usage.output_tokens ?? 0,

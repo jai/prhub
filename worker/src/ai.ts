@@ -101,7 +101,9 @@ async function ask<Answer>(
 async function askOnSubscription<Answer>(
   system: string, content: string, schema: z.ZodType<Answer>, choice: ModelChoice, env: Env, runFor: RunFor,
 ): Promise<{ answer: Answer; run: Run }> {
-  const answer = await runOnSubscription(system, content, z.toJSONSchema(schema) as Record<string, unknown>, choice, env);
+  // Claude Code's validator knows no draft 2020-12 `$schema` URI, so the schema goes without it.
+  const { $schema: _draft, ...json } = z.toJSONSchema(schema) as Record<string, unknown>;
+  const answer = await runOnSubscription(system, content, json, choice, env);
   const costCents = answer.costUsd === null ? null : Math.round(answer.costUsd * 10_000) / 100;
   const run: Run = { tokens: answer.tokens, model: answer.model, effort: choice.effort, costCents };
   console.log("ai_run", {
