@@ -16,6 +16,18 @@ extension PRSession {
         }
     }
 
+    /// The chat about a key line, asked to explain it, with its code and why it was picked.
+    func explain(_ item: PRKeyLines.Item, in document: DiffDocument) {
+        let isOld = item.side == PRDiffSide.left.rawValue
+        let line = document.lines.first {
+            document.files[$0.file] == item.path && (isOld ? $0.oldLine : $0.newLine) == item.line
+                && (isOld ? $0.kind != .added : $0.kind != .removed)
+        }
+        let code = line.map { String(document.text(of: $0).dropFirst().prefix(500)) }
+        let anchor = PRAskQuestion.Anchor(path: item.path, line: item.line, side: item.side, code: code)
+        openAsk(about: anchor, words: "Explain this line. It was picked as a key line: \(item.why)")
+    }
+
     func askAnchor(for target: PRComposerTarget, code: String) -> PRAskQuestion.Anchor? {
         guard case let .line(path, line, side) = target else {
             return nil

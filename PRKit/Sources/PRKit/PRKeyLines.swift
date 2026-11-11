@@ -40,6 +40,7 @@ struct PRKeyLinesList: View {
     ]
 
     let session: PRSession
+    let document: DiffDocument
     @State private var customContext = ""
 
     var body: some View {
@@ -111,18 +112,11 @@ struct PRKeyLinesList: View {
                 }
                 ForEach(lines.items) { item in
                     let isSelected = session.selectedKeyLine?.id == item.id
-                    HStack(alignment: .top, spacing: 0) {
-                        Button { session.show(item) } label: { row(item) }
-                            .buttonStyle(.plain)
-                            .opacity(session.isReviewed(item) ? PRStyle.doneOpacity : 1)
-                            .accessibilityAddTraits(isSelected ? .isSelected : [])
-                            .accessibilityIdentifier("key-line-\(item.id)")
-                        PRKeyLineCheck(item: item, session: session)
-                    }
-                    .background(
-                        isSelected ? Color(platform: DiffStyle.selectedLine) : .clear,
-                        in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous)
-                    )
+                    row(item, isSelected: isSelected)
+                        .background(
+                            isSelected ? Color(platform: DiffStyle.selectedLine) : .clear,
+                            in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous)
+                        )
                 }
                 if !lines.leftOut.isEmpty {
                     Text("Too big to read: \(lines.leftOut.joined(separator: ", "))")
@@ -133,27 +127,55 @@ struct PRKeyLinesList: View {
         }
     }
 
-    private func row(_ item: PRKeyLines.Item) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
-            Image(systemName: item.symbol)
-                .font(.appCaption)
-                .foregroundStyle(item.kind == "risk" ? Color.toneBad : Color.secondary)
-                .frame(width: 16)
-            VStack(alignment: .leading, spacing: Space.xxs) {
-                Text(verbatim: "\(item.path):\(item.line)")
-                    .font(.appCaption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.head)
+    /// A heading line (its kind, where it is, Explain and its tick), then why it matters across the whole row. The path
+    /// scrolls sideways when it is too long to show.
+    private func row(_ item: PRKeyLines.Item, isSelected: Bool) -> some View {
+        // A ticked line's words fade; its controls stay.
+        let words = session.isReviewed(item) ? PRStyle.doneOpacity : 1
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: Space.sm) {
+                HStack(spacing: Space.sm) {
+                    StatusChip(text: item.kindTitle, tint: item.kindTint)
+                    ScrollView(.horizontal) {
+                        Text(verbatim: "\(item.path):\(item.line)")
+                            .font(.appCaption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .scrollIndicators(.hidden)
+                }
+                .opacity(words)
+                .contentShape(.rect)
+                .onTapGesture { session.show(item) }
+                .accessibilityHidden(true)
+                if session.offersAsk {
+                    Button("Explain", systemImage: AppIcon.askAI.symbol) { session.explain(item, in: document) }
+                        .labelStyle(.iconOnly)
+                        .font(.appFootnote)
+                        .foregroundStyle(Color.primary)
+                        .frame(width: PRStyle.rowHeight, height: PRStyle.rowHeight)
+                        .contentShape(.rect)
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Explain \(item.path):\(item.line)")
+                        .accessibilityIdentifier("key-line-explain-\(item.id)")
+                }
+                PRKeyLineCheck(item: item, session: session)
+            }
+            .padding(.leading, Space.sm)
+            Button { session.show(item) } label: {
                 Text(item.why)
                     .font(.appFootnote)
                     .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding([.horizontal, .bottom], Space.sm)
+                    .opacity(words)
+                    .contentShape(.rect)
             }
-            Spacer(minLength: 0)
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(item.kindTitle), \(item.path):\(item.line), \(item.why)")
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+            .accessibilityIdentifier("key-line-\(item.id)")
         }
-        .padding(Space.sm)
-        .contentShape(.rect)
-        .accessibilityValue(item.kind)
     }
 }
 
@@ -192,7 +214,7 @@ struct PRNavigator: View {
                 if let hint = session.keyLinesHint {
                     PRKeyLinesOff(hint: hint)
                 } else {
-                    PRKeyLinesList(session: session)
+                    PRKeyLinesList(session: session, document: document)
                 }
             }
         }
@@ -242,13 +264,15 @@ struct PRKeyLinesOff: View {
 }
 
 extension PRKeyLines.Item {
-    var symbol: String {
+    var kindTitle: String {
         switch kind {
-        case "risk": "exclamationmark.triangle.fill"
-        case "decision": "arrow.triangle.branch"
-        default: "function"
+        case "risk": "Risk"
+        case "decision": "Decision"
+        default: "Logic"
         }
     }
+
+    var kindTint: Color { kind == "risk" ? .toneBad : .secondary }
 }
 
 /// A key line's tick: checked off as reviewed, or not yet. A finger's width, beside the line in the list or its note.
@@ -295,24 +319,25 @@ struct PRKeyLineNote: View {
 
     var body: some View {
         let reviewed = isReviewed(item)
-        HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
-            Image(systemName: item.symbol)
-                .font(.appCaption)
-                .foregroundStyle(item.kind == "risk" ? Color.toneBad : Color.secondary)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: Space.sm) {
+                StatusChip(text: item.kindTitle, tint: item.kindTint)
+                Spacer(minLength: 0)
+                PRKeyLineCheck(isReviewed: reviewed, identifier: "key-line-note-reviewed") {
+                    setReviewed(item, !reviewed)
+                }
+                Button("Close", systemImage: AppIcon.close.symbol, action: close)
+                    .labelStyle(.iconOnly)
+                    .font(.appCaption)
+                    .foregroundStyle(.secondary)
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("key-line-note-close")
+            }
             Text(item.why)
                 .font(.appFootnote)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .opacity(reviewed ? PRStyle.doneOpacity : 1)
                 .accessibilityIdentifier("key-line-note")
-            PRKeyLineCheck(isReviewed: reviewed, identifier: "key-line-note-reviewed") {
-                setReviewed(item, !reviewed)
-            }
-            Button("Close", systemImage: AppIcon.close.symbol, action: close)
-                .labelStyle(.iconOnly)
-                .font(.appCaption)
-                .foregroundStyle(.secondary)
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("key-line-note-close")
         }
         .padding(PRStyle.inset)
         .prCard()
