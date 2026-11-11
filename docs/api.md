@@ -346,6 +346,9 @@ choice, and the stored shape are the same; `costCents` is what the run would hav
 - Each run, on either path, logs one `ai_run` line: `feature`, `repo`, `number`, `auth` (`subscription` or
   `api_key`), `user_id`, `model`, `effort`, `input_tokens`, `output_tokens`, `cost_cents`.
 - The container sleeps after two idle minutes. The first run after that waits for it to start, about 20 seconds.
+- A container that is not ready, or whose run was stopped, is asked again up to three times, five seconds apart.
+- A failed answer, on either path, is served for ten minutes; the next ask after that makes it again, so a run that
+  failed for want of credit or capacity heals without **Try again**.
 
 ## Reviewed key lines
 

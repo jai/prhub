@@ -21,18 +21,52 @@ export interface AgentAnswer {
   costUsd: number | null;
 }
 
+type ContainerAnswer = Partial<AgentAnswer> & { error?: string; subtype?: string };
+
+/** Tries a run takes before it fails: a container that is starting, stopping or full answers without JSON. */
+export const CONTAINER_TRIES = 3;
+const RETRY_AFTER_MS = 5_000;
+
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * The container's JSON answer. Cloudflare's own words when no instance is ready, and a run whose Claude Code was stopped
+ * under it (exit 143), go again after a pause, up to `CONTAINER_TRIES` tries.
+ */
+async function askContainer(
+  body: string, agent: NonNullable<Env["AGENT"]>, wait: (ms: number) => Promise<void>,
+): Promise<ContainerAnswer> {
+  let failure = "";
+  for (let tryNumber = 1; tryNumber <= CONTAINER_TRIES; tryNumber++) {
+    const response = await agent.get(agent.idFromName("ai")).fetch("http://agent/run", {
+      method: "POST", headers: { "content-type": "application/json" }, body,
+    });
+    const text = await response.text();
+    let answer: ContainerAnswer | null = null;
+    try {
+      answer = JSON.parse(text) as ContainerAnswer;
+    } catch {
+      failure = text.slice(0, 200) || `HTTP ${response.status}`;
+    }
+    if (answer && !(answer.error ?? "").includes("code 143")) {
+      return answer;
+    }
+    failure = answer?.error ?? failure;
+    if (tryNumber < CONTAINER_TRIES) {
+      await wait(RETRY_AFTER_MS);
+    }
+  }
+  return { error: failure };
+}
+
 /** One structured answer from the container. Throws with the container's own words when it fails. */
 export async function runOnSubscription(
-  system: string, prompt: string, schema: Record<string, unknown>, choice: ModelChoice, env: Env,
+  system: string, prompt: string, schema: Record<string, unknown>, choice: ModelChoice, env: Env, wait = pause,
 ): Promise<AgentAnswer> {
   const body = { system, prompt, model: choice.model, effort: choice.effort satisfies Effort, schema };
-  const agent = env.AGENT!;
-  const response = await agent.get(agent.idFromName("ai")).fetch("http://agent/run", {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
-  });
-  const answer = await response.json() as Partial<AgentAnswer> & { error?: string; subtype?: string };
-  if (!response.ok || answer.error) {
-    throw new Error(`The AI container failed: ${answer.error ?? `HTTP ${response.status}`}`);
+  const answer = await askContainer(JSON.stringify(body), env.AGENT!, wait);
+  if (answer.error) {
+    throw new Error(`The AI container failed: ${answer.error}`);
   }
   if (answer.subtype !== "success" || answer.output === null || answer.output === undefined) {
     throw new Error("The model's answer was cut off.");
