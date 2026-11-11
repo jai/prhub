@@ -16,8 +16,8 @@ import {
 } from "./github";
 import { parseRepoFullName, parseSha, prId, type RepoFullName } from "./ids";
 import {
-  addFeedback, feedbackChat, feedbackList, isFeedbackId, listServedLog, parseAgentSide, parseFeedbackInput, r2Store, runnerAgent,
-  runnerClaim, runnerPoll, runnerResult,
+  addFeedback, CHAT_CHANNELS, type ChatChannel, channelStore, feedbackChat, feedbackList, isChatChannel, isFeedbackId,
+  listServedLog, parseAgentSide, parseFeedbackInput, r2Store, runnerAgent, runnerClaim, runnerPoll, runnerResult,
 } from "./feedback";
 import { DEFAULT_CONTEXT } from "./key-lines";
 import { type AiConfig, type AiFeature, resolveChoice } from "./models";
@@ -293,24 +293,24 @@ async function askRoute(
   }, question, receipt);
 }
 
-const FEEDBACK_PATH = /^\/feedback(?:\/([^/]+))?$/;
-const RUNNER_PATH = /^\/feedback\/runner\/(poll|claim|result|agent)$/;
+const CHAT_PATH = /^\/(feedback|finder)(?:\/([^/]+))?$/;
+const RUNNER_PATH = /^\/(feedback|finder)\/runner\/(poll|claim|result|agent)$/;
 
 /**
- * The list on a GET of /feedback and new feedback on a POST; one chat, and a reply to it, on /feedback/{id}. Each POST
- * only keeps the message for the runner (docs/api.md, "Feedback").
+ * A channel's list on a GET of /<channel> and a new chat on a POST; one chat, and a reply to it, on /<channel>/{id}.
+ * Each POST only keeps the message for the channel's runner (docs/api.md, "Chat channels").
  */
-async function feedbackRoute(id: string | undefined, request: Request, env: Env): Promise<Response> {
+async function chatRoute(channel: ChatChannel, id: string | undefined, request: Request, env: Env): Promise<Response> {
   if (id !== undefined && !isFeedbackId(id)) {
     return new Response("not found\n", { status: 404 });
   }
-  const store = r2Store(env.DIFFS);
+  const store = channelStore(r2Store(env.DIFFS), channel);
   let receipt: string | null = null;
   try {
     if (request.method !== "POST") {
       if (!id) {
         const list = await feedbackList(store, Date.now());
-        console.log(listServedLog(list.builderStatus, list.threads.length, Date.now()));
+        console.log(listServedLog(list.builderStatus, list.threads.length, Date.now(), channel));
         return Response.json(list);
       }
       const answer = await feedbackChat(store, id, Date.now());
@@ -319,10 +319,10 @@ async function feedbackRoute(id: string | undefined, request: Request, env: Env)
     const body = (await bodyOf(request))?.value;
     const input = parseFeedbackInput(body);
     if (!input) {
-      return Response.json({ error: "That feedback can't be sent." }, { status: 400 });
+      return Response.json({ error: CHAT_CHANNELS[channel].refused }, { status: 400 });
     }
     const ref = clientRefOf(body);
-    receipt = ref && `feedback:${id ?? "new"}:${ref}`;
+    receipt = ref && `${channel}:${id ?? "new"}:${ref}`;
     const claim = receipt ? await prIndex(env).claimWrite(receipt, Date.now()) : "go";
     if (claim === "busy") {
       return busyAnswer();
@@ -334,23 +334,26 @@ async function feedbackRoute(id: string | undefined, request: Request, env: Env)
         await prIndex(env).finishWrite(receipt, target !== null, Date.now());
       }
     } else if (!target) {
-      // A repeat of new feedback already kept: the newest chat is it.
+      // A repeat of a new chat's first message already kept: the newest chat is it.
       target = (await feedbackList(store, Date.now())).threads[0]?.id;
     }
     const chat = target ? await feedbackChat(store, target, Date.now()) : null;
     return chat ? Response.json(chat) : Response.json({ error: "Not found." }, { status: 404 });
   } catch (error) {
-    console.error("feedback failed", error);
+    console.error(`${channel} failed`, error);
     if (receipt) {
       await prIndex(env).finishWrite(receipt, false, Date.now());
     }
-    return Response.json({ error: "Your feedback couldn't be kept. Try again." }, { status: 502 });
+    return Response.json({ error: CHAT_CHANNELS[channel].notKept }, { status: 502 });
   }
 }
 
-/** The runner on Jai's Mac (`HUB_TOKEN`): it polls, claims a message, says how its delivery went, and sends the agent's side. */
-async function runnerRoute(kind: string, request: Request, env: Env): Promise<Response> {
-  const store = r2Store(env.DIFFS);
+/**
+ * A channel's runner on Jai's Mac (`HUB_TOKEN`): it polls, claims a message, says how its delivery went, and sends the
+ * agent's side.
+ */
+async function runnerRoute(channel: ChatChannel, kind: string, request: Request, env: Env): Promise<Response> {
+  const store = channelStore(r2Store(env.DIFFS), channel);
   const body = ((await bodyOf(request))?.value ?? null) as Record<string, unknown> | null;
   const chat = typeof body?.chat === "string" ? body.chat : "";
   const message = typeof body?.message === "string" ? body.message : "";
@@ -534,9 +537,9 @@ async function serveAuthorized(request: Request, env: Env, context: ExecutionCon
   if (device) {
     return device;
   }
-  const feedback = FEEDBACK_PATH.exec(pathname);
-  if (feedback) {
-    return feedbackConfigured(env) ? feedbackRoute(feedback[1], request, env) : notConfigured("Feedback");
+  const chat = CHAT_PATH.exec(pathname);
+  if (chat && isChatChannel(chat[1])) {
+    return feedbackConfigured(env) ? chatRoute(chat[1], chat[2], request, env) : notConfigured(CHAT_CHANNELS[chat[1]].label);
   }
   const pullRequest = PULL_REQUEST_PATH.exec(pathname);
   if (pullRequest) {
@@ -625,8 +628,9 @@ export async function serveOwner(
     return finishAppCreation(searchParams, env);
   }
   const runner = RUNNER_PATH.exec(pathname);
-  if (runner && request.method === "POST") {
-    return hasToken(request, env.HUB_TOKEN) && feedbackConfigured(env) ? runnerRoute(runner[1], request, env)
+  if (runner && isChatChannel(runner[1]) && request.method === "POST") {
+    return hasToken(request, env.HUB_TOKEN) && feedbackConfigured(env)
+      ? runnerRoute(runner[1], runner[2], request, env)
       : new Response("unauthorized\n", { status: 401 });
   }
   if (pathname === "/prs/states" && request.method === "POST") {

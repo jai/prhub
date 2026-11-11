@@ -150,4 +150,11 @@ struct MarkdownGitHubTests {
         #expect(!cleaned.contains("<b>"))
         #expect(PRMarkdown.clean("<details><summary>S</summary>x</details>").contains("<details>"))
     }
+
+    /// An agent's link to a thread keeps its own scheme, so a tap reaches the app's URL handler through `openURL`.
+    @Test func aCustomSchemeLinkStaysALink() {
+        let blocks = MarkdownBlocks.parse("Found it: [billing retry](agentpager://thread/mac-mini/orca-claude:abc)")
+        let links = blocks.first.map { $0.content.runs.compactMap(\.link) } ?? []
+        #expect(links == [URL(string: "agentpager://thread/mac-mini/orca-claude:abc")!])
+    }
 }

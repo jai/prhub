@@ -20,6 +20,11 @@ on the owner's sessions (one Managed Agents chat cost $10.43, mostly context re-
 - App: `FeatureRequestsView` and `FeatureClient` in PRKit's `FeatureKit` target, on the `/feedback` routes; Agent
   Pager's Feedback tab shows it. Composer, image attachments and chat bubbles are PRKit's. The contract did not change
   with the runner, so the app did not either.
+- Channels: the same engine serves more than one chat, each a channel with its own routes, R2 prefix, queue and runner
+  heartbeat ([api.md, Chat channels](../api.md#chat-channels)): `feedback`, and `finder`, where Agent Pager's "Find
+  threads" asks an agent to find a lost coding thread. `FeatureClient(…, channel: .finder)` and
+  `FeatureRequestsView(client:wording:navigation:)` give a channel its routes, its words and, with `.host`, a place in
+  the host's own navigation stack.
 
 ## Shape
 

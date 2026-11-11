@@ -11,6 +11,7 @@ export interface DeviceConfig {
     key_lines: boolean;
     rewrite: boolean;
     feedback: boolean;
+    finder: boolean;
     push: boolean;
     webhooks: boolean;
   };
@@ -40,7 +41,10 @@ export function askConfigured(env: Env): boolean {
     && (isSet(env.ASK_ANTHROPIC_API_KEY) || isSet(env.ANTHROPIC_API_KEY));
 }
 
-/** Jai's alone: the runner on his Mac takes feedback to a coding agent. A self-hosted Worker never sets these. */
+/**
+ * Jai's alone: the runners on his Mac take each chat channel's messages (feedback, finder) to a coding agent. A
+ * self-hosted Worker never sets these.
+ */
 export function feedbackConfigured(env: Env): boolean {
   return isSet(env.FEEDBACK_REPO) && isSet(env.HUB_TOKEN);
 }
@@ -59,6 +63,7 @@ export function deviceConfig(env: Env, login: string | null): DeviceConfig {
       key_lines: model,
       rewrite: model,
       feedback: feedbackConfigured(env),
+      finder: feedbackConfigured(env),
       push: pushMode(env) !== "none",
       webhooks: isSet(env.WEBHOOK_SECRET),
     },

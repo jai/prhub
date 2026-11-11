@@ -24,8 +24,9 @@ enum FeatureRoute: Hashable, Sendable {
     }
 }
 
-/// Requests for changes to the app, each a conversation with an agent that makes the change, tests it and ships a
-/// build. Keep one for the app's life, so drafts and open chats outlive the screen.
+/// One chat channel's conversations with an agent on the owner's Mac: Feedback's are requests for changes to the app,
+/// each to an agent that makes the change, tests it and ships a build. Keep one for the app's life, so drafts and open
+/// chats outlive the screen.
 @MainActor
 @Observable
 public final class FeatureRequestsModel {
@@ -47,9 +48,11 @@ public final class FeatureRequestsModel {
     /// The boxes the sample screenshot went into once.
     @ObservationIgnored private var seeded: Set<String> = []
     private let client: FeatureClient
+    public let wording: FeatureWording
 
-    public init(client: FeatureClient) {
+    public init(client: FeatureClient, wording: FeatureWording = .feedback) {
         self.client = client
+        self.wording = wording
     }
 
     func draft(for box: String) -> String { drafts[box] ?? "" }

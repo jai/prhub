@@ -16,7 +16,7 @@ struct FeatureRequestsModelTests {
             let route = "\(request.httpMethod ?? "GET") \(request.url?.path() ?? "")"
             lock.withLock { seen.append(route) }
             let body = switch route {
-            case "GET /feedback":
+            case "GET /feedback", "GET /finder":
                 #"{"threads": [{"id": "sesn_1", "title": "Bigger clock", "createdAt": "2026-11-05T09:00:00Z"}], "#
                     + #""builderOnline": true}"#
             default:
@@ -28,11 +28,28 @@ struct FeatureRequestsModelTests {
         }
     }
 
-    private func client(_ worker: Worker) -> FeatureClient {
+    private func client(_ worker: Worker, channel: FeatureChannel = .feedback) -> FeatureClient {
         let access = PRViewerAccess(
             baseURL: { URL(string: "https://worker.example.com")! }, bearer: { "token" }, discard: {}
         )
-        return FeatureClient(viewer: PRViewerClient(access: access, exchange: { worker.answer($0) }))
+        return FeatureClient(viewer: PRViewerClient(access: access, exchange: { worker.answer($0) }), channel: channel)
+    }
+
+    /// The finder channel's chats go to its own routes, and its screen says what its host gives.
+    @Test func theFinderChannelHasItsOwnRoutes() async {
+        let worker = Worker()
+        let wording = FeatureWording(
+            title: "Find threads", emptyPrompt: "What were you working on?", placeholder: "What were you working on?"
+        )
+        let model = FeatureRequestsModel(client: client(worker, channel: .finder), wording: wording)
+        let route = model.compose(reusing: nil)
+        model.drafts[route.box] = "The billing retry"
+        await model.send(route)
+        model.drafts[route.box] = "Yesterday, on the Mac mini"
+        await model.send(route)
+        #expect(worker.requests == ["POST /finder", "GET /finder", "POST /finder/sesn_1"])
+        #expect(model.wording.title == "Find threads" && model.wording.newChat == "New chat")
+        #expect(FeatureRequestsModel(client: client(worker)).wording == .feedback)
     }
 
     /// Each message's screenshot count; a Worker from before them sends none.

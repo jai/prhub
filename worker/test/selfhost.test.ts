@@ -43,7 +43,7 @@ test("only a well-formed record pairs", () => {
 
 test("a Worker with only a GitHub token serves the PR list and nothing more", () => {
   assert.deepEqual(deviceConfig(env({ GITHUB_TOKEN: "t" }), "alex"), {
-    features: { ask_ai: false, key_lines: false, rewrite: false, feedback: false, push: false, webhooks: false },
+    features: { ask_ai: false, key_lines: false, rewrite: false, feedback: false, finder: false, push: false, webhooks: false },
     login: "alex",
     limits: {
       pairing_attempts_per_ip_per_hour: 30, writes_per_minute: null, writes_per_hour: null, ask_questions_per_hour: null,
@@ -60,13 +60,13 @@ test("each feature follows what serves it", () => {
     ANTHROPIC_API_KEY: "k", ...ask, PUSH_RELAY_URL: "https://relay", PUSH_RELAY_KEY: "rks_x", GITHUB_ORGS: "acme, , beta",
   }), "alex");
   assert.deepEqual(selfHosted.features,
-    { ask_ai: true, key_lines: true, rewrite: true, feedback: false, push: true, webhooks: false });
+    { ask_ai: true, key_lines: true, rewrite: true, feedback: false, finder: false, push: true, webhooks: false });
   assert.deepEqual(selfHosted.orgs, ["acme", "beta"]);
   const jai = deviceConfig(env({
     ANTHROPIC_API_KEY: "k", ASK_ANTHROPIC_API_KEY: "k2", ...ask, FEEDBACK_REPO: "jai/agent-pager", HUB_TOKEN: "h",
     APNS_BUNDLE_ID: "b", APNS_KEY_ID: "i", APNS_TEAM_ID: "t", APNS_KEY_P8: "p", WEBHOOK_SECRET: "w",
   }), "jai");
-  assert.deepEqual(jai.features, { ask_ai: true, key_lines: true, rewrite: true, feedback: true, push: true, webhooks: true });
+  assert.deepEqual(jai.features, { ask_ai: true, key_lines: true, rewrite: true, feedback: true, finder: true, push: true, webhooks: true });
   assert.equal("orgs" in jai, false);
   assert.equal(deviceConfig(env({ ...ask }), null).features.ask_ai, false, "Ask needs a key");
   assert.equal(deviceConfig(env({ ANTHROPIC_API_KEY: " " }), null).features.key_lines, false, "a blank is unset");
