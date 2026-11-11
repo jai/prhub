@@ -34,7 +34,8 @@ function world(answers: Record<string, unknown>[]) {
   };
   const r2 = memoryR2();
   const env = { DIFFS: r2, AGENT: agent, CLAUDE_CODE_OAUTH_TOKEN: "oat" } as unknown as Env;
-  const services = { system: "sys", token: async () => "read-token", budgetUsd: 5, now: () => 1_000 };
+  const services = { system: "sys", token: async () => "read-token", diff: async () => "diff --git a/x b/x", budgetUsd: 5,
+    now: () => 1_000 };
   const record = () => JSON.parse(r2.objects.get(`ask/${REPO}/7.json`)!) as SubscriptionRecord;
   return { sent, r2, env, services, record };
 }
@@ -51,6 +52,7 @@ test("a question's answer joins the chat, and the next question resumes the same
     [["you", "How often does it retry?"], ["agent", "It retries twice."]]);
   assert.equal(w.sent[0].session, null);
   assert.equal(w.sent[0].token, "read-token");
+  assert.equal(w.sent[0].diff, "diff --git a/x b/x", "the PR's diff goes with the question");
   assert.equal(w.sent[0].scope, "self", "a self-hosted Worker's checkouts are its own");
   await askOnSubscription(REPO, 7, input("Is that enough?"), choice, w.env, w.services);
   assert.equal(w.sent[1].session, "s1");

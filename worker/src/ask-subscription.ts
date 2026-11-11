@@ -66,7 +66,9 @@ const STOPS: Record<string, string> = {
  */
 export async function askOnSubscription(
   repo: RepoFullName, number: number, input: AskInput, choice: ModelChoice, env: Env,
-  services: { system: string; token: () => Promise<string>; budgetUsd: number; now?: () => number },
+  services: {
+    system: string; token: () => Promise<string>; diff: () => Promise<string>; budgetUsd: number; now?: () => number;
+  },
 ): Promise<void> {
   const now = services.now ?? Date.now;
   const key = askRecordKey(repo, number, env);
@@ -87,7 +89,7 @@ export async function askOnSubscription(
     const answer = await askContainer<AskAnswer>("/ask", JSON.stringify({
       system: services.system, prompt: askPrompt(input, null), model: choice.model, effort: choice.effort,
       scope: env.SIGNED_IN_USER_ID ?? "self", repo, number,
-      head: input.head, token: await services.token(), session: record.session, entries: entries ?? [],
+      head: input.head, token: await services.token(), diff: await services.diff(), session: record.session, entries: entries ?? [],
       budgetUsd: services.budgetUsd,
     }), env.AGENT!);
     if (answer.error) {

@@ -1,7 +1,7 @@
 // The AI container (docs/api.md, "AI on a subscription"): Claude Agent SDK runs, signed in with the Worker's
 // CLAUDE_CODE_OAUTH_TOKEN. The Worker is its only caller; nothing here reaches R2 or keeps state between runs.
 import { execFile } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, realpathSync, writeFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { createServer } from "node:http";
 import { promisify } from "node:util";
@@ -92,6 +92,14 @@ class SeededStore {
   }
 }
 
+/** The PR's diff beside the code, as a file the read tools reach: git's own objects are compressed past reading. */
+export const DIFF_FILE = ".prhub-pr.diff";
+
+function placeDiff(dir, diff) {
+  writeFileSync(`${dir}/${DIFF_FILE}`, diff ?? "");
+  writeFileSync(`${dir}/.git/info/exclude`, `${DIFF_FILE}\n`);
+}
+
 /** Whether `path`, symlinks followed, is inside `root`. A path that does not exist yet is judged as written. */
 function isInside(root, path) {
   const absolute = isAbsolute(path) ? path : resolve(root, path);
@@ -132,7 +140,7 @@ function scrub(text) {
 /** One Ask turn on `repo` at `head`: the answer's text, the session, and its whole transcript for the next turn. */
 const SAFE = { scope: /^[\w-]{1,64}$/, repo: /^[\w.-]+\/[\w.-]+$/, head: /^[0-9a-f]{40}$/ };
 
-async function ask({ system, prompt, model, effort, scope, repo, number, head, token, session, entries, budgetUsd }) {
+async function ask({ system, prompt, model, effort, scope, repo, number, head, token, diff, session, entries, budgetUsd }) {
   if (!SAFE.scope.test(scope) || !SAFE.repo.test(repo) || repo.includes("..") || !Number.isInteger(number)
     || !SAFE.head.test(head)) {
     throw new Error("The question names no PR this container can check out.");
@@ -140,6 +148,7 @@ async function ask({ system, prompt, model, effort, scope, repo, number, head, t
   const dir = `${WORK}/${scope}/${repo}/${number}`;
   return locked(dir, async () => {
     const cwd = await checkout(dir, repo, head, token);
+    placeDiff(cwd, diff);
     const store = new SeededStore(session ? entries : []);
     let result = null;
     for await (const message of query({

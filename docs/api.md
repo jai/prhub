@@ -346,7 +346,8 @@ choice, and the stored shape are the same; `costCents` is what the run would hav
 - Each run, on either path, logs one `ai_run` line: `feature`, `repo`, `number`, `auth` (`subscription` or
   `api_key`), `user_id`, `model`, `effort`, `input_tokens`, `output_tokens`, `cost_cents`.
 - Ask: each question is one Agent SDK turn on a checkout of the PR at its head, fetched with the same read-only
-  token as on Managed Agents. The agent reads and searches files only: no shell and no GitHub API. The chat is kept in
+  token as on Managed Agents, with the PR's diff beside it as `.prhub-pr.diff` (the first 400,000 characters). The agent
+  reads and searches files only: no shell and no GitHub API. The chat is kept in
   R2 at `ask/<repo>/<n>.json` and the session's transcript at `ask-sessions/<repo>/<n>.json`, so the next question
   resumes it in any container. A question at another model or effort starts a new chat.
 - The container sleeps after two idle minutes. The first run after that waits for it to start, about 20 seconds.

@@ -7,6 +7,7 @@ import { askRepoToken, InstallationTokenRefused } from "./app-token";
 import { onSubscription } from "./agent-container";
 import { askSystemPrompt } from "./ask-setup";
 import { askOnSubscription, isSubscriptionRecord, subscriptionChat } from "./ask-subscription";
+import { liveDiff } from "./github";
 import { askBudgetOf, limitsOf } from "./limits";
 import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models";
 
@@ -39,6 +40,14 @@ interface AskRecord {
 }
 
 export class AskRefused extends Error {}
+
+/** The diff the agent reads first, cut at `DIFF_KEPT` characters; empty when GitHub won't give one. */
+const DIFF_KEPT = 400_000;
+
+async function prDiff(repo: RepoFullName, number: number, env: Env): Promise<string> {
+  const { response } = await liveDiff(repo, number, env);
+  return response.ok ? (await response.text()).slice(0, DIFF_KEPT) : "";
+}
 
 function client(env: Env): Anthropic {
   return new Anthropic({ apiKey: isSet(env.ASK_ANTHROPIC_API_KEY) ? env.ASK_ANTHROPIC_API_KEY : env.ANTHROPIC_API_KEY });
@@ -129,7 +138,7 @@ export async function ask(repo: RepoFullName, number: number, input: AskInput, c
       throw error instanceof InstallationTokenRefused ? new AskRefused(error.message) : error;
     });
     return askOnSubscription(repo, number, input, choice, env, {
-      system: askSystemPrompt(env.GITHUB_LOGIN ?? null, "subscription"), token,
+      system: askSystemPrompt(env.GITHUB_LOGIN ?? null, "subscription"), token, diff: () => prDiff(repo, number, env),
       budgetUsd: askBudgetOf(limitsOf(env)) / 100,
     });
   }
