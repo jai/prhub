@@ -6,9 +6,7 @@ import { prId, type RepoFullName } from "./ids";
 import { askRepoToken, InstallationTokenRefused } from "./app-token";
 import { onSubscription } from "./agent-container";
 import { askSystemPrompt } from "./ask-setup";
-import { askOnSubscription, isSubscriptionRecord, subscriptionChat } from "./ask-subscription";
-import { liveDiff } from "./github";
-import { isRevisionOf, type Sha } from "./ids";
+import { askOnSubscription, isSubscriptionRecord, prDiff, subscriptionChat } from "./ask-subscription";
 import { askBudgetOf, limitsOf } from "./limits";
 import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models";
 
@@ -42,39 +40,6 @@ interface AskRecord {
 
 export class AskRefused extends Error {}
 
-/** The diff the agent reads first, cut at `DIFF_KEPT` bytes. */
-const DIFF_KEPT = 400_000;
-
-/**
- * The PR's diff at `head`, read no further than `DIFF_KEPT` bytes. Empty when GitHub won't give one, or when the PR has
- * moved past `head`: a newer commit's diff beside an older checkout would mislead.
- */
-export async function prDiff(repo: RepoFullName, number: number, head: Sha, env: Env): Promise<string> {
-  const { response, version } = await liveDiff(repo, number, env);
-  if (!response.ok || !response.body || !version || !isRevisionOf(version, head)) {
-    await response.body?.cancel();
-    return "";
-  }
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  while (size < DIFF_KEPT) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-    chunks.push(value);
-    size += value.byteLength;
-  }
-  await reader.cancel();
-  const bytes = new Uint8Array(size);
-  let at = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, at);
-    at += chunk.byteLength;
-  }
-  return new TextDecoder().decode(bytes.subarray(0, DIFF_KEPT));
-}
 
 function client(env: Env): Anthropic {
   return new Anthropic({ apiKey: isSet(env.ASK_ANTHROPIC_API_KEY) ? env.ASK_ANTHROPIC_API_KEY : env.ANTHROPIC_API_KEY });

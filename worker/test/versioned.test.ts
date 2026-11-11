@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { FAILURE_KEPT_MS, isStaleFailure, runAiJob } from "../src/ai-run.ts";
 import { runOnSubscription } from "../src/agent-container.ts";
-import { prDiff } from "../src/ask.ts";
+import { prDiff } from "../src/ask-subscription.ts";
 import type { Env } from "../src/env.ts";
 import { liveDiff, revisionFrom } from "../src/github.ts";
 import { isRevisionOf, parseSha, revisionOf, type Sha } from "../src/ids.ts";

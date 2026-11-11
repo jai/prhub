@@ -4,7 +4,8 @@
 import { type AgentAnswer, askContainer } from "./agent-container.ts";
 import { type AskChat, type AskInput, type AskMessage, askPrompt, askRecordKey } from "./ask-chat.ts";
 import { type Env, scopedKey } from "./env.ts";
-import type { RepoFullName } from "./ids.ts";
+import { liveDiff } from "./github.ts";
+import { isRevisionOf, type RepoFullName, type Sha } from "./ids.ts";
 import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models.ts";
 
 /** A turn that has run this long is taken as lost: the job that ran it ended without saying so. */
@@ -115,4 +116,38 @@ export async function askOnSubscription(
     console.error("ask on subscription failed", error);
   }
   await env.DIFFS.put(key, JSON.stringify(record));
+}
+
+/** The diff the agent reads first, cut at `DIFF_KEPT` bytes. */
+const DIFF_KEPT = 400_000;
+
+/**
+ * The PR's diff at `head`, read no further than `DIFF_KEPT` bytes. Empty when GitHub won't give one, or when the PR has
+ * moved past `head`: a newer commit's diff beside an older checkout would mislead.
+ */
+export async function prDiff(repo: RepoFullName, number: number, head: Sha, env: Env): Promise<string> {
+  const { response, version } = await liveDiff(repo, number, env);
+  if (!response.ok || !response.body || !version || !isRevisionOf(version, head)) {
+    await response.body?.cancel();
+    return "";
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (size < DIFF_KEPT) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    chunks.push(value);
+    size += value.byteLength;
+  }
+  await reader.cancel();
+  const bytes = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes.subarray(0, DIFF_KEPT));
 }
