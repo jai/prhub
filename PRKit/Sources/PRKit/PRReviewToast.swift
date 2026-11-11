@@ -41,12 +41,12 @@ struct PRReviewToast: Identifiable, Equatable {
         }
     }
 
-    /// The bar's Comment with no line comments waiting: a plain comment, not a review.
-    private var isComment: Bool {
-        if case .comment = write {
-            return true
+    /// The bar's Comment with no line comments waiting, a line's Comment now, or a reply: a comment, not a review.
+    var isComment: Bool {
+        switch write {
+        case .comment, .line, .reply: true
+        default: false
         }
-        return false
     }
 
     private var doneWords: String {
@@ -57,6 +57,14 @@ struct PRReviewToast: Identifiable, Equatable {
         case .approve: "Approved"
         case .requestChanges: "Changes requested"
         case .comment: "Comment posted"
+        }
+    }
+
+    /// The bar along its foot follows a review going or landed; waiting offline or refused, it has nothing to follow.
+    var showsProgress: Bool {
+        switch phase {
+        case .sending, .done: true
+        case .waitingForNetwork, .failed: false
         }
     }
 
@@ -195,16 +203,18 @@ extension PRsModel {
     }
 }
 
-/// The review's toast at the top of the PRs tab, over whatever is open: it slides in, changes its words in place and
-/// fades out once GitHub has the review. A failure stays, with the reason, Retry and a way to put it away.
+/// The review's toast at the top of the screen, over whatever is open: it slides down from above the screen, changes its
+/// words in place while a bar along its foot fills, and slides back up once GitHub has the review. A failure stays, with
+/// the reason, Retry and a way to put it away.
 struct PRReviewToastView: View {
     let model: PRsModel
 
     var body: some View {
         ZStack {
             if let toast = model.reviewToast {
-                content(toast)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                PRReviewToastBox(toast: toast, model: model)
+                    .id(toast.id)
+                    .transition(.offset(y: -ToastStyle.travel).combined(with: .opacity))
             }
         }
         .animation(AppMotion.fold, value: model.reviewToast?.id)
@@ -216,8 +226,16 @@ struct PRReviewToastView: View {
             }
         }
     }
+}
 
-    private func content(_ toast: PRReviewToast) -> some View {
+/// One toast: its mark, words and buttons, and the bar that follows the review.
+private struct PRReviewToastBox: View {
+    let toast: PRReviewToast
+    let model: PRsModel
+    /// How far the bar has filled: towards `ToastStyle.progressWhileSending` while it goes, whole once it has landed.
+    @State private var progress = 0.0
+
+    var body: some View {
         HStack(spacing: Space.sm) {
             Group {
                 if let icon = toast.icon {
@@ -233,6 +251,7 @@ struct PRReviewToastView: View {
                 .font(.appFootnote.weight(.semibold))
                 .foregroundStyle(Color.ink)
                 .lineLimit(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .contentTransition(.opacity)
                 .accessibilityIdentifier("pr-review-toast-words")
             if case .failed = toast.phase {
@@ -247,8 +266,10 @@ struct PRReviewToastView: View {
         }
         .padding(.horizontal, PRStyle.inset)
         .padding(.vertical, Space.sm)
+        .overlay(alignment: .bottomLeading) { bar }
         .frame(maxWidth: ToastStyle.maxWidth)
-        .background(Color.groundCard, in: .rect(cornerRadius: Radius.md, style: .continuous))
+        .background(Color.groundCard)
+        .clipShape(.rect(cornerRadius: Radius.md, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
                 .strokeBorder(Color.line, lineWidth: PRStyle.hairline)
@@ -256,8 +277,34 @@ struct PRReviewToastView: View {
         .shadow(color: .black.opacity(ToastStyle.shadowOpacity), radius: ToastStyle.shadowRadius, y: ToastStyle.shadowY)
         .padding(.horizontal, Space.lg)
         .padding(.top, Space.xs)
+        .animation(AppMotion.swap, value: toast.phase)
+        .onChange(of: toast.phase, initial: true) { _, phase in follow(phase) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("pr-review-toast")
         .accessibilityAddTraits(.updatesFrequently)
+    }
+
+    /// Along the foot: the tint while it goes, green once it lands; none while it waits or after it failed.
+    private var bar: some View {
+        GeometryReader { box in
+            Rectangle()
+                .fill(toast.phase == .done ? Color.toneGood : Color.accentColor)
+                .frame(width: box.size.width * progress)
+        }
+        .frame(height: ToastStyle.progressHeight)
+        .opacity(toast.showsProgress ? 1 : 0)
+        .accessibilityHidden(true)
+    }
+
+    private func follow(_ phase: PRReviewToast.Phase) {
+        switch phase {
+        case .sending:
+            progress = 0
+            withAnimation(ToastStyle.progressMotion) { progress = ToastStyle.progressWhileSending }
+        case .done:
+            withAnimation(AppMotion.swap) { progress = 1 }
+        case .waitingForNetwork, .failed:
+            break
+        }
     }
 }

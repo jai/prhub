@@ -163,8 +163,10 @@ struct PRDiffPage: View {
                 buttonTitle: session.drafts.isEmpty ? "Start review" : "Add to review",
                 context: document.isClipped(line) ? document.text(of: line) : nil,
                 lines: 1...6,
+                // The box closes at once and the toast follows the comment to GitHub, as a review's does.
                 alternate: .init(title: "Comment now") { words in
-                    try await session.send(words, to: target)
+                    PRPlatform.endEditing()
+                    try session.submitReview(words, to: target)
                     closeComposer()
                 },
                 ask: ask,

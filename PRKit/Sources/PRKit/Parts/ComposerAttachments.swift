@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreTransferable
 import ImageIO
 import Observation
@@ -50,6 +51,24 @@ public final class ComposerAttachments {
         problem = nil
         if !isFull {
             images.append(ComposerImage(jpeg: encoded.jpeg, preview: encoded.preview))
+        }
+    }
+
+    /// Adds a video as stills from across it, as many as the tray has room for, at most `ComposerVideo.stills`: an
+    /// agent reads pictures, not a film.
+    public func add(video url: URL) async {
+        guard !isFull else {
+            problem = "At most \(Self.limit) screenshots on one message."
+            return
+        }
+        let room = min(ComposerVideo.stills, Self.limit - images.count)
+        let stills = await ComposerVideo.stills(of: url, count: room)
+        guard !stills.isEmpty else {
+            problem = "That video couldn't be read."
+            return
+        }
+        for still in stills {
+            await add(still)
         }
     }
 
@@ -111,6 +130,56 @@ public enum ComposerImageEncoder {
     }
 }
 
+/// Stills from a video, evenly across it, each a JPEG that `ComposerImageEncoder` then makes small enough to send.
+public enum ComposerVideo {
+    public static let stills = 4
+
+    /// `count` stills, from the middle of each of `count` equal stretches, upright; none if it can't be read.
+    public static func stills(of url: URL, count: Int) async -> [Data] {
+        let asset = AVURLAsset(url: url)
+        guard count > 0, let duration = try? await asset.load(.duration), duration.seconds > 0 else {
+            return []
+        }
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        let side = CGFloat(ComposerImageEncoder.maxPixels)
+        generator.maximumSize = CGSize(width: side, height: side)
+        var stills: [Data] = []
+        for index in 0..<count {
+            let time = CMTimeMultiplyByFloat64(duration, multiplier: (Double(index) + 0.5) / Double(count))
+            guard let (image, _) = try? await generator.image(at: time), let jpeg = jpeg(image) else {
+                continue
+            }
+            stills.append(jpeg)
+        }
+        return stills
+    }
+
+    static func jpeg(_ image: CGImage) -> Data? {
+        let out = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(out, UTType.jpeg.identifier as CFString, 1, nil) else {
+            return nil
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        return CGImageDestinationFinalize(destination) ? out as Data : nil
+    }
+}
+
+/// A video from the photo library, copied where the app can read it.
+struct ComposerMovie: Transferable {
+    let url: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(importedContentType: .movie) { received in
+            let copy = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension(received.file.pathExtension)
+            try FileManager.default.copyItem(at: received.file, to: copy)
+            return ComposerMovie(url: copy)
+        }
+    }
+}
+
 /// Any picture from the photo library or the clipboard, as its bytes.
 struct ComposerPicture: Transferable {
     let data: Data
@@ -124,6 +193,8 @@ struct ComposerPicture: Transferable {
 /// it takes no room.
 struct ComposerAttachmentTray: View {
     let attachments: ComposerAttachments
+    /// The attachment open full screen, from a tap on its thumbnail.
+    @State private var viewing: ComposerImage?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.xs) {
@@ -151,6 +222,11 @@ struct ComposerAttachmentTray: View {
         }
         .animation(AppMotion.fold, value: attachments.images.map(\.id))
         .animation(AppMotion.fold, value: attachments.problem)
+        .fullScreenCoverOrSheet(isPresented: Binding(get: { viewing != nil }, set: { if !$0 { viewing = nil } })) {
+            if let viewing {
+                ComposerImageViewer(image: viewing) { self.viewing = nil }
+            }
+        }
     }
 
     private func thumbnail(_ image: ComposerImage) -> some View {
@@ -161,6 +237,10 @@ struct ComposerAttachmentTray: View {
             .clipShape(.rect(cornerRadius: Radius.md, style: .continuous))
             // A light screenshot on the page's grey needs its edge drawn.
             .overlay(RoundedRectangle(cornerRadius: Radius.md, style: .continuous).strokeBorder(Color.line))
+            .contentShape(.rect(cornerRadius: Radius.md, style: .continuous))
+            .onTapGesture { viewing = image }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(named: "View") { viewing = image }
             .overlay(alignment: .topTrailing) {
                 Button {
                     attachments.remove(image.id)
@@ -180,6 +260,36 @@ struct ComposerAttachmentTray: View {
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Screenshot")
             .accessibilityIdentifier("composerAttachment")
+    }
+}
+
+/// An attachment on the whole screen, as Photos shows one: fitted on black, closed by its button or a swipe down.
+struct ComposerImageViewer: View {
+    let image: ComposerImage
+    let close: () -> Void
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            // design-lint: allow a picture viewer's black, as Photos draws one
+            Color.black.ignoresSafeArea()
+            Image(decorative: image.preview, scale: 1)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityLabel("Screenshot")
+                .accessibilityIdentifier("composerAttachmentViewer")
+            Button("Close", systemImage: AppIcon.close.symbol, action: close)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+                .padding(Space.lg)
+                .accessibilityIdentifier("composerAttachmentViewerClose")
+        }
+        .gesture(DragGesture().onEnded { drag in
+            if drag.translation.height > ChatStyle.viewerDismissDrag {
+                close()
+            }
+        })
     }
 }
 
@@ -211,11 +321,12 @@ struct ComposerAttachButton: View {
         .buttonStyle(.glass)
         .buttonBorderShape(.circle)
         .disabled(attachments.isFull)
-        .accessibilityLabel("Attach a screenshot")
+        .accessibilityLabel("Attach a screenshot or video")
         .accessibilityIdentifier("composerAttach")
         .photosPicker(
             isPresented: $choosingPhotos, selection: $photos,
-            maxSelectionCount: max(1, ComposerAttachments.limit - attachments.images.count), matching: .images
+            maxSelectionCount: max(1, ComposerAttachments.limit - attachments.images.count),
+            matching: .any(of: [.images, .videos])
         )
         .onChange(of: photos) { _, chosen in
             guard !chosen.isEmpty else {
@@ -224,7 +335,14 @@ struct ComposerAttachButton: View {
             photos = []
             Task {
                 for item in chosen {
-                    if let picture = try? await item.loadTransferable(type: ComposerPicture.self) {
+                    if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
+                        if let movie = try? await item.loadTransferable(type: ComposerMovie.self) {
+                            await attachments.add(video: movie.url)
+                            try? FileManager.default.removeItem(at: movie.url)
+                        } else {
+                            attachments.failed("That video couldn't be loaded.")
+                        }
+                    } else if let picture = try? await item.loadTransferable(type: ComposerPicture.self) {
                         await attachments.add(picture.data)
                     } else {
                         attachments.failed("That photo couldn't be loaded.")
@@ -232,13 +350,22 @@ struct ComposerAttachButton: View {
                 }
             }
         }
-        .fileImporter(isPresented: $choosingFiles, allowedContentTypes: [.image], allowsMultipleSelection: true) { result in
+        .fileImporter(
+            isPresented: $choosingFiles, allowedContentTypes: [.image, .movie], allowsMultipleSelection: true
+        ) { result in
             guard case .success(let urls) = result else {
                 return
             }
             Task {
                 for url in urls {
                     let scoped = url.startAccessingSecurityScopedResource()
+                    if UTType(filenameExtension: url.pathExtension)?.conforms(to: .movie) == true {
+                        await attachments.add(video: url)
+                        if scoped {
+                            url.stopAccessingSecurityScopedResource()
+                        }
+                        continue
+                    }
                     let data = try? Data(contentsOf: url)
                     if scoped {
                         url.stopAccessingSecurityScopedResource()

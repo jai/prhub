@@ -55,6 +55,8 @@ public enum ChatStyle {
     public static let widestShare: CGFloat = 0.75
     public static let shareFrom: CGFloat = 480
     public static let radius = Radius.lg
+    /// How far down an attachment open full screen is swiped to close it.
+    public static let viewerDismissDrag: CGFloat = 120
     /// The fade over the page above the field's bar, and the room it leaves over the field.
     public static let barFade: CGFloat = 14
     /// A screenshot waiting to go with the message, above the field, and the button that takes it off.
@@ -73,6 +75,14 @@ public enum ToastStyle {
     public static let shadowOpacity = 0.15
     public static let shadowRadius: CGFloat = 12
     public static let shadowY: CGFloat = 4
+    /// How far above its place it slides in from and out to: past the top of the screen, so it never appears in mid-air.
+    public static let travel: CGFloat = 160
+    /// The bar along its foot that fills as the review goes.
+    public static let progressHeight: CGFloat = 3
+    /// How far the bar fills while GitHub has not answered: the rest waits on its answer.
+    public static let progressWhileSending = 0.85
+    /// The bar easing towards `progressWhileSending`, slowing as it nears it.
+    public static let progressMotion = Animation.easeOut(duration: 4)
 }
 
 /// A chip of state words (`StatusChip`).

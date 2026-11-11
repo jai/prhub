@@ -1,5 +1,8 @@
 import PRKit
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 /// Feature requests ("Feedback"), to an agent that makes the change, tests it and ships a build. Conversation first, as
 /// Messages is: the screen lists the conversations, New starts one, and the first message makes it a thread that goes
@@ -310,6 +313,13 @@ struct FeatureChatView: View {
                 withAnimation(AppMotion.fold) { proxy.scrollTo(Self.end, anchor: .bottom) }
             }
             .onAppear { proxy.scrollTo(Self.end, anchor: .bottom) }
+            #if os(iOS)
+            // The keyboard covers the end of the chat: once it is up, the last message sits over the box, as Messages
+            // has it.
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
+                withAnimation(AppMotion.fold) { proxy.scrollTo(Self.end, anchor: .bottom) }
+            }
+            #endif
         }
         .background(HomePalette.screenBackground)
         .safeAreaBar(edge: .bottom) { composer }

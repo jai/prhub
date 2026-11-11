@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -26,6 +27,61 @@ struct ComposerAttachmentsTests {
         CGImageDestinationAddImage(destination, image, nil)
         #expect(CGImageDestinationFinalize(destination))
         return out as Data
+    }
+
+    /// A two-second H.264 film of 160×120 frames, written to a temporary file.
+    private func film() async throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).mov")
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 160, AVVideoHeightKey: 120,
+        ])
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
+            kCVPixelBufferWidthKey as String: 160, kCVPixelBufferHeightKey as String: 120,
+        ])
+        writer.add(input)
+        #expect(writer.startWriting())
+        writer.startSession(atSourceTime: .zero)
+        for frame in 0..<20 {
+            while !input.isReadyForMoreMediaData {
+                try await Task.sleep(for: .milliseconds(5))
+            }
+            var buffer: CVPixelBuffer?
+            CVPixelBufferPoolCreatePixelBuffer(nil, try #require(adaptor.pixelBufferPool), &buffer)
+            let pixels = try #require(buffer)
+            CVPixelBufferLockBaseAddress(pixels, [])
+            memset(CVPixelBufferGetBaseAddress(pixels), Int32(frame * 12), CVPixelBufferGetDataSize(pixels))
+            CVPixelBufferUnlockBaseAddress(pixels, [])
+            #expect(adaptor.append(pixels, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: 10)))
+        }
+        input.markAsFinished()
+        await writer.finishWriting()
+        #expect(writer.status == .completed)
+        return url
+    }
+
+    @Test @MainActor func aVideoBecomesStillsFromAcrossItAsTheTrayHasRoom() async throws {
+        let url = try await film()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let attachments = ComposerAttachments()
+        await attachments.add(try stripedPNG(width: 40, height: 40))
+        await attachments.add(video: url)
+        #expect(attachments.images.count == ComposerAttachments.limit, "three stills fill the room left")
+        #expect(attachments.problem == nil)
+        #expect(attachments.images.dropFirst().allSatisfy { $0.jpeg.starts(with: [0xFF, 0xD8, 0xFF]) })
+        await attachments.add(video: url)
+        #expect(attachments.problem != nil, "a full tray takes no more")
+    }
+
+    @Test @MainActor func aFileThatIsNoVideoSaysSo() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).mov")
+        try Data("not a film".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let attachments = ComposerAttachments()
+        await attachments.add(video: url)
+        #expect(attachments.isEmpty)
+        #expect(attachments.problem == "That video couldn't be read.")
     }
 
     @Test func aBigScreenshotBecomesAJPEGOfAtMost1568PixelsAndUnderTheCap() throws {
