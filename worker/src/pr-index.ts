@@ -18,7 +18,9 @@ import {
   detailVersionOf, liveDiff, type OpenRowStatus, type PullRequest, type PullRequestRef, readPullRequests, type RowStatus,
   searchListings,
 } from "./github";
-import { parseRowStatus } from "./boundary";
+import { parseRowStatus, parseStoredTicket } from "./boundary";
+import { cachedTickets, createTicketsTable, refreshTickets } from "./ticket-cache";
+import { allKeys, lookUpTickets, type Ticket } from "./tickets";
 import {
   type CodeHash, type DeviceToken, type Fingerprint, parseRepoFullName, prId, type PrId, type RepoFullName,
   type Sha,
@@ -54,7 +56,7 @@ const KEPT_EVENTS = 5_000;
 /** An alert's key outlives any re-request worth hushing; a month of them is a few hundred rows. */
 const ALERTS_KEPT_MS = 30 * 86_400_000;
 /** Raise it when what a row or detail holds changes shape: every held PR is then read again, once. */
-const ROW_SHAPE = 10;
+const ROW_SHAPE = 11;
 /** The retention sweep (`retention.ts`) runs at most this often. */
 const RETENTION_SWEEP_MS = 86_400_000;
 const LIST_ORDER = "CASE list WHEN 'mine' THEN 1 ELSE 0 END, updated_at DESC";
@@ -87,6 +89,8 @@ export interface Row {
   status: RowStatus | null;
   /** The context the phone can fetch key lines at for this head, once they are ready. */
   keyLines: number | null;
+  /** The Linear ticket the row shows (`rowTicket`); null without one Linear has, or without Linear. */
+  ticket: Ticket | null;
 }
 
 /**
@@ -119,6 +123,7 @@ export class PrIndex extends DurableObject<Env> {
     createHeldAlertsTable(this.sql);
     createPushRegistrationsTable(this.sql);
     createReviewedKeyLinesTable(this.sql);
+    createTicketsTable(this.sql);
     const columns = this.sql.exec<{ name: string }>("PRAGMA table_info(pull_requests)").toArray();
     if (!columns.some(({ name }) => name === "version")) {
       this.sql.exec("ALTER TABLE pull_requests ADD COLUMN version TEXT NOT NULL DEFAULT ''");
@@ -132,6 +137,10 @@ export class PrIndex extends DurableObject<Env> {
     if (!columns.some(({ name }) => name === "detail_version")) {
       this.sql.exec("ALTER TABLE pull_requests ADD COLUMN detail_version TEXT");
     }
+    if (!columns.some(({ name }) => name === "ticket")) {
+      this.sql.exec("ALTER TABLE pull_requests ADD COLUMN ticket TEXT");
+      this.sql.exec("ALTER TABLE pull_requests ADD COLUMN ticket_keys TEXT");
+    }
   }
 
   rows(): { prs: Row[]; synced_at: number } {
@@ -140,11 +149,12 @@ export class PrIndex extends DurableObject<Env> {
 
   /** The rows of `GET /prs`, chosen and ordered by `rest`: one SELECT, so an alert's row is the list's row. */
   private selectRows(rest: string, ...bindings: unknown[]): Row[] {
-    const rows = this.sql.exec<Omit<Row, "status"> & { status: string | null }>(`SELECT repo, number, title, head,
+    const rows = this.sql.exec<Omit<Row, "status" | "ticket"> & { status: string | null; ticket: string | null }>(
+      `SELECT repo, number, title, head,
       revision, diff_state AS diff, COALESCE(detail_version, NULLIF(version, ''), updated_at) AS detail, status,
-      CASE WHEN key_lines_ready = head THEN ${DEFAULT_CONTEXT} END AS keyLines
+      CASE WHEN key_lines_ready = head THEN ${DEFAULT_CONTEXT} END AS keyLines, ticket
       FROM pull_requests ${rest}`, ...bindings).toArray();
-    return rows.map((row) => ({ ...row, status: parseRowStatus(row.status) }));
+    return rows.map((row) => ({ ...row, status: parseRowStatus(row.status), ticket: parseStoredTicket(row.ticket) }));
   }
 
   /** A delivery. A PR no list holds and Jai has no part in is dropped here, so it never costs a GitHub read. */
@@ -204,7 +214,8 @@ export class PrIndex extends DurableObject<Env> {
         "SELECT id FROM pull_requests WHERE list IN ('review', 'reviewed')").toArray().map((row) => row.id));
       let read: Awaited<ReturnType<typeof readPullRequests>>;
       try {
-        read = await readPullRequests(dirty, env, asked);
+        read = await readPullRequests(dirty, env, asked,
+          (keys) => cachedTickets(this.sql, keys, Date.now(), (stale) => lookUpTickets(stale, env)));
       } catch (error) {
         // Not thrown: Cloudflare would retry it later and later, and new work would wait behind that retry.
         this.addEvent("read_failed", { error: String(error) });
@@ -256,10 +267,25 @@ export class PrIndex extends DurableObject<Env> {
         this.addEvent("polled", { calls, remaining, limit });
       }
     }
+    await this.refreshTicketsOf(env, now);
     this.sql.exec("DELETE FROM alerts WHERE at < ?", now - ALERTS_KEPT_MS);
     pruneReviewedKeyLines(this.sql, now);
     await this.sweepIfDue(env, now);
     await this.pushIfDue(now);
+  }
+
+  /** A ticket that moved on in Linear: its PRs are read again, so the row and the detail say the same. */
+  private async refreshTicketsOf(env: Env, now: number): Promise<void> {
+    if (!isSet(env.LINEAR_API_KEY)) {
+      return;
+    }
+    const changed = await refreshTickets(this.sql, now, (keys) => lookUpTickets(keys, env));
+    for (const row of changed) {
+      const ref = refOf(row);
+      if (ref) {
+        this.markDirty(ref.id, ref.repo, ref.number);
+      }
+    }
   }
 
   /** Once a day when retention is on: stored objects of PRs off the list past it go (`retention.ts`). */
@@ -588,16 +614,18 @@ export class PrIndex extends DurableObject<Env> {
     const held = this.sql.exec<{ detail_version: string | null }>(
       "SELECT detail_version FROM pull_requests WHERE id = ?", id).toArray()[0];
     this.sql.exec(`INSERT INTO pull_requests (id, repo, number, title, head, revision, list, updated_at, version,
-        detail_version, status, changed_at, diff_state, diff_tried_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)
+        detail_version, status, changed_at, ticket, ticket_keys, diff_state, diff_tried_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)
       ON CONFLICT (id) DO UPDATE SET title = excluded.title, head = excluded.head, list = excluded.list,
         updated_at = excluded.updated_at, version = excluded.version, detail_version = excluded.detail_version,
-        status = excluded.status, changed_at = excluded.changed_at,
+        status = excluded.status, changed_at = excluded.changed_at, ticket = excluded.ticket,
+        ticket_keys = excluded.ticket_keys,
         diff_state = CASE WHEN revision <> excluded.revision THEN 'pending' ELSE diff_state END,
         diff_tried_at = CASE WHEN revision <> excluded.revision THEN 0 ELSE diff_tried_at END,
         revision = excluded.revision`,
     id, pr.repo, pr.number, pr.title, pr.head, pr.revision, pr.status.list, pr.updatedAt, pr.version, detailVersion,
-    JSON.stringify(pr.status), Date.now());
+    JSON.stringify(pr.status), Date.now(), pr.ticket && JSON.stringify(pr.ticket),
+    JSON.stringify(allKeys(pr.ticketKeys)));
     if (held?.detail_version !== detailVersion) {
       this.setMeta("changed_at", Date.now());
     }

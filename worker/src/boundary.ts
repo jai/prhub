@@ -10,6 +10,7 @@ import type { RowStatus } from "./github.ts";
 import { type DeviceToken, parseRepoFullName, parseSha, type Sha } from "./ids.ts";
 import { type AiJob, EFFORTS, SUPPORTED_MODELS } from "./models.ts";
 import { MAX_KEY_LINE_ID } from "./reviewed-key-lines.ts";
+import type { Ticket } from "./tickets.ts";
 import { PULL_REQUEST_CHECKS, PULL_REQUEST_MERGE_STATES, PULL_REQUEST_REVIEWS } from "./vocab.ts";
 import type { Write } from "./write-input.ts";
 
@@ -156,6 +157,23 @@ export function parseRowStatus(stored: string | null): RowStatus | null {
   }
   try {
     return parser<RowStatus>(RowStatusSchema)(JSON.parse(stored));
+  } catch {
+    return null;
+  }
+}
+
+const TicketSchema = z.object({
+  key: z.string(), url: NULLABLE_TEXT, title: NULLABLE_TEXT, state: NULLABLE_TEXT, state_type: NULLABLE_TEXT,
+  state_color: NULLABLE_TEXT, found: z.boolean().nullable(),
+});
+
+/** A Linear ticket the index stored (a row's `ticket`, `tickets.ticket`); null for none, or for one that won't parse. */
+export function parseStoredTicket(stored: string | null): Ticket | null {
+  if (stored === null) {
+    return null;
+  }
+  try {
+    return parser<Ticket>(TicketSchema)(JSON.parse(stored));
   } catch {
     return null;
   }

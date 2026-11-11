@@ -8,7 +8,9 @@ import {
 import { peopleOf } from "./policy-github.ts";
 import { PEOPLE_FIELDS, type PeopleDecision, type PeopleNode } from "./policy-people.ts";
 import { botAuthorsOf, isBotAuthor, type RequestedBy, requestedByOf } from "./requester.ts";
-import { lookUpTickets, resolvedTickets, type Ticket, ticketKeysOf } from "./tickets.ts";
+import {
+  allKeys, lookUpTickets, resolvedTickets, rowTicket, type Ticket, type TicketKeys, ticketKeysOf,
+} from "./tickets.ts";
 import type {
   CheckState, ChecksSummary, MergeState, OpenList, PolicyState, PullRequestState, ReviewState,
 } from "./vocab.ts";
@@ -103,7 +105,7 @@ export interface Detail {
   authorIsBot: boolean;
   /** The human a bot opened it for, where one is recorded (`requestedByOf`); null for a person's own PR. */
   requestedBy: RequestedBy | null;
-  /** The Linear issues its title (in brackets) and branch name, as Linear has them where the Worker can ask. */
+  /** The Linear issues its title (in brackets), branch and description name, as Linear has them (`resolvedTickets`). */
   tickets: Ticket[];
   body: string;
   additions: number;
@@ -173,8 +175,10 @@ export interface PullRequest {
   /** Null when it belongs on none of the lists, and then it has no status. */
   status: OpenRowStatus | null;
   detail: Detail;
-  /** The ticket keys its title and branch name, before Linear is asked (`readPullRequests` asks). */
-  ticketKeys: { title: string[]; branch: string[] };
+  /** The ticket keys its title, branch and description name, before Linear is asked (`readPullRequests` asks). */
+  ticketKeys: TicketKeys;
+  /** The ticket its row shows (`rowTicket`): null until Linear has one of its keys. */
+  ticket: Ticket | null;
   /** When review was last asked of the user, for alerts (`alerts.ts`). */
   requestedAt: string | null;
 }
@@ -610,7 +614,7 @@ export function pullRequest(
   const list = listOf(node, login, wasAsked);
   const requestedAt = reviewRequestedAt(node.requestEvents.nodes, login);
   const head = shaOf(node.headRefOid);
-  const ticketKeys = ticketKeysOf(node.title, node.headRefName);
+  const ticketKeys = ticketKeysOf(node.title, node.headRefName, node.body);
   const authorIsBot = isBotAuthor(node.author, bots);
   return {
     repo: repoOf(node.repository.nameWithOwner),
@@ -626,6 +630,7 @@ export function pullRequest(
     ),
     requestedAt,
     ticketKeys,
+    ticket: null,
     detail: {
       id: node.id, url: node.url, state: detailState(node), head: node.headRefOid, base: node.baseRefName,
       headBranch: node.headRefName,
@@ -746,8 +751,10 @@ export async function mergedPullRequests(
     .sort((a, b) => (b.status.mergedAt ?? "").localeCompare(a.status.mergedAt ?? ""));
 }
 
+/** `lookUp` asks Linear about ticket keys: the index passes its cache (`cachedTickets`). */
 export async function readPullRequests(
   refs: PullRequestRef[], env: Env, asked: ReadonlySet<string> = new Set(),
+  lookUp: (keys: string[]) => Promise<Map<string, Ticket>> = (keys) => lookUpTickets(keys, env),
 ): Promise<Map<PrId, PullRequest | null>> {
   const fields = refs.map((ref, index) => {
     const { owner, name } = repoParts(ref.repo);
@@ -768,11 +775,12 @@ export async function readPullRequests(
     const node = data[`p${index}`]?.pullRequest;
     return node ? pullRequest(node, login, asked.has(ref.id), week, people[index] ?? null, bots) : null;
   });
-  const keys = [...new Set(read.flatMap((pr) => pr ? [...pr.ticketKeys.title, ...pr.ticketKeys.branch] : []))];
-  const issues = await lookUpTickets(keys, env);
+  const keys = [...new Set(read.flatMap((pr) => pr ? allKeys(pr.ticketKeys) : []))];
+  const issues = keys.length > 0 ? await lookUp(keys) : new Map<string, Ticket>();
   for (const pr of read) {
     if (pr) {
       pr.detail.tickets = resolvedTickets(pr.ticketKeys, issues);
+      pr.ticket = rowTicket(pr.detail.tickets);
     }
   }
   return new Map(refs.map((ref, index) => [ref.id, read[index] ?? null]));

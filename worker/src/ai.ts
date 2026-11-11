@@ -6,10 +6,10 @@ import { fetchFile, getFromGitHub, liveDiff } from "./github.ts";
 import { isRevisionOf, type Sha } from "./ids.ts";
 import { inputFor, isGenerated, keepReal, type KeyLine, parseDiff, replaceDescription } from "./key-lines.ts";
 import { type AiFeature, costCents, type Effort, MODEL_SPECS, type ModelChoice } from "./models.ts";
+import { askLinear } from "./tickets.ts";
 
 const MAX_OUTPUT_TOKENS = 16_000;
 const FILES_AT_ONCE = 8;
-const LINEAR = "https://api.linear.app/graphql";
 /** The guide a rewrite follows when `GUIDE_REPO` is unset. Jai's Worker reads his own from a repo each time instead. */
 export const BUILT_IN_GUIDE = `Write for a reviewer who has not seen the ticket or the code.
 
@@ -200,19 +200,13 @@ async function readGuide(env: Env): Promise<string> {
 /** The ticket named at the end of a title. Without a Linear key or an answer, the rewrite goes on without it. */
 async function readTicket(title: string, env: Env): Promise<string | null> {
   const id = /\[([A-Z]+-\d+)\]\s*$/.exec(title)?.[1];
-  if (!id || !env.LINEAR_API_KEY) {
+  if (!id) {
     return null;
   }
-  const response = await fetch(LINEAR, {
-    method: "POST",
-    headers: { Authorization: env.LINEAR_API_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify({ query: "query($id: String!) { issue(id: $id) { title description } }", variables: { id } }),
-  });
-  if (!response.ok) {
-    return null;
-  }
-  const { data } = await response.json() as { data?: { issue?: { title: string; description: string | null } } };
-  return data?.issue ? `${data.issue.title}\n\n${data.issue.description ?? ""}` : null;
+  const answer = await askLinear<{ issue?: { title: string; description: string | null } | null }>(
+    "query($id: String!) { issue(id: $id) { title description } }", { id }, env);
+  const issue = answer?.data?.issue;
+  return issue ? `${issue.title}\n\n${issue.description ?? ""}` : null;
 }
 
 export interface Rewrite extends Run {
