@@ -179,6 +179,18 @@ export function parseStoredTicket(stored: string | null): Ticket | null {
   }
 }
 
+/** The tickets the index stored for a row (`tickets`); empty for none, or for a list that won't parse. */
+export function parseStoredTickets(stored: string | null): Ticket[] {
+  if (stored === null) {
+    return [];
+  }
+  try {
+    return parser<Ticket[]>(z.array(TicketSchema))(JSON.parse(stored)) ?? [];
+  } catch {
+    return [];
+  }
+}
+
 const AiJobSchema = z.object({
   kind: z.enum(["key_lines", "rewrite"]),
   repo: REPO,

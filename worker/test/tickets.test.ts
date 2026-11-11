@@ -3,7 +3,7 @@ import { afterEach, test } from "node:test";
 import type { Env } from "../src/env.ts";
 import { pullRequest } from "../src/github.ts";
 import { botAuthorsOf, isBotAuthor, requestedByOf } from "../src/requester.ts";
-import { allKeys, lookUpTickets, resolvedTickets, rowTicket, ticketKeysOf, unresolved } from "../src/tickets.ts";
+import { allKeys, lookUpTickets, resolvedTickets, rowTickets, ticketKeysOf, unresolved } from "../src/tickets.ts";
 import { prNode } from "./pr-node.ts";
 
 const realFetch = globalThis.fetch;
@@ -36,7 +36,7 @@ test("without Linear a title's keys show unresolved and a branch's key does not 
   const keys = ticketKeysOf("Retry [ENG-1]", "core-2-retry");
   const issues = await lookUpTickets(allKeys(keys), {} as Env);
   assert.deepEqual(resolvedTickets(keys, issues), [unresolved("ENG-1")]);
-  assert.equal(rowTicket(resolvedTickets(keys, issues)), null, "a row shows no ticket Linear has not confirmed");
+  assert.deepEqual(rowTickets(keys, resolvedTickets(keys, issues)), [], "a row shows no ticket Linear has not confirmed");
 });
 
 test("Linear's answer fills each ticket; a key it has no issue for is Not found, a branch's is dropped", async () => {
@@ -61,18 +61,28 @@ test("Linear's answer fills each ticket; a key it has no issue for is Not found,
       state_type: "started", state_color: "#f2c94c", found: true },
     { ...unresolved("ENG-404"), found: false },
   ]);
-  assert.equal(rowTicket(resolvedTickets(keys, issues))?.key, "ENG-1");
+  assert.deepEqual(rowTickets(keys, resolvedTickets(keys, issues)).map(({ key }) => key), ["ENG-1"]);
 });
 
-test("a row's ticket is the first Linear has: the title's, else the branch's, else the description's", () => {
+test("a row's tickets: the title's Linear has, else the first of the branch's and the description's", () => {
   const found = (key: string) => ({ ...unresolved(key), title: key, found: true });
   const keys = ticketKeysOf("Retry [ENG-404]", "core-2-retry", "Fixes OPS-9");
   const tickets = (known: string[]) => resolvedTickets(keys, new Map([
     ["ENG-404", { ...unresolved("ENG-404"), found: false }], ...known.map((key) => [key, found(key)] as const),
   ]));
-  assert.equal(rowTicket(tickets(["CORE-2", "OPS-9"]))?.key, "CORE-2");
-  assert.equal(rowTicket(tickets(["OPS-9"]))?.key, "OPS-9");
-  assert.equal(rowTicket(tickets([])), null);
+  const shown = (known: string[]) => rowTickets(keys, tickets(known)).map(({ key }) => key);
+  assert.deepEqual(shown(["CORE-2", "OPS-9"]), ["CORE-2"]);
+  assert.deepEqual(shown(["OPS-9"]), ["OPS-9"]);
+  assert.deepEqual(shown([]), []);
+});
+
+test("a title naming several tickets in one bracket shows each Linear has, in the title's order", () => {
+  const found = (key: string) => ({ ...unresolved(key), title: key, found: true });
+  const keys = ticketKeysOf("fix: Do something [DEVOP-1, DEVOP-2]", "devop-3-retry", "Fixes OPS-9");
+  const issues = new Map(["DEVOP-1", "DEVOP-2", "DEVOP-3", "OPS-9"].map((key) => [key, found(key)] as const));
+  assert.deepEqual(rowTickets(keys, resolvedTickets(keys, issues)).map(({ key }) => key), ["DEVOP-1", "DEVOP-2"]);
+  issues.set("DEVOP-1", { ...unresolved("DEVOP-1"), found: false });
+  assert.deepEqual(rowTickets(keys, resolvedTickets(keys, issues)).map(({ key }) => key), ["DEVOP-2"]);
 });
 
 test("Linear failing leaves every ticket unresolved, never Not found", async () => {

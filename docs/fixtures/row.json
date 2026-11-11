@@ -26,5 +26,16 @@
     "state_type": "started",
     "state_color": "#f2c94c",
     "found": true
-  }
+  },
+  "tickets": [
+    {
+      "key": "ENG-7",
+      "url": "https://linear.app/acme/issue/ENG-7/retry-uploads",
+      "title": "Retry failed uploads",
+      "state": "In Progress",
+      "state_type": "started",
+      "state_color": "#f2c94c",
+      "found": true
+    }
+  ]
 }

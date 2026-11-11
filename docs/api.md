@@ -222,10 +222,11 @@ checked on every run: [`row.json`](fixtures/row.json), [`merged-row.json`](fixtu
   `LINEAR_API_KEY` the Worker asks Linear when it reads the PR: a title's key Linear has no issue for is
   `found: false`, and a key only the branch or description names shows only once Linear has it. Without the key, or
   when Linear does not answer, `found` is null and only the title's keys show.
-- A `GET /prs` row's `ticket` is the first of its detail's tickets Linear has (`found: true`), in the same shape; null
-  without one, without `LINEAR_API_KEY` (so always on the hosted Worker) or while Linear does not answer. The index
+- A `GET /prs` row's `tickets` are every ticket its title names that Linear has (`found: true`), in the title's order;
+  with none from the title, the first its branch or description names that Linear has; in the same shape. Its
+  `ticket` is the first of them, for an app older than `tickets`. Empty and null without `LINEAR_API_KEY` (so always on the hosted Worker) or while Linear does not answer. The index
   keeps Linear's answer for each key and asks again after an hour; each minute's tick asks again about the held rows'
-  keys that are older (50 at most), and a PR whose ticket changed is read again. Merged rows have no `ticket`.
+  keys that are older (50 at most), and a PR whose ticket changed is read again. Merged rows have no `ticket` or `tickets`.
 
 - `author.name` is the name on a user's profile. `authorIsBot` is true for a GitHub App, a `[bot]` login or an account
   `BOT_AUTHORS` names. On a bot's PR, `requestedBy` is the human it was opened for, first found: a `Co-authored-by`

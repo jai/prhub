@@ -253,7 +253,7 @@ Division has three levels, one signal each. No other lines, boxes or shadows.
 |---|---|
 | Sections | the section's title, on the page's grey |
 | Blocks | a band of the page's grey, 8 pt, across the whole width |
-| A PR and its ticket | the rail: a line from the first avatar, turning right to the ticket |
+| A PR and its tickets | the rail: a line from the first avatar, turning right to each ticket |
 
 Rows and blocks go to the screen's edges; their corners are square. A list with notes scrolls in a plain `VStack`: a
 note's block measures its own height, and a `LazyVStack` rebuilds it from nothing and never settles. The PRs tab has no

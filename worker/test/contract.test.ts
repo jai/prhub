@@ -9,7 +9,7 @@ import { detailVersionOf, mergedRow, pullRequest, reviewWeek } from "../src/gith
 import type { RepoFullName, Sha } from "../src/ids.ts";
 import { DEFAULT_CONTEXT } from "../src/key-lines.ts";
 import { stateOf } from "../src/pr-states.ts";
-import { resolvedTickets, rowTicket } from "../src/tickets.ts";
+import { resolvedTickets, rowTickets } from "../src/tickets.ts";
 import { authenticate, hostedAccountConfig } from "../src/hosted.ts";
 import { bearer, hostedWorld, ORIGIN, signIn } from "./hosted-world.ts";
 import { prNode } from "./pr-node.ts";
@@ -73,12 +73,13 @@ test("a row of GET /prs, on the review list, with the ticket its branch names", 
     key: "ENG-7", url: "https://linear.app/acme/issue/ENG-7/retry-uploads", title: "Retry failed uploads",
     state: "In Progress", state_type: "started", state_color: "#f2c94c", found: true,
   }]]));
-  pr.ticket = rowTicket(pr.detail.tickets);
+  pr.tickets = rowTickets(pr.ticketKeys, pr.detail.tickets);
+  pr.ticket = pr.tickets[0] ?? null;
   // As `PrIndex.rows` serves it: the status as stored and read back.
   matchesFixture("row.json", {
     repo: pr.repo, number: pr.number, title: pr.title, head: pr.head, revision: pr.revision, diff: "ready",
     detail: await detailVersionOf(pr), status: parseRowStatus(JSON.stringify(pr.status)), keyLines: DEFAULT_CONTEXT,
-    ticket: pr.ticket,
+    ticket: pr.ticket, tickets: pr.tickets,
   });
 });
 
@@ -126,7 +127,7 @@ test("an alert's push payload", () => {
   const row = {
     repo: alert.repo, number: alert.number, title: alert.title, head: alert.head, revision: `${alert.head}-main`,
     diff: "ready", detail: "2026-11-01T00:05:00Z.SUCCESS.0123456789abcdef", status: null, keyLines: DEFAULT_CONTEXT,
-    ticket: null,
+    ticket: null, tickets: [],
   };
   matchesFixture("alert.json", alertMessage(alert, row).payload);
 });

@@ -24,6 +24,7 @@
     "detail": "2026-11-01T00:05:00Z.SUCCESS.0123456789abcdef",
     "status": null,
     "keyLines": 100,
-    "ticket": null
+    "ticket": null,
+    "tickets": []
   }
 }

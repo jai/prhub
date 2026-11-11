@@ -7,7 +7,8 @@ import XCTest
 final class PRHubPRPageUITests: XCTestCase {
     private let app = XCUIApplication()
     private let checkout = "Show a retry button when checkout fails"
-    private let rateLimit = "Rate-limit the password reset endpoint [API-88] [SEC-12]"
+    /// The rate limit's row: its title without `[API-88] [SEC-12]`, which show as its ticket lines.
+    private let rateLimit = "Rate-limit the password reset endpoint"
 
     override func setUp() {
         continueAfterFailure = false
