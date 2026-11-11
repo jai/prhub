@@ -358,7 +358,7 @@ struct PRsList: View {
     @ViewBuilder private func rowView(_ row: PullRequestRow) -> some View {
         let ref = PullRequestRef(repo: row.repo, number: row.number)
         let block = PrListBlock(
-            item: PRListItem(ticket: nil, pullRequests: [row.listPullRequest], title: nil, note: nil),
+            item: PRListItem(ticket: row.ticket, pullRequests: [row.listPullRequest], title: nil, note: nil),
             id: row.id, sentAt: .now, now: .now, folds: folds
         )
         .notUpdated(model.notUpdated.contains(row.id))

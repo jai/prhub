@@ -74,7 +74,7 @@ extension PullRequestRow {
         )
         return PullRequestRow(
             repo: repo, number: number, title: title, head: head, revision: revision, diff: diff, detail: detail,
-            status: read, keyLines: keyLines
+            status: read, keyLines: keyLines, ticket: ticket
         )
     }
 }

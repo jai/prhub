@@ -216,15 +216,32 @@ checked on every run: [`row.json`](fixtures/row.json), [`merged-row.json`](fixtu
   `url`, `required` and `workflow`: the Actions workflow that ran it, or `null` for a commit status or an app's check.
   The app tells same-named checks apart by `workflow` and groups a job's matrix legs (`name (leg)`) within one.
 - A detail's `tickets` are the Linear issues its title names in brackets (`[ENG-1686] [CORE-12]`, `[ENG-1, CORE-2]`),
-  then those its branch name names (`eng-1686-retry`, `alex/core-12`), each once, in a list ticket's shape: `key`, `url`,
-  `title`, `state`, `state_type`, `state_color`, `found`. With `LINEAR_API_KEY` the Worker asks Linear when it reads
-  the PR: a title's key Linear has no issue for is `found: false`, and a key only the branch names shows only once
-  Linear has it. Without the key, or when Linear does not answer, `found` is null and only the title's keys show.
+  then those its branch name names (`eng-1686-retry`, `alex/core-12`), then those its description links as Linear
+  does (a magic word such as `Fixes`, `Closes` or `Part of` before keys or issue URLs, or a `linear.app/…/issue/KEY`
+  URL), each once, in a list ticket's shape: `key`, `url`, `title`, `state`, `state_type`, `state_color`, `found`. With
+  `LINEAR_API_KEY` the Worker asks Linear when it reads the PR: a title's key Linear has no issue for is
+  `found: false`, and a key only the branch or description names shows only once Linear has it. Without the key, or
+  when Linear does not answer, `found` is null and only the title's keys show.
+- A `GET /prs` row's `ticket` is the first of its detail's tickets Linear has (`found: true`), in the same shape; null
+  without one, without `LINEAR_API_KEY` (so always on the hosted Worker) or while Linear does not answer. The index
+  keeps Linear's answer for each key and asks again after an hour; each minute's tick asks again about the held rows'
+  keys that are older (50 at most), and a PR whose ticket changed is read again. Merged rows have no `ticket`.
+
 - `author.name` is the name on a user's profile. `authorIsBot` is true for a GitHub App, a `[bot]` login or an account
   `BOT_AUTHORS` names. On a bot's PR, `requestedBy` is the human it was opened for, first found: a `Co-authored-by`
   trailer on its last 20 commits that is no coding agent, a "Requested by" line in its body (`@login` or a name), else
   its first assignee that is no bot. It is `{login, name, avatarUrl, source}`, `source` being `co_author`, `body` or
   `assignee`, and null on a person's own PR or when nothing is recorded.
+
+### `POST /prs/states`
+
+The threads hub's read of any PRs' state, with `HUB_TOKEN` as a bearer token: `{"refs": ["owner/repo#7", …]}`, 1 to
+20 refs. It answers `{"states": {"owner/repo#7": {…} | null}, "unanswered": […]}`: null for a PR GitHub has not got,
+and `unanswered` for one GitHub would not answer for. A state holds `title`, `state`, `checks`, `merge`, `review`,
+`author`, `author_name`, `created_at`, `jai_review`, `jai_reviewed_at`, `jai_review_requested` and `review_due_at`.
+`review_due_at` is when Jai's review is due by the SLA (`REVIEW_SLA_*`), ISO 8601 in UTC (`2026-11-09T03:00:00Z`), the
+same time as a review row's `reviewDueAt`. It is null unless `jai_review_requested` is true, when only a team was
+asked, and when the SLA is unset.
 
 ## Configuration
 

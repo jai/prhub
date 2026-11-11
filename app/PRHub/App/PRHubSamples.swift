@@ -46,9 +46,9 @@ extension PRSampleSet {
                 author: "mona", checks: "passing", review: "required", merge: "clean", requestedHoursAgo: 3,
                 body: "## What this does\\n\\nWhen a payment fails, checkout now shows **Try again** instead of a dead "
                     + "end. The retry calls `retryPayment`, which the server treats as the same payment.\\n\\n"
-                    + "- [x] Tested with a declined test card\\n- [ ] Tested on a slow network",
+                    + "- [x] Tested with a declined test card\\n- [ ] Tested on a slow network\\n\\nFixes WEB-31",
                 diff: checkoutDiff, keyLines: checkoutKeyLines,
-                comment: ("hubot", "Should the button say why it failed?")
+                comment: ("hubot", "Should the button say why it failed?"), tickets: checkoutTickets
             ).sample,
             PRHubSample(
                 repo: "acme/api", number: 88, title: "Rate-limit the password reset endpoint [API-88] [SEC-12]",
@@ -87,6 +87,13 @@ extension PRSampleSet {
         ],
         mergedReviewed: [], mergedMine: [], answersOnPhone: true
     )
+
+    /// The ticket the checkout retry's description fixes, as the Worker has it from Linear.
+    private static let checkoutTickets = """
+        [{"key": "WEB-31", "url": "https://linear.app/acme/issue/WEB-31",
+          "title": "Let shoppers retry a failed payment", "state": "In Review", "state_type": "started",
+          "state_color": "#0f783c", "found": true}]
+        """
 
     /// The two tickets the rate limit's title names, as the Worker has them from Linear.
     private static let rateLimitTickets = """
@@ -299,6 +306,12 @@ struct PRHubSample {
     /// The detail's `tickets`, as JSON.
     var tickets = "[]"
 
+    /// The row's ticket, as the Worker picks it: the first of the detail's tickets Linear has.
+    private var ticket: PRListTicket? {
+        let all = try? JSONDecoder().decode([PRListTicket].self, from: Data(tickets.utf8))
+        return all?.first { $0.found == true }
+    }
+
     var sample: PRSampleSet.Sample {
         let row = PullRequestRow(
             repo: repo, number: number, title: title, head: "sample-\(number)", revision: "sample", diff: .ready,
@@ -309,7 +322,7 @@ struct PRHubSample {
                 requestedAt: requestedHoursAgo.map { Date.now.addingTimeInterval(-$0 * 3_600).ISO8601Format() },
                 reviewDueAt: dueHoursAgo.map { Date.now.addingTimeInterval(-$0 * 3_600).ISO8601Format() }
             ),
-            keyLines: PRKeyLines.defaultContext
+            keyLines: PRKeyLines.defaultContext, ticket: ticket
         )
         return PRSampleSet.Sample(row: row, detail: detail, diff: diff, keyLines: keyLines)
     }

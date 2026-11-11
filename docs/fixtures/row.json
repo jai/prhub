@@ -5,7 +5,7 @@
   "head": "504754b2bc3ce5db892dde980e4bc83b60ff7a68",
   "revision": "504754b2bc3ce5db892dde980e4bc83b60ff7a68-main",
   "diff": "ready",
-  "detail": "2026-11-06T09:30:00Z.SUCCESS.06ca29027401b60e",
+  "detail": "2026-11-06T09:30:00Z.SUCCESS.b4b73ec354cb1fc7",
   "status": {
     "list": "review",
     "author": "alex",
@@ -17,5 +17,14 @@
     "requestedAt": "2026-11-06T03:00:00Z",
     "reviewDueAt": "2026-11-09T03:00:00Z"
   },
-  "keyLines": 100
+  "keyLines": 100,
+  "ticket": {
+    "key": "ENG-7",
+    "url": "https://linear.app/acme/issue/ENG-7/retry-uploads",
+    "title": "Retry failed uploads",
+    "state": "In Progress",
+    "state_type": "started",
+    "state_color": "#f2c94c",
+    "found": true
+  }
 }

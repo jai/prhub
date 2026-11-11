@@ -25,8 +25,9 @@ public struct PRListItem: Decodable, Equatable, Sendable {
 
 /// A Linear issue. `found` is `nil` until the hub has resolved it and `false` when Linear has no such issue for
 /// the hub; only a found one has a title and a state. `url` is Linear's own once found, before that one the
-/// Worker built from the workspace in the agent's Linear URL, else `nil`.
-public struct PRListTicket: Decodable, Equatable, Sendable {
+/// Worker built from the workspace in the agent's Linear URL, else `nil`. A PRs-tab row carries one too
+/// (`PullRequestRow.ticket`), and the phone keeps it with the row.
+public struct PRListTicket: Codable, Hashable, Sendable {
     public var key: String
     public var url: String?
     public var title: String?
@@ -75,7 +76,8 @@ public struct PRListPullRequest: Equatable, Sendable {
     public var resolvedAt: Date?
     /// Only the PRs tab sets this: Jai answered the review it asked of him, and the row stays, read.
     public var isAnswered: Bool?
-    /// Only the PRs tab sets this: when Jai's review is due, by the review SLA. Past it, the row says so.
+    /// When Jai's review is due, by the review SLA: the PRs tab's row, and a list's `review_due_at`. Past it, the row
+    /// says so.
     public var reviewDueAt: Date?
 
     public init(
@@ -123,6 +125,7 @@ extension PRListPullRequest: Decodable {
         case jaiReviewedAt = "jai_reviewed_at"
         case jaiReviewRequested = "jai_review_requested"
         case resolvedAt = "resolved_at"
+        case reviewDueAt = "review_due_at"
     }
 
     /// A state word a newer Worker added reads as no state, never as a list that cannot be read.
@@ -146,6 +149,7 @@ extension PRListPullRequest: Decodable {
         jaiReviewRequested = try container.decodeIfPresent(Bool.self, forKey: .jaiReviewRequested)
         found = try container.decodeIfPresent(Bool.self, forKey: .found)
         resolvedAt = try container.decodeIfPresent(Date.self, forKey: .resolvedAt)
+        reviewDueAt = try? container.decodeIfPresent(Date.self, forKey: .reviewDueAt)
     }
 }
 
