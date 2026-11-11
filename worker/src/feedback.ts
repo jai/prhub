@@ -290,8 +290,10 @@ export function chatView(
   const last = statuses.at(-1);
   const problem = last?.status === "failed" ? last.detail ?? "This message could not be passed on." : null;
   const isWorking = problem === null && (waiting || unseen || (agent?.isWorking ?? false));
+  // Only a chat's first message starts its agent; a later one goes to the same agent, so it says so.
+  const startsAgent = statuses.some(({ message, status }) => message.first && (status === "pending" || status === "delivering"));
   const activity = !isWorking ? null
-    : waiting ? (online ? "Starting" : null)
+    : waiting ? (online ? (startsAgent ? "Starting" : "Passing your message to the agent") : null)
     : agent?.activity ?? "Working";
   return {
     id, messages: entries.map(({ message }) => message), isWorking, activity, problem, costCents: null,

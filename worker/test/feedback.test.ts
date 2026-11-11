@@ -81,6 +81,19 @@ test("new feedback waits for the runner: the chat works and the builder is offli
   assert.equal(await addFeedback(store, "fb_0000000000000000", input, 5_000), null, "a reply to no chat");
 });
 
+test("a later message in a chat goes to its agent, not a new one, and says so while it waits", async () => {
+  const store = memoryStore();
+  const chat = (await addFeedback(store, null, parseFeedbackInput({ text: "Bigger clock" })!, 1_000))!;
+  const [first] = await runnerPoll(store, true, 2_000);
+  await runnerClaim(store, chat, first.message, 2_001);
+  assert.equal(await runnerResult(store, chat, first.message, true, null), 200);
+  assert.equal(await addFeedback(store, chat, parseFeedbackInput({ text: "And bolder" })!, 3_000), chat);
+  const work = await runnerPoll(store, true, 3_500);
+  assert.deepEqual(work.map(({ chat: id, first: isFirst }) => ({ id, isFirst })), [{ id: chat, isFirst: false }]);
+  assert.equal((await feedbackChat(store, chat, 4_000))!.activity, "Passing your message to the agent");
+  assert.equal((await feedbackList(store, 4_000)).threads.length, 1, "still one chat");
+});
+
 test("a message is claimed once, with its screenshots, then reported on", async () => {
   const store = memoryStore();
   const chat = (await addFeedback(store, null,
