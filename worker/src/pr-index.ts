@@ -2,6 +2,7 @@ import { alarmToSet } from "./alarm";
 import { claimOf, RECEIPT_KEPT_MS, type WriteClaim, type WriteReceipt } from "./write-receipts";
 import { DurableObject } from "cloudflare:workers";
 import { alertKey, alertKinds, alertMessage, alertsFor, type HeldStatus } from "./alerts";
+import { addMissingColumns } from "./pr-columns";
 import { createHeldAlertsTable, type HeldRow, holdAlert, releaseAlerts } from "./push-gate";
 import {
   createPushRegistrationsTable, forgetPushTokensOf, pruneUnlinkedPushTokens, registerPushToken,
@@ -129,27 +130,7 @@ export class PrIndex extends DurableObject<Env> {
     createPushRegistrationsTable(this.sql);
     createReviewedKeyLinesTable(this.sql);
     createTicketsTable(this.sql);
-    const columns = this.sql.exec<{ name: string }>("PRAGMA table_info(pull_requests)").toArray();
-    if (!columns.some(({ name }) => name === "version")) {
-      this.sql.exec("ALTER TABLE pull_requests ADD COLUMN version TEXT NOT NULL DEFAULT ''");
-    }
-    if (!columns.some(({ name }) => name === "status")) {
-      this.sql.exec("ALTER TABLE pull_requests ADD COLUMN status TEXT");
-    }
-    if (!columns.some(({ name }) => name === "key_lines_queued")) {
-      this.sql.exec("ALTER TABLE pull_requests ADD COLUMN key_lines_queued TEXT");
-      this.sql.exec("ALTER TABLE pull_requests ADD COLUMN key_lines_ready TEXT");
-    }
-    if (!columns.some(({ name }) => name === "key_lines_tried_at")) {
-      this.sql.exec("ALTER TABLE pull_requests ADD COLUMN key_lines_tried_at INTEGER");
-    }
-    if (!columns.some(({ name }) => name === "detail_version")) {
-      this.sql.exec("ALTER TABLE pull_requests ADD COLUMN detail_version TEXT");
-    }
-    if (!columns.some(({ name }) => name === "ticket")) {
-      this.sql.exec("ALTER TABLE pull_requests ADD COLUMN ticket TEXT");
-      this.sql.exec("ALTER TABLE pull_requests ADD COLUMN ticket_keys TEXT");
-    }
+    addMissingColumns(this.sql);
   }
 
   rows(): { prs: Row[]; synced_at: number } {
