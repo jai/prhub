@@ -33,18 +33,18 @@ const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  * The container's JSON answer. Cloudflare's own words when no instance is ready, and a run whose Claude Code was stopped
  * under it (exit 143), go again after a pause, up to `CONTAINER_TRIES` tries.
  */
-async function askContainer(
-  body: string, agent: NonNullable<Env["AGENT"]>, wait: (ms: number) => Promise<void>,
-): Promise<ContainerAnswer> {
+export async function askContainer<Answer extends { error?: string }>(
+  path: "/run" | "/ask", body: string, agent: NonNullable<Env["AGENT"]>, wait: (ms: number) => Promise<void> = pause,
+): Promise<Answer> {
   let failure = "";
   for (let tryNumber = 1; tryNumber <= CONTAINER_TRIES; tryNumber++) {
-    const response = await agent.get(agent.idFromName("ai")).fetch("http://agent/run", {
+    const response = await agent.get(agent.idFromName("ai")).fetch(`http://agent${path}`, {
       method: "POST", headers: { "content-type": "application/json" }, body,
     });
     const text = await response.text();
-    let answer: ContainerAnswer | null = null;
+    let answer: Answer | null = null;
     try {
-      answer = JSON.parse(text) as ContainerAnswer;
+      answer = JSON.parse(text) as Answer;
     } catch {
       failure = text.slice(0, 200) || `HTTP ${response.status}`;
     }
@@ -56,7 +56,7 @@ async function askContainer(
       await wait(RETRY_AFTER_MS);
     }
   }
-  return { error: failure };
+  return { error: failure } as Answer;
 }
 
 /** One structured answer from the container. Throws with the container's own words when it fails. */
@@ -64,7 +64,7 @@ export async function runOnSubscription(
   system: string, prompt: string, schema: Record<string, unknown>, choice: ModelChoice, env: Env, wait = pause,
 ): Promise<AgentAnswer> {
   const body = { system, prompt, model: choice.model, effort: choice.effort satisfies Effort, schema };
-  const answer = await askContainer(JSON.stringify(body), env.AGENT!, wait);
+  const answer = await askContainer<ContainerAnswer>("/run", JSON.stringify(body), env.AGENT!, wait);
   if (answer.error) {
     throw new Error(`The AI container failed: ${answer.error}`);
   }

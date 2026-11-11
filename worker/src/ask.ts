@@ -4,6 +4,9 @@ import type { AskChat, AskInput } from "./ask-chat";
 import { type Env, isSet } from "./env";
 import { prId, type RepoFullName } from "./ids";
 import { askRepoToken, InstallationTokenRefused } from "./app-token";
+import { onSubscription } from "./agent-container";
+import { askSystemPrompt } from "./ask-setup";
+import { askOnSubscription, isSubscriptionRecord, subscriptionChat } from "./ask-subscription";
 import { askBudgetOf, limitsOf } from "./limits";
 import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models";
 
@@ -96,6 +99,9 @@ async function liveRecord(repo: RepoFullName, number: number, head: string, choi
 
 export async function askChat(repo: RepoFullName, number: number, env: Env): Promise<AskChat> {
   const record = await readRecord(repo, number, env);
+  if (isSubscriptionRecord(record)) {
+    return subscriptionChat(record, Date.now());
+  }
   if (!record) {
     return chatOf([], null);
   }
@@ -118,6 +124,15 @@ export async function askChat(repo: RepoFullName, number: number, env: Env): Pro
  * question is one `ai_run` log line; its cost is the session's, read from Anthropic, as the turn has not run yet.
  */
 export async function ask(repo: RepoFullName, number: number, input: AskInput, choice: ModelChoice, env: Env): Promise<void> {
+  if (onSubscription(env)) {
+    const token = () => askRepoToken(repo, number, env).catch((error: unknown) => {
+      throw error instanceof InstallationTokenRefused ? new AskRefused(error.message) : error;
+    });
+    return askOnSubscription(repo, number, input, choice, env, {
+      system: askSystemPrompt(env.GITHUB_LOGIN ?? null, "subscription"), token,
+      budgetUsd: askBudgetOf(limitsOf(env)) / 100,
+    });
+  }
   const record = await liveRecord(repo, number, input.head, choice, env);
   await client(env).beta.sessions.events.send(record.session, {
     events: [{ type: "user.message", content: [{ type: "text", text: askPrompt(input, record.head) }] }],
