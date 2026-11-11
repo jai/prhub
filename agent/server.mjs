@@ -108,9 +108,12 @@ function insideOnly(cwd) {
   return [{
     matcher: "Read|Grep|Glob",
     hooks: [async (input) => {
-      const { file_path: file, path } = input.tool_input ?? {};
+      const { file_path: file, path, pattern, glob } = input.tool_input ?? {};
       const target = file ?? path ?? cwd;
-      return isInside(cwd, target) ? {} : {
+      // A Glob pattern, and Grep's file filter, are paths too: absolute or climbing ones reach outside.
+      const patterns = [input.tool_name === "Glob" ? pattern : null, glob].filter((value) => typeof value === "string");
+      const escapes = patterns.some((value) => isAbsolute(value) || value.startsWith("~") || value.split(/[\\/]/).includes(".."));
+      return isInside(cwd, target) && !escapes ? {} : {
         hookSpecificOutput: {
           hookEventName: "PreToolUse", permissionDecision: "deny",
           permissionDecisionReason: "Only the repository's own files can be read.",
