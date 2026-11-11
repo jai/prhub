@@ -10,7 +10,7 @@ import { aiConfigOf, askConfigured, deviceConfig, feedbackConfigured } from "./c
 import { makesAnswers } from "./agent-container";
 import { AgentContainer } from "./agent-container-object";
 import { aiJobs, askQueue, type Env, githubLogin, isSet, prIndex, scopedKey } from "./env";
-import { aiStoreKey } from "./ai-run";
+import { aiStoreKey, isStaleFailure } from "./ai-run";
 import {
   detailVersionOf, fetchDiff, liveDiff, mergedPullRequests, pullRequestSummary, readPullRequests, reviewWeek,
 } from "./github";
@@ -201,7 +201,11 @@ async function aiAnswer(job: AiJob, isRetry: boolean, env: Env): Promise<Respons
   }
   const stored = await env.DIFFS.get(key);
   if (stored) {
-    return new Response(stored.body, { headers: { "Content-Type": "application/json" } });
+    const body = await stored.text();
+    if (!isStaleFailure(body, stored.uploaded, Date.now())) {
+      return new Response(body, { headers: { "Content-Type": "application/json" } });
+    }
+    await env.DIFFS.delete(key);
   }
   const limited = await personLimitAnswer(env, [LimitName.AiJobsPerHour], key);
   if (limited) {

@@ -30,3 +30,18 @@ export async function runAiJob(job: AiJob, env: Env, store: Pick<R2Bucket, "put"
 export function aiStoreKey(job: AiJob, env: Pick<Env, "SIGNED_IN_USER_ID">): string {
   return scopedKey(env, aiKey(job));
 }
+
+/** How long a failed AI answer is shown before the next ask makes it again: long enough to read, short enough to heal. */
+export const FAILURE_KEPT_MS = 10 * 60_000;
+
+/** A stored failure older than `FAILURE_KEPT_MS`: a run out of credit, or a container that was not ready, goes again. */
+export function isStaleFailure(body: string, storedAt: Date, now: number): boolean {
+  if (now - storedAt.getTime() < FAILURE_KEPT_MS) {
+    return false;
+  }
+  try {
+    return typeof (JSON.parse(body) as { error?: unknown }).error === "string";
+  } catch {
+    return false;
+  }
+}

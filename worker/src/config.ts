@@ -1,5 +1,5 @@
 import { pushMode } from "./apns.ts";
-import { makesAnswers } from "./agent-container.ts";
+import { makesAnswers, onSubscription } from "./agent-container.ts";
 import { type Env, isSet } from "./env.ts";
 import { type LimitName, limitsConfig, limitsOf } from "./limits.ts";
 import { type AiConfig, type AiFeature, type FeatureModels, featureModels, parseAiConfig } from "./models.ts";
@@ -36,7 +36,7 @@ export function aiConfigOf(env: Pick<Env, "AI_MODELS_ALLOWED" | "AI_EFFORT_MAX" 
 }
 
 export function askConfigured(env: Env): boolean {
-  return [env.ASK_AGENT_ID, env.ASK_ENVIRONMENT_ID, env.ASK_VAULT_ID, env.ASK_CREDENTIAL_ID].every(isSet)
+  return onSubscription(env) || [env.ASK_AGENT_ID, env.ASK_ENVIRONMENT_ID, env.ASK_VAULT_ID, env.ASK_CREDENTIAL_ID].every(isSet)
     && (isSet(env.ASK_ANTHROPIC_API_KEY) || isSet(env.ANTHROPIC_API_KEY));
 }
 

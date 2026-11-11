@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { runAiJob } from "../src/ai-run.ts";
+import { FAILURE_KEPT_MS, isStaleFailure, runAiJob } from "../src/ai-run.ts";
+import { runOnSubscription } from "../src/agent-container.ts";
 import type { Env } from "../src/env.ts";
 import { liveDiff, revisionFrom } from "../src/github.ts";
 import { isRevisionOf, parseSha, revisionOf, type Sha } from "../src/ids.ts";
@@ -170,4 +171,29 @@ test("on the subscription, key lines come from the Agent SDK container, never th
   assert.deepEqual(stored.items, []);
   assert.equal(stored.costCents, 1.23);
   assert.deepEqual(others, [], "the API was never asked");
+});
+
+test("a stored failure is shown for ten minutes, then the next ask makes the answer again", () => {
+  const failed = JSON.stringify({ error: "Error: 400 credit balance is too low" });
+  const storedAt = new Date("2026-11-11T06:00:00Z");
+  assert.equal(isStaleFailure(failed, storedAt, storedAt.getTime() + FAILURE_KEPT_MS - 1), false);
+  assert.equal(isStaleFailure(failed, storedAt, storedAt.getTime() + FAILURE_KEPT_MS), true);
+  assert.equal(isStaleFailure(JSON.stringify({ items: [] }), storedAt, storedAt.getTime() + 86_400_000), false,
+    "an answer is kept");
+});
+
+test("a container that is not ready yet is asked again, and its last words are the failure", async () => {
+  const answers = [
+    new Response("There is no Container instance available at this time.", { status: 503 }),
+    Response.json({ error: "Claude Code process exited with code 143" }, { status: 500 }),
+    Response.json({ subtype: "success", output: { items: [] }, model: "m", tokens: { input: 1, output: 1 }, costUsd: 0 }),
+  ];
+  const agent = { idFromName: (name: string) => name, get: () => ({ fetch: async () => answers.shift()! }) };
+  const env = { CLAUDE_CODE_OAUTH_TOKEN: "oat", AGENT: agent } as unknown as Env;
+  const answer = await runOnSubscription("s", "p", { type: "object" }, { model: "m" as never, effort: "high" }, env,
+    async () => {});
+  assert.deepEqual(answer.output, { items: [] });
+  const never = { idFromName: (name: string) => name, get: () => ({ fetch: async () => new Response("busy") }) };
+  await assert.rejects(runOnSubscription("s", "p", {}, { model: "m" as never, effort: "high" },
+    { ...env, AGENT: never } as unknown as Env, async () => {}), /The AI container failed: busy/);
 });

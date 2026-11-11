@@ -133,7 +133,7 @@ Auth: a paired secret or `APP_TOKEN`. `Cache-Control: no-store`. The app reads i
 
 | Field | True when | The app |
 |---|---|---|
-| `features.ask_ai` | `ASK_AGENT_ID`, `ASK_ENVIRONMENT_ID`, `ASK_VAULT_ID`, `ASK_CREDENTIAL_ID` and a key (`ASK_ANTHROPIC_API_KEY` or `ANTHROPIC_API_KEY`) | Shows Ask on a PR and a line |
+| `features.ask_ai` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ASK_AGENT_ID`, `ASK_ENVIRONMENT_ID`, `ASK_VAULT_ID`, `ASK_CREDENTIAL_ID` and a key (`ASK_ANTHROPIC_API_KEY` or `ANTHROPIC_API_KEY`) | Shows Ask on a PR and a line |
 | `features.key_lines` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ANTHROPIC_API_KEY` | Shows the Key lines panel and capsule |
 | `features.rewrite` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ANTHROPIC_API_KEY` | Shows Rewrite on the description |
 | `features.feedback` | `FEEDBACK_REPO` and `HUB_TOKEN`: Jai's Worker only ([Feedback](#feedback)) | Shows Feedback |
@@ -337,15 +337,22 @@ and stores nothing.
 
 ## AI on a subscription
 
-With `CLAUDE_CODE_OAUTH_TOKEN` set and `AGENT` bound, key lines and rewrites run in a container with the Claude Agent
-SDK (`agent/`), signed in to a Claude subscription, instead of on the Messages API. The answer, the model and effort
+With `CLAUDE_CODE_OAUTH_TOKEN` set and `AGENT` bound, key lines, rewrites and Ask run in a container with the Claude
+Agent SDK (`agent/`), signed in to a Claude subscription, instead of on the Messages API and Managed Agents. The answer, the model and effort
 choice, and the stored shape are the same; `costCents` is what the run would have cost on the API.
 
 - Key lines are made ahead for each new head of a PR on the review list, and an alert waits for them
   ([Alerts](#alerts)). On an API key they are made only when the app asks.
 - Each run, on either path, logs one `ai_run` line: `feature`, `repo`, `number`, `auth` (`subscription` or
   `api_key`), `user_id`, `model`, `effort`, `input_tokens`, `output_tokens`, `cost_cents`.
+- Ask: each question is one Agent SDK turn on a checkout of the PR at its head, fetched with the same read-only
+  token as on Managed Agents. The agent reads and searches files only: no shell and no GitHub API. The chat is kept in
+  R2 at `ask/<repo>/<n>.json` and the session's transcript at `ask-sessions/<repo>/<n>.json`, so the next question
+  resumes it in any container. A question at another model or effort starts a new chat.
 - The container sleeps after two idle minutes. The first run after that waits for it to start, about 20 seconds.
+- A container that is not ready, or whose run was stopped, is asked again up to three times, five seconds apart.
+- A failed answer, on either path, is served for ten minutes; the next ask after that makes it again, so a run that
+  failed for want of credit or capacity heals without **Try again**.
 
 ## Reviewed key lines
 

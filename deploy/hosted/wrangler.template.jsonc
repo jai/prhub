@@ -23,7 +23,7 @@
     "APNS_KEY_ID": "__APNS_KEY_ID__",
     // AI runs on each person's own Anthropic key, or on the Worker's subscription (CLAUDE_CODE_OAUTH_TOKEN, a secret)
     // for SUBSCRIPTION_LOGINS only. Defaults from docs/plans/ai-model-eval.md.
-    "SUBSCRIPTION_LOGINS": "jai",
+    "SUBSCRIPTION_LOGINS": "jai,poom",
     "AI_DEFAULTS": "key_lines=claude-opus-5-5:high,ask=claude-haiku-5-5:high"
     // Limits (docs/api.md, "Limits") take their hosted defaults; set a LIMIT_* var here to change one.
   },
