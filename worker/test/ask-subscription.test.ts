@@ -34,7 +34,7 @@ function world(answers: Record<string, unknown>[]) {
   };
   const r2 = memoryR2();
   const env = { DIFFS: r2, AGENT: agent, CLAUDE_CODE_OAUTH_TOKEN: "oat" } as unknown as Env;
-  const services = { system: "sys", token: async () => "ghs_read", budgetUsd: 5, now: () => 1_000 };
+  const services = { system: "sys", token: async () => "read-token", budgetUsd: 5, now: () => 1_000 };
   const record = () => JSON.parse(r2.objects.get(`ask/${REPO}/7.json`)!) as SubscriptionRecord;
   return { sent, r2, env, services, record };
 }
@@ -50,7 +50,7 @@ test("a question's answer joins the chat, and the next question resumes the same
   assert.deepEqual(w.record().messages.map(({ role, text }) => [role, text]),
     [["you", "How often does it retry?"], ["agent", "It retries twice."]]);
   assert.equal(w.sent[0].session, null);
-  assert.equal(w.sent[0].token, "ghs_read");
+  assert.equal(w.sent[0].token, "read-token");
   await askOnSubscription(REPO, 7, input("Is that enough?"), choice, w.env, w.services);
   assert.equal(w.sent[1].session, "s1");
   assert.deepEqual(w.sent[1].entries, [{ type: "user" }, { type: "assistant" }], "the stored transcript goes back");
