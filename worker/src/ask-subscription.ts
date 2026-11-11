@@ -139,8 +139,9 @@ export async function prDiff(repo: RepoFullName, number: number, head: Sha, env:
     if (done) {
       break;
     }
-    chunks.push(value);
-    size += value.byteLength;
+    const kept = value.subarray(0, DIFF_KEPT - size);
+    chunks.push(kept);
+    size += kept.byteLength;
   }
   await reader.cancel();
   const bytes = new Uint8Array(size);
@@ -149,5 +150,5 @@ export async function prDiff(repo: RepoFullName, number: number, head: Sha, env:
     bytes.set(chunk, at);
     at += chunk.byteLength;
   }
-  return new TextDecoder().decode(bytes.subarray(0, DIFF_KEPT));
+  return new TextDecoder().decode(bytes);
 }
