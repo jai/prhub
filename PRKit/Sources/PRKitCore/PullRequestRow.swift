@@ -14,10 +14,12 @@ public struct PullRequestRow: Codable, Hashable, Identifiable, Sendable {
     public let status: Status?
     /// The context key lines are ready at for this head. Nil until they are.
     public var keyLines: Int?
+    /// The Linear ticket the row shows, as Linear has it. Absent without one, and from a Worker older than it.
+    public var ticket: PRListTicket?
 
     public init(
-        repo: String, number: Int, title: String, head: String, revision: String, diff: DiffAvailability, detail: String,
-        status: Status?, keyLines: Int? = nil
+        repo: String, number: Int, title: String, head: String, revision: String, diff: DiffAvailability,
+        detail: String, status: Status?, keyLines: Int? = nil, ticket: PRListTicket? = nil
     ) {
         self.repo = repo
         self.number = number
@@ -28,6 +30,7 @@ public struct PullRequestRow: Codable, Hashable, Identifiable, Sendable {
         self.detail = detail
         self.status = status
         self.keyLines = keyLines
+        self.ticket = ticket
     }
 
     public struct Status: Codable, Hashable, Sendable {

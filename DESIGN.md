@@ -373,7 +373,8 @@ antiPatterns:
 
 ```text
 name: TicketLine
-purpose: The ticket supporting a block's PRs, in Agent Pager's lists. Quiet. The whole line opens Linear, 44 pt tall at least.
+purpose: The ticket supporting a block's PRs, in Agent Pager's lists and on the PRs tab. Quiet. The whole line opens
+  Linear, 44 pt tall at least.
 parts:
   mark:   { column: text + 16, holds: LinearMark, size: 16 }
   key:    { after: mark, font: appCaption, never truncates }
@@ -400,8 +401,8 @@ parts:
 rules:
   - Who: the author's profile name, else their login. A bot's PR says "(bot)" after the bot's login, and leads with
     the person it was opened for when the Worker found one: "Mona Lisa via hubot (bot)". The face is that person's.
-  - Tickets are the title's (in brackets) and then the branch's, as the Worker sends them, with Linear's state where it
-    could ask. Without Linear a ticket is its key alone: no "Resolving…" that never resolves.
+  - Tickets are the title's (in brackets), then the branch's, then the description's, as the Worker sends them, with
+    Linear's state where it could ask. Without Linear a ticket is its key alone: no "Resolving…" that never resolves.
 antiPatterns:
   - A ticket key both in the title and on a ticket line.
   - A bot shown as if a person wrote the PR.
