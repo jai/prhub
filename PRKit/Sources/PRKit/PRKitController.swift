@@ -123,6 +123,31 @@ final class PRNavigation {
     var routes: [PRRoute] = []
     /// A PR opened from a link or an alert anywhere in the app: the PRs tab shows it, then sets this back to `nil`.
     var pending: PRPendingOpen?
+    #if os(macOS)
+    /// What `macPath` last took off the stack, nearest first: a `TabStack` coming back to the tab empties the path,
+    /// then sets what it had open again.
+    private var popped: [PRRoute] = []
+
+    /// `routes` as the Mac's stack binds them. A Mac window's tabs share one navigation column, and SwiftUI traps
+    /// (`AnyNavigationPath.Error.comparisonTypeMismatch`) when a tab binds a path of another type than the tab before
+    /// it, so the PRs tab binds a `NavigationPath`, as a host's tabs do. Its screens are pushed by `routes`; SwiftUI
+    /// only takes them off (Back), and `TabStack` puts them back.
+    var macPath: NavigationPath {
+        get { NavigationPath(routes) }
+        set {
+            if newValue.count <= routes.count {
+                popped = Array((routes.dropFirst(newValue.count) + popped).prefix(Self.poppedLimit))
+                routes = Array(routes.prefix(newValue.count))
+            } else {
+                let restored = popped.prefix(newValue.count - routes.count)
+                routes += restored
+                popped.removeFirst(restored.count)
+            }
+        }
+    }
+
+    private static let poppedLimit = 20
+    #endif
 
     /// The PR beside the list on a wide screen.
     var selected: PRSession? {
