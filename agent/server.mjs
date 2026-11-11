@@ -1,7 +1,7 @@
 // The AI container (docs/api.md, "AI on a subscription"): Claude Agent SDK runs, signed in with the Worker's
 // CLAUDE_CODE_OAUTH_TOKEN. The Worker is its only caller; nothing here reaches R2 or keeps state between runs.
 import { execFile } from "node:child_process";
-import { existsSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { createServer } from "node:http";
 import { promisify } from "node:util";
@@ -96,7 +96,9 @@ class SeededStore {
 export const DIFF_FILE = ".prhub-pr.diff";
 
 function placeDiff(dir, diff) {
-  writeFileSync(`${dir}/${DIFF_FILE}`, diff ?? "");
+  // A PR can commit this name as a symlink: whatever is there goes first, and the write makes a new file only.
+  rmSync(`${dir}/${DIFF_FILE}`, { force: true, recursive: true });
+  writeFileSync(`${dir}/${DIFF_FILE}`, diff ?? "", { flag: "wx" });
   writeFileSync(`${dir}/.git/info/exclude`, `${DIFF_FILE}\n`);
 }
 

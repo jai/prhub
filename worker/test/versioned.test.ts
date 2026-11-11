@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { FAILURE_KEPT_MS, isStaleFailure, runAiJob } from "../src/ai-run.ts";
 import { runOnSubscription } from "../src/agent-container.ts";
+import { prDiff } from "../src/ask.ts";
 import type { Env } from "../src/env.ts";
 import { liveDiff, revisionFrom } from "../src/github.ts";
 import { isRevisionOf, parseSha, revisionOf, type Sha } from "../src/ids.ts";
@@ -196,4 +197,10 @@ test("a container that is not ready yet is asked again, and its last words are t
   const never = { idFromName: (name: string) => name, get: () => ({ fetch: async () => new Response("busy") }) };
   await assert.rejects(runOnSubscription("s", "p", {}, { model: "m" as never, effort: "high" },
     { ...env, AGENT: never } as unknown as Env, async () => {}), /The AI container failed: busy/);
+});
+
+test("Ask's diff is the PR's at the question's head, and none once the PR has moved past it", async () => {
+  gitHubAt(NEW);
+  assert.equal(await prDiff("acme/app" as never, 7, NEW, { GITHUB_TOKEN: "t" } as Env), "diff --git a/x b/x\n");
+  assert.equal(await prDiff("acme/app" as never, 7, OLD, { GITHUB_TOKEN: "t" } as Env), "");
 });

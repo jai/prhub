@@ -8,6 +8,7 @@ import { onSubscription } from "./agent-container";
 import { askSystemPrompt } from "./ask-setup";
 import { askOnSubscription, isSubscriptionRecord, subscriptionChat } from "./ask-subscription";
 import { liveDiff } from "./github";
+import { isRevisionOf, type Sha } from "./ids";
 import { askBudgetOf, limitsOf } from "./limits";
 import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models";
 
@@ -41,12 +42,38 @@ interface AskRecord {
 
 export class AskRefused extends Error {}
 
-/** The diff the agent reads first, cut at `DIFF_KEPT` characters; empty when GitHub won't give one. */
+/** The diff the agent reads first, cut at `DIFF_KEPT` bytes. */
 const DIFF_KEPT = 400_000;
 
-async function prDiff(repo: RepoFullName, number: number, env: Env): Promise<string> {
-  const { response } = await liveDiff(repo, number, env);
-  return response.ok ? (await response.text()).slice(0, DIFF_KEPT) : "";
+/**
+ * The PR's diff at `head`, read no further than `DIFF_KEPT` bytes. Empty when GitHub won't give one, or when the PR has
+ * moved past `head`: a newer commit's diff beside an older checkout would mislead.
+ */
+export async function prDiff(repo: RepoFullName, number: number, head: Sha, env: Env): Promise<string> {
+  const { response, version } = await liveDiff(repo, number, env);
+  if (!response.ok || !response.body || !version || !isRevisionOf(version, head)) {
+    await response.body?.cancel();
+    return "";
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (size < DIFF_KEPT) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    chunks.push(value);
+    size += value.byteLength;
+  }
+  await reader.cancel();
+  const bytes = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes.subarray(0, DIFF_KEPT));
 }
 
 function client(env: Env): Anthropic {
@@ -138,7 +165,7 @@ export async function ask(repo: RepoFullName, number: number, input: AskInput, c
       throw error instanceof InstallationTokenRefused ? new AskRefused(error.message) : error;
     });
     return askOnSubscription(repo, number, input, choice, env, {
-      system: askSystemPrompt(env.GITHUB_LOGIN ?? null, "subscription"), token, diff: () => prDiff(repo, number, env),
+      system: askSystemPrompt(env.GITHUB_LOGIN ?? null, "subscription"), token, diff: () => prDiff(repo, number, input.head, env),
       budgetUsd: askBudgetOf(limitsOf(env)) / 100,
     });
   }
