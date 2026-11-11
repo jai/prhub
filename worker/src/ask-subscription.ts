@@ -85,7 +85,8 @@ export async function askOnSubscription(
   try {
     const entries = record.session ? await (await env.DIFFS.get(transcriptKey(repo, number, env)))?.json<unknown[]>() : [];
     const answer = await askContainer<AskAnswer>("/ask", JSON.stringify({
-      system: services.system, prompt: askPrompt(input, null), model: choice.model, effort: choice.effort, repo, number,
+      system: services.system, prompt: askPrompt(input, null), model: choice.model, effort: choice.effort,
+      scope: env.SIGNED_IN_USER_ID ?? "self", repo, number,
       head: input.head, token: await services.token(), session: record.session, entries: entries ?? [],
       budgetUsd: services.budgetUsd,
     }), env.AGENT!);

@@ -51,6 +51,7 @@ test("a question's answer joins the chat, and the next question resumes the same
     [["you", "How often does it retry?"], ["agent", "It retries twice."]]);
   assert.equal(w.sent[0].session, null);
   assert.equal(w.sent[0].token, "read-token");
+  assert.equal(w.sent[0].scope, "self", "a self-hosted Worker's checkouts are its own");
   await askOnSubscription(REPO, 7, input("Is that enough?"), choice, w.env, w.services);
   assert.equal(w.sent[1].session, "s1");
   assert.deepEqual(w.sent[1].entries, [{ type: "user" }, { type: "assistant" }], "the stored transcript goes back");
