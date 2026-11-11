@@ -8,6 +8,9 @@ import { liveDiff } from "./github.ts";
 import { isRevisionOf, type RepoFullName, type Sha } from "./ids.ts";
 import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models.ts";
 
+/** Said with every question: a session begun before the diff file existed reads only its first system prompt. */
+const DIFF_NOTE = "The PR's diff at this head is in .prhub-pr.diff at the repository's root. Read it first.";
+
 /** A turn that has run this long is taken as lost: the job that ran it ended without saying so. */
 export const TURN_LOST_MS = 20 * 60_000;
 
@@ -88,7 +91,7 @@ export async function askOnSubscription(
   try {
     const entries = record.session ? await (await env.DIFFS.get(transcriptKey(repo, number, env)))?.json<unknown[]>() : [];
     const answer = await askContainer<AskAnswer>("/ask", JSON.stringify({
-      system: services.system, prompt: askPrompt(input, null), model: choice.model, effort: choice.effort,
+      system: services.system, prompt: `${DIFF_NOTE}\n${askPrompt(input, null)}`, model: choice.model, effort: choice.effort,
       scope: env.SIGNED_IN_USER_ID ?? "self", repo, number,
       head: input.head, token: await services.token(), diff: await services.diff(), session: record.session, entries: entries ?? [],
       budgetUsd: services.budgetUsd,

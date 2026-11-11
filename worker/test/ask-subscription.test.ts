@@ -53,6 +53,7 @@ test("a question's answer joins the chat, and the next question resumes the same
   assert.equal(w.sent[0].session, null);
   assert.equal(w.sent[0].token, "read-token");
   assert.equal(w.sent[0].diff, "diff --git a/x b/x", "the PR's diff goes with the question");
+  assert.match(String(w.sent[0].prompt), /\.prhub-pr\.diff/, "and each question says where it is");
   assert.equal(w.sent[0].scope, "self", "a self-hosted Worker's checkouts are its own");
   await askOnSubscription(REPO, 7, input("Is that enough?"), choice, w.env, w.services);
   assert.equal(w.sent[1].session, "s1");
