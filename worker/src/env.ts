@@ -1,4 +1,5 @@
 import type { Installation, IpLimit, SignIn, UserAccount } from "./account";
+import type { AgentContainer } from "./agent-container-object";
 import type { AiJobs } from "./ai-jobs";
 import type { PrIndex } from "./pr-index";
 import type { LimitVars } from "./limits";
@@ -48,8 +49,16 @@ export interface Env extends LimitVars {
   /** Push through Jai's relay (docs/push-relay.md), for the public PR app. Wins over direct APNs when both are set. */
   PUSH_RELAY_URL?: string;
   PUSH_RELAY_KEY?: string;
-  /** Key lines and rewrites. */
+  /** Key lines and rewrites, when AI does not run on the subscription. */
   ANTHROPIC_API_KEY?: string;
+  /**
+   * A Claude subscription's token (`claude setup-token`): key lines and rewrites run on it in `AGENT`, the Agent SDK
+   * container, and win over `ANTHROPIC_API_KEY`. On the hosted Worker, only for `SUBSCRIPTION_LOGINS`.
+   */
+  CLAUDE_CODE_OAUTH_TOKEN?: string;
+  AGENT?: DurableObjectNamespace<AgentContainer>;
+  /** Hosted only: the comma-separated GitHub logins whose AI runs on the Worker's subscription. Unset: nobody's. */
+  SUBSCRIPTION_LOGINS?: string;
   /** Ask (`ask.ts`): the key whose org holds the agent and environment. Unset: `ANTHROPIC_API_KEY`. */
   ASK_ANTHROPIC_API_KEY?: string;
   ASK_AGENT_ID?: string;

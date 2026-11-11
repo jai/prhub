@@ -134,8 +134,8 @@ Auth: a paired secret or `APP_TOKEN`. `Cache-Control: no-store`. The app reads i
 | Field | True when | The app |
 |---|---|---|
 | `features.ask_ai` | `ASK_AGENT_ID`, `ASK_ENVIRONMENT_ID`, `ASK_VAULT_ID`, `ASK_CREDENTIAL_ID` and a key (`ASK_ANTHROPIC_API_KEY` or `ANTHROPIC_API_KEY`) | Shows Ask on a PR and a line |
-| `features.key_lines` | `ANTHROPIC_API_KEY` | Shows the Key lines panel and capsule |
-| `features.rewrite` | `ANTHROPIC_API_KEY` | Shows Rewrite on the description |
+| `features.key_lines` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ANTHROPIC_API_KEY` | Shows the Key lines panel and capsule |
+| `features.rewrite` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ANTHROPIC_API_KEY` | Shows Rewrite on the description |
 | `features.feedback` | `FEEDBACK_REPO` and `HUB_TOKEN`: Jai's Worker only ([Feedback](#feedback)) | Shows Feedback |
 | `features.push` | the relay (`PUSH_RELAY_URL`, `PUSH_RELAY_KEY`), or direct APNs (`APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8`, `APNS_BUNDLE_ID`) | Registers for push; off: syncs on open and foreground only |
 | `features.webhooks` | `WEBHOOK_SECRET` | Diagnostics only: updates in seconds rather than about a minute |
@@ -258,6 +258,9 @@ var reads as unset.
 | `PUSH_RELAY_URL` | var | Jai's relay base URL |
 | `PUSH_RELAY_KEY` | secret | This Worker's relay key, `rks_…` |
 | `ANTHROPIC_API_KEY` | secret | Key lines, rewrites; Ask's key when `ASK_ANTHROPIC_API_KEY` is unset |
+| `CLAUDE_CODE_OAUTH_TOKEN` | secret | A Claude subscription's token (`claude setup-token`). With `AGENT` bound, key lines and rewrites run on it ([AI on a subscription](#ai-on-a-subscription)) and win over `ANTHROPIC_API_KEY` |
+| `AGENT` | container binding | `AgentContainer`, the Agent SDK container built from `agent/Dockerfile` |
+| `SUBSCRIPTION_LOGINS` | var | Hosted only: the GitHub logins, comma-separated, whose AI runs on `CLAUDE_CODE_OAUTH_TOKEN`. Unset: nobody's |
 | `ASK_AGENT_ID`, `ASK_ENVIRONMENT_ID`, `ASK_VAULT_ID`, `ASK_CREDENTIAL_ID` | var | From `npm run ask-agent` |
 | `ASK_GITHUB_TOKEN` | secret | A read-only PAT for Ask's agent; unset, it gets `GITHUB_TOKEN` |
 | `ASK_GITHUB_APP_ID`, `ASK_GITHUB_APP_KEY` | secret | A GitHub App that mints a read-only token per question; wins over the PATs. The key is PKCS#8 (`BEGIN PRIVATE KEY`); GitHub's download is PKCS#1, so pipe it through `openssl pkcs8 -topk8 -nocrypt` |
@@ -330,6 +333,18 @@ could not get stays there with `isWorking` false and the reason in `problem` (a 
 couldn't be reached. Try again."); one still waiting after 2 minutes says "The question didn't reach the AI. Try
 again." The next question to that PR replaces a failed one. A copy with the same `client_ref` answers the chat again
 and stores nothing.
+
+## AI on a subscription
+
+With `CLAUDE_CODE_OAUTH_TOKEN` set and `AGENT` bound, key lines and rewrites run in a container with the Claude Agent
+SDK (`agent/`), signed in to a Claude subscription, instead of on the Messages API. The answer, the model and effort
+choice, and the stored shape are the same; `costCents` is what the run would have cost on the API.
+
+- Key lines are made ahead for each new head of a PR on the review list, and an alert waits for them
+  ([Alerts](#alerts)). On an API key they are made only when the app asks.
+- Each run, on either path, logs one `ai_run` line: `feature`, `repo`, `number`, `auth` (`subscription` or
+  `api_key`), `user_id`, `model`, `effort`, `input_tokens`, `output_tokens`, `cost_cents`.
+- The container sleeps after two idle minutes. The first run after that waits for it to start, about 20 seconds.
 
 ## Reviewed key lines
 
@@ -496,11 +511,11 @@ When one is sent:
   time alerts nothing.
 - Once per kind, PR and head commit: asked again at the same commit, the user hears nothing new. The keys are kept 30
   days.
-- Only once the PR's detail and diff are stored at the head the alert is about, so the phone reads them from R2 and
-  never waits on GitHub. Key lines are made only when the app asks for them, never ahead of an alert. An alert waits
-  30 seconds at most, then goes anyway; one whose PR's head moved on goes at once, and one whose PR left every list is
-  not sent (`alert_dropped`). Each held alert is in `/events` as `push_delayed` with `{kind, pr, ms, reason}`,
-  `reason` being `ready`, `moved` or `timed_out`.
+- Only once the PR's detail and diff, and its key lines when this Worker makes them (on the subscription, and the PR on
+  the review list), are stored at the head the alert is about, so the phone reads them from R2 and never waits on
+  GitHub. An alert waits 30 seconds at most, then goes anyway; one whose PR's head moved on goes at once, and one whose
+  PR left every list is not sent (`alert_dropped`). Each held alert is in `/events` as `push_delayed` with `{kind, pr,
+  ms, reason}`, `reason` being `ready`, `moved` or `timed_out`.
 - To every device registered on the production host, as the wake is (a Simulator's sandbox registration gets none),
   through the relay when it is set, else direct APNs; a Worker with neither sends none. Each send is in `/events` as `kind: "alert"` with `{kind, pr, title, held_ms, status, reason}`.
 

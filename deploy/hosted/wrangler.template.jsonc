@@ -21,7 +21,9 @@
     "APNS_BUNDLE_ID": "com.jaigovindani.prreview",
     "APNS_TEAM_ID": "K2P9X73SPT",
     "APNS_KEY_ID": "__APNS_KEY_ID__",
-    // AI runs only on each person's own Anthropic key. Defaults from docs/plans/ai-model-eval.md.
+    // AI runs on each person's own Anthropic key, or on the Worker's subscription (CLAUDE_CODE_OAUTH_TOKEN, a secret)
+    // for SUBSCRIPTION_LOGINS only. Defaults from docs/plans/ai-model-eval.md.
+    "SUBSCRIPTION_LOGINS": "jai",
     "AI_DEFAULTS": "key_lines=claude-opus-5-5:high,ask=claude-haiku-5-5:high"
     // Limits (docs/api.md, "Limits") take their hosted defaults; set a LIMIT_* var here to change one.
   },
@@ -32,14 +34,20 @@
       { "name": "USER_ACCOUNTS", "class_name": "UserAccount" },
       { "name": "SIGN_INS", "class_name": "SignIn" },
       { "name": "INSTALLATIONS", "class_name": "Installation" },
-      { "name": "IP_LIMITS", "class_name": "IpLimit" }
+      { "name": "IP_LIMITS", "class_name": "IpLimit" },
+      { "name": "AGENT", "class_name": "AgentContainer" }
     ]
   },
   "migrations": [
     { "tag": "pr-index-v1", "new_sqlite_classes": ["PrIndex"] },
     { "tag": "ai-jobs-v1", "new_sqlite_classes": ["AiJobs"] },
     { "tag": "hosted-v1", "new_sqlite_classes": ["UserAccount", "SignIn", "Installation"] },
-    { "tag": "limits-v1", "new_sqlite_classes": ["IpLimit"] }
+    { "tag": "limits-v1", "new_sqlite_classes": ["IpLimit"] },
+    { "tag": "agent-v1", "new_sqlite_classes": ["AgentContainer"] }
+  ],
+  // The Agent SDK container (agent/), for AI on the subscription.
+  "containers": [
+    { "class_name": "AgentContainer", "image": "../../agent/Dockerfile", "instance_type": "standard-1", "max_instances": 2 }
   ],
   "r2_buckets": [{ "binding": "DIFFS", "bucket_name": "prhub-hosted" }]
 }

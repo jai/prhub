@@ -1,4 +1,5 @@
 import { pushMode } from "./apns.ts";
+import { makesAnswers } from "./agent-container.ts";
 import { type Env, isSet } from "./env.ts";
 import { type LimitName, limitsConfig, limitsOf } from "./limits.ts";
 import { type AiConfig, type AiFeature, type FeatureModels, featureModels, parseAiConfig } from "./models.ts";
@@ -46,7 +47,7 @@ export function feedbackConfigured(env: Env): boolean {
 
 /** Each feature is on when what serves it is configured; nothing is a separate switch. */
 export function deviceConfig(env: Env, login: string | null): DeviceConfig {
-  const model = isSet(env.ANTHROPIC_API_KEY);
+  const model = makesAnswers(env);
   const orgs = (env.GITHUB_ORGS ?? "").split(",").map((org) => org.trim()).filter(Boolean);
   const ask = askConfigured(env);
   const on = ([["key_lines", model], ["rewrite", model], ["ask", ask]] as [AiFeature, boolean][])

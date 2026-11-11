@@ -143,3 +143,31 @@ test("key lines for a head the PR has moved on from are never stored under that 
   assert.match(String(stored.error), /moved on/);
   assert.deepEqual(others, [], "no model was asked");
 });
+
+test("on the subscription, key lines come from the Agent SDK container, never the API", async () => {
+  const others: string[] = [];
+  gitHubAt(NEW, others);
+  const asked: Record<string, unknown>[] = [];
+  const agent = {
+    idFromName: (name: string) => name,
+    get: () => ({
+      fetch: async (_url: string, init: RequestInit) => {
+        asked.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+        return Response.json({ subtype: "success", output: { items: [] }, model: "claude-sonnet-5-5",
+          tokens: { input: 10, output: 2 }, costUsd: 0.0123 });
+      },
+    }),
+  } as unknown as Env["AGENT"];
+  const store = fakeStore();
+  const job: AiJob = { kind: "key_lines", repo: "acme/app", number: 7, head: NEW, context: 0 };
+  await runAiJob(job, { GITHUB_TOKEN: "t", ANTHROPIC_API_KEY: "k", CLAUDE_CODE_OAUTH_TOKEN: "oat", AGENT: agent } as Env,
+    store as never);
+  assert.equal(asked.length, 1);
+  assert.equal(asked[0].model, "claude-sonnet-5-5");
+  assert.equal((asked[0].schema as { type: string }).type, "object");
+  assert.equal("$schema" in (asked[0].schema as object), false, "Claude Code rejects a $schema it does not know");
+  const stored = JSON.parse(store.puts[0].value) as { items: unknown[]; costCents: number; model: string };
+  assert.deepEqual(stored.items, []);
+  assert.equal(stored.costCents, 1.23);
+  assert.deepEqual(others, [], "the API was never asked");
+});
