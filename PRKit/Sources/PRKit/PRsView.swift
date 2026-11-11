@@ -53,12 +53,19 @@ struct PRsView: View {
     }
 
     private var stack: some View {
-        TabStack(path: $navigation.routes) {
-            PRsList(model: model, selected: nil)
-                .returnedToOnMac(atRoot: navigation.routes.isEmpty)
-                .showsPullRequests()
-        }
-        .opensPullRequestLinks(on: .routes($navigation.routes))
+        #if os(macOS)
+        TabStack(path: $navigation.macPath) { stackRoot }
+            .opensPullRequestLinks(on: .routes($navigation.routes))
+        #else
+        TabStack(path: $navigation.routes) { stackRoot }
+            .opensPullRequestLinks(on: .routes($navigation.routes))
+        #endif
+    }
+
+    private var stackRoot: some View {
+        PRsList(model: model, selected: nil)
+            .returnedToOnMac(atRoot: navigation.routes.isEmpty)
+            .showsPullRequests()
     }
 
     /// A link from a notification: there is no stack of its own to go back to, so it shows here, over nothing else.
