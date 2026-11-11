@@ -9,7 +9,7 @@ import { peopleOf } from "./policy-github.ts";
 import { PEOPLE_FIELDS, type PeopleDecision, type PeopleNode } from "./policy-people.ts";
 import { botAuthorsOf, isBotAuthor, type RequestedBy, requestedByOf } from "./requester.ts";
 import {
-  allKeys, lookUpTickets, resolvedTickets, rowTicket, type Ticket, type TicketKeys, ticketKeysOf,
+  allKeys, lookUpTickets, resolvedTickets, rowTickets, type Ticket, type TicketKeys, ticketKeysOf,
 } from "./tickets.ts";
 import type {
   CheckState, ChecksSummary, MergeState, OpenList, PolicyState, PullRequestState, ReviewState,
@@ -177,7 +177,9 @@ export interface PullRequest {
   detail: Detail;
   /** The ticket keys its title, branch and description name, before Linear is asked (`readPullRequests` asks). */
   ticketKeys: TicketKeys;
-  /** The ticket its row shows (`rowTicket`): null until Linear has one of its keys. */
+  /** The tickets its row shows (`rowTickets`): empty until Linear has one of its keys. */
+  tickets: Ticket[];
+  /** The first of `tickets`, for an app older than them; null without one. */
   ticket: Ticket | null;
   /** When review was last asked of the user, for alerts (`alerts.ts`). */
   requestedAt: string | null;
@@ -630,6 +632,7 @@ export function pullRequest(
     ),
     requestedAt,
     ticketKeys,
+    tickets: [],
     ticket: null,
     detail: {
       id: node.id, url: node.url, state: detailState(node), head: node.headRefOid, base: node.baseRefName,
@@ -780,7 +783,8 @@ export async function readPullRequests(
   for (const pr of read) {
     if (pr) {
       pr.detail.tickets = resolvedTickets(pr.ticketKeys, issues);
-      pr.ticket = rowTicket(pr.detail.tickets);
+      pr.tickets = rowTickets(pr.ticketKeys, pr.detail.tickets);
+      pr.ticket = pr.tickets[0] ?? null;
     }
   }
   return new Map(refs.map((ref, index) => [ref.id, read[index] ?? null]));

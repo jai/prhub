@@ -20,7 +20,7 @@ import {
   detailVersionOf, liveDiff, type OpenRowStatus, type PullRequest, type PullRequestRef, readPullRequests, type RowStatus,
   searchListings,
 } from "./github";
-import { parseRowStatus, parseStoredTicket } from "./boundary";
+import { parseRowStatus, parseStoredTicket, parseStoredTickets } from "./boundary";
 import { cachedTickets, createTicketsTable, refreshTickets } from "./ticket-cache";
 import { allKeys, lookUpTickets, type Ticket } from "./tickets";
 import {
@@ -62,7 +62,7 @@ const KEY_LINES_PER_PASS = 5;
 /** A job that failed, say at a usage limit, goes again after this long, so the list heals without being asked. */
 const KEY_LINES_RETRY_MS = 30 * 60_000;
 /** Raise it when what a row or detail holds changes shape: every held PR is then read again, once. */
-const ROW_SHAPE = 11;
+const ROW_SHAPE = 12;
 /** The retention sweep (`retention.ts`) runs at most this often. */
 const RETENTION_SWEEP_MS = 86_400_000;
 const LIST_ORDER = "CASE list WHEN 'mine' THEN 1 ELSE 0 END, updated_at DESC";
@@ -95,7 +95,9 @@ export interface Row {
   status: RowStatus | null;
   /** The context the phone can fetch key lines at for this head, once they are ready. */
   keyLines: number | null;
-  /** The Linear ticket the row shows (`rowTicket`); null without one Linear has, or without Linear. */
+  /** The Linear tickets the row shows (`rowTickets`); empty without one Linear has, or without Linear. */
+  tickets: Ticket[];
+  /** The first of `tickets`, for an app older than them; null without one. */
   ticket: Ticket | null;
 }
 
@@ -139,12 +141,16 @@ export class PrIndex extends DurableObject<Env> {
 
   /** The rows of `GET /prs`, chosen and ordered by `rest`: one SELECT, so an alert's row is the list's row. */
   private selectRows(rest: string, ...bindings: unknown[]): Row[] {
-    const rows = this.sql.exec<Omit<Row, "status" | "ticket"> & { status: string | null; ticket: string | null }>(
+    const rows = this.sql.exec<Omit<Row, "status" | "ticket" | "tickets">
+      & { status: string | null; ticket: string | null; tickets: string | null }>(
       `SELECT repo, number, title, head,
       revision, diff_state AS diff, COALESCE(detail_version, NULLIF(version, ''), updated_at) AS detail, status,
-      CASE WHEN key_lines_ready = head THEN ${DEFAULT_CONTEXT} END AS keyLines, ticket
+      CASE WHEN key_lines_ready = head THEN ${DEFAULT_CONTEXT} END AS keyLines, ticket, tickets
       FROM pull_requests ${rest}`, ...bindings).toArray();
-    return rows.map((row) => ({ ...row, status: parseRowStatus(row.status), ticket: parseStoredTicket(row.ticket) }));
+    return rows.map((row) => ({
+      ...row, status: parseRowStatus(row.status), ticket: parseStoredTicket(row.ticket),
+      tickets: parseStoredTickets(row.tickets),
+    }));
   }
 
   /** A delivery. A PR no list holds and Jai has no part in is dropped here, so it never costs a GitHub read. */
@@ -608,18 +614,18 @@ export class PrIndex extends DurableObject<Env> {
     const held = this.sql.exec<{ detail_version: string | null }>(
       "SELECT detail_version FROM pull_requests WHERE id = ?", id).toArray()[0];
     this.sql.exec(`INSERT INTO pull_requests (id, repo, number, title, head, revision, list, updated_at, version,
-        detail_version, status, changed_at, ticket, ticket_keys, diff_state, diff_tried_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)
+        detail_version, status, changed_at, ticket, ticket_keys, tickets, diff_state, diff_tried_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)
       ON CONFLICT (id) DO UPDATE SET title = excluded.title, head = excluded.head, list = excluded.list,
         updated_at = excluded.updated_at, version = excluded.version, detail_version = excluded.detail_version,
         status = excluded.status, changed_at = excluded.changed_at, ticket = excluded.ticket,
-        ticket_keys = excluded.ticket_keys,
+        ticket_keys = excluded.ticket_keys, tickets = excluded.tickets,
         diff_state = CASE WHEN revision <> excluded.revision THEN 'pending' ELSE diff_state END,
         diff_tried_at = CASE WHEN revision <> excluded.revision THEN 0 ELSE diff_tried_at END,
         revision = excluded.revision`,
     id, pr.repo, pr.number, pr.title, pr.head, pr.revision, pr.status.list, pr.updatedAt, pr.version, detailVersion,
     JSON.stringify(pr.status), Date.now(), pr.ticket && JSON.stringify(pr.ticket),
-    JSON.stringify(allKeys(pr.ticketKeys)));
+    JSON.stringify(allKeys(pr.ticketKeys)), JSON.stringify(pr.tickets));
     if (held?.detail_version !== detailVersion) {
       this.setMeta("changed_at", Date.now());
     }

@@ -46,7 +46,7 @@ public struct PrListBlock: View {
     }
 
     private var hasFoot: Bool {
-        !item.pullRequests.isEmpty && item.ticket != nil
+        !item.pullRequests.isEmpty && !item.tickets.isEmpty
     }
 
     public var body: some View {
@@ -65,9 +65,11 @@ public struct PrListBlock: View {
                     .padding(.top, Space.sm)
                     .opacity(opacity)
             }
-            if hasFoot, let ticket = item.ticket {
-                ticketLine(ticket)
-                    .opacity(opacity)
+            if hasFoot {
+                ForEach(Array(item.tickets.enumerated()), id: \.offset) { _, ticket in
+                    ticketLine(ticket)
+                        .opacity(opacity)
+                }
             }
         }
         .padding(.horizontal, Space.lg)
@@ -75,8 +77,8 @@ public struct PrListBlock: View {
         .padding(.bottom, hasFoot ? 0 : Space.md)
         .backgroundPreferenceValue(TicketLineBounds.self) { bounds in
             GeometryReader { proxy in
-                if let bounds {
-                    TicketRail(leading: 16 + avatarSize / 2, top: 12 + avatarSize / 2, end: proxy[bounds])
+                if !bounds.isEmpty {
+                    TicketRail(leading: 16 + avatarSize / 2, top: 12 + avatarSize / 2, ends: bounds.map { proxy[$0] })
                         .stroke(.separator, lineWidth: 1)
                 }
             }
@@ -241,31 +243,38 @@ public struct PrListBlock: View {
                 .frame(minHeight: 44)
                 .contentShape(.rect)
         }
-        .anchorPreference(key: TicketLineBounds.self, value: .bounds) { $0 }
+        .anchorPreference(key: TicketLineBounds.self, value: .bounds) { [$0] }
         .padding(.leading, textColumn + PrListGrid.ticketStep)
     }
 }
 
+/// Each ticket line's bounds, top to bottom.
 private struct TicketLineBounds: PreferenceKey {
-    static let defaultValue: Anchor<CGRect>? = nil
+    static let defaultValue: [Anchor<CGRect>] = []
 
-    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
-        value = value ?? nextValue()
+    static func reduce(value: inout [Anchor<CGRect>], nextValue: () -> [Anchor<CGRect>]) {
+        value += nextValue()
     }
 }
 
-/// The line from the first avatar down to the ticket, turning right to stop just short of its mark.
+/// The line from the first avatar down to the last ticket, turning right to stop just short of each ticket's mark.
 private struct TicketRail: Shape {
     let leading: CGFloat
     let top: CGFloat
-    let end: CGRect
+    let ends: [CGRect]
     private static let gap: CGFloat = 4
 
     func path(in rect: CGRect) -> Path {
         var path = Path()
+        guard let last = ends.map(\.midY).max() else {
+            return path
+        }
         path.move(to: CGPoint(x: leading, y: top))
-        path.addLine(to: CGPoint(x: leading, y: end.midY))
-        path.addLine(to: CGPoint(x: end.minX - Self.gap, y: end.midY))
+        path.addLine(to: CGPoint(x: leading, y: last))
+        for end in ends {
+            path.move(to: CGPoint(x: leading, y: end.midY))
+            path.addLine(to: CGPoint(x: end.minX - Self.gap, y: end.midY))
+        }
         return path
     }
 }

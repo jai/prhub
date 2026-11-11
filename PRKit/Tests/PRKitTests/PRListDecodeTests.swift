@@ -44,4 +44,33 @@ struct PRListDecodeTests {
         let none = try JSONDecoder().decode(PullRequestRow.self, from: Data((Self.row + #", "ticket": null}"#).utf8))
         #expect(none.ticket == nil)
     }
+
+    static func ticket(_ key: String) -> PRListTicket {
+        PRListTicket(key: key, title: key, state: "Todo", stateType: "unstarted", found: true)
+    }
+
+    @Test func aRowsTicketsDecodeInOrder() throws {
+        let one = { (key: String) in #"{"key": "\#(key)", "url": null, "title": "\#(key)", "state": "Todo", "#
+            + #""state_type": "unstarted", "state_color": null, "found": true}"# }
+        let json = Self.row + #", "ticket": \#(one("DEVOP-1")), "tickets": [\#(one("DEVOP-1")), \#(one("DEVOP-2"))]}"#
+        let row = try JSONDecoder().decode(PullRequestRow.self, from: Data(json.utf8))
+        #expect(row.tickets?.map(\.key) == ["DEVOP-1", "DEVOP-2"])
+        #expect(try JSONDecoder().decode(PullRequestRow.self, from: Data((Self.row + "}").utf8)).tickets == nil)
+    }
+
+    @Test func aTitlesBracketGoesOnlyWhenEveryKeyInItHasItsTicketLine() throws {
+        let pullRequest = try Self.listPullRequest(#", "title": "fix: Do something [DEVOP-1, DEVOP-2]""#)
+        let title = { (tickets: [PRListTicket]) in
+            PRListItem(ticket: tickets.first, moreTickets: Array(tickets.dropFirst()), pullRequests: [pullRequest])
+                .title(of: pullRequest)
+        }
+        #expect(title([Self.ticket("DEVOP-1"), Self.ticket("DEVOP-2")]) == "fix: Do something")
+        #expect(title([Self.ticket("DEVOP-1")]) == "fix: Do something [DEVOP-1, DEVOP-2]", "DEVOP-2 has no line")
+        #expect(title([]) == "fix: Do something [DEVOP-1, DEVOP-2]")
+        let two = try Self.listPullRequest(#", "title": "Retry [API-88] [sec-12]""#)
+        let item = PRListItem(ticket: Self.ticket("API-88"), moreTickets: [Self.ticket("SEC-12")], pullRequests: [two])
+        #expect(item.title(of: two) == "Retry")
+        let single = try Self.listPullRequest(#", "title": "Retry [ENG-7]""#)
+        #expect(PRListItem(ticket: Self.ticket("ENG-7"), pullRequests: [single]).title(of: single) == "Retry")
+    }
 }

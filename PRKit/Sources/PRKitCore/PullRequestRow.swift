@@ -16,10 +16,14 @@ public struct PullRequestRow: Codable, Hashable, Identifiable, Sendable {
     public var keyLines: Int?
     /// The Linear ticket the row shows, as Linear has it. Absent without one, and from a Worker older than it.
     public var ticket: PRListTicket?
+    /// Every ticket the row shows, `ticket` first: each its title names that Linear has. Absent from a Worker older
+    /// than it, and then the row shows `ticket` alone.
+    public var tickets: [PRListTicket]?
 
     public init(
         repo: String, number: Int, title: String, head: String, revision: String, diff: DiffAvailability,
-        detail: String, status: Status?, keyLines: Int? = nil, ticket: PRListTicket? = nil
+        detail: String, status: Status?, keyLines: Int? = nil, ticket: PRListTicket? = nil,
+        tickets: [PRListTicket]? = nil
     ) {
         self.repo = repo
         self.number = number
@@ -31,6 +35,7 @@ public struct PullRequestRow: Codable, Hashable, Identifiable, Sendable {
         self.status = status
         self.keyLines = keyLines
         self.ticket = ticket
+        self.tickets = tickets
     }
 
     public struct Status: Codable, Hashable, Sendable {

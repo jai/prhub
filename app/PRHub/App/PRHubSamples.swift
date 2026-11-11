@@ -306,10 +306,11 @@ struct PRHubSample {
     /// The detail's `tickets`, as JSON.
     var tickets = "[]"
 
-    /// The row's ticket, as the Worker picks it: the first of the detail's tickets Linear has.
-    private var ticket: PRListTicket? {
+    /// The row's tickets: the detail's tickets Linear has. Each sample's are all its title's, or one from its
+    /// description, which is what the Worker picks for them.
+    private var rowTickets: [PRListTicket] {
         let all = try? JSONDecoder().decode([PRListTicket].self, from: Data(tickets.utf8))
-        return all?.first { $0.found == true }
+        return (all ?? []).filter { $0.found == true }
     }
 
     var sample: PRSampleSet.Sample {
@@ -322,7 +323,7 @@ struct PRHubSample {
                 requestedAt: requestedHoursAgo.map { Date.now.addingTimeInterval(-$0 * 3_600).ISO8601Format() },
                 reviewDueAt: dueHoursAgo.map { Date.now.addingTimeInterval(-$0 * 3_600).ISO8601Format() }
             ),
-            keyLines: PRKeyLines.defaultContext, ticket: ticket
+            keyLines: PRKeyLines.defaultContext, ticket: rowTickets.first, tickets: rowTickets
         )
         return PRSampleSet.Sample(row: row, detail: detail, diff: diff, keyLines: keyLines)
     }

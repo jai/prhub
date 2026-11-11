@@ -147,7 +147,12 @@ export function resolvedTickets(keys: TicketKeys, issues: ReadonlyMap<string, Ti
   return [...fromTitle, ...linked];
 }
 
-/** The ticket a PRs-tab row shows: the first of its tickets Linear has. Null without one. */
-export function rowTicket(tickets: readonly Ticket[]): Ticket | null {
-  return tickets.find((ticket) => ticket.found === true) ?? null;
+/**
+ * The tickets a PRs-tab row shows: every ticket its title names that Linear has, in the title's order; without one, the
+ * first its branch or description names that Linear has. Empty without one.
+ */
+export function rowTickets(keys: TicketKeys, tickets: readonly Ticket[]): Ticket[] {
+  const found = tickets.filter((ticket) => ticket.found === true);
+  const fromTitle = found.filter((ticket) => keys.title.includes(ticket.key));
+  return fromTitle.length > 0 ? fromTitle : found.slice(0, 1);
 }

@@ -10,6 +10,7 @@ const ADDED_COLUMNS: [name: string, type: string][] = [
   ["detail_version", "TEXT"],
   ["ticket", "TEXT"],
   ["ticket_keys", "TEXT"],
+  ["tickets", "TEXT"],
 ];
 
 export function addMissingColumns(sql: LimitSql): void {
