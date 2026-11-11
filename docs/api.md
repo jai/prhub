@@ -479,11 +479,11 @@ When one is sent:
   time alerts nothing.
 - Once per kind, PR and head commit: asked again at the same commit, the user hears nothing new. The keys are kept 30
   days.
-- Only once the PR's detail and diff, and its key lines when this Worker makes them (an Anthropic key, and the PR on
-  the review list), are stored at the head the alert is about, so the phone reads them from R2 and never waits on
-  GitHub. An alert waits 30 seconds at most, then goes anyway; one whose PR's head moved on goes at once, and one whose
-  PR left every list is not sent (`alert_dropped`). Each held alert is in `/events` as `push_delayed` with `{kind, pr,
-  ms, reason}`, `reason` being `ready`, `moved` or `timed_out`.
+- Only once the PR's detail and diff are stored at the head the alert is about, so the phone reads them from R2 and
+  never waits on GitHub. Key lines are made only when the app asks for them, never ahead of an alert. An alert waits
+  30 seconds at most, then goes anyway; one whose PR's head moved on goes at once, and one whose PR left every list is
+  not sent (`alert_dropped`). Each held alert is in `/events` as `push_delayed` with `{kind, pr, ms, reason}`,
+  `reason` being `ready`, `moved` or `timed_out`.
 - To every device registered on the production host, as the wake is (a Simulator's sandbox registration gets none),
   through the relay when it is set, else direct APNs; a Worker with neither sends none. Each send is in `/events` as `kind: "alert"` with `{kind, pr, title, held_ms, status, reason}`.
 
