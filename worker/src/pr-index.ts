@@ -2,7 +2,7 @@ import { alarmToSet } from "./alarm";
 import { claimOf, RECEIPT_KEPT_MS, type WriteClaim, type WriteReceipt } from "./write-receipts";
 import { DurableObject } from "cloudflare:workers";
 import { alertKey, alertKinds, alertMessage, alertsFor, type HeldStatus } from "./alerts";
-import { createHeldAlertsTable, type HeldRow, holdAlert, releaseAlerts } from "./push-gate";
+import { createHeldAlertsTable, holdAlert, releaseAlerts } from "./push-gate";
 import {
   createPushRegistrationsTable, forgetPushTokensOf, pruneUnlinkedPushTokens, registerPushToken,
 } from "./push-registrations";
@@ -10,8 +10,7 @@ import {
   type ApnsHost, apnsJwt, type PushMessage, pushMode, type PushOutcome, sendDirect, sendViaPager, sendViaRelay,
   SYNC_WAKE,
 } from "./apns";
-import { aiConfigOf } from "./config";
-import { aiJobs, type Env, isSet, scopedKey } from "./env";
+import { type Env, isSet, scopedKey } from "./env";
 import { actingEnvFor } from "./hosted";
 import type { SignedOutReason } from "./account-core";
 import { fingerprintOf, type PairingRecord, pairingKey, parsePairingRecord } from "./pairing";
@@ -21,7 +20,7 @@ import {
 } from "./github";
 import { parseRowStatus } from "./boundary";
 import {
-  type CodeHash, type DeviceToken, type Fingerprint, parseRepoFullName, parseSha, prId, type PrId, type RepoFullName,
+  type CodeHash, type DeviceToken, type Fingerprint, parseRepoFullName, prId, type PrId, type RepoFullName,
   type Sha,
 } from "./ids";
 import { putVersioned, storeDiff } from "./versioned";
@@ -54,9 +53,6 @@ const PUSH_SPACING_MS = 30 * 60_000;
 const KEPT_EVENTS = 5_000;
 /** An alert's key outlives any re-request worth hushing; a month of them is a few hundred rows. */
 const ALERTS_KEPT_MS = 30 * 86_400_000;
-const KEY_LINES_PER_PASS = 5;
-/** A job that failed, say for want of credit, goes again after this long, so the list heals without being asked. */
-const KEY_LINES_RETRY_MS = 30 * 60_000;
 /** Raise it when what a row or detail holds changes shape: every held PR is then read again, once. */
 const ROW_SHAPE = 10;
 /** The retention sweep (`retention.ts`) runs at most this often. */
@@ -130,12 +126,8 @@ export class PrIndex extends DurableObject<Env> {
     if (!columns.some(({ name }) => name === "status")) {
       this.sql.exec("ALTER TABLE pull_requests ADD COLUMN status TEXT");
     }
-    if (!columns.some(({ name }) => name === "key_lines_queued")) {
-      this.sql.exec("ALTER TABLE pull_requests ADD COLUMN key_lines_queued TEXT");
+    if (!columns.some(({ name }) => name === "key_lines_ready")) {
       this.sql.exec("ALTER TABLE pull_requests ADD COLUMN key_lines_ready TEXT");
-    }
-    if (!columns.some(({ name }) => name === "key_lines_tried_at")) {
-      this.sql.exec("ALTER TABLE pull_requests ADD COLUMN key_lines_tried_at INTEGER");
     }
     if (!columns.some(({ name }) => name === "detail_version")) {
       this.sql.exec("ALTER TABLE pull_requests ADD COLUMN detail_version TEXT");
@@ -184,7 +176,7 @@ export class PrIndex extends DurableObject<Env> {
   override async alarm(): Promise<void> {
     const env = await this.actingEnv();
     await this.readMarked(env);
-    await this.sendHeldAlerts(env);
+    await this.sendHeldAlerts();
   }
 
   private async readMarked(env: Env | null): Promise<void> {
@@ -235,7 +227,6 @@ export class PrIndex extends DurableObject<Env> {
       }
     }
     await this.storeDiffs(env);
-    await this.queueKeyLines(env);
     this.noteRateLimit(env);
     if (this.exists("dirty") || this.exists("pending")) {
       await this.ctx.storage.setAlarm(this.rateLimitedUntil(Date.now()) ?? Date.now() + 250);
@@ -255,7 +246,6 @@ export class PrIndex extends DurableObject<Env> {
       try {
         await this.compareWithGitHub(env);
         this.setMeta("synced_at", now);
-        await this.queueKeyLines(env);
       } catch (error) {
         this.addEvent("poll_failed", { error: String(error) });
       }
@@ -343,11 +333,9 @@ export class PrIndex extends DurableObject<Env> {
    * The held alerts whose PR's files are stored, or that waited long enough, each with how long it was held in
    * `/events` (`alert` and `push_delayed`). One still waiting has an alarm at its deadline.
    */
-  private async sendHeldAlerts(env: Env | null): Promise<void> {
-    const makesKeyLines = env !== null && isSet(env.ANTHROPIC_API_KEY);
-    const keyLinesOn = (row: HeldRow) => makesKeyLines && row.list === "review" && row.diff_state === "ready";
+  private async sendHeldAlerts(): Promise<void> {
     const now = Date.now();
-    const { release, dropped, nextAt } = releaseAlerts(this.sql, now, keyLinesOn);
+    const { release, dropped, nextAt } = releaseAlerts(this.sql, now);
     for (const alert of dropped) {
       this.addEvent("alert_dropped", { kind: alert.kind, pr: prId(alert.repo, alert.number) });
     }
@@ -615,36 +603,10 @@ export class PrIndex extends DurableObject<Env> {
     }
   }
 
-  /** One job per new head of a PR waiting on Jai. `AiJobs` runs it, so this mirror never waits on a model. */
-  private async queueKeyLines(env: Env): Promise<void> {
-    if (!isSet(env.ANTHROPIC_API_KEY)) {
-      return;
-    }
-    const due = this.sql.exec<{ id: string; repo: string; number: number; head: string }>(`SELECT id, repo, number, head
-      FROM pull_requests WHERE list = 'review' AND diff_state = 'ready' AND (COALESCE(key_lines_queued, '') <> head
-        OR (COALESCE(key_lines_ready, '') <> head AND COALESCE(key_lines_tried_at, 0) < ?))
-      LIMIT ?`, Date.now() - KEY_LINES_RETRY_MS, KEY_LINES_PER_PASS).toArray();
-    for (const row of due) {
-      this.sql.exec("UPDATE pull_requests SET key_lines_queued = ?, key_lines_tried_at = ? WHERE id = ?", row.head,
-        Date.now(), row.id);
-      const head = parseSha(row.head);
-      const ref = refOf(row);
-      if (!head || !ref) {
-        continue;
-      }
-      await aiJobs(env).enqueue({
-        kind: "key_lines", repo: ref.repo, number: ref.number, head, context: DEFAULT_CONTEXT, choice: aiConfigOf(env).defaults.key_lines,
-      }, isSet(env.SIGNED_IN_USER_ID) ? env.SIGNED_IN_USER_ID : null);
-    }
-  }
-
-  /** Key lines landed: an alert held for them (`push-gate.ts`) may go now. */
+  /** Key lines at the default context landed: the list says so, and the phone prefetches them. */
   async keyLinesReady(id: PrId, head: Sha): Promise<void> {
     this.sql.exec("UPDATE pull_requests SET key_lines_ready = ? WHERE id = ? AND head = ?", head, id, head);
     this.setMeta("changed_at", Date.now());
-    if (this.sql.exec("SELECT 1 FROM held_alerts LIMIT 1").toArray().length > 0) {
-      await this.ensureAlarm(0);
-    }
   }
 
   private remove(id: string): void {

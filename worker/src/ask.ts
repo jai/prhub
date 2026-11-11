@@ -113,11 +113,18 @@ export async function askChat(repo: RepoFullName, number: number, env: Env): Pro
   );
 }
 
-/** Sends the question. The route reads the conversation after, so a repeat that finds this sent reads it too. */
+/**
+ * Sends the question. The route reads the conversation after, so a repeat that finds this sent reads it too. Each
+ * question is one `ai_run` log line; its cost is the session's, read from Anthropic, as the turn has not run yet.
+ */
 export async function ask(repo: RepoFullName, number: number, input: AskInput, choice: ModelChoice, env: Env): Promise<void> {
   const record = await liveRecord(repo, number, input.head, choice, env);
   await client(env).beta.sessions.events.send(record.session, {
     events: [{ type: "user.message", content: [{ type: "text", text: askPrompt(input, record.head) }] }],
+  });
+  console.log("ai_run", {
+    feature: "ask", repo, number, user_id: env.SIGNED_IN_USER_ID ?? null, model: choice.model, effort: choice.effort,
+    session: record.session,
   });
   await env.DIFFS.put(askRecordKey(repo, number, env), JSON.stringify({ ...record, head: input.head }));
 }
