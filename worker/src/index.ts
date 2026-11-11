@@ -9,7 +9,9 @@ import { eventRoute, registerRoute, unpairRoute } from "./devices";
 import { aiConfigOf, askConfigured, deviceConfig, feedbackConfigured } from "./config";
 import { aiJobs, askQueue, type Env, githubLogin, isSet, prIndex, scopedKey } from "./env";
 import { aiStoreKey } from "./ai-run";
-import { detailVersionOf, fetchDiff, liveDiff, mergedPullRequests, pullRequestSummary, readPullRequests } from "./github";
+import {
+  detailVersionOf, fetchDiff, liveDiff, mergedPullRequests, pullRequestSummary, readPullRequests, reviewWeek,
+} from "./github";
 import { parseRepoFullName, parseSha, prId, type RepoFullName } from "./ids";
 import {
   addFeedback, feedbackChat, feedbackList, isFeedbackId, listServedLog, parseAgentSide, parseFeedbackInput, r2Store, runnerAgent,
@@ -626,7 +628,7 @@ export async function serveOwner(
       : new Response("unauthorized\n", { status: 401 });
   }
   if (pathname === "/prs/states" && request.method === "POST") {
-    return hasToken(request, env.HUB_TOKEN) ? statesRoute(request, env)
+    return hasToken(request, env.HUB_TOKEN) ? statesRoute(request, env, reviewWeek(env))
       : new Response("unauthorized\n", { status: 401 });
   }
   if (!isHostAuthorized && !(await isAuthorized(request, env))) {

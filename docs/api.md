@@ -226,6 +226,16 @@ checked on every run: [`row.json`](fixtures/row.json), [`merged-row.json`](fixtu
   its first assignee that is no bot. It is `{login, name, avatarUrl, source}`, `source` being `co_author`, `body` or
   `assignee`, and null on a person's own PR or when nothing is recorded.
 
+### `POST /prs/states`
+
+The threads hub's read of any PRs' state, with `HUB_TOKEN` as a bearer token: `{"refs": ["owner/repo#7", …]}`, 1 to
+20 refs. It answers `{"states": {"owner/repo#7": {…} | null}, "unanswered": […]}`: null for a PR GitHub has not got,
+and `unanswered` for one GitHub would not answer for. A state holds `title`, `state`, `checks`, `merge`, `review`,
+`author`, `author_name`, `created_at`, `jai_review`, `jai_reviewed_at`, `jai_review_requested` and `review_due_at`.
+`review_due_at` is when Jai's review is due by the SLA (`REVIEW_SLA_*`), ISO 8601 in UTC (`2026-11-09T03:00:00Z`), the
+same time as a review row's `reviewDueAt`. It is null unless `jai_review_requested` is true, when only a team was
+asked, and when the SLA is unset.
+
 ## Configuration
 
 Required: `GITHUB_TOKEN` (secret), and the `DIFFS` R2 bucket, `PR_INDEX` and `AI_JOBS` Durable Objects and the

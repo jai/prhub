@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { reviewWeek } from "../src/github.ts";
 import { parseRefs, stateOf, statesFrom, statesQuery } from "../src/pr-states.ts";
 
 const policyBot = (state: string) => ({ __typename: "StatusContext", context: "policy-bot: main", state });
@@ -10,6 +11,7 @@ function node(fields: object = {}, contexts: object[] = [], rollup: string | nul
     title: "Allow apostrophes", state: "OPEN", isDraft: false, mergeable: "MERGEABLE", mergeStateStatus: "CLEAN",
     reviewDecision: null, createdAt: "2026-10-24T09:12:00Z", author: { login: "octocat", name: " Mona " },
     latestReviews: { nodes: [] }, reviews: { nodes: [] }, viewerLatestReview: null, viewerLatestReviewRequest: null,
+    requestEvents: { nodes: [] },
     overall: { nodes: [{ commit: { statusCheckRollup: rollup ? { state: rollup } : null } }] },
     commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: contexts } } } }] },
     ...fields,
@@ -71,10 +73,31 @@ test("Jai's own review: his change request stands, a draft shows, and being aske
   assert.equal(stateOf(node(), "jai").jai_review, null);
 });
 
+const WEEK = reviewWeek({
+  REVIEW_SLA_UTC_OFFSET_HOURS: "7", REVIEW_SLA_HOURS: "9-18", REVIEW_SLA_WEEKDAYS: "1,2,3,4,5",
+});
+
+test("the review's due time is the PRs tab's, and only while review is asked of Jai", () => {
+  // Asked on Friday 6 November at 10:00 in UTC+7: due on Monday at 10:00, as the row's `reviewDueAt` says.
+  const events = { nodes: [{ createdAt: "2026-11-05T09:00:00Z", requestedReviewer: { login: "jai" } },
+    { createdAt: "2026-11-06T03:00:00Z", requestedReviewer: { login: "jai" } },
+    { createdAt: "2026-11-07T03:00:00Z", requestedReviewer: { login: "sam" } }] };
+  const asked = node({ viewerLatestReviewRequest: { id: "x" }, requestEvents: events });
+  assert.equal(stateOf(asked, "jai", WEEK).review_due_at, "2026-11-09T03:00:00Z");
+  assert.equal(stateOf(asked, "jai").review_due_at, null, "no SLA week, no due time");
+  assert.equal(stateOf(node({ requestEvents: events }), "jai", WEEK).review_due_at, null, "not asked of him now");
+  const team = node({ viewerLatestReviewRequest: { id: "x" }, requestEvents: { nodes: [] } });
+  assert.equal(stateOf(team, "jai", WEEK).review_due_at, null, "only a team was asked");
+  const { aliases } = statesQuery(["jai/trips#1"]);
+  assert.equal(statesFrom({ data: { r0: { p0: asked } } }, aliases, "jai", WEEK).states["jai/trips#1"]?.review_due_at,
+    "2026-11-09T03:00:00Z");
+});
+
 test("no such PR is told from one GitHub wouldn't answer for", () => {
   const { query, aliases } = statesQuery(["jai/trips#1", "jai/trips#2", "jai/gone#3", "acme/app#4"]);
   assert.match(query, /r0: repository\(owner: "jai", name: "trips"\) \{ p0: pullRequest\(number: 1\)/);
   assert.match(query, /isRequired\(pullRequestNumber: 2\)/);
+  assert.match(query, /requestEvents: timelineItems\(itemTypes: \[REVIEW_REQUESTED_EVENT\], last: 20\)/);
   const answer = statesFrom({
     data: { r0: { p0: node(), p1: null }, r1: null, r2: { p0: null } },
     errors: [{ type: "NOT_FOUND", path: ["r0", "p1"] }, { type: "NOT_FOUND", path: ["r1"] },
