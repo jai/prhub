@@ -94,6 +94,8 @@ struct PRsList: View {
     @State private var isShowingFilter = false
     @AppStorage("prShowsMerged") private var showsMyMerged = false
     @AppStorage("prShowsMergedReviews") private var showsReviewedMerged = false
+    @AppStorage("prListOrder") private var order = PRListOrder.sla
+    @AppStorage("prListGrouping") private var grouping = PRListGrouping.none
 
     private var orgFilter: PROrgFilter {
         savedOrgFilter ?? model.orgDefault.filter(owners: model.orgs)
@@ -113,7 +115,7 @@ struct PRsList: View {
         if showsMerged(on: page) {
             return (model.merged[page] ?? []).filter { orgFilter.shows($0) }
         }
-        return PRListPage.ordered(liveRows.filter { page.holds($0) && orgFilter.shows($0) })
+        return PRListPage.ordered(liveRows.filter { page.holds($0) && orgFilter.shows($0) }, by: order)
     }
 
     /// My PRs shows Jai's open PRs or, picked in the filter, his merged ones.
@@ -170,6 +172,9 @@ struct PRsList: View {
                     repoFilterNote
                 }
                 list(rows(on: page), on: page)
+                if model.arrivingCount > 0, !model.rows.isEmpty {
+                    arriving
+                }
                 if showsMergedHere, let error = model.mergedError[page] {
                     banner("Merged PRs didn't load. \(error)")
                 }
@@ -185,13 +190,20 @@ struct PRsList: View {
         .animation(AppMotion.fold, value: showsMergedHere)
         .animation(AppMotion.fold, value: model.removedRequests)
         .animation(AppMotion.fold, value: model.localAnswers)
+        .animation(AppMotion.fold, value: order)
+        .animation(AppMotion.fold, value: grouping)
+        .animation(AppMotion.fold, value: model.isSyncing)
         .background(Color.groundPage)
         .navigationTitle("PRs")
         .toolbar {
             ToolbarItem(placement: .primaryAction) { filterButton }
         }
         .overlay {
-            if model.rows.isEmpty, let message = model.errorMessage {
+            if model.rows.isEmpty, model.isSyncing {
+                ProgressView(model.arrivingCount > 0 ? "Downloading \(model.arrivingCount) PRs…" : "Loading PRs…")
+                    .accessibilityIdentifier("pr-list-loading")
+                    .transition(.opacity)
+            } else if model.rows.isEmpty, let message = model.errorMessage {
                 ContentUnavailableView(
                     model.stillDownloading ? "Downloading PRs" : "PRs didn't load", systemImage: "arrow.triangle.pull",
                     description: Text(message)
@@ -217,19 +229,44 @@ struct PRsList: View {
     }
 
     /// In the list, not the bar: it scrolls away with the first rows, so it costs no room while reading.
+    /// The counts change in place: the list's fold animation would slide the segments' labels, so they take none.
     private var pagePicker: some View {
         Picker("List", selection: $page) {
             Text(
-                showsReviewedMerged ? "Reviewed merged · \(rows(on: .review).count)"
-                    : "For review · \(rows(on: .review).filter(\.isReviewRequest).count)"
+                showsReviewedMerged ? "Reviewed merged\(count(rows(on: .review).count))"
+                    : "For review\(count(rows(on: .review).filter(\.isReviewRequest).count))"
             )
+            .monospacedDigit()
             .tag(PRListPage.review)
-            Text("\(showsMyMerged ? "My merged" : "My PRs") · \(rows(on: .mine).count)").tag(PRListPage.mine)
+            Text("\(showsMyMerged ? "My merged" : "My PRs")\(count(rows(on: .mine).count))")
+                .monospacedDigit()
+                .tag(PRListPage.mine)
         }
         .pickerStyle(.segmented)
+        .transaction { $0.animation = nil }
         .padding(.horizontal, Space.lg)
         .padding(.top, Space.sm)
         .accessibilityIdentifier("pr-list-page")
+    }
+
+    /// No count until the first list has come: a zero then would say there is nothing to review.
+    private func count(_ count: Int) -> String {
+        model.rows.isEmpty && model.isSyncing ? "" : " · \(count)"
+    }
+
+    /// Under the rows while a sync still has PRs on their way: each shows as it lands.
+    private var arriving: some View {
+        HStack(spacing: Space.sm) {
+            ProgressView()
+                .controlSize(.small)
+            Text("Downloading \(model.arrivingCount) more PRs…")
+                .font(.appCaption)
+                .foregroundStyle(Color.secondary)
+        }
+        .padding(.horizontal, Space.lg)
+        .padding(.top, Space.sm)
+        .transition(.fold)
+        .accessibilityIdentifier("pr-list-arriving")
     }
 
     /// A filter can hide most of a list, so it says so, and one tap undoes it.
@@ -259,7 +296,8 @@ struct PRsList: View {
         .popover(isPresented: $isShowingFilter) {
             PRFilterPanel(
                 orgs: model.orgs, repoCounts: repoCounts, filter: orgFilterBinding,
-                showsMerged: showsMergedBinding
+                showsMerged: showsMergedBinding, order: page == .review && !showsMergedHere ? $order : nil,
+                grouping: $grouping
             )
                 .presentationCompactAdaptation(.popover)
         }
@@ -299,7 +337,7 @@ struct PRsList: View {
     /// Rows are `PrListBlock`s, as in Agents → Lists: a tap is a PR link, which `opensPullRequestLinks` pushes here.
     /// One `ForEach` across both sections, so a PR Jai has just reviewed slides down to Recently Reviewed.
     private func list(_ rows: [PullRequestRow], on page: PRListPage) -> some View {
-        ForEach(page.entries(rows)) { entry in
+        ForEach(page.entries(rows, grouping: grouping)) { entry in
             switch entry {
             case let .header(title):
                 PRSectionTitle(title)
@@ -350,6 +388,9 @@ private struct PRFilterPanel: View {
     @Binding var filter: PROrgFilter
     /// On My PRs only.
     var showsMerged: Binding<Bool>?
+    /// On the open review list only: the other lists have no request times to order by.
+    var order: Binding<PRListOrder>?
+    @Binding var grouping: PRListGrouping
 
     private var repos: [String] {
         repoCounts.keys.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
@@ -358,6 +399,24 @@ private struct PRFilterPanel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+                if let order {
+                    PRSectionTitle("Sort").padding(.bottom, Space.xs)
+                    ForEach(PRListOrder.allCases) { choice in
+                        row(choice.title, isOn: order.wrappedValue == choice, id: "pr-sort-\(choice.rawValue)") {
+                            order.wrappedValue = choice
+                        }
+                    }
+                    Divider()
+                        .padding(.vertical, Space.sm)
+                }
+                PRSectionTitle("Group").padding(.bottom, Space.xs)
+                ForEach(PRListGrouping.allCases) { choice in
+                    row(choice.title, isOn: grouping == choice, id: "pr-group-\(choice.rawValue)") {
+                        grouping = choice
+                    }
+                }
+                Divider()
+                    .padding(.vertical, Space.sm)
                 if let showsMerged {
                     PRSectionTitle("Show").padding(.bottom, Space.xs)
                     row("Open", isOn: !showsMerged.wrappedValue, id: "pr-filter-open") {

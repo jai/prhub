@@ -136,11 +136,11 @@ const COMMON_STATUS = {
 };
 
 /**
- * The status a row was stored with, in today's shape (`ROW_SHAPE`). A due time is kept on the review list alone; one a
+ * The status a row was stored with, in today's shape (`ROW_SHAPE`). A request and due time are kept on the review list alone; one a
  * row on another list was stored with, as all were before, is dropped.
  */
 const RowStatusSchema = z.discriminatedUnion("list", [
-  z.object({ list: z.literal("review"), ...COMMON_STATUS, reviewDueAt: NULLABLE_TEXT }),
+  z.object({ list: z.literal("review"), ...COMMON_STATUS, requestedAt: NULLABLE_TEXT, reviewDueAt: NULLABLE_TEXT }),
   z.object({ list: z.literal("reviewed"), ...COMMON_STATUS }),
   z.object({ list: z.literal("mine"), ...COMMON_STATUS }),
   z.object({ list: z.literal("merged"), ...COMMON_STATUS, mergedAt: NULLABLE_TEXT }),

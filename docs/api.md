@@ -203,7 +203,8 @@ checked on every run: [`row.json`](fixtures/row.json), [`merged-row.json`](fixtu
 [`alert.json`](fixtures/alert.json) (an alert's payload).
 
 - A row's `status.list` is `review`, `reviewed` or `mine` on `GET /prs`, and `merged` on `GET /prs/merged`.
-  `reviewDueAt` is on `review` rows alone, `mergedAt` on `merged` rows alone. A stored status that no longer parses is
+  `requestedAt` (when review was last asked of the user himself, null for a team's request) and `reviewDueAt` are on
+  `review` rows alone, `mergedAt` on `merged` rows alone. A stored status that no longer parses is
   served as `status: null`.
 - A detail's `merge` (`clean`, `behind`, `blocked`, `conflicting`, `unstable`, `unknown`) and `review` (`approved`,
   `changes_requested`, `required`, `none`) are worked out as the row's are, so the two never disagree: a conflict wins
@@ -247,7 +248,7 @@ var reads as unset.
 | `AI_EFFORT_MAX` | var | Highest effort offered: `low`, `medium` or `high`. Unset: `high`; nothing goes above it |
 | `AI_DEFAULTS` | var | Each feature's default, `key_lines=claude-sonnet-5-5:high,rewrite=…,ask=…`, or JSON. Unset: Sonnet 5.5 at `high` for key lines and rewrites, Opus 5.5 at `medium` for Ask |
 | `GUIDE_REPO`, `GUIDE_FILES` | var | The rewrite's writing guide: `owner/repo@ref` (no ref: default branch) and comma-separated paths. Unset: a built-in guide |
-| `REVIEW_SLA_UTC_OFFSET_HOURS`, `REVIEW_SLA_HOURS`, `REVIEW_SLA_WEEKDAYS` | var | The review SLA week, e.g. `7`, `9-18`, `1,2,3,4,5` (Sunday 0). Unset: no row has `reviewDueAt` |
+| `REVIEW_SLA_UTC_OFFSET_HOURS`, `REVIEW_SLA_HOURS`, `REVIEW_SLA_WEEKDAYS` | var | The review SLA week, e.g. `7`, `9-18`, `1,2,3,4,5` (Sunday 0). Unset: no row has `reviewDueAt`, and the app works one out from `requestedAt` on the phone's own working week (Monday to Friday, 09:00–18:00 local) |
 | `WEBHOOK_SECRET` | secret | Turns on `/github/webhook`; unset, it answers 404 |
 | `SETUP_STATE` | secret | Turns on `/github/setup` and `/github/callback` for making a webhook App |
 | `GITHUB_APP_OWNER`, `GITHUB_APP_NAME` | var | The org that owns the webhook App (unset: the person's account) and its name (unset: `<login>-pr-review`) |

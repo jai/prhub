@@ -39,23 +39,98 @@ enum PRListPage: String, CaseIterable, Identifiable {
         }
     }
 
-    func entries(_ rows: [PullRequestRow]) -> [Entry] {
+    /// `grouping` puts a header over each repo's or author's rows, in the order their first row comes. On the review
+    /// list the groups hold what Jai still has to review, and Recently Reviewed stays one section under them.
+    func entries(_ rows: [PullRequestRow], grouping: PRListGrouping = .none) -> [Entry] {
         let section = { (title: String, rows: [PullRequestRow]) -> [Entry] in
             rows.isEmpty ? [] : [.header(title)] + rows.map(Entry.row)
         }
-        guard self == .review, !rows.contains(where: \.isMerged) else {
-            return rows.map(Entry.row)
+        let grouped = { (rows: [PullRequestRow]) -> [Entry] in
+            guard let key = grouping.key else {
+                return rows.map(Entry.row)
+            }
+            var names: [String] = []
+            var groups: [String: [PullRequestRow]] = [:]
+            for row in rows {
+                let name = key(row)
+                if groups[name] == nil {
+                    names.append(name)
+                }
+                groups[name, default: []].append(row)
+            }
+            return names.flatMap { section($0, groups[$0] ?? []) }
         }
-        return section("Review Pending", rows.filter { !$0.isAnswered })
+        guard self == .review, !rows.contains(where: \.isMerged) else {
+            return grouped(rows)
+        }
+        let pending = rows.filter { !$0.isAnswered }
+        return (grouping == .none ? section("Review Pending", pending) : grouped(pending))
             + section("Recently Reviewed", rows.filter(\.isAnswered))
     }
 
-    /// Past the review SLA first, the longest overdue on top; then the rows waiting on Jai's own change request; then
-    /// the rest, each in the order it came.
-    static func ordered(_ rows: [PullRequestRow], now: Date = .now) -> [PullRequestRow] {
-        let late = rows.filter { $0.isPastSLA(now: now) }.sorted { ($0.reviewDue ?? now) < ($1.reviewDue ?? now) }
-        let rest = rows.filter { !$0.isPastSLA(now: now) }
-        return late + rest.filter(\.isWaitingOnJaisChangeRequest) + rest.filter { !$0.isWaitingOnJaisChangeRequest }
+    /// `.sla`: past the review SLA first, the longest overdue on top; then the rows waiting on Jai's own change
+    /// request; then the rest, the longest waiting first. `.oldest` and `.newest` go by when review was asked alone.
+    /// Rows with no request time (My PRs, Recently Reviewed) keep the order they came in, after the rest.
+    static func ordered(_ rows: [PullRequestRow], by order: PRListOrder = .sla, now: Date = .now) -> [PullRequestRow] {
+        switch order {
+        case .sla:
+            let late = rows.filter { $0.isPastSLA(now: now) }.sorted { ($0.reviewDue ?? now) < ($1.reviewDue ?? now) }
+            let rest = byAge(rows.filter { !$0.isPastSLA(now: now) }, newestFirst: false)
+            return late + rest.filter(\.isWaitingOnJaisChangeRequest) + rest.filter { !$0.isWaitingOnJaisChangeRequest }
+        case .oldest:
+            return byAge(rows, newestFirst: false)
+        case .newest:
+            return byAge(rows, newestFirst: true)
+        }
+    }
+
+    private static func byAge(_ rows: [PullRequestRow], newestFirst: Bool) -> [PullRequestRow] {
+        rows.enumerated().sorted { first, second in
+            switch (first.element.reviewRequestedAt, second.element.reviewRequestedAt) {
+            case let (one?, two?) where one != two: newestFirst ? one > two : one < two
+            case (.some, nil): true
+            case (nil, .some): false
+            default: first.offset < second.offset
+            }
+        }.map(\.element)
+    }
+}
+
+/// How a page of the PRs tab is ordered, saved on the phone.
+enum PRListOrder: String, CaseIterable, Identifiable {
+    case sla, oldest, newest
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .sla: "Past SLA, then oldest"
+        case .oldest: "Oldest request first"
+        case .newest: "Newest request first"
+        }
+    }
+}
+
+/// What a page of the PRs tab is grouped under, saved on the phone.
+enum PRListGrouping: String, CaseIterable, Identifiable {
+    case none, repo, author
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .none: "No groups"
+        case .repo: "Repo"
+        case .author: "Author"
+        }
+    }
+
+    var key: ((PullRequestRow) -> String)? {
+        switch self {
+        case .none: nil
+        case .repo: { $0.repo }
+        case .author: { $0.status?.author ?? "Unknown author" }
+        }
     }
 }
 
@@ -173,6 +248,14 @@ final class PRsModel {
     private(set) var notUpdated: Set<String> = []
     /// The last sync ended with PRs still on their way and none failed: they show as each one lands.
     private(set) var stillDownloading = false
+    /// How many PRs the newest list named: with `isSyncing`, how many are still on their way.
+    private(set) var listedCount = 0
+
+    /// A sync is running: on a first sign-in, the only sign the list is coming.
+    var isSyncing: Bool { running != nil }
+
+    /// PRs the running sync has listed and not yet shown.
+    var arrivingCount: Int { isSyncing ? max(0, listedCount - rows.count) : 0 }
 
     /// Where the mirror says a download or a write failed for good: the host's event log.
     func logFailures(to log: @escaping @Sendable (String) -> Void) {
@@ -286,6 +369,7 @@ final class PRsModel {
         errorMessage = nil
         stillDownloading = false
         workerSyncedAt = nil
+        listedCount = 0
         removedRequests = []
         notUpdated = []
         lateRefusal = nil
@@ -508,6 +592,7 @@ extension PRsModel {
         do {
             let list = try await client.pullRequests()
             workerSyncedAt = Date(timeIntervalSince1970: list.synced_at / 1000)
+            listedCount = list.prs.count
             if let shown = await mirror.begin(list.prs, generation: generation, retry: retry),
                generation == self.generation {
                 rows = shown

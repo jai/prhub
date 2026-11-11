@@ -43,7 +43,7 @@ extension PRSampleSet {
         samples: [
             PRHubSample(
                 repo: "acme/web", number: 412, title: "Show a retry button when checkout fails", list: "review",
-                author: "mona", checks: "passing", review: "required", merge: "clean",
+                author: "mona", checks: "passing", review: "required", merge: "clean", requestedHoursAgo: 3,
                 body: "## What this does\\n\\nWhen a payment fails, checkout now shows **Try again** instead of a dead "
                     + "end. The retry calls `retryPayment`, which the server treats as the same payment.\\n\\n"
                     + "- [x] Tested with a declined test card\\n- [ ] Tested on a slow network",
@@ -53,7 +53,7 @@ extension PRSampleSet {
             PRHubSample(
                 repo: "acme/api", number: 88, title: "Rate-limit the password reset endpoint [API-88] [SEC-12]",
                 list: "review", author: "hubot", checks: "failing", review: "required", merge: "behind",
-                dueHoursAgo: 26, body: rateLimitBody,
+                dueHoursAgo: 26, requestedHoursAgo: 50, body: rateLimitBody,
                 diff: rateLimitDiff, keyLines: rateLimitKeyLines, comment: nil,
                 bot: #"{"login": "mona", "name": "Mona Lisa", "avatarUrl": null, "source": "body"}"#,
                 tickets: rateLimitTickets
@@ -61,7 +61,7 @@ extension PRSampleSet {
             PRHubSample(
                 repo: "acme/mobile", number: 57, title: "fix: Keep the cart when the app is closed", list: "review",
                 author: "ada-l", checks: "passing", review: "changes_requested", merge: "blocked",
-                yourReview: "changes_requested",
+                requestedHoursAgo: 8, yourReview: "changes_requested",
                 body: "The cart was cleared on exit. It is now saved to storage on every change and restored at "
                     + "launch.",
                 diff: cartDiff, keyLines: cartKeyLines, comment: ("octocat", "Can we save less often than every tap?")
@@ -285,6 +285,7 @@ struct PRHubSample {
     let review: String
     let merge: String
     var dueHoursAgo: Double?
+    var requestedHoursAgo: Double?
     /// The user's own last review, on the For review list.
     var yourReview: String?
     /// Markdown, with its newlines escaped for JSON.
@@ -305,6 +306,7 @@ struct PRHubSample {
             status: PullRequestRow.Status(
                 list: list, author: author, checks: checks, review: review, merge: merge, jaiReview: yourReview,
                 jaiReviewedAt: yourReview.map { _ in Date.now.addingTimeInterval(-86_400).ISO8601Format() },
+                requestedAt: requestedHoursAgo.map { Date.now.addingTimeInterval(-$0 * 3_600).ISO8601Format() },
                 reviewDueAt: dueHoursAgo.map { Date.now.addingTimeInterval(-$0 * 3_600).ISO8601Format() }
             ),
             keyLines: PRKeyLines.defaultContext
