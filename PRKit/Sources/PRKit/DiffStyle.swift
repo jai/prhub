@@ -59,7 +59,7 @@ struct DiffMetrics {
         #endif
         fileHeaderHeight = viewedTarget
         columnWidth = ("M" as NSString).size(withAttributes: [.font: code]).width
-        viewedSymbolSize = (headerSize * 1.5).rounded()
+        viewedSymbolSize = (headerSize * 1.05).rounded()
         chevronSymbolSize = (headerSize * 0.8).rounded()
     }
 

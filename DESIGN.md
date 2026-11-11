@@ -226,7 +226,8 @@ title3 20.
 **A heading is a step bigger.** A section's heading is one step bigger than the content under it, and it follows the
 content's size: when the content grows or shrinks, the heading moves with it. "Conversation" (subheadline) over comments
 (footnote) is one; the diff's file header is the other: `DiffFont`'s face, bold, 2 pt over the code, at any diff font
-and text size. Its viewed mark grows with it, in a tap target of 44 pt at least, the header row's height, that never
+and text size. Its chevron is the same size folded or open, and its viewed mark is about the path's size and grows with
+it, in a tap target of 44 pt at least, the header row's height, that never
 moves the path or the counts.
 
 **The diff font.** Code (a diff, a code block, a line quoted in the comment box) is `DiffFont`: one monospaced face and
