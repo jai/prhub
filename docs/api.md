@@ -161,7 +161,7 @@ App routes (app auth):
 
 | Route | Body | Answer |
 |---|---|---|
-| `GET /feedback` | | `{threads: [{id, title, createdAt}], builderOnline}`, newest first |
+| `GET /feedback` | | `{threads: [{id, title, createdAt}], builderOnline, builderStatus}`, newest first |
 | `POST /feedback` | `{text, build?, images?, client_ref?}` | the new chat |
 | `GET /feedback/{id}` | | the chat; `404` none |
 | `POST /feedback/{id}` | as above | the chat, with the message added |
@@ -172,13 +172,16 @@ App routes (app auth):
 - `text` at most 8,000 characters; `images` up to four JPEG or PNG `{media_type, data}` of at most 1.5 MB decoded.
   Neither: `400`. A repeat `client_ref` keeps the message once.
 - `isWorking` from a send until the agent's turn ends; `problem` says why the last message was not passed on.
-  `builderOnline`: the runner polled in the last 90 seconds and said its Mac answers.
+  `builderOnline`: the runner polled in the last 90 seconds and said its Mac answers. `builderStatus` says why not:
+  `{online, lastPollAt, detail}`, `detail` the runner's own reason (at most 200 characters) or that it went quiet.
+  Each list read logs one line, `{"event":"feedback_list_served", builderOnline, runnerPollAgeSeconds, detail,
+  threads}`.
 
 Runner routes (`POST`, bearer `HUB_TOKEN`, JSON body):
 
 | Route | Body | Answer |
 |---|---|---|
-| `/feedback/runner/poll` | `{orca}`: whether the agents' Mac answers | `{work: [{chat, message, first, at}]}`, oldest first |
+| `/feedback/runner/poll` | `{orca, detail?}`: whether the agents' Mac answers, and why not | `{work: [{chat, message, first, at}]}`, oldest first |
 | `/feedback/runner/claim` | `{chat, message}` | `{ok, text, build, first, title, images}`; `409` not pending; `404` |
 | `/feedback/runner/result` | `{chat, message, status: "delivered" \| "failed", detail?}` | `{ok}`; `409` not claimed |
 | `/feedback/runner/agent` | `{chat, messages: [{id, text, at}], isWorking, activity, thread}` | `{ok}`; `404` no chat |

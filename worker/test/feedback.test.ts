@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  addFeedback, feedbackChat, feedbackList, type FeedbackStore, isFeedbackId, parseAgentSide, parseFeedbackInput,
+  addFeedback, builderStatusOf, feedbackChat, feedbackList, type FeedbackStore, isFeedbackId, listServedLog,
+  parseAgentSide, parseFeedbackInput,
   runnerAgent, runnerClaim, runnerPoll, runnerResult, titleOf,
 } from "../src/feedback.ts";
 
@@ -156,4 +157,30 @@ test("the agent's side is checked before it is kept", () => {
   assert.equal(parseAgentSide({ messages: [], isWorking: "yes", activity: null }, 0), null);
   assert.deepEqual(parseAgentSide({ messages: [], isWorking: false, activity: null, thread: { host: 1 } }, 5),
     { messages: [], isWorking: false, activity: null, thread: null, updatedAt: 5 });
+});
+
+test("the list says why the builder is offline: the runner's Mac, or a runner gone quiet", async () => {
+  const store = memoryStore();
+  assert.deepEqual((await feedbackList(store, 1_000)).builderStatus,
+    { online: false, lastPollAt: null, detail: "The runner has never polled." });
+  await runnerPoll(store, false, 1_000, "orca worktree ps: Could not connect to the remote Orca runtime");
+  assert.deepEqual((await feedbackList(store, 2_000)).builderStatus, {
+    online: false, lastPollAt: new Date(1_000).toISOString(),
+    detail: "orca worktree ps: Could not connect to the remote Orca runtime",
+  });
+  await runnerPoll(store, true, 3_000, "ignored when Orca answers");
+  assert.deepEqual((await feedbackList(store, 4_000)).builderStatus,
+    { online: true, lastPollAt: new Date(3_000).toISOString(), detail: null });
+  assert.equal(builderStatusOf({ at: 3_000, orca: true }, 3_000 + 120_000).detail, "The runner has not polled for 120 s.");
+  await runnerPoll(store, false, 5_000, "x".repeat(500));
+  assert.equal((await feedbackList(store, 5_000)).builderStatus.detail?.length, 200);
+});
+
+test("a list read logs what the app was told about the builder", () => {
+  const line = JSON.parse(listServedLog(
+    { online: false, lastPollAt: new Date(1_000).toISOString(), detail: "Orca down" }, 2, 31_000,
+  ));
+  assert.deepEqual(line, {
+    event: "feedback_list_served", builderOnline: false, runnerPollAgeSeconds: 30, detail: "Orca down", threads: 2,
+  });
 });

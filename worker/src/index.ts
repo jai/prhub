@@ -12,7 +12,7 @@ import { aiStoreKey } from "./ai-run";
 import { detailVersionOf, fetchDiff, liveDiff, mergedPullRequests, pullRequestSummary, readPullRequests } from "./github";
 import { parseRepoFullName, parseSha, prId, type RepoFullName } from "./ids";
 import {
-  addFeedback, feedbackChat, feedbackList, isFeedbackId, parseAgentSide, parseFeedbackInput, r2Store, runnerAgent,
+  addFeedback, feedbackChat, feedbackList, isFeedbackId, listServedLog, parseAgentSide, parseFeedbackInput, r2Store, runnerAgent,
   runnerClaim, runnerPoll, runnerResult,
 } from "./feedback";
 import { DEFAULT_CONTEXT } from "./key-lines";
@@ -304,7 +304,12 @@ async function feedbackRoute(id: string | undefined, request: Request, env: Env)
   let receipt: string | null = null;
   try {
     if (request.method !== "POST") {
-      const answer = id ? await feedbackChat(store, id, Date.now()) : await feedbackList(store, Date.now());
+      if (!id) {
+        const list = await feedbackList(store, Date.now());
+        console.log(listServedLog(list.builderStatus, list.threads.length, Date.now()));
+        return Response.json(list);
+      }
+      const answer = await feedbackChat(store, id, Date.now());
       return answer ? Response.json(answer) : Response.json({ error: "Not found." }, { status: 404 });
     }
     const body = (await bodyOf(request))?.value;
@@ -347,7 +352,8 @@ async function runnerRoute(kind: string, request: Request, env: Env): Promise<Re
   const message = typeof body?.message === "string" ? body.message : "";
   const now = Date.now();
   if (kind === "poll") {
-    return Response.json({ work: await runnerPoll(store, body?.orca === true, now) });
+    const detail = typeof body?.detail === "string" ? body.detail : null;
+    return Response.json({ work: await runnerPoll(store, body?.orca === true, now, detail) });
   }
   if (kind === "claim") {
     const claimed = await runnerClaim(store, chat, message, now);

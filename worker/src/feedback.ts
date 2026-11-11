@@ -191,14 +191,54 @@ async function threads(store: FeedbackStore): Promise<FeedbackThread[]> {
   return (await store.get<FeedbackThread[]>(LIST_KEY))?.value ?? [];
 }
 
+/** The runner's last poll, as it left it: when, whether its Mac's Orca answered, and why not. */
+interface RunnerBeat {
+  at: number;
+  orca: boolean;
+  detail?: string | null;
+}
+
+/** Whether the builder is taking work, and why not: the runner's last poll and what it said about its Mac. */
+export interface BuilderStatus {
+  online: boolean;
+  /** When the runner last polled, ISO 8601; null when it never has. */
+  lastPollAt: string | null;
+  /** Why it is offline, in a few words; null when it is online. */
+  detail: string | null;
+}
+
+export function builderStatusOf(beat: RunnerBeat | null, now: number): BuilderStatus {
+  if (!beat) {
+    return { online: false, lastPollAt: null, detail: "The runner has never polled." };
+  }
+  const fresh = now - beat.at < RUNNER_FRESH_MS;
+  const online = fresh && beat.orca;
+  const detail = online ? null
+    : !fresh ? `The runner has not polled for ${Math.round((now - beat.at) / 1000)} s.`
+    : beat.detail || "The runner's Mac did not answer.";
+  return { online, lastPollAt: new Date(beat.at).toISOString(), detail };
+}
+
+async function builderStatus(store: FeedbackStore, now: number): Promise<BuilderStatus> {
+  return builderStatusOf((await store.get<RunnerBeat>(RUNNER_KEY))?.value ?? null, now);
+}
+
 async function builderOnline(store: FeedbackStore, now: number): Promise<boolean> {
-  const runner = (await store.get<{ at: number; orca: boolean }>(RUNNER_KEY))?.value;
-  return !!runner && runner.orca && now - runner.at < RUNNER_FRESH_MS;
+  return (await builderStatus(store, now)).online;
 }
 
 export async function feedbackList(store: FeedbackStore, now: number) {
-  const [list, online] = await Promise.all([threads(store), builderOnline(store, now)]);
-  return { threads: list, builderOnline: online };
+  const [list, status] = await Promise.all([threads(store), builderStatus(store, now)]);
+  return { threads: list, builderOnline: status.online, builderStatus: status };
+}
+
+/** The one log line a list read leaves (`feedback_list_served`): what the app was told about the builder, and why. */
+export function listServedLog(status: BuilderStatus, threadCount: number, now: number): string {
+  const age = status.lastPollAt === null ? null : Math.round((now - Date.parse(status.lastPollAt)) / 1000);
+  return JSON.stringify({
+    event: "feedback_list_served", builderOnline: status.online, runnerPollAgeSeconds: age, detail: status.detail,
+    threads: threadCount,
+  });
 }
 
 async function messagesOf(store: FeedbackStore, chat: string): Promise<Array<{ key: string; message: StoredMessage; etag: string }>> {
@@ -284,8 +324,10 @@ export async function addFeedback(
 // --- The runner ------------------------------------------------------------------------------------------------------
 
 /** A poll: the runner is alive (and whether its Mac answers), and the messages it has not taken. */
-export async function runnerPoll(store: FeedbackStore, orca: boolean, now: number): Promise<RunnerWork[]> {
-  await store.put(RUNNER_KEY, { at: now, orca });
+export async function runnerPoll(
+  store: FeedbackStore, orca: boolean, now: number, detail: string | null = null,
+): Promise<RunnerWork[]> {
+  await store.put(RUNNER_KEY, { at: now, orca, detail: orca ? null : detail?.slice(0, 200) ?? null });
   const keys = (await store.list(PENDING_PREFIX)).sort();
   const work = await Promise.all(keys.map(async (key) => {
     const marker = (await store.get<{ chat: string; message: string }>(key))?.value;
