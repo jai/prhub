@@ -139,7 +139,7 @@ export async function prDiff(repo: RepoFullName, number: number, head: Sha, env:
     if (done) {
       break;
     }
-    const kept = value.subarray(0, DIFF_KEPT - size);
+    const kept = value.slice(0, DIFF_KEPT - size);
     chunks.push(kept);
     size += kept.byteLength;
   }
