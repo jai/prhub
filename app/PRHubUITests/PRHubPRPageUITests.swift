@@ -119,6 +119,34 @@ final class PRHubPRPageUITests: XCTestCase {
         XCTAssertTrue(waitFor(timeout: 6) { !words.exists }, "it fades once GitHub has it")
     }
 
+    func testALinesCommentNowClosesItsBoxAndTheToastFollowsIt() throws {
+        launch()
+        openCheckout()
+        let diff = app.buttons["pr-files-changed"]
+        XCTAssertTrue(diff.waitForExistence(timeout: 5))
+        diff.tap()
+        XCTAssertTrue(app.buttons["file-viewed-0"].waitForExistence(timeout: 5))
+        app.closePanelOverDiff()
+        let line = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH 'diff-line-'")).element(boundBy: 2)
+        XCTAssertTrue(line.waitForExistence(timeout: 5))
+        line.tap()
+        let field = app.descendants(matching: .any)["inline-composer-field"].firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("Nit: name this better")
+        let now = app.buttons["inline-composer-alternate"]
+        XCTAssertTrue(now.waitForExistence(timeout: 2))
+        now.tap()
+        XCTAssertTrue(waitFor(timeout: 1) { !now.exists }, "the box closes at once")
+        let words = app.staticTexts["pr-review-toast-words"]
+        XCTAssertTrue(words.waitForExistence(timeout: 2), "the toast follows the comment")
+        // The samples answer at once, so it may already have landed.
+        XCTAssertTrue(["Posting comment…", "Comment posted"].contains(words.label), words.label)
+        try? picture("diff-toast-comment")
+        XCTAssertTrue(waitFor(timeout: 8) { words.label == "Comment posted" }, words.label)
+        XCTAssertTrue(waitFor(timeout: 6) { !words.exists }, "it goes once GitHub has it")
+    }
+
     // MARK: - Helpers
 
     private func openRateLimit() {
