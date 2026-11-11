@@ -42,7 +42,8 @@ final class DiffFileHeader: UITableViewHeaderFooterView {
         contentView.backgroundColor = .clear
         bar.backgroundColor = .secondarySystemBackground
         chevron.tintColor = .secondaryLabel
-        chevron.contentMode = .scaleAspectFit
+        // Drawn at its symbol size, never scaled to its box: turned, the box would hand it the row's height.
+        chevron.contentMode = .center
         path.lineBreakMode = .byTruncatingHead
         change.textAlignment = .right
         viewed.addTarget(self, action: #selector(viewedTapped), for: .touchUpInside)
@@ -114,13 +115,14 @@ final class DiffFileHeader: UITableViewHeaderFooterView {
         bar.frame = CGRect(x: offsetX, y: 0, width: width, height: height)
         change.sizeToFit()
         let changeWidth = change.bounds.width
-        chevron.frame = CGRect(x: Space.sm, y: 0, width: metrics.chevronSymbolSize + Space.xs, height: height)
+        // Bounds and center, not frame: the chevron is turned when folded, and a turned view's frame is undefined.
+        let chevronWidth = metrics.chevronSymbolSize + Space.xs
+        chevron.bounds = CGRect(x: 0, y: 0, width: chevronWidth, height: height)
+        chevron.center = CGPoint(x: Space.sm + chevronWidth / 2, y: height / 2)
         viewed.frame = CGRect(x: width - metrics.viewedTarget, y: 0, width: metrics.viewedTarget, height: height)
         change.frame = CGRect(x: viewed.frame.minX - changeWidth, y: 0, width: changeWidth, height: height)
-        path.frame = CGRect(
-            x: chevron.frame.maxX + Space.sm, y: 0, width: change.frame.minX - chevron.frame.maxX - Space.md,
-            height: height
-        )
+        let pathX = Space.sm + chevronWidth + Space.sm
+        path.frame = CGRect(x: pathX, y: 0, width: change.frame.minX - pathX - Space.md, height: height)
     }
 
     @objc private func tapped() {
