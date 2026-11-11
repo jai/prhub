@@ -130,16 +130,23 @@ struct PRKeyLinesList: View {
     /// A heading line (its kind, where it is, Explain and its tick), then why it matters across the whole row. The path
     /// scrolls sideways when it is too long to show.
     private func row(_ item: PRKeyLines.Item, isSelected: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        // A ticked line's words fade; its controls stay.
+        let words = session.isReviewed(item) ? PRStyle.doneOpacity : 1
+        return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: Space.sm) {
-                StatusChip(text: item.kindTitle, tint: item.kindTint)
-                ScrollView(.horizontal) {
-                    Text(verbatim: "\(item.path):\(item.line)")
-                        .font(.appCaption.monospaced())
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                HStack(spacing: Space.sm) {
+                    StatusChip(text: item.kindTitle, tint: item.kindTint)
+                    ScrollView(.horizontal) {
+                        Text(verbatim: "\(item.path):\(item.line)")
+                            .font(.appCaption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .scrollIndicators(.hidden)
                 }
-                .scrollIndicators(.hidden)
+                .opacity(words)
+                .contentShape(.rect)
+                .onTapGesture { session.show(item) }
                 .accessibilityHidden(true)
                 if session.offersAsk {
                     Button("Explain", systemImage: AppIcon.askAI.symbol) { session.explain(item, in: document) }
@@ -149,6 +156,7 @@ struct PRKeyLinesList: View {
                         .frame(width: PRStyle.rowHeight, height: PRStyle.rowHeight)
                         .contentShape(.rect)
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Explain \(item.path):\(item.line)")
                         .accessibilityIdentifier("key-line-explain-\(item.id)")
                 }
                 PRKeyLineCheck(item: item, session: session)
@@ -160,6 +168,7 @@ struct PRKeyLinesList: View {
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding([.horizontal, .bottom], Space.sm)
+                    .opacity(words)
                     .contentShape(.rect)
             }
             .buttonStyle(.plain)
@@ -167,7 +176,6 @@ struct PRKeyLinesList: View {
             .accessibilityAddTraits(isSelected ? .isSelected : [])
             .accessibilityIdentifier("key-line-\(item.id)")
         }
-        .opacity(session.isReviewed(item) ? PRStyle.doneOpacity : 1)
     }
 }
 
