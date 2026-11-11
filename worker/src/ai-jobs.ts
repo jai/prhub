@@ -8,6 +8,7 @@ import {
 import { actingEnvFor } from "./hosted";
 import { parseAiJob } from "./boundary";
 import { prId } from "./ids";
+import { makesAnswers } from "./agent-container";
 import { type Env, prIndex } from "./env";
 import { type AiJob, aiKey } from "./models";
 import { type CarriedAskState, readCarriedAskState, writeCarriedAskState } from "./carry";
@@ -131,7 +132,7 @@ export class AiJobs extends DurableObject<Env> {
     const userId = await this.ctx.storage.get<string>("user_id");
     // A hosted person with no token or key now (signed out, or the key removed) runs nothing: never on anyone else's.
     const env = await this.actingEnv();
-    if (!env || !env.ANTHROPIC_API_KEY) {
+    if (!env || !makesAnswers(env)) {
       await this.env.DIFFS.put(aiStoreKey(job, { SIGNED_IN_USER_ID: userId }),
         JSON.stringify({ error: "Sign in and set your Anthropic key to use AI." }));
       return;

@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
+import { onSubscription, runOnSubscription } from "./agent-container.ts";
 import { type Env, isSet } from "./env.ts";
 import { fetchFile, getFromGitHub, liveDiff } from "./github.ts";
 import { isRevisionOf, type Sha } from "./ids.ts";
@@ -66,6 +67,9 @@ interface RunFor {
 async function ask<Answer>(
   system: string, content: string, schema: z.ZodType<Answer>, choice: ModelChoice, env: Env, runFor: RunFor,
 ): Promise<{ answer: Answer; run: Run }> {
+  if (onSubscription(env)) {
+    return askOnSubscription(system, content, schema, choice, env, runFor);
+  }
   const fallback = MODEL_SPECS[choice.model].serverFallback
     ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }
     : {};
@@ -81,7 +85,7 @@ async function ask<Answer>(
   const tokens = { input, output };
   const run: Run = { tokens, model: response.model, effort: choice.effort, costCents: costCents(response.model, tokens) };
   console.log("ai_run", {
-    ...runFor, user_id: env.SIGNED_IN_USER_ID ?? null, model: run.model, effort: run.effort, input_tokens: input,
+    ...runFor, auth: "api_key", user_id: env.SIGNED_IN_USER_ID ?? null, model: run.model, effort: run.effort, input_tokens: input,
     output_tokens: output, cost_cents: run.costCents, stop_reason: response.stop_reason,
   });
   if (response.stop_reason === "refusal") {
@@ -91,6 +95,20 @@ async function ask<Answer>(
     throw new Error("The model's answer was cut off.");
   }
   return { answer: response.parsed_output as Answer, run };
+}
+
+/** The same answer from the Agent SDK container, on the subscription. Its cost is what the API would have charged. */
+async function askOnSubscription<Answer>(
+  system: string, content: string, schema: z.ZodType<Answer>, choice: ModelChoice, env: Env, runFor: RunFor,
+): Promise<{ answer: Answer; run: Run }> {
+  const answer = await runOnSubscription(system, content, z.toJSONSchema(schema) as Record<string, unknown>, choice, env);
+  const costCents = answer.costUsd === null ? null : Math.round(answer.costUsd * 10_000) / 100;
+  const run: Run = { tokens: answer.tokens, model: answer.model, effort: choice.effort, costCents };
+  console.log("ai_run", {
+    ...runFor, auth: "subscription", user_id: env.SIGNED_IN_USER_ID ?? null, model: run.model, effort: run.effort,
+    input_tokens: run.tokens.input, output_tokens: run.tokens.output, cost_cents: costCents,
+  });
+  return { answer: schema.parse(answer.output), run };
 }
 
 /** What a run spent, kept with its answer, so the cost is measured and not guessed. */

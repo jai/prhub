@@ -34,7 +34,9 @@ Secrets, each with `wrangler secret put`, from the password manager:
 | `TOKEN_ENCRYPTION_KEY` | `k1:` and `openssl rand -base64 32`; rotation in [api.md, "Tokens"](api.md#tokens) |
 | `APNS_KEY_P8` | Jai's APNs key (`.p8`) |
 
-No `GITHUB_TOKEN` and no `ANTHROPIC_API_KEY`: each person acts with their own token, and AI runs only on their own key.
+No `GITHUB_TOKEN` and no `ANTHROPIC_API_KEY`: each person acts with their own token, and AI runs on their own key.
+`CLAUDE_CODE_OAUTH_TOKEN` (a secret) runs key lines and rewrites on Jai's subscription, for `SUBSCRIPTION_LOGINS` only.
+The deploy builds the Agent SDK container from `agent/Dockerfile`, so it needs Docker.
 
 Limits take their hosted defaults ([api.md, "Limits"](api.md#limits)). To change one, add its `LIMIT_*` var to the
 rendered config's `vars` and deploy again. `GET /device/config` shows the limits in force, and a value the Worker

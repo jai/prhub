@@ -344,6 +344,17 @@ test("a person's env acts with their token, under their own objects and R2 prefi
     { ask_ai: false, key_lines: false, rewrite: false, feedback: false, push: false, webhooks: false });
 });
 
+test("only a login in SUBSCRIPTION_LOGINS runs AI on the Worker's subscription", () => {
+  const base = env({ CLAUDE_CODE_OAUTH_TOKEN: "oat-test", SUBSCRIPTION_LOGINS: " OctoCat ,hubot",
+    AGENT: {} as Env["AGENT"] });
+  const listed = userEnv(base, { userId: "4242", login: "octocat", token: "ghu_x" });
+  assert.equal(listed.CLAUDE_CODE_OAUTH_TOKEN, "oat-test");
+  assert.equal(deviceConfig(listed, "octocat").features.key_lines, true);
+  const other = userEnv(base, { userId: "5151", login: "mona", token: "ghu_y" });
+  assert.equal(other.CLAUDE_CODE_OAUTH_TOKEN, undefined);
+  assert.equal(deviceConfig(other, "mona").features.key_lines, false);
+});
+
 test("the association file names the app that may catch the callback", async () => {
   const world = hostedWorld();
   assert.deepEqual(await (await world.route("/.well-known/apple-app-site-association")).json(),

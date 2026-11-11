@@ -7,6 +7,8 @@ import { acceptAsk, askPr, withQueued } from "./ask-queue";
 import { bodyOf, parseAskInput, parseKeyLineMark } from "./boundary";
 import { eventRoute, registerRoute, unpairRoute } from "./devices";
 import { aiConfigOf, askConfigured, deviceConfig, feedbackConfigured } from "./config";
+import { makesAnswers } from "./agent-container";
+import { AgentContainer } from "./agent-container-object";
 import { aiJobs, askQueue, type Env, githubLogin, isSet, prIndex, scopedKey } from "./env";
 import { aiStoreKey } from "./ai-run";
 import {
@@ -39,7 +41,7 @@ import {
 import { pairingLimitAnswer, personLimitAnswer, reportedLimitsOf } from "./limit-enforcement";
 import { LimitName } from "./limits";
 
-export { AiJobs, Installation, IpLimit, PrIndex, SignIn, UserAccount };
+export { AgentContainer, AiJobs, Installation, IpLimit, PrIndex, SignIn, UserAccount };
 
 const PULL_REQUEST_PATH =
   /^\/prs\/([\w.-]+)\/([\w.-]+)\/(\d+)\/(diff|detail|summary|write|key-lines-reviewed|key-lines|rewrite|ask)$/;
@@ -458,7 +460,7 @@ function pullRequestRoute(
     return reviewedRoute(repo, pr, params, request, env);
   }
   if (kind === "key-lines" || kind === "rewrite") {
-    if (!isSet(env.ANTHROPIC_API_KEY)) {
+    if (!makesAnswers(env)) {
       return Promise.resolve(notConfigured(kind === "rewrite" ? "Rewrite" : "Key lines"));
     }
     return aiRoute(kind === "rewrite" ? "rewrite" : "key_lines", repo, pr, params, env, context);

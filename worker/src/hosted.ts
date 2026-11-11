@@ -69,8 +69,9 @@ export function canMintInstallationTokens(env: Env): boolean {
 
 /**
  * The Worker as it acts for one signed-in person: their token and login, their objects (`user:<id>`), their R2 prefix.
- * AI runs only on the person's own Anthropic key: key lines and rewrites once they gave it, Ask once Ask's resources
- * exist in their org and the Worker can mint installation tokens. Never on the Worker's own key, and Feedback, the
+ * AI runs on the person's own Anthropic key: key lines and rewrites once they gave it, Ask once Ask's resources
+ * exist in their org and the Worker can mint installation tokens. Key lines and rewrites run on the Worker's
+ * subscription only for `SUBSCRIPTION_LOGINS`. Never on the Worker's own key, and Feedback, the
  * relay and Linear, which serve only Jai, stay off.
  */
 export function userEnv(env: Env, user: { userId: string; login: string; token: string; ai?: UserAi }): Env {
@@ -86,6 +87,7 @@ export function userEnv(env: Env, user: { userId: string; login: string; token: 
     HUB_TOKEN: undefined,
     WEBHOOK_SECRET: undefined,
     ANTHROPIC_API_KEY: ai.anthropicKey ?? undefined,
+    CLAUDE_CODE_OAUTH_TOKEN: subscriptionLogins(env).has(user.login.toLowerCase()) ? env.CLAUDE_CODE_OAUTH_TOKEN : undefined,
     ASK_ANTHROPIC_API_KEY: undefined,
     ASK_AGENT_ID: ask?.agent_id,
     ASK_ENVIRONMENT_ID: ask?.environment_id,
@@ -99,6 +101,11 @@ export function userEnv(env: Env, user: { userId: string; login: string; token: 
     LINEAR_API_KEY: undefined,
     GITHUB_RATE: undefined,
   };
+}
+
+/** The logins whose AI runs on the Worker's subscription (`SUBSCRIPTION_LOGINS`), lowercased. */
+function subscriptionLogins(env: Env): Set<string> {
+  return new Set((env.SUBSCRIPTION_LOGINS ?? "").split(",").map((login) => login.trim().toLowerCase()).filter(Boolean));
 }
 
 /** What the routes reach: the Durable Objects, R2 and GitHub, so a test can stand in for each. */
