@@ -106,6 +106,8 @@ struct DiffActions {
     /// The noted key line's tick, read by the note itself so a tick made in the panel shows under the line too.
     let isReviewed: (PRKeyLines.Item) -> Bool
     let setReviewed: (PRKeyLines.Item, Bool) -> Void
+    /// Ask AI about a key line; nil when Ask is off.
+    let explain: ((PRKeyLines.Item) -> Void)?
     /// The reader scrolled down the code (true) or back up. The phone's bars go and come with it.
     let setBarsHidden: (Bool) -> Void
     let setKeyboardUp: (Bool) -> Void

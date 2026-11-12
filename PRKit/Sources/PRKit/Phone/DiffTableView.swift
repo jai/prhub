@@ -252,6 +252,15 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
         for case let header as DiffFileHeader in table.subviews {
             header.pin(toVisibleWidth: bounds.width, offsetX: contentOffset.x)
         }
+        for cell in table.visibleCells where cell.reuseIdentifier == Self.hostedIdentifier {
+            pinToScreen(cell)
+        }
+    }
+
+    /// A thread or a key line's note is the screen's width: it stays on screen while the code scrolls sideways, as the
+    /// file headers do.
+    func pinToScreen(_ cell: UITableViewCell) {
+        cell.contentView.transform = CGAffineTransform(translationX: contentOffset.x, y: 0)
     }
 
     private var composingSection: Int? {
