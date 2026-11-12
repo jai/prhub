@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { FeedbackStore } from "../src/feedback.ts";
-import { addIssueFeedback, type IssueFeedback, issueChat, issueThreads, isImageName } from "../src/feedback-issues.ts";
+import { addIssueFeedback, chatOfRef, type IssueFeedback, issueChat, issueThreads, isImageName } from "../src/feedback-issues.ts";
 
 function memoryStore(): FeedbackStore {
   const objects = new Map<string, string>();
@@ -88,4 +88,16 @@ test("a reply to a chat that does not exist is refused, and only random image na
   assert.equal(await addIssueFeedback(context, "fb_0000000000000000", { text: "hi", build: null, images: [] }), null);
   assert.equal(isImageName("../users/1/secret.json"), false);
   assert.equal(isImageName(`${"a".repeat(32)}.png`), true);
+});
+
+test("sends at once all keep, and a retried new chat finds the chat it made", async () => {
+  const { context } = world();
+  const [a, b] = await Promise.all(["first", "second"].map((text) =>
+    addIssueFeedback(context, null, { text, build: null, images: [] }, text)));
+  assert.deepEqual(new Set((await issueThreads(context.store)).map((thread) => thread.id)), new Set([a, b]));
+  await Promise.all(["one", "two"].map((text) => addIssueFeedback(context, a, { text, build: null, images: [] })));
+  const mine = (await issueChat(context, a!))!.messages.filter((message) => message.role === "you").map((m) => m.text);
+  assert.deepEqual(mine.sort(), ["first", "one", "two"]);
+  assert.equal(await chatOfRef(context.store, "second"), b);
+  assert.equal(await chatOfRef(context.store, "third"), null);
 });

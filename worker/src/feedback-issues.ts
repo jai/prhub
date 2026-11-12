@@ -15,14 +15,28 @@ export function issuesNotice(repo: string): string {
 
 /** Marks the comments this Worker wrote for the person, so a chat read does not show them twice. */
 const OURS = "<!-- prhub-feedback -->";
-const LIST_KEY = "feedback/issues.json";
-const chatKey = (id: string) => `feedback/issues/${id}.json`;
+/** Each chat and each message its own object, so two sends at once never write over each other. */
+const CHATS = "feedback/issues/";
+const chatKey = (id: string) => `${CHATS}${id}/chat.json`;
+const messageKey = (id: string, message: StoredMessage) => `${CHATS}${id}/m/${message.at}-${message.id}.json`;
+/** Which chat a new chat's `client_ref` made, so a retry answers that chat and no other. */
+const refKey = (ref: string) => `feedback/refs/${ref}.json`;
+/** An issue's comments, read 100 to a page: at most this many pages. */
+const MAX_COMMENT_PAGES = 10;
 const IMAGE_NAME = /^[0-9a-f]{32}\.(jpg|png)$/;
 
 interface StoredIssueChat {
   id: string;
+  title: string;
+  createdAt: string;
   issue: { number: number; url: string };
-  messages: Array<{ id: string; text: string; images: number; at: number }>;
+}
+
+interface StoredMessage {
+  id: string;
+  text: string;
+  images: number;
+  at: number;
 }
 
 /** GitHub, as this needs it: open an issue, comment on it, read its comments. */
@@ -78,9 +92,18 @@ export function gitHubIssues(repo: string, token: string, fetcher: typeof fetch 
       await call(`/${issue}/comments`, { method: "POST", body: JSON.stringify({ body }) });
     },
     async comments(issue) {
-      const list = await call(`/${issue}/comments?per_page=100`) as
-        Array<{ id: number; body: string | null; user: { login: string } | null; created_at: string }>;
-      return list.map((one) => ({ id: one.id, body: one.body ?? "", login: one.user?.login ?? "ghost", at: one.created_at }));
+      const all: Array<{ id: number; body: string; login: string; at: string }> = [];
+      for (let page = 1; page <= MAX_COMMENT_PAGES; page += 1) {
+        const list = await call(`/${issue}/comments?per_page=100&page=${page}`) as
+          Array<{ id: number; body: string | null; user: { login: string } | null; created_at: string }>;
+        all.push(...list.map((one) => ({
+          id: one.id, body: one.body ?? "", login: one.user?.login ?? "ghost", at: one.created_at,
+        })));
+        if (list.length < 100) {
+          break;
+        }
+      }
+      return all;
     },
   };
 }
@@ -99,12 +122,27 @@ function issueBody(text: string, images: string[], login: string, build: string 
 }
 
 export async function issueThreads(store: FeedbackStore): Promise<FeedbackThread[]> {
-  return (await store.get<FeedbackThread[]>(LIST_KEY))?.value ?? [];
+  const keys = (await store.list(CHATS)).filter((key) => key.endsWith("/chat.json"));
+  const chats = await Promise.all(keys.map(async (key) => (await store.get<StoredIssueChat>(key))?.value));
+  return chats.filter((chat) => chat !== undefined)
+    .map(({ id, title, createdAt }) => ({ id, title, createdAt }))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/** The chat a new chat's `client_ref` made; null when none did. */
+export async function chatOfRef(store: FeedbackStore, ref: string): Promise<string | null> {
+  return (await store.get<{ chat: string }>(refKey(ref)))?.value.chat ?? null;
+}
+
+async function messagesOf(store: FeedbackStore, id: string): Promise<StoredMessage[]> {
+  const keys = (await store.list(`${CHATS}${id}/m/`)).sort();
+  const found = await Promise.all(keys.map(async (key) => (await store.get<StoredMessage>(key))?.value));
+  return found.filter((message) => message !== undefined);
 }
 
 /** A new chat when `chat` is null: it opens the issue. Else a comment on the chat's issue. Null: no such chat. */
 export async function addIssueFeedback(
-  context: IssueFeedback, chat: string | null, input: FeedbackInput,
+  context: IssueFeedback, chat: string | null, input: FeedbackInput, ref: string | null = null,
 ): Promise<string | null> {
   const stored = chat ? (await context.store.get<StoredIssueChat>(chatKey(chat)))?.value : null;
   if (chat && !stored) {
@@ -116,15 +154,17 @@ export async function addIssueFeedback(
   if (stored) {
     const body = [OURS, `**@${context.login}:** ${input.text}`, ...images].join("\n\n");
     await context.issues.comment(stored.issue.number, body);
-    await context.store.put(chatKey(stored.id), { ...stored, messages: [...stored.messages, message] });
+    await context.store.put(messageKey(stored.id, message), message);
     return stored.id;
   }
   const id = newId("fb");
   const title = titleOf(input.text);
   const issue = await context.issues.open(title, issueBody(input.text, images, context.login, input.build));
-  await context.store.put(chatKey(id), { id, issue, messages: [message] } satisfies StoredIssueChat);
-  const list = await issueThreads(context.store);
-  await context.store.put(LIST_KEY, [{ id, title, createdAt: new Date(now).toISOString() }, ...list]);
+  await context.store.put(messageKey(id, message), message);
+  await context.store.put(chatKey(id), { id, title, createdAt: new Date(now).toISOString(), issue } satisfies StoredIssueChat);
+  if (ref) {
+    await context.store.put(refKey(ref), { chat: id });
+  }
   return id;
 }
 
@@ -134,10 +174,12 @@ export async function issueChat(context: IssueFeedback, chat: string): Promise<F
   if (!stored) {
     return null;
   }
-  const comments = await context.issues.comments(stored.issue.number).catch(() => []);
-  const first = stored.messages[0]?.at ?? context.now();
+  const [mine, comments] = await Promise.all([
+    messagesOf(context.store, stored.id), context.issues.comments(stored.issue.number).catch(() => []),
+  ]);
+  const first = mine[0]?.at ?? Date.parse(stored.createdAt);
   const entries: Array<{ at: number; message: FeedbackMessage }> = [
-    ...stored.messages.map((one) => ({
+    ...mine.map((one) => ({
       at: one.at, message: { id: one.id, role: "you" as const, text: one.text, anchor: null, images: one.images },
     })),
     {

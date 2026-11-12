@@ -8,7 +8,7 @@ import { bodyOf, parseAskInput, parseKeyLineMark } from "./boundary";
 import { eventRoute, registerRoute, unpairRoute } from "./devices";
 import { aiConfigOf, askConfigured, deviceConfig, feedbackConfigured, feedbackIssuesConfigured } from "./config";
 import {
-  addIssueFeedback, gitHubIssues, type IssueFeedback, issueChat, issuesNotice, issueThreads, isImageName,
+  addIssueFeedback, chatOfRef, gitHubIssues, type IssueFeedback, issueChat, issuesNotice, issueThreads, isImageName,
 } from "./feedback-issues";
 import { makesAnswers } from "./agent-container";
 import { AgentContainer } from "./agent-container-object";
@@ -25,7 +25,7 @@ import {
 import { DEFAULT_CONTEXT } from "./key-lines";
 import { type AiConfig, type AiFeature, resolveChoice } from "./models";
 import { detailKey, diffKey, PrIndex } from "./pr-index";
-import { codeHashOf, deviceSecretOf, fingerprintOf, isPairedSecret, normalizePairingCode } from "./pairing";
+import { codeHashOf, deviceSecretOf, fingerprintOf, isPairedSecret, normalizePairingCode, sha256Hex } from "./pairing";
 import {
   fetchRepoIndex, isRepoIndex, rankRepos, type RepoIndex, REPOS_FORCED_GAP_MS, REPOS_KEY, REPOS_RETRY_GAP_MS,
   REPOS_STALE_MS,
@@ -409,13 +409,13 @@ async function issueFeedbackRoute(id: string | undefined, request: Request, env:
     }
     let target: string | null | undefined = id;
     if (claim === "go") {
-      target = await addIssueFeedback(context, id ?? null, input);
+      target = await addIssueFeedback(context, id ?? null, input, id || !receipt ? null : await sha256Hex(receipt));
       if (receipt) {
         await prIndex(env).finishWrite(receipt, target !== null, Date.now());
       }
     } else if (!target) {
-      // A repeat of new feedback already sent: the newest chat is it.
-      target = (await issueThreads(context.store))[0]?.id;
+      // A repeat of new feedback already sent: the chat that send made.
+      target = receipt ? await chatOfRef(context.store, await sha256Hex(receipt)) : null;
     }
     const chat = target ? await issueChat(context, target) : null;
     return chat ? Response.json(chat) : Response.json({ error: "Not found." }, { status: 404 });
