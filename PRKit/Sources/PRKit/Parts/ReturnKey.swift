@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// Return in a message box, with a hardware keyboard: it sends, and so does Command-Return; Shift-Return (and
 /// Option-Return) starts a new line, as in the chat apps Jai uses (2026-11-12: "on an iPad … I can't hit Enter or
@@ -39,8 +42,7 @@ extension ReturnKey.Modifiers {
 
 extension View {
     /// The Mac's Return in a message field (`ReturnKey`): Return and Command-Return send; Shift-Return and
-    /// Option-Return are left to the field, which starts a new line. The phone's field takes its keys itself
-    /// (`ChatTextView`).
+    /// Option-Return start a new line at the cursor. The phone's field takes its keys itself (`ChatTextView`).
     public func sendsOnReturn(_ send: @escaping () -> Void) -> some View {
         #if os(macOS)
         onKeyPress(.return, phases: .down) { press in
@@ -49,7 +51,9 @@ extension View {
                 send()
                 return .handled
             case .newLine:
-                return .ignored
+                // As Option-Return does, at the cursor: the field takes a bare Shift-Return as Return.
+                NSApp.sendAction(#selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)), to: nil, from: nil)
+                return .handled
             }
         }
         #else
