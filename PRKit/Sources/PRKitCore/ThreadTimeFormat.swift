@@ -1,6 +1,7 @@
 import Foundation
 
-/// Times on the Threads screen, in `timeZone`: clock times (`HH:mm`, `d MMM`) and how long ago ("3h").
+/// Times on the Threads screen, in `timeZone`: clock times ("17:20", or "5:20 PM" where `locale` keeps 12-hour time:
+/// the device's 24-Hour Time setting is in `Locale.current`), days ("25 Oct") and how long ago ("3h").
 public struct ThreadTimeFormat: Sendable {
     public var timeZone: TimeZone = .current
     public var locale: Locale = .current
@@ -12,12 +13,12 @@ public struct ThreadTimeFormat: Sendable {
 
     public static let lastDayWithAge = 7
 
-    /// `HH:mm` for today, `d MMM HH:mm` for any other day.
+    /// The clock time for today, the day and the clock time for any other day.
     public func string(_ date: Date, now: Date) -> String {
         calendar.isDate(date, inSameDayAs: now) ? time(date) : dateAndTime(date)
     }
 
-    /// `d MMM HH:mm`, whatever the day.
+    /// The day and the clock time ("25 Oct 17:20"), whatever the day.
     public func dateAndTime(_ date: Date) -> String {
         "\(day(date)) \(time(date))"
     }
@@ -58,9 +59,10 @@ public struct ThreadTimeFormat: Sendable {
         return calendar
     }
 
+    /// The system's short time in `locale`, so it follows the 24-Hour Time setting, as every other clock does.
     private func time(_ date: Date) -> String {
-        let hour = Date.FormatStyle.Symbol.VerbatimHour.twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)
-        return date.formatted(style("\(hour: hour):\(minute: .twoDigits)"))
+        date.formatted(Date.FormatStyle(date: .omitted, time: .shortened, locale: locale, calendar: calendar,
+                                        timeZone: timeZone))
     }
 
     private func day(_ date: Date) -> String {
