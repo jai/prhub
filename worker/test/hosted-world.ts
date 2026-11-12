@@ -287,7 +287,7 @@ export function hostedWorld(vars: Partial<Env> = {}) {
   const workerEnv = env({
     HOSTED: "on", GITHUB_APP_CLIENT_ID: APP.clientId, GITHUB_APP_CLIENT_SECRET: APP.clientSecret,
     TOKEN_ENCRYPTION_KEY: KEY, WEBHOOK_SECRET: "hook-secret", APPLE_APP_ID: "TEAMID.com.example.prhub",
-    ANTHROPIC_API_KEY: "operator-anthropic-key", USER_ACCOUNTS: {} as Env["USER_ACCOUNTS"],
+    AI_ON_API_KEY: "on", ANTHROPIC_API_KEY: "operator-anthropic-key", USER_ACCOUNTS: {} as Env["USER_ACCOUNTS"],
     SIGN_INS: {} as Env["SIGN_INS"], INSTALLATIONS: {} as Env["INSTALLATIONS"], IP_LIMITS: {} as Env["IP_LIMITS"],
     ...vars,
   });

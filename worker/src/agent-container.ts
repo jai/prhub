@@ -9,8 +9,15 @@ export function onSubscription(env: Pick<Env, "CLAUDE_CODE_OAUTH_TOKEN" | "AGENT
 }
 
 /** Whether key lines and rewrites can run at all: on the subscription, or on an API key. */
-export function makesAnswers(env: Pick<Env, "CLAUDE_CODE_OAUTH_TOKEN" | "AGENT" | "ANTHROPIC_API_KEY">): boolean {
-  return onSubscription(env) || isSet(env.ANTHROPIC_API_KEY);
+export function makesAnswers(
+  env: Pick<Env, "CLAUDE_CODE_OAUTH_TOKEN" | "AGENT" | "ANTHROPIC_API_KEY" | "AI_ON_API_KEY">,
+): boolean {
+  return onSubscription(env) || (onApiKey(env) && isSet(env.ANTHROPIC_API_KEY));
+}
+
+/** Whether AI may run on an Anthropic API key at all: off unless `AI_ON_API_KEY` is `on`, while AI is on the subscription. */
+export function onApiKey(env: Pick<Env, "AI_ON_API_KEY">): boolean {
+  return env.AI_ON_API_KEY?.trim() === "on";
 }
 
 export interface AgentAnswer {

@@ -128,7 +128,7 @@ test("cost is list price in cents, Haiku's long-prompt rate included, and null f
 test("/device/config lists models only for the AI features that are on", () => {
   const env = (vars: Partial<Env>) => vars as Env;
   assert.equal("ai" in deviceConfig(env({ GITHUB_TOKEN: "t" }), "alex"), false);
-  const keyOnly = deviceConfig(env({ ANTHROPIC_API_KEY: "k", AI_MODELS_ALLOWED: "claude-sonnet-5-5,claude-opus-5-5",
+  const keyOnly = deviceConfig(env({ AI_ON_API_KEY: "on", ANTHROPIC_API_KEY: "k", AI_MODELS_ALLOWED: "claude-sonnet-5-5,claude-opus-5-5",
     AI_EFFORT_MAX: "medium" }), "alex");
   assert.deepEqual(Object.keys(keyOnly.ai!.features), ["key_lines", "rewrite"]);
   assert.deepEqual(keyOnly.ai!.features.key_lines, {
@@ -139,7 +139,7 @@ test("/device/config lists models only for the AI features that are on", () => {
     ],
   });
   const ask = { ASK_AGENT_ID: "a", ASK_ENVIRONMENT_ID: "e", ASK_VAULT_ID: "v", ASK_CREDENTIAL_ID: "c" };
-  const all = deviceConfig(env({ ANTHROPIC_API_KEY: "k", ...ask }), "alex");
+  const all = deviceConfig(env({ AI_ON_API_KEY: "on", ANTHROPIC_API_KEY: "k", ...ask }), "alex");
   assert.deepEqual(all.ai!.features.ask, featureModels(parseAiConfig({}), "ask"));
 });
 

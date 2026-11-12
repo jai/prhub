@@ -57,6 +57,8 @@ export interface Env extends LimitVars {
    */
   CLAUDE_CODE_OAUTH_TOKEN?: string;
   AGENT?: DurableObjectNamespace<AgentContainer>;
+  /** `on`: key lines, rewrites and Ask may run on an API key. Anything else: on the subscription alone. */
+  AI_ON_API_KEY?: string;
   /** Hosted only: the comma-separated GitHub logins whose AI runs on the Worker's subscription. Unset: nobody's. */
   SUBSCRIPTION_LOGINS?: string;
   /** Ask (`ask.ts`): the key whose org holds the agent and environment. Unset: `ANTHROPIC_API_KEY`. */

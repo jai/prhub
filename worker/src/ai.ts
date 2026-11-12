@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
-import { onSubscription, runOnSubscription } from "./agent-container.ts";
+import { onApiKey, onSubscription, runOnSubscription } from "./agent-container.ts";
 import { type Env, isSet } from "./env.ts";
 import { fetchFile, getFromGitHub, liveDiff } from "./github.ts";
 import { isRevisionOf, type Sha } from "./ids.ts";
@@ -69,6 +69,9 @@ async function ask<Answer>(
 ): Promise<{ answer: Answer; run: Run }> {
   if (onSubscription(env)) {
     return askOnSubscription(system, content, schema, choice, env, runFor);
+  }
+  if (!onApiKey(env)) {
+    throw new Error("AI runs on the subscription alone for now, and this account has none.");
   }
   const fallback = MODEL_SPECS[choice.model].serverFallback
     ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }

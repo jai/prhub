@@ -4,7 +4,7 @@ import type { AskChat, AskInput } from "./ask-chat";
 import { type Env, isSet } from "./env";
 import { prId, type RepoFullName } from "./ids";
 import { askRepoToken, InstallationTokenRefused } from "./app-token";
-import { onSubscription } from "./agent-container";
+import { onApiKey, onSubscription } from "./agent-container";
 import { askSystemPrompt } from "./ask-setup";
 import { askOnSubscription, isSubscriptionRecord, prDiff, subscriptionChat } from "./ask-subscription";
 import { askBudgetOf, limitsOf } from "./limits";
@@ -133,6 +133,9 @@ export async function ask(repo: RepoFullName, number: number, input: AskInput, c
       system: askSystemPrompt(env.GITHUB_LOGIN ?? null, "subscription"), token, diff: () => prDiff(repo, number, input.head, env),
       budgetUsd: askBudgetOf(limitsOf(env)) / 100,
     });
+  }
+  if (!onApiKey(env)) {
+    throw new AskRefused("AI runs on the subscription alone for now, and this account has none.");
   }
   const record = await liveRecord(repo, number, input.head, choice, env);
   await client(env).beta.sessions.events.send(record.session, {
