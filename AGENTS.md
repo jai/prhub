@@ -87,9 +87,9 @@ new event that breaks a rule below is a privacy policy change, not a code change
     that can sign for the team. `release/ship.sh "<What to Test>"` with no release waiting ships the current HEAD
     with N from `next-build.sh` and makes no commit. `PRHUB_SUBMIT=NO` prevents the Beta App Review submission, but
     only in a local ship. In Xcode Cloud, the Public group's post-action can submit the build.
-  - Xcode Cloud has no `Package.resolved` to read. PRKit is this repo's own package (`path: ..`) and `Package.swift`
-    has no dependencies, so the project resolves with automatic resolution off. If a remote package is added, commit
-    a `Package.resolved` and copy it into the generated project in `app/ci_scripts/ci_post_clone.sh`.
+  - Xcode Cloud resolves packages only from a `Package.resolved`. `app/Package.resolved` pins the remote ones (PostHog)
+    and `app/ci_scripts/ci_post_clone.sh` copies it into the generated project. When `project.yml`'s packages change,
+    run `xcodebuild -resolvePackageDependencies` in `app/` and copy the project's `Package.resolved` back to `app/`.
 
 ### Setting up Xcode Cloud (once)
 

@@ -144,11 +144,11 @@ else
                 exit 1
             fi
         else
-            read -r _ build progress status <<< "$run"
-            [[ $run != "$seen" ]] && echo "Xcode Cloud build $build: $progress $status"
+            read -r _ build progress outcome <<< "$run"
+            [[ $run != "$seen" ]] && echo "Xcode Cloud build $build: $progress $outcome"
             seen=$run
             if [[ $progress == COMPLETE ]]; then
-                [[ $status == SUCCEEDED ]] || { echo "SHIP FAILED: Xcode Cloud build $build $status (App Store Connect → Xcode Cloud → Builds)"; exit 1; }
+                [[ $outcome == SUCCEEDED ]] || { echo "SHIP FAILED: Xcode Cloud build $build $outcome (App Store Connect → Xcode Cloud → Builds)"; exit 1; }
                 break
             fi
             if (( SECONDS - started > 5400 )); then
