@@ -136,7 +136,7 @@ final class PictureTextView: UITextView {
         return (super.keyCommands ?? []) + returns
     }
 
-    @objc private func returnPressed(_ command: UIKeyCommand) {
+    @objc func returnPressed(_ command: UIKeyCommand) {
         var modifiers: ReturnKey.Modifiers = []
         if command.modifierFlags.contains(.shift) { modifiers.insert(.shift) }
         if command.modifierFlags.contains(.alternate) { modifiers.insert(.option) }
@@ -153,6 +153,10 @@ final class PictureTextView: UITextView {
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         if action == #selector(paste(_:)), clipboardHasOnlyPictures {
+            return true
+        }
+        // The text view refuses actions it does not know, which would disable the Return commands and swallow the key.
+        if action == #selector(returnPressed(_:)) {
             return true
         }
         return super.canPerformAction(action, withSender: sender)
