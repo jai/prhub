@@ -353,7 +353,8 @@ choice, and the stored shape are the same; `costCents` is what the run would hav
   resumes it in any container. A question at another model or effort starts a new chat.
 - The container runs in the US (`constraints.regions`): nearest the request it can land where Anthropic's API refuses it.
 - The container sleeps after two idle minutes. The first run after that waits for it to start, about 20 seconds.
-- A container that is not ready, or whose run was stopped, is asked again up to three times, five seconds apart.
+- A container that is not ready, whose run was stopped, or that dropped the connection (a deploy replaces it) is
+  tried up to four times, five seconds apart.
 - A failed answer, on either path, is served for ten minutes; the next ask after that makes it again, so a run that
   failed for want of credit or capacity heals without **Try again**.
 

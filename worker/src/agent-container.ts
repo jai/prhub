@@ -24,7 +24,7 @@ export interface AgentAnswer {
 type ContainerAnswer = Partial<AgentAnswer> & { error?: string; subtype?: string };
 
 /** Tries a run takes before it fails: a container that is starting, stopping or full answers without JSON. */
-export const CONTAINER_TRIES = 3;
+export const CONTAINER_TRIES = 4;
 const RETRY_AFTER_MS = 5_000;
 
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -38,10 +38,21 @@ export async function askContainer<Answer extends { error?: string }>(
 ): Promise<Answer> {
   let failure = "";
   for (let tryNumber = 1; tryNumber <= CONTAINER_TRIES; tryNumber++) {
-    const response = await agent.get(agent.idFromName("ai")).fetch(`http://agent${path}`, {
-      method: "POST", headers: { "content-type": "application/json" }, body,
-    });
-    const text = await response.text();
+    let response: Response;
+    let text: string;
+    try {
+      response = await agent.get(agent.idFromName("ai")).fetch(`http://agent${path}`, {
+        method: "POST", headers: { "content-type": "application/json" }, body,
+      });
+      text = await response.text();
+    } catch (error) {
+      // The container went away mid-run, as a deploy replaces it: the run goes again in a new one.
+      failure = String(error instanceof Error ? error.message : error);
+      if (tryNumber < CONTAINER_TRIES) {
+        await wait(RETRY_AFTER_MS);
+      }
+      continue;
+    }
     let answer: Answer | null = null;
     try {
       answer = JSON.parse(text) as Answer;
