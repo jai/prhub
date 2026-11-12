@@ -1,0 +1,15 @@
+# CI runs the UI tests in slices, side by side (.github/workflows/ios.yml): `<slice> <class>` or `<slice> <class>/<test>`.
+# Every test is in exactly one slice; scripts/ui-test-shards.sh check fails CI otherwise.
+1 PRHubDiffFontUITests
+1 PRHubFoldUITests
+1 PRHubScreenshotTests/testEveryScreenInLight
+2 PRHubHostedUITests
+2 PRHubDiffBarsUITests
+2 PRHubScreenshotTests/testEveryScreenInDark
+3 PRHubNavigationUITests
+3 PRHubPRPageUITests
+3 PRHubSamplesUITests
+3 PRHubScreenshotTests/testEveryScreenInLargeText
+3 PRHubAskE2ETests
+3 PRHubPushOpenE2ETests
+3 PRHubOutboxCheckTests

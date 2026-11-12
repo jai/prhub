@@ -1,7 +1,8 @@
-# PRKit and the PRHub app on GitHub's macOS runners: PRKit's tests on macOS, then the app's and PRKit's unit tests and
-# the UI tests on an iPhone and on a 13-inch iPad Simulator, in sample mode, with no secrets. The iPad runs on every PR
-# and push like the iPhone: the repo is public, so its macOS minutes are free, and it runs beside the iPhone, so it adds
-# no wait. The UI tests' pictures of every screen (light, dark and large text) are uploaded as an artifact per device.
+# PRKit and the PRHub app on GitHub's macOS runners: PRKit's tests on macOS; the app built once for the Simulator; then
+# side by side, the app's and PRKit's unit tests on an iPhone and the UI tests on an iPhone and on a 13-inch iPad, each
+# device's in three slices (app/PRHubUITests/shards.txt), in sample mode, with no secrets. The repo is public, so its
+# macOS minutes are free: the slices only cost runners, not money. The UI tests' pictures of every screen (light, dark
+# and large text) are uploaded as an artifact per device and slice.
 name: ios
 
 on:
@@ -32,6 +33,8 @@ jobs:
         run: make -C app design-check
       - name: No literal fonts, colours, paddings, corners or animations in views
         run: scripts/design-lint.sh
+      - name: Every UI test is in one CI slice
+        run: scripts/ui-test-shards.sh check
 
   prkit:
     runs-on: macos-26
@@ -43,20 +46,10 @@ jobs:
       - name: swift test
         run: swift test
 
-  app:
-    name: app (${{ matrix.device }})
+  # One build for every slice: a Simulator build runs on the iPhone and the iPad alike.
+  build:
     runs-on: macos-26
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - device: iPhone
-            # The newest numbered iPhone.
-            pattern: "^iPhone [0-9]+$"
-          - device: iPad
-            # The 13-inch iPad Pro: the regular width, with the list beside the PR.
-            pattern: '^iPad Pro 13-inch \(M[0-9]+\)$'
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - name: Xcode and XcodeGen
@@ -64,6 +57,53 @@ jobs:
           sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
           xcodebuild -version
           brew install xcodegen
+      - name: Build for testing
+        working-directory: app
+        run: |
+          xcodegen generate --spec project.yml --quiet
+          xcodebuild build-for-testing -project PRHub.xcodeproj -scheme PRHub \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build/DerivedData -quiet
+      # A tarball, because an artifact loses the files' modes and the app could not launch.
+      - name: Products
+        working-directory: app/build/DerivedData/Build
+        run: tar -czf "$RUNNER_TEMP/products.tgz" Products
+      - uses: actions/upload-artifact@v4
+        with:
+          name: products
+          path: ${{ runner.temp }}/products.tgz
+          retention-days: 1
+
+  app:
+    name: app (${{ matrix.device }}, ${{ matrix.slice }})
+    needs: build
+    runs-on: macos-26
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [iPhone, iPad]
+        slice: ["1", "2", "3"]
+        include:
+          # The newest numbered iPhone.
+          - device: iPhone
+            pattern: "^iPhone [0-9]+$"
+          # The 13-inch iPad Pro: the regular width, with the list beside the PR.
+          - device: iPad
+            pattern: '^iPad Pro 13-inch \(M[0-9]+\)$'
+          # The unit tests, once: they draw no screen.
+          - device: iPhone
+            slice: unit
+            pattern: "^iPhone [0-9]+$"
+    steps:
+      - uses: actions/checkout@v5
+      - name: Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)" && xcodebuild -version
+      - uses: actions/download-artifact@v4
+        with:
+          name: products
+          path: ${{ runner.temp }}
+      - name: Products
+        run: mkdir -p app/build && tar -xzf "$RUNNER_TEMP/products.tgz" -C app/build
       - name: Simulator
         env:
           FAMILY: ${{ matrix.device }}
@@ -78,35 +118,32 @@ jobs:
           [[ -n $type && $type != null ]] || { echo "no $FAMILY matching $PATTERN on $runtime"; exit 1; }
           echo "runtime $runtime, device $type"
           echo "SIM=$(xcrun simctl create ci "$type" "$runtime")" >> "$GITHUB_ENV"
-      - name: Build
-        working-directory: app
-        run: |
-          xcodegen generate --spec project.yml --quiet
-          xcodebuild build-for-testing -project PRHub.xcodeproj -scheme PRHub -destination "id=$SIM" \
-            -derivedDataPath build/DerivedData -quiet
-      - name: Unit tests (PRHubTests, PRKitTests)
-        working-directory: app
-        run: |
-          xcodebuild test-without-building -project PRHub.xcodeproj -scheme PRHub -destination "id=$SIM" \
-            -derivedDataPath build/DerivedData -resultBundlePath build/unit.xcresult \
-            -only-testing:PRHubTests -only-testing:PRKitTests
-      - name: UI tests and screenshots
+      - name: Tests
         working-directory: app
         env:
+          SLICE: ${{ matrix.slice }}
           TEST_RUNNER_SCREENSHOTS_DIR: ${{ github.workspace }}/app/build/screenshots
         run: |
-          xcodebuild test-without-building -project PRHub.xcodeproj -scheme PRHub -destination "id=$SIM" \
-            -derivedDataPath build/DerivedData -resultBundlePath build/ui.xcresult -only-testing:PRHubUITests
+          if [ "$SLICE" = unit ]; then
+            tests=(-only-testing:PRHubTests -only-testing:PRKitTests)
+          else
+            mapfile -t tests < <(../scripts/ui-test-shards.sh args "$SLICE")
+          fi
+          testrun=(build/Products/*.xctestrun)
+          # Two Simulator clones share a slice's classes.
+          xcodebuild test-without-building -xctestrun "${testrun[0]}" \
+            -destination "id=$SIM" -parallel-testing-enabled YES -parallel-testing-worker-count 2 \
+            -resultBundlePath build/tests.xcresult "${tests[@]}"
       - name: Screenshots
-        if: always()
+        if: always() && matrix.slice != 'unit'
         uses: actions/upload-artifact@v4
         with:
-          name: screenshots-${{ matrix.device }}
+          name: screenshots-${{ matrix.device }}-${{ matrix.slice }}
           path: app/build/screenshots
           if-no-files-found: warn
       - name: Results
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: xcresults-${{ matrix.device }}
+          name: xcresults-${{ matrix.device }}-${{ matrix.slice }}
           path: app/build/*.xcresult

@@ -7,7 +7,7 @@ import XCTest
 /// and a PNG in `SCREENSHOTS_DIR` when the run sets it (`TEST_RUNNER_SCREENSHOTS_DIR` on xcodebuild's command line).
 @MainActor
 final class PRHubScreenshotTests: XCTestCase {
-    private enum Look: String, CaseIterable {
+    private enum Look: String {
         case light, dark, largeText = "large-text"
     }
 
@@ -17,10 +17,17 @@ final class PRHubScreenshotTests: XCTestCase {
         continueAfterFailure = false
     }
 
-    func testEveryScreenInEveryLook() throws {
-        for look in Look.allCases {
-            try pictures(look)
-        }
+    // One test a look, so CI's slices take one each (app/PRHubUITests/shards.txt).
+    func testEveryScreenInLight() throws {
+        try pictures(.light)
+    }
+
+    func testEveryScreenInDark() throws {
+        try pictures(.dark)
+    }
+
+    func testEveryScreenInLargeText() throws {
+        try pictures(.largeText)
     }
 
     private func launch(_ look: Look, _ arguments: [String]) {
