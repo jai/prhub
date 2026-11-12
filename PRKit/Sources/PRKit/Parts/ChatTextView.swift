@@ -34,6 +34,8 @@ struct ChatTextView: UIViewRepresentable {
     let focused: FocusState<Bool>.Binding
     let maxLines: Int
     let pastePicture: (@MainActor @Sendable (Data) -> Void)?
+    /// Return and Command-Return on a hardware keyboard (`ReturnKey`).
+    let send: () -> Void
 
     func makeUIView(context: Context) -> PictureTextView {
         let view = PictureTextView()
@@ -55,6 +57,7 @@ struct ChatTextView: UIViewRepresentable {
             view.text = text
         }
         view.pastePicture = pastePicture
+        view.send = send
         view.accessibilityLabel = placeholder
         let wantsFocus = focused.wrappedValue
         let move = ChatFieldFocus.move(
@@ -115,9 +118,34 @@ struct ChatTextView: UIViewRepresentable {
     }
 }
 
-/// A text view whose Paste takes a picture when the clipboard holds pictures and no words.
+/// A text view whose Paste takes a picture when the clipboard holds pictures and no words, and whose Return on a
+/// hardware keyboard sends (`ReturnKey`).
 final class PictureTextView: UITextView {
     var pastePicture: (@MainActor @Sendable (Data) -> Void)?
+    var send: (() -> Void)?
+
+    /// Hardware keys only: the on-screen keyboard's return key types a new line as always. Ahead of the text view's
+    /// own Return, which would type one.
+    override var keyCommands: [UIKeyCommand]? {
+        let flags: [UIKeyModifierFlags] = [[], .command, .shift, .alternate]
+        let returns = flags.map { flags in
+            let command = UIKeyCommand(input: "\r", modifierFlags: flags, action: #selector(returnPressed(_:)))
+            command.wantsPriorityOverSystemBehavior = true
+            return command
+        }
+        return (super.keyCommands ?? []) + returns
+    }
+
+    @objc private func returnPressed(_ command: UIKeyCommand) {
+        var modifiers: ReturnKey.Modifiers = []
+        if command.modifierFlags.contains(.shift) { modifiers.insert(.shift) }
+        if command.modifierFlags.contains(.alternate) { modifiers.insert(.option) }
+        if command.modifierFlags.contains(.command) { modifiers.insert(.command) }
+        switch ReturnKey.action(modifiers) {
+        case .send: send?()
+        case .newLine: insertText("\n")
+        }
+    }
 
     private var clipboardHasOnlyPictures: Bool {
         pastePicture != nil && UIPasteboard.general.hasImages && !UIPasteboard.general.hasStrings
