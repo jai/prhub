@@ -63,7 +63,7 @@ export async function installationRepoToken(
 /**
  * The GitHub token Ask's agent gets for a PR. Hosted: the PRHub App's, for this repo alone, and only after the person's
  * own token has read the PR, since an installation token reaches repos they may not. Jai's Worker: his Ask App's.
- * Self-hosted: a PAT, `ASK_GITHUB_TOKEN` (read only) or else `GITHUB_TOKEN`.
+ * Self-hosted: a PAT, `ASK_GITHUB_TOKEN` (read only), else `GITHUB_READ_TOKEN`, else `GITHUB_TOKEN`.
  */
 export async function askRepoToken(
   repo: RepoFullName, number: number, env: Env, fetcher: typeof fetch = (input, init) => fetch(input, init),
@@ -79,5 +79,8 @@ export async function askRepoToken(
   if (isSet(env.ASK_GITHUB_APP_ID) && isSet(env.ASK_GITHUB_APP_KEY)) {
     return installationRepoToken(repo, { id: env.ASK_GITHUB_APP_ID, key: env.ASK_GITHUB_APP_KEY }, false, fetcher);
   }
-  return isSet(env.ASK_GITHUB_TOKEN) ? env.ASK_GITHUB_TOKEN : env.GITHUB_TOKEN;
+  if (isSet(env.ASK_GITHUB_TOKEN)) {
+    return env.ASK_GITHUB_TOKEN;
+  }
+  return isSet(env.GITHUB_READ_TOKEN) ? env.GITHUB_READ_TOKEN : env.GITHUB_TOKEN;
 }

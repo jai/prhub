@@ -81,6 +81,7 @@ export function userEnv(env: Env, user: { userId: string; login: string; token: 
   return {
     ...env,
     GITHUB_TOKEN: user.token,
+    GITHUB_READ_TOKEN: undefined,
     GITHUB_LOGIN: user.login,
     SIGNED_IN_USER_ID: user.userId,
     GITHUB_ORGS: undefined,

@@ -242,8 +242,11 @@ interface Node extends Pick<PeopleNode, "peopleComments" | "committers"> {
 
 const PAGE_SIZE = 50;
 const OPEN = "is:pr is:open archived:false draft:false sort:updated-desc";
-const SEARCHES = [`${OPEN} user-review-requested:@me`, `${OPEN} author:@me`];
-const REVIEWED_SEARCH = `${OPEN} reviewed-by:@me`;
+/**
+ * The searches name the owner (`githubLogin`), never `@me`: with `GITHUB_READ_TOKEN` set, `@me` is the read token's user.
+ */
+const searchesOf = (login: string) => [`${OPEN} user-review-requested:${login}`, `${OPEN} author:${login}`];
+const reviewedSearchOf = (login: string) => `${OPEN} reviewed-by:${login}`;
 const SEARCH_QUERY = `query($q: String!, $n: Int!, $after: String) {
   search(query: $q, type: ISSUE, first: $n, after: $after) {
     pageInfo { hasNextPage endCursor }
@@ -255,9 +258,9 @@ const AUTHOR = "author { login ... on Actor { avatarUrl(size: 80) } }";
 const COMMENT = `id ${AUTHOR} body createdAt`;
 const FIELDS = `fragment Fields on PullRequest {
   id number title body state isDraft url headRefOid headRefName baseRefName updatedAt additions deletions changedFiles
-  reviewDecision mergeable mergeStateStatus viewerDidAuthor
+  reviewDecision mergeable mergeStateStatus
   author { __typename login avatarUrl(size: 80) ... on User { name } }
-  repository { nameWithOwner viewerDefaultMergeMethod }
+  repository { nameWithOwner }
   assignees(first: 5) { nodes { login name avatarUrl(size: 80) } }
   trailers: commits(last: 20) { nodes { commit { message } } }
   reviewRequests(first: 20) { nodes { requestedReviewer {
@@ -268,18 +271,25 @@ const FIELDS = `fragment Fields on PullRequest {
   requestEvents: timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 20) { nodes {
     ... on ReviewRequestedEvent { createdAt requestedReviewer { ... on User { login } } }
   } }
-  files(first: 100) { nodes { path viewerViewedState } }
   labels(first: 20) { nodes { name color } }
   overall: commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
   comments(first: 100) { nodes { ${COMMENT} } }
   reviews(last: 50) { nodes { id ${AUTHOR} state body submittedAt } }
   reviewThreads(last: 100) {
     nodes {
-      id isResolved isOutdated viewerCanResolve viewerCanUnresolve path line diffSide
+      id isResolved isOutdated path line diffSide
       comments(first: 30) { nodes { ${COMMENT} } }
     }
   }
   ${PEOPLE_FIELDS}
+}`;
+
+/** What only the owner's own token can answer: these fields are about whoever the token is. */
+const VIEWER_FIELDS = `fragment Viewer on PullRequest {
+  viewerDidAuthor
+  repository { viewerDefaultMergeMethod }
+  files(first: 100) { nodes { path viewerViewedState } }
+  reviewThreads(last: 100) { nodes { id viewerCanResolve viewerCanUnresolve } }
 }`;
 
 /** A PR's checks. Inline, not in a fragment: only GitHub knows which are required, and it asks for the PR's number. */
@@ -293,6 +303,34 @@ export function contextsOf(number: number): string {
   } } } } } }`;
 }
 
+/** The second account's token reads go with (`GITHUB_READ_TOKEN`); null when there is none, and always on the hosted Worker. */
+export function readToken(env: Env): string | null {
+  return !isSet(env.SIGNED_IN_USER_ID) && isSet(env.GITHUB_READ_TOKEN) ? env.GITHUB_READ_TOKEN : null;
+}
+
+/**
+ * Org and team membership: GitHub hides private members and secret teams from an account outside the org, and answers
+ * it 404, which would read as "not a member". The owner's token, who is in the org, asks.
+ */
+const MEMBERSHIP_PATH = /^\/orgs\/[^/]+\/(?:members|teams\/[^/]+\/memberships)\//;
+
+/**
+ * Whether a call only reads, and asks nothing the read token's account may not see: a GET other than a membership
+ * check, or a GraphQL query with no mutation and no `viewer` field in it. Only such a call may go with the read token;
+ * everything else goes as the owner.
+ */
+export function readsAsAnyone(path: string, init: RequestInit): boolean {
+  const method = (init.method ?? "GET").toUpperCase();
+  if (method === "GET") {
+    return !MEMBERSHIP_PATH.test(path);
+  }
+  if (method !== "POST" || path !== "/graphql" || typeof init.body !== "string") {
+    return false;
+  }
+  const { query } = JSON.parse(init.body) as { query?: unknown };
+  return typeof query === "string" && !/\bmutation\b/.test(query) && !/\bviewer/.test(query);
+}
+
 /**
  * Every GitHub call. On the hosted Worker a 401 refreshes the person's token once (`renewAfterUnauthorized`) and the
  * call goes again with the new one; a self-hosted Worker's token is the operator's to replace. Each answer's rate-limit
@@ -300,7 +338,8 @@ export function contextsOf(number: number): string {
  * background run (`GITHUB_RATE` set) also stops when the token's hour runs low.
  */
 async function github(path: string, env: Env, accept: string, init: RequestInit = {}): Promise<Response> {
-  const key = isSet(env.SIGNED_IN_USER_ID) ? `user:${env.SIGNED_IN_USER_ID}` : "self";
+  const reader = readsAsAnyone(path, init) ? readToken(env) : null;
+  const key = isSet(env.SIGNED_IN_USER_ID) ? `user:${env.SIGNED_IN_USER_ID}` : reader ? "self:read" : "self";
   const started = Date.now();
   const held = heldBackoff(key, started);
   if (held && stops(held, started, env.GITHUB_RATE !== undefined)) {
@@ -320,7 +359,7 @@ async function github(path: string, env: Env, accept: string, init: RequestInit 
     holdBackoff(key, backoffOf(response, now, reserve));
     return response;
   };
-  const response = await send(env.GITHUB_TOKEN);
+  const response = await send(reader ?? env.GITHUB_TOKEN);
   if (response.status !== 401 || !isSet(env.SIGNED_IN_USER_ID)) {
     return response;
   }
@@ -723,9 +762,10 @@ async function search(q: string, env: Env): Promise<Listing[]> {
  * than his list holds, so what only that search found counts for the rows already held.
  */
 export async function searchListings(env: Env): Promise<Map<PrId, Listing>> {
+  const login = await githubLogin(env);
   const [listed, reviewed] = await Promise.all([
-    Promise.all(SEARCHES.map((q) => search(q, env))),
-    search(REVIEWED_SEARCH, env),
+    Promise.all(searchesOf(login).map((q) => search(q, env))),
+    search(reviewedSearchOf(login), env),
   ]);
   const found = new Map<PrId, Listing>();
   for (const listing of reviewed) {
@@ -782,17 +822,69 @@ export function mergedRow(node: MergedNode): MergedRow {
 }
 
 export const MERGED_SEARCHES = {
-  mine: "is:pr is:merged author:@me archived:false sort:updated-desc",
-  reviewed: "is:pr is:merged reviewed-by:@me -author:@me archived:false sort:updated-desc",
+  mine: (login: string) => `is:pr is:merged author:${login} archived:false sort:updated-desc`,
+  reviewed: (login: string) => `is:pr is:merged reviewed-by:${login} -author:${login} archived:false sort:updated-desc`,
 } as const;
 
 export async function mergedPullRequests(
   env: Env, kind: keyof typeof MERGED_SEARCHES = "mine",
 ): Promise<MergedRow[]> {
+  const q = MERGED_SEARCHES[kind](await githubLogin(env));
   const data = await graphql<{ search: { nodes: (MergedNode | Record<string, never>)[] } }>(MERGED_QUERY,
-    { q: MERGED_SEARCHES[kind], n: MERGED_LIMIT }, env);
+    { q, n: MERGED_LIMIT }, env);
   return data.search.nodes.filter((node): node is MergedNode => "number" in node).map(mergedRow)
     .sort((a, b) => (b.status.mergedAt ?? "").localeCompare(a.status.mergedAt ?? ""));
+}
+
+type Nodes = Record<string, { pullRequest: Node | null } | null>;
+type ViewerNode = Pick<Node, "viewerDidAuthor" | "files"> & {
+  repository: { viewerDefaultMergeMethod: string | null };
+  reviewThreads: { nodes: { id: string; viewerCanResolve: boolean; viewerCanUnresolve: boolean }[] };
+};
+
+function prQuery(refs: PullRequestRef[], fields: (ref: PullRequestRef) => string, fragments: string): string {
+  const parts = refs.map((ref, index) => {
+    const { owner, name } = repoParts(ref.repo);
+    return `p${index}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) {
+      pullRequest(number: ${ref.number}) { ${fields(ref)} } }`;
+  });
+  return `query { ${parts.join("\n")} } ${fragments}`;
+}
+
+/**
+ * The PRs' nodes in one query, as the owner. With a read token, everything but the viewer's fields is read with it, and
+ * those alone, a far cheaper query, as the owner.
+ */
+async function readNodes(refs: PullRequestRef[], env: Env): Promise<Nodes> {
+  const shared = (ref: PullRequestRef) => `...Fields ${contextsOf(ref.number)}`;
+  if (!readToken(env)) {
+    return graphql<Nodes>(prQuery(refs, (ref) => `${shared(ref)} ...Viewer`, `${FIELDS} ${VIEWER_FIELDS}`), {}, env);
+  }
+  const [data, viewer] = await Promise.all([
+    graphql<Nodes>(prQuery(refs, shared, FIELDS), {}, env),
+    graphql<Record<string, { pullRequest: ViewerNode | null } | null>>(prQuery(refs, () => "...Viewer", VIEWER_FIELDS),
+      {}, env),
+  ]);
+  return Object.fromEntries(Object.entries(data).map(([alias, answer]) => {
+    const node = answer?.pullRequest;
+    return [alias, node ? { pullRequest: withViewer(node, viewer[alias]?.pullRequest ?? null) } : answer];
+  }));
+}
+
+/** A node read with the read token, with the owner's own fields put in; none known reads as the owner seeing nothing. */
+export function withViewer(node: Node, viewer: ViewerNode | null): Node {
+  const threads = new Map((viewer?.reviewThreads.nodes ?? []).map((thread) => [thread.id, thread]));
+  return {
+    ...node,
+    viewerDidAuthor: viewer?.viewerDidAuthor ?? false,
+    repository: { ...node.repository, viewerDefaultMergeMethod: viewer?.repository.viewerDefaultMergeMethod ?? null },
+    files: viewer?.files ?? null,
+    reviewThreads: { nodes: node.reviewThreads.nodes.map((thread) => ({
+      ...thread,
+      viewerCanResolve: threads.get(thread.id)?.viewerCanResolve ?? false,
+      viewerCanUnresolve: threads.get(thread.id)?.viewerCanUnresolve ?? false,
+    })) },
+  };
 }
 
 /** `lookUp` asks Linear about ticket keys: the index passes its cache (`cachedTickets`). */
@@ -801,15 +893,7 @@ export async function readPullRequests(
   lookUp: (keys: string[]) => Promise<Map<string, Ticket>> = (keys) => lookUpTickets(keys, env),
   cache?: GitHubCache,
 ): Promise<Map<PrId, PullRequest | null>> {
-  const fields = refs.map((ref, index) => {
-    const { owner, name } = repoParts(ref.repo);
-    return `p${index}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) {
-      pullRequest(number: ${ref.number}) { ...Fields ${contextsOf(ref.number)} } }`;
-  });
-  const [data, login] = await Promise.all([
-    graphql<Record<string, { pullRequest: Node | null } | null>>(`query { ${fields.join("\n")} } ${FIELDS}`, {}, env),
-    githubLogin(env),
-  ]);
+  const [data, login] = await Promise.all([readNodes(refs, env), githubLogin(env)]);
   const week = reviewWeek(env);
   const bots = botAuthorsOf(env);
   const people = await Promise.all(refs.map((ref, index) => {

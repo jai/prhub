@@ -234,7 +234,8 @@ var reads as unset.
 | Name | Kind | Value |
 |---|---|---|
 | `GITHUB_TOKEN` | secret | The person's PAT: classic with `repo`, or fine-grained (permissions in [deploy/AGENTS.md](../deploy/AGENTS.md)) |
-| `GITHUB_LOGIN` | var | Their login; unset reads it from the token |
+| `GITHUB_LOGIN` | var | Their login; unset reads it from the token. The searches name it, not `@me`, so they stay this person's with `GITHUB_READ_TOKEN` set. Set it beside that token: unset, each isolate spends a `GITHUB_TOKEN` call reading it |
+| `GITHUB_READ_TOKEN` | secret | A second account's PAT that makes the reads (searches, PR reads, diffs, files, `.policy.yml` and team checks), so they cost that account's rate limit. Writes, and the reads that ask about the viewer (viewed files, draft reviews, what they may resolve, the repo list), stay on `GITHUB_TOKEN`. The account needs read access to every repo the Worker lists. Ignored when `HOSTED=on` |
 | `GITHUB_ORGS` | var | Default filter for the app, and the owners `GET /repos` lists |
 | `PR_ALERTS` | var | Visible alerts: `review_requested`, `approved`, `changes_requested`, comma-separated, or `off`. Unset: `review_requested` |
 | `PUSH_RELAY_URL` | var | Jai's relay base URL |
@@ -245,7 +246,7 @@ var reads as unset.
 | `AGENT` | container binding | `AgentContainer`, the Agent SDK container built from `agent/Dockerfile` |
 | `SUBSCRIPTION_LOGINS` | var | Hosted only: the GitHub logins, comma-separated, whose AI runs on `CLAUDE_CODE_OAUTH_TOKEN`. Unset: nobody's |
 | `ASK_AGENT_ID`, `ASK_ENVIRONMENT_ID`, `ASK_VAULT_ID`, `ASK_CREDENTIAL_ID` | var | From `npm run ask-agent` |
-| `ASK_GITHUB_TOKEN` | secret | A read-only PAT for Ask's agent; unset, it gets `GITHUB_TOKEN` |
+| `ASK_GITHUB_TOKEN` | secret | A read-only PAT for Ask's agent; unset, it gets `GITHUB_READ_TOKEN`, else `GITHUB_TOKEN` |
 | `ASK_GITHUB_APP_ID`, `ASK_GITHUB_APP_KEY` | secret | A GitHub App that mints a read-only token per question; wins over the PATs. The key is PKCS#8 (`BEGIN PRIVATE KEY`); GitHub's download is PKCS#1, so pipe it through `openssl pkcs8 -topk8 -nocrypt` |
 | `AI_MODELS_ALLOWED` | var | Models the app may pick, comma-separated, from `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`. Unset: all three |
 | `AI_EFFORT_MAX` | var | Highest effort offered: `low`, `medium` or `high`. Unset: `high`; nothing goes above it |
@@ -808,7 +809,8 @@ the person's hour.
   gives no time), every call for that token answers `429` with `retry-after` until then, without reaching GitHub.
   Each backoff is in `/events` once as `rate_limited` (`kind` `low`, `primary` or `secondary`, `until`, `remaining`,
   `limit`). Each hosted poll records its cost as `polled` (`calls`, `remaining`, `limit`). The same applies to a
-  self-hosted Worker's token.
+  self-hosted Worker's token. With `GITHUB_READ_TOKEN` set, its calls are held apart from `GITHUB_TOKEN`'s, so a read
+  token that runs out stops the reads, not the writes; a background run waits when either runs low.
 - **Sign-in, per IP.** `/auth/github/start` and `/auth/github/finish` answer `429 limit_reached` past
   `sign_in_starts_per_ip_per_minute` and `sign_in_finishes_per_ip_per_minute` ([Limits](#limits)). Each IP is
   counted by its SHA-256 in an `IpLimit` object, which deletes itself when its last count expires.

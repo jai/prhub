@@ -16,6 +16,12 @@ export interface Env extends LimitVars {
   /** A GitHub token that acts as that person: Jai's `gh` login, or a self-hoster's fine-grained PAT. */
   GITHUB_TOKEN: string;
   /**
+   * Optional: a second account's token that makes the reads, so they cost that account's hour, not the person's. Every
+   * write, and every question about the viewer (their viewed files, draft review), stays on `GITHUB_TOKEN`. Set
+   * `GITHUB_LOGIN` beside it. Ignored on the hosted Worker.
+   */
+  GITHUB_READ_TOKEN?: string;
+  /**
    * Optional: the owners (orgs or users) the app filters to by default, comma-separated. The PR list never filters by it;
    * the repo index (`GET /repos`) lists only these owners' repos when it is set.
    */
@@ -68,7 +74,7 @@ export interface Env extends LimitVars {
   /** The vault and its `GH_TOKEN` credential, which each question refreshes. */
   ASK_VAULT_ID?: string;
   ASK_CREDENTIAL_ID?: string;
-  /** Jai's Ask GitHub App, which mints a read-only token per question. Unset: `ASK_GITHUB_TOKEN`, else `GITHUB_TOKEN`. */
+  /** Jai's Ask GitHub App, which mints a read-only token per question. Unset: `ASK_GITHUB_TOKEN`, `GITHUB_READ_TOKEN`, `GITHUB_TOKEN`. */
   ASK_GITHUB_APP_ID?: string;
   /** PKCS#8 PEM. */
   ASK_GITHUB_APP_KEY?: string;
