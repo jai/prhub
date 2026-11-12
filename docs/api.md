@@ -134,8 +134,8 @@ Auth: a paired secret or `APP_TOKEN`. `Cache-Control: no-store`. The app reads i
 | Field | True when | The app |
 |---|---|---|
 | `features.ask_ai` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ASK_AGENT_ID`, `ASK_ENVIRONMENT_ID`, `ASK_VAULT_ID`, `ASK_CREDENTIAL_ID` and a key (`ASK_ANTHROPIC_API_KEY` or `ANTHROPIC_API_KEY`) | Shows Ask on a PR and a line |
-| `features.key_lines` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ANTHROPIC_API_KEY` | Shows the Key lines panel and capsule |
-| `features.rewrite` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ANTHROPIC_API_KEY` | Shows Rewrite on the description |
+| `features.key_lines` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ANTHROPIC_API_KEY` with `AI_ON_API_KEY=on` | Shows the Key lines panel and capsule |
+| `features.rewrite` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ANTHROPIC_API_KEY` with `AI_ON_API_KEY=on` | Shows Rewrite on the description |
 | `features.feedback` | `FEEDBACK_REPO` and `HUB_TOKEN` (Jai's Worker), or `FEEDBACK_ISSUES_REPO` and `FEEDBACK_ISSUES_TOKEN` (the hosted Worker) ([Feedback](#feedback)) | Shows Feedback |
 | `features.push` | the relay (`PUSH_RELAY_URL`, `PUSH_RELAY_KEY`), or direct APNs (`APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8`, `APNS_BUNDLE_ID`) | Registers for push; off: syncs on open and foreground only |
 | `features.webhooks` | `WEBHOOK_SECRET` | Diagnostics only: updates in seconds rather than about a minute |
@@ -276,6 +276,7 @@ var reads as unset.
 | `PUSH_RELAY_URL` | var | Jai's relay base URL |
 | `PUSH_RELAY_KEY` | secret | This Worker's relay key, `rks_…` |
 | `ANTHROPIC_API_KEY` | secret | Key lines, rewrites; Ask's key when `ASK_ANTHROPIC_API_KEY` is unset |
+| `AI_ON_API_KEY` | var | `on`: key lines, rewrites and Ask may run on an API key (the Worker's or a hosted person's). Unset or anything else: on the subscription alone, and an API key turns no AI on |
 | `CLAUDE_CODE_OAUTH_TOKEN` | secret | A Claude subscription's token (`claude setup-token`). With `AGENT` bound, key lines and rewrites run on it ([AI on a subscription](#ai-on-a-subscription)) and win over `ANTHROPIC_API_KEY` |
 | `AGENT` | container binding | `AgentContainer`, the Agent SDK container built from `agent/Dockerfile` |
 | `SUBSCRIPTION_LOGINS` | var | Hosted only: the GitHub logins, comma-separated, whose AI runs on `CLAUDE_CODE_OAUTH_TOKEN`. Unset: nobody's |

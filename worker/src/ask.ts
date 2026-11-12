@@ -4,7 +4,7 @@ import type { AskChat, AskInput } from "./ask-chat";
 import { type Env, isSet } from "./env";
 import { prId, type RepoFullName } from "./ids";
 import { askRepoToken, InstallationTokenRefused } from "./app-token";
-import { onSubscription } from "./agent-container";
+import { onApiKey, onSubscription } from "./agent-container";
 import { askSystemPrompt } from "./ask-setup";
 import { askOnSubscription, isSubscriptionRecord, prDiff, subscriptionChat } from "./ask-subscription";
 import { askBudgetOf, limitsOf } from "./limits";
@@ -106,6 +106,10 @@ export async function askChat(repo: RepoFullName, number: number, env: Env): Pro
   if (!record) {
     return chatOf([], null);
   }
+  if (!onApiKey(env)) {
+    // A chat from Managed Agents, which ran on an API key: not read while that is off.
+    return { ...chatOf([], null), problem: "This chat ran on an API key, which is off for now. Ask again to start a new one." };
+  }
   const events = [];
   for await (const event of client(env).beta.sessions.events.list(record.session)) {
     events.push(event);
@@ -133,6 +137,9 @@ export async function ask(repo: RepoFullName, number: number, input: AskInput, c
       system: askSystemPrompt(env.GITHUB_LOGIN ?? null, "subscription"), token, diff: () => prDiff(repo, number, input.head, env),
       budgetUsd: askBudgetOf(limitsOf(env)) / 100,
     });
+  }
+  if (!onApiKey(env)) {
+    throw new AskRefused("AI runs on the subscription alone for now, and this account has none.");
   }
   const record = await liveRecord(repo, number, input.head, choice, env);
   await client(env).beta.sessions.events.send(record.session, {

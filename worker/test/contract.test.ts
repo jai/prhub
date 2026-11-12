@@ -98,7 +98,7 @@ test("a detail, as the index keeps it", () => {
 
 test("GET /device/config", () => {
   const env = {
-    GITHUB_TOKEN: "t", ANTHROPIC_API_KEY: "k", PUSH_RELAY_URL: "https://relay", PUSH_RELAY_KEY: "rks_x",
+    GITHUB_TOKEN: "t", AI_ON_API_KEY: "on", ANTHROPIC_API_KEY: "k", PUSH_RELAY_URL: "https://relay", PUSH_RELAY_KEY: "rks_x",
     GITHUB_ORGS: "acme",
   } as Env;
   matchesFixture("device-config.json", deviceConfig(env, "alex"));
