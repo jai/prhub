@@ -7,11 +7,8 @@ import { acceptAsk, askPr, withQueued } from "./ask-queue";
 import { bodyOf, parseAskInput, parseKeyLineMark } from "./boundary";
 import { eventRoute, registerRoute, unpairRoute } from "./devices";
 import {
-  aiConfigOf, askConfigured, deviceConfig, featureKitConfigured, feedbackConfigured, feedbackIssuesConfigured,
+  aiConfigOf, askConfigured, deviceConfig, featureKitConfigured,
 } from "./config";
-import {
-  addIssueFeedback, chatOfRef, gitHubIssues, type IssueFeedback, issueChat, issuesNotice, issueThreads, isImageName,
-} from "./feedback-issues";
 import { makesAnswers } from "./agent-container";
 import { AgentContainer } from "./agent-container-object";
 import { aiJobs, askQueue, type Env, githubLogin, isSet, prIndex, scopedKey } from "./env";
@@ -20,10 +17,6 @@ import {
   detailVersionOf, fetchDiff, liveDiff, mergedPullRequests, pullRequestSummary, readPullRequests, reviewWeek,
 } from "./github";
 import { parseRepoFullName, parseSha, prId, type RepoFullName } from "./ids";
-import {
-  addFeedback, feedbackChat, feedbackList, isFeedbackId, listServedLog, parseAgentSide, parseFeedbackInput, r2Store, runnerAgent,
-  runnerClaim, runnerPoll, runnerResult,
-} from "./feedback";
 import { DEFAULT_CONTEXT } from "./key-lines";
 import { type AiConfig, type AiFeature, resolveChoice } from "./models";
 import { detailKey, diffKey, PrIndex } from "./pr-index";
@@ -303,59 +296,6 @@ async function askRoute(
 }
 
 const FEEDBACK_PATH = /^\/feedback(?:\/([^/]+))?$/;
-const RUNNER_PATH = /^\/feedback\/runner\/(poll|claim|result|agent)$/;
-
-/**
- * The list on a GET of /feedback and new feedback on a POST; one chat, and a reply to it, on /feedback/{id}. Each POST
- * only keeps the message for the runner (docs/api.md, "Feedback").
- */
-async function feedbackRoute(id: string | undefined, request: Request, env: Env): Promise<Response> {
-  if (id !== undefined && !isFeedbackId(id)) {
-    return new Response("not found\n", { status: 404 });
-  }
-  const store = r2Store(env.DIFFS);
-  let receipt: string | null = null;
-  try {
-    if (request.method !== "POST") {
-      if (!id) {
-        const list = await feedbackList(store, Date.now());
-        console.log(listServedLog(list.builderStatus, list.threads.length, Date.now()));
-        return Response.json(list);
-      }
-      const answer = await feedbackChat(store, id, Date.now());
-      return answer ? Response.json(answer) : Response.json({ error: "Not found." }, { status: 404 });
-    }
-    const body = (await bodyOf(request))?.value;
-    const input = parseFeedbackInput(body);
-    if (!input) {
-      return Response.json({ error: "That feedback can't be sent." }, { status: 400 });
-    }
-    const ref = clientRefOf(body);
-    receipt = ref && `feedback:${id ?? "new"}:${ref}`;
-    const claim = receipt ? await prIndex(env).claimWrite(receipt, Date.now()) : "go";
-    if (claim === "busy") {
-      return busyAnswer();
-    }
-    let target: string | null | undefined = id;
-    if (claim === "go") {
-      target = await addFeedback(store, id ?? null, input, Date.now());
-      if (receipt) {
-        await prIndex(env).finishWrite(receipt, target !== null, Date.now());
-      }
-    } else if (!target) {
-      // A repeat of new feedback already kept: the newest chat is it.
-      target = (await feedbackList(store, Date.now())).threads[0]?.id;
-    }
-    const chat = target ? await feedbackChat(store, target, Date.now()) : null;
-    return chat ? Response.json(chat) : Response.json({ error: "Not found." }, { status: 404 });
-  } catch (error) {
-    console.error("feedback failed", error);
-    if (receipt) {
-      await prIndex(env).finishWrite(receipt, false, Date.now());
-    }
-    return Response.json({ error: "Your feedback couldn't be kept. Try again." }, { status: 502 });
-  }
-}
 
 /** Feedback, to the FeedbackKit Worker: as this app and the person this Worker acts for, whom it has checked. */
 async function featureKitRoute(pathname: string, request: Request, env: Env): Promise<Response> {
@@ -375,134 +315,6 @@ async function featureKitRoute(pathname: string, request: Request, env: Env): Pr
   }
 }
 
-/** Feedback as GitHub issues (`feedback-issues.ts`): the signed-in person's chats, each one an issue. */
-async function issueFeedbackRoute(id: string | undefined, request: Request, env: Env): Promise<Response> {
-  if (id !== undefined && !isFeedbackId(id)) {
-    return new Response("not found\n", { status: 404 });
-  }
-  const bucket = env.DIFFS;
-  const scoped = r2Store(bucket);
-  const repo = env.FEEDBACK_ISSUES_REPO!;
-  const context: IssueFeedback = {
-    store: {
-      get: (key) => scoped.get(scopedKey(env, key)),
-      put: (key, value, ifEtag) => scoped.put(scopedKey(env, key), value, ifEtag),
-      // Keys as this store names them, without the person's prefix, so a `get` of one finds it.
-      list: async (prefix) => {
-        const root = scopedKey(env, "");
-        return (await scoped.list(`${root}${prefix}`)).map((key) => key.slice(root.length));
-      },
-      delete: (key) => scoped.delete(scopedKey(env, key)),
-    },
-    images: {
-      async put(name, image) {
-        const bytes = Uint8Array.from(atob(image.data), (char) => char.charCodeAt(0));
-        await bucket.put(`${FEEDBACK_IMAGES}${name}`, bytes, { httpMetadata: { contentType: image.media_type } });
-      },
-    },
-    issues: gitHubIssues(repo, env.FEEDBACK_ISSUES_TOKEN!),
-    login: await githubLogin(env),
-    origin: new URL(request.url).origin,
-    repo,
-    now: Date.now,
-  };
-  let receipt: string | null = null;
-  try {
-    if (request.method !== "POST") {
-      if (!id) {
-        return Response.json({ threads: await issueThreads(context.store), builderOnline: true, notice: issuesNotice(repo) });
-      }
-      const answer = await issueChat(context, id);
-      return answer ? Response.json(answer) : Response.json({ error: "Not found." }, { status: 404 });
-    }
-    const body = (await bodyOf(request))?.value;
-    const input = parseFeedbackInput(body);
-    if (!input) {
-      return Response.json({ error: "That feedback can't be sent." }, { status: 400 });
-    }
-    const ref = clientRefOf(body);
-    receipt = ref && `feedback:${id ?? "new"}:${ref}`;
-    const limited = await personLimitAnswer(env,
-      id ? [LimitName.WritesPerMinute, LimitName.WritesPerHour] : [LimitName.FeedbackIssuesPerDay], receipt);
-    if (limited) {
-      return limited;
-    }
-    const claim = receipt ? await prIndex(env).claimWrite(receipt, Date.now()) : "go";
-    if (claim === "busy") {
-      return busyAnswer();
-    }
-    let target: string | null | undefined = id;
-    if (claim === "go") {
-      target = await addIssueFeedback(context, id ?? null, input, id || !receipt ? null : await sha256Hex(receipt));
-      if (receipt) {
-        await prIndex(env).finishWrite(receipt, target !== null, Date.now());
-      }
-    } else if (!target) {
-      // A repeat of new feedback already sent: the chat that send made.
-      target = receipt ? await chatOfRef(context.store, await sha256Hex(receipt)) : null;
-    }
-    const chat = target ? await issueChat(context, target) : null;
-    return chat ? Response.json(chat) : Response.json({ error: "Not found." }, { status: 404 });
-  } catch (error) {
-    console.error("feedback issue failed", error);
-    if (receipt) {
-      await prIndex(env).finishWrite(receipt, false, Date.now());
-    }
-    return Response.json({ error: "Your feedback couldn't be sent. Try again." }, { status: 502 });
-  }
-}
-
-/** Where the issues' screenshots are kept: public, as the issues are, and outside any person's prefix. */
-const FEEDBACK_IMAGES = "feedback-images/";
-const FEEDBACK_IMAGE_PATH = /^\/feedback\/images\/([^/]+)$/;
-
-/** A screenshot an issue shows: to anyone with its link, as GitHub fetches it. */
-async function feedbackImageRoute(name: string, env: Env): Promise<Response> {
-  const object = isImageName(name) ? await env.DIFFS.get(`${FEEDBACK_IMAGES}${name}`) : null;
-  if (!object) {
-    return new Response("not found\n", { status: 404 });
-  }
-  return new Response(object.body, {
-    headers: {
-      "Content-Type": object.httpMetadata?.contentType ?? "image/jpeg",
-      "Cache-Control": "public, max-age=31536000, immutable",
-    },
-  });
-}
-
-/** The runner on Jai's Mac (`HUB_TOKEN`): it polls, claims a message, says how its delivery went, and sends the agent's side. */
-async function runnerRoute(kind: string, request: Request, env: Env): Promise<Response> {
-  const store = r2Store(env.DIFFS);
-  const body = ((await bodyOf(request))?.value ?? null) as Record<string, unknown> | null;
-  const chat = typeof body?.chat === "string" ? body.chat : "";
-  const message = typeof body?.message === "string" ? body.message : "";
-  const now = Date.now();
-  if (kind === "poll") {
-    const detail = typeof body?.detail === "string" ? body.detail : null;
-    return Response.json({ work: await runnerPoll(store, body?.orca === true, now, detail) });
-  }
-  if (kind === "claim") {
-    const claimed = await runnerClaim(store, chat, message, now);
-    return claimed.ok ? Response.json(claimed)
-      : Response.json({ error: claimed.status === 404 ? "no such message" : "not pending" }, { status: claimed.status });
-  }
-  if (kind === "result") {
-    const delivered = body?.status === "delivered";
-    const detail = typeof body?.detail === "string" ? body.detail.slice(0, 300) : null;
-    if (!delivered && body?.status !== "failed") {
-      return Response.json({ error: "status is delivered or failed" }, { status: 400 });
-    }
-    const status = await runnerResult(store, chat, message, delivered, detail);
-    return Response.json(status === 200 ? { ok: true } : { error: status === 404 ? "no such message" : "not delivering" },
-      { status });
-  }
-  const agent = parseAgentSide(body, now);
-  if (!agent) {
-    return Response.json({ error: "not an agent side" }, { status: 400 });
-  }
-  const status = await runnerAgent(store, chat, agent);
-  return Response.json(status === 200 ? { ok: true } : { error: "no such chat" }, { status });
-}
 
 /** `GET /prs/{owner}/{repo}/{n}/summary`: a picker row for any PR, read live, so a typed number shows what it opens. */
 async function summaryRoute(repo: RepoFullName, number: number, env: Env): Promise<Response> {
@@ -658,10 +470,7 @@ async function serveAuthorized(request: Request, env: Env, context: ExecutionCon
   }
   const feedback = FEEDBACK_PATH.exec(pathname);
   if (feedback) {
-    return featureKitConfigured(env) ? featureKitRoute(pathname, request, env)
-      : feedbackConfigured(env) ? feedbackRoute(feedback[1], request, env)
-      : feedbackIssuesConfigured(env) ? issueFeedbackRoute(feedback[1], request, env)
-      : notConfigured("Feedback");
+    return featureKitConfigured(env) ? featureKitRoute(pathname, request, env) : notConfigured("Feedback");
   }
   const pullRequest = PULL_REQUEST_PATH.exec(pathname);
   if (pullRequest) {
@@ -703,10 +512,6 @@ export default {
     const { pathname } = new URL(request.url);
     if (pathname === "/") {
       return new Response("hello world\n");
-    }
-    const image = FEEDBACK_IMAGE_PATH.exec(pathname);
-    if (image && request.method === "GET" && isSet(env.FEEDBACK_ISSUES_REPO)) {
-      return feedbackImageRoute(image[1], env);
     }
     const hosted = hostedMode(env);
     if (hosted.kind === "misconfigured") {
@@ -752,11 +557,6 @@ export async function serveOwner(
   }
   if (pathname === "/github/callback") {
     return finishAppCreation(searchParams, env);
-  }
-  const runner = RUNNER_PATH.exec(pathname);
-  if (runner && request.method === "POST") {
-    return hasToken(request, env.HUB_TOKEN) && feedbackConfigured(env) ? runnerRoute(runner[1], request, env)
-      : new Response("unauthorized\n", { status: 401 });
   }
   if (pathname === "/prs/states" && request.method === "POST") {
     return hasToken(request, env.HUB_TOKEN) ? statesRoute(request, env, reviewWeek(env))

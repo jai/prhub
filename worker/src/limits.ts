@@ -20,7 +20,6 @@ export const LimitName = {
   WritesPerHour: "writes_per_hour",
   AskQuestionsPerHour: "ask_questions_per_hour",
   AskQuestionsPerDay: "ask_questions_per_day",
-  FeedbackIssuesPerDay: "feedback_issues_per_day",
   AiJobsPerHour: "ai_jobs_per_hour",
   AskSessionBudgetCents: "ask_session_budget_cents",
   GitHubReservePercent: "github_reserve_percent",
@@ -116,10 +115,6 @@ const LIMIT_SPECS = {
   [LimitName.AskQuestionsPerDay]: {
     variable: "LIMIT_ASK_QUESTIONS_PER_DAY", unit: LimitUnit.PerDay, modes: BOTH,
     defaults: { hosted: 150, self_hosted: null }, ...RATE,
-  },
-  [LimitName.FeedbackIssuesPerDay]: {
-    variable: "LIMIT_FEEDBACK_ISSUES_PER_DAY", unit: LimitUnit.PerDay, modes: HOSTED,
-    defaults: { hosted: 10, self_hosted: null }, ...RATE,
   },
   [LimitName.AiJobsPerHour]: {
     variable: "LIMIT_AI_JOBS_PER_HOUR", unit: LimitUnit.PerHour, modes: BOTH,

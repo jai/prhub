@@ -63,7 +63,7 @@ test("each feature follows what serves it", () => {
     { ask_ai: true, key_lines: true, rewrite: true, feedback: false, push: true, webhooks: false });
   assert.deepEqual(selfHosted.orgs, ["acme", "beta"]);
   const jai = deviceConfig(env({
-    AI_ON_API_KEY: "on", ANTHROPIC_API_KEY: "k", ASK_ANTHROPIC_API_KEY: "k2", ...ask, FEEDBACK_REPO: "jai/agent-pager", HUB_TOKEN: "h",
+    AI_ON_API_KEY: "on", ANTHROPIC_API_KEY: "k", ASK_ANTHROPIC_API_KEY: "k2", ...ask, FEEDBACKKIT_URL: "https://kit", FEEDBACKKIT_TOKEN: "t", FEEDBACKKIT_APP: "agent-pager",
     APNS_BUNDLE_ID: "b", APNS_KEY_ID: "i", APNS_TEAM_ID: "t", APNS_KEY_P8: "p", WEBHOOK_SECRET: "w",
   }), "jai");
   assert.deepEqual(jai.features, { ask_ai: true, key_lines: true, rewrite: true, feedback: true, push: true, webhooks: true });

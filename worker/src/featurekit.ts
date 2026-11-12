@@ -5,7 +5,7 @@
  * opens a pull request, and anyone else's opens a public issue. The runner on Jai's Mac takes the agents' work.
  */
 import {
-  addFeedback, feedbackChat, feedbackList, type FeedbackStore, isFeedbackId, parseAgentSide, parseFeedbackInput,
+  addFeedback, feedbackChat, feedbackList, type FeedbackStore, isFeedbackId, listServedLog, parseAgentSide, parseFeedbackInput,
   r2Store, runnerAgent, runnerClaim, runnerPoll, runnerResult,
 } from "./feedback.ts";
 import {
@@ -67,6 +67,13 @@ export function prefixed(store: FeedbackStore, prefix: string): FeedbackStore {
   };
 }
 
+/** New issues one sender may open in 24 hours; replies on them do not count. */
+const ISSUES_PER_DAY = 10;
+
+async function issuesToday(store: FeedbackStore, now: number): Promise<number> {
+  return (await issueThreads(store)).filter((thread) => now - Date.parse(thread.createdAt) < 86_400_000).length;
+}
+
 const IMAGES = "images/";
 const IMAGE_PATH = /^\/images\/([^/]+)$/;
 const FEEDBACK_PATH = /^\/feedback(?:\/([^/]+))?$/;
@@ -103,7 +110,8 @@ async function feedbackRoute(
   if (role !== "issue") {
     if (request.method !== "POST") {
       if (!id) {
-        const { threads, builderOnline } = await feedbackList(store, now);
+        const { threads, builderOnline, builderStatus } = await feedbackList(store, now);
+        console.log(listServedLog(builderStatus, threads.length, now));
         return Response.json({ threads, builderOnline });
       }
       const chat = await feedbackChat(store, id, now);
@@ -147,6 +155,10 @@ async function feedbackRoute(
   const input = parseFeedbackInput(body);
   if (!input) {
     return Response.json({ error: "That feedback can't be sent." }, { status: 400 });
+  }
+  if (!id && await issuesToday(store, now) >= ISSUES_PER_DAY) {
+    return Response.json({ error: `You can open ${ISSUES_PER_DAY} feedback issues a day. Try again tomorrow.` },
+      { status: 429 });
   }
   const target = await once(store, id, body, () => addIssueFeedback(context, id ?? null, input));
   const chat = target ? await issueChat(context, target) : null;

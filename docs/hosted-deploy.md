@@ -35,7 +35,6 @@ Secrets, each with `wrangler secret put`, from the password manager:
 | `TOKEN_ENCRYPTION_KEY` | `k1:` and `openssl rand -base64 32`; rotation in [api.md, "Tokens"](api.md#tokens) |
 | `APNS_KEY_P8` | Jai's APNs key (`.p8`) |
 | `FEEDBACKKIT_TOKEN` | The FeedbackKit Worker's `CALLER_TOKEN` ([featurekit.md](featurekit.md)): Feedback goes there |
-| `FEEDBACK_ISSUES_TOKEN` | Jai's fine-grained token for `jai/prhub` with Issues read and write: Feedback opens its issues ([api.md, "As GitHub issues"](api.md#as-github-issues)). Unset: no Feedback |
 
 No `GITHUB_TOKEN` and no `ANTHROPIC_API_KEY`: each person acts with their own token, and AI runs on their own key.
 `CLAUDE_CODE_OAUTH_TOKEN` (a secret) runs key lines and rewrites on Jai's subscription, for `SUBSCRIPTION_LOGINS` only.

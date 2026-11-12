@@ -2,8 +2,8 @@ import type { FeedbackChat, FeedbackImage, FeedbackInput, FeedbackMessage, Feedb
 import { newId, titleOf } from "./feedback.ts";
 
 /**
- * Feedback as GitHub issues (docs/api.md, "Feedback"): on the hosted Worker, each person's new feedback opens a public
- * issue on `FEEDBACK_ISSUES_REPO`, and each reply in the app is a comment on it. Replies on GitHub come back to the
+ * Feedback as GitHub issues (docs/featurekit.md): for a sender an app does not let build, new feedback opens a public
+ * issue on the app's repo, and each reply in the app is a comment on it. Replies on GitHub come back to the
  * app's chat. The person's chats are kept under their own R2 prefix; the screenshots are public, as the issue is.
  */
 
@@ -60,8 +60,8 @@ export interface IssueFeedback {
   login: string;
   /** Where the screenshots are served: the Worker's origin. */
   origin: string;
-  /** The screenshots' path on that origin; unset, `/feedback/images/`. */
-  imagePath?: string;
+  /** The screenshots' path on that origin. */
+  imagePath: string;
   repo: string;
   now(): number;
 }
@@ -114,7 +114,7 @@ async function pictures(context: IssueFeedback, images: FeedbackImage[]): Promis
   return Promise.all(images.map(async (image, index) => {
     const name = `${crypto.randomUUID().replaceAll("-", "")}.${image.media_type === "image/png" ? "png" : "jpg"}`;
     await context.images.put(name, image);
-    return `![Screenshot ${index + 1}](${context.origin}${context.imagePath ?? "/feedback/images/"}${name})`;
+    return `![Screenshot ${index + 1}](${context.origin}${context.imagePath}${name})`;
   }));
 }
 
