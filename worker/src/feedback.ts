@@ -101,7 +101,10 @@ export interface RunnerWork {
   at: number;
 }
 
-/** The little of R2 this needs, so a test can stand in for it. `put` with an etag writes only over that version. */
+/**
+ * The little of R2 this needs, so a test can stand in for it. `put` with an etag writes only over that version, and
+ * with an empty one only where nothing is yet.
+ */
 export interface FeedbackStore {
   get<T>(key: string): Promise<{ value: T; etag: string } | null>;
   put(key: string, value: unknown, ifEtag?: string): Promise<boolean>;
@@ -117,7 +120,9 @@ export function r2Store(bucket: R2Bucket): FeedbackStore {
     },
     async put(key, value, ifEtag) {
       const body = JSON.stringify(value);
-      const written = await bucket.put(key, body, ifEtag ? { onlyIf: { etagMatches: ifEtag } } : undefined);
+      // An empty etag writes only where nothing is yet.
+      const onlyIf = ifEtag === "" ? new Headers({ "If-None-Match": "*" }) : ifEtag ? { etagMatches: ifEtag } : undefined;
+      const written = await bucket.put(key, body, onlyIf ? { onlyIf } : undefined);
       return written !== null;
     },
     async list(prefix) {

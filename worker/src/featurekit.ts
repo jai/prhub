@@ -70,8 +70,24 @@ export function prefixed(store: FeedbackStore, prefix: string): FeedbackStore {
 /** New issues one sender may open in 24 hours; replies on them do not count. */
 const ISSUES_PER_DAY = 10;
 
-async function issuesToday(store: FeedbackStore, now: number): Promise<number> {
-  return (await issueThreads(store)).filter((thread) => now - Date.parse(thread.createdAt) < 86_400_000).length;
+const QUOTA_KEY = "feedback/issue-quota.json";
+
+/**
+ * Takes one of the sender's new issues for today, or answers false when they have none left. The count is one object
+ * written over its own version, so sends at once each take their own place.
+ */
+export async function takeIssue(store: FeedbackStore, now: number): Promise<boolean> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const got = await store.get<number[]>(QUOTA_KEY);
+    const recent = (got?.value ?? []).filter((at) => now - at < 86_400_000);
+    if (recent.length >= ISSUES_PER_DAY) {
+      return false;
+    }
+    if (await store.put(QUOTA_KEY, [...recent, now], got?.etag ?? "")) {
+      return true;
+    }
+  }
+  return false;
 }
 
 const IMAGES = "images/";
@@ -156,11 +172,18 @@ async function feedbackRoute(
   if (!input) {
     return Response.json({ error: "That feedback can't be sent." }, { status: 400 });
   }
-  if (!id && await issuesToday(store, now) >= ISSUES_PER_DAY) {
+  let limited = false;
+  const target = await once(store, id, body, async () => {
+    if (!id && !(await takeIssue(store, now))) {
+      limited = true;
+      return null;
+    }
+    return addIssueFeedback(context, id ?? null, input);
+  });
+  if (limited) {
     return Response.json({ error: `You can open ${ISSUES_PER_DAY} feedback issues a day. Try again tomorrow.` },
       { status: 429 });
   }
-  const target = await once(store, id, body, () => addIssueFeedback(context, id ?? null, input));
   const chat = target ? await issueChat(context, target) : null;
   return chat ? Response.json(chat) : notFound();
 }

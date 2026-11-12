@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type FeatureKitEnv, parseApps, roleOf, serveFeatureKit } from "../src/featurekit.ts";
+import { type FeatureKitEnv, parseApps, roleOf, serveFeatureKit, takeIssue } from "../src/featurekit.ts";
+import { r2Store } from "../src/feedback.ts";
 
 /** R2 as the FeedbackKit Worker uses it: versions, a put over a moved version refused, prefix listing. */
 function memoryBucket(): R2Bucket {
@@ -14,8 +15,10 @@ function memoryBucket(): R2Bucket {
     async get(key: string) {
       return objects.has(key) ? object(key) : null;
     },
-    async put(key: string, value: unknown, options?: { onlyIf?: { etagMatches?: string } }) {
-      if (options?.onlyIf?.etagMatches && objects.get(key)?.etag !== options.onlyIf.etagMatches) {
+    async put(key: string, value: unknown, options?: { onlyIf?: { etagMatches?: string } | Headers }) {
+      const onlyIf = options?.onlyIf;
+      if (onlyIf instanceof Headers ? onlyIf.get("If-None-Match") === "*" && objects.has(key)
+        : onlyIf?.etagMatches && objects.get(key)?.etag !== onlyIf.etagMatches) {
         return null;
       }
       objects.set(key, { body: typeof value === "string" ? value : "bytes", etag: `v${++version}` });
@@ -88,4 +91,12 @@ test("nobody reaches feedback without the app Worker's or the runner's token, an
   assert.equal(runner.status, 401);
   assert.equal((await fromApp(e, "/feedback", "someone", undefined, "pager")).status, 403);
   assert.equal((await fromApp(e, "/feedback", "someone", { text: "hi" })).status, 503);
+});
+
+test("sends at once each take their own place under the daily issue cap", async () => {
+  const store = r2Store(memoryBucket());
+  const now = Date.parse("2026-11-12T10:00:00Z");
+  const taken = await Promise.all(Array.from({ length: 14 }, () => takeIssue(store, now)));
+  assert.equal(taken.filter(Boolean).length, 10);
+  assert.equal(await takeIssue(store, now + 86_400_001), true, "a day later there is room again");
 });
