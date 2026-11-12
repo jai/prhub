@@ -109,16 +109,6 @@ extension View {
         #endif
     }
 
-    /// The Mac's Return in a message field: it sends, and Option-Return starts a new line. On the phone Return starts
-    /// a new line and the send button sends.
-    public func sendsOnReturn(_ send: @escaping () -> Void) -> some View {
-        #if os(macOS)
-        onSubmit(send)
-        #else
-        self
-        #endif
-    }
-
     /// A screen pushed onto a navigation stack: on the Mac it slides a short way in from the right and fades up as it
     /// appears. A stack inside the Mac's sidebar swaps its screens in one frame — macOS animates a stack only outside a
     /// split view, with or without an animation around the push — so the motion is the screen's own. The phone's stack

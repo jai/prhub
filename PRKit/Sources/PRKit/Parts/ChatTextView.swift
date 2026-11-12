@@ -34,6 +34,8 @@ struct ChatTextView: UIViewRepresentable {
     let focused: FocusState<Bool>.Binding
     let maxLines: Int
     let pastePicture: (@MainActor @Sendable (Data) -> Void)?
+    /// Return and Command-Return on a hardware keyboard (`ReturnKey`).
+    let send: () -> Void
 
     func makeUIView(context: Context) -> PictureTextView {
         let view = PictureTextView()
@@ -55,6 +57,7 @@ struct ChatTextView: UIViewRepresentable {
             view.text = text
         }
         view.pastePicture = pastePicture
+        view.send = send
         view.accessibilityLabel = placeholder
         let wantsFocus = focused.wrappedValue
         let move = ChatFieldFocus.move(
@@ -115,9 +118,33 @@ struct ChatTextView: UIViewRepresentable {
     }
 }
 
-/// A text view whose Paste takes a picture when the clipboard holds pictures and no words.
+/// A text view whose Paste takes a picture when the clipboard holds pictures and no words, and whose Return on a
+/// hardware keyboard sends (`ReturnKey`).
 final class PictureTextView: UITextView {
     var pastePicture: (@MainActor @Sendable (Data) -> Void)?
+    var send: (() -> Void)?
+
+    /// Return and Command-Return from a hardware keyboard send (`ReturnKey`), ahead of the text view's own Return.
+    /// Shift-Return and Option-Return are left to the text view, which starts a new line at the cursor; so is the
+    /// on-screen keyboard's return key, which is not a key command.
+    override var keyCommands: [UIKeyCommand]? {
+        // While a word is being composed (Japanese, Chinese), Return confirms it: the text view keeps it.
+        guard markedTextRange == nil else {
+            return super.keyCommands
+        }
+        let sends = [UIKeyModifierFlags(), .command].map { flags in
+            let command = UIKeyCommand(input: "\r", modifierFlags: flags, action: #selector(returnPressed(_:)))
+            command.wantsPriorityOverSystemBehavior = true
+            return command
+        }
+        return (super.keyCommands ?? []) + sends
+    }
+
+    @objc func returnPressed(_ command: UIKeyCommand) {
+        if markedTextRange == nil {
+            send?()
+        }
+    }
 
     private var clipboardHasOnlyPictures: Bool {
         pastePicture != nil && UIPasteboard.general.hasImages && !UIPasteboard.general.hasStrings
@@ -125,6 +152,10 @@ final class PictureTextView: UITextView {
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         if action == #selector(paste(_:)), clipboardHasOnlyPictures {
+            return true
+        }
+        // The text view refuses actions it does not know, which would disable the Return commands and swallow the key.
+        if action == #selector(returnPressed(_:)) {
             return true
         }
         return super.canPerformAction(action, withSender: sender)

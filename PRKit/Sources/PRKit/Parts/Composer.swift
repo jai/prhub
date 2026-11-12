@@ -4,8 +4,8 @@ import SwiftUI
 import UIKit
 #endif
 
-/// The reply field: grows to five lines, sends on the arrow, and on the Mac on Return too (Option-Return for a new
-/// line). Liquid Glass from the system, nothing custom behind it; the field is plain, so the Mac draws no box of its
+/// The reply field: grows to five lines, sends on the arrow, and with a hardware keyboard on Return or Command-Return
+/// (Shift-Return for a new line; `ReturnKey`). Liquid Glass from the system, nothing custom behind it; the field is plain, so the Mac draws no box of its
 /// own inside the glass.
 /// `focused` is the screen's, so a scroll or a tap in the content can put the keyboard away (`dismissesKeyboard`).
 /// With `attachments`, a paperclip beside the field adds screenshots from Photos or Files, and from the clipboard while
@@ -33,6 +33,13 @@ public struct SessionComposer: View {
         self.attachments = attachments
     }
 
+    /// A key's send does what the button does: nothing for an empty box, or while the last one is still going.
+    private func sendIfReady() {
+        if canSend {
+            send()
+        }
+    }
+
     private var canSend: Bool {
         !isSending && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || attachments?.isEmpty == false)
     }
@@ -41,7 +48,8 @@ public struct SessionComposer: View {
     @ViewBuilder private var input: some View {
         #if os(iOS)
         ChatTextView(text: $draft, placeholder: placeholder, focused: focused, maxLines: 5,
-                     pastePicture: attachments.map { box in { data in Task { await box.add(data) } } })
+                     pastePicture: attachments.map { box in { data in Task { await box.add(data) } } },
+                     send: sendIfReady)
             .overlay(alignment: .topLeading) {
                 if draft.isEmpty {
                     Text(placeholder)
@@ -55,11 +63,7 @@ public struct SessionComposer: View {
         TextField(placeholder, text: $draft, axis: .vertical)
             .textFieldStyle(.plain)
             .lineLimit(1...5)
-            .sendsOnReturn {
-                if canSend {
-                    send()
-                }
-            }
+            .sendsOnReturn(sendIfReady)
         #endif
     }
 
