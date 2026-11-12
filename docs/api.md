@@ -136,7 +136,7 @@ Auth: a paired secret or `APP_TOKEN`. `Cache-Control: no-store`. The app reads i
 | `features.ask_ai` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ASK_AGENT_ID`, `ASK_ENVIRONMENT_ID`, `ASK_VAULT_ID`, `ASK_CREDENTIAL_ID` and a key (`ASK_ANTHROPIC_API_KEY` or `ANTHROPIC_API_KEY`) | Shows Ask on a PR and a line |
 | `features.key_lines` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ANTHROPIC_API_KEY` with `AI_ON_API_KEY=on` | Shows the Key lines panel and capsule |
 | `features.rewrite` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ANTHROPIC_API_KEY` with `AI_ON_API_KEY=on` | Shows Rewrite on the description |
-| `features.feedback` | `FEEDBACK_REPO` and `HUB_TOKEN` (Jai's Worker), or `FEEDBACK_ISSUES_REPO` and `FEEDBACK_ISSUES_TOKEN` (the hosted Worker) ([Feedback](#feedback)) | Shows Feedback |
+| `features.feedback` | `FEEDBACKKIT_URL`, `FEEDBACKKIT_APP` and `FEEDBACKKIT_TOKEN` ([Feedback](#feedback)) | Shows Feedback |
 | `features.push` | the relay (`PUSH_RELAY_URL`, `PUSH_RELAY_KEY`), or direct APNs (`APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8`, `APNS_BUNDLE_ID`) | Registers for push; off: syncs on open and foreground only |
 | `features.webhooks` | `WEBHOOK_SECRET` | Diagnostics only: updates in seconds rather than about a minute |
 | `login` | the GitHub login the Worker acts as; `null` if GitHub could not be asked | "Your PRs", and whose review a row shows |
@@ -152,39 +152,16 @@ answer `404 {"error": "<feature> is not set up on this Worker."}`. Answers: `200
 
 ## Feedback
 
-Requests for changes to the app, from the app (FeatureKit, [plan](plans/featurekit.md)). The Worker only keeps them:
-a runner on the owner's Mac polls for them, starts or tells a coding agent there, and sends the agent's words back.
-The Worker never calls a model or the runner. Jai's Worker only (`FEEDBACK_REPO`, `HUB_TOKEN`); elsewhere the app's routes
-answer `404` and the runner's `401`. Agent Pager's runner, its agent and its contract: [jai/agent-pager docs/api/feedback.md](https://github.com/jai/agent-pager/blob/main/docs/api/feedback.md).
-
-### Through the FeedbackKit Worker
-
-With `FEEDBACKKIT_URL`, `FEEDBACKKIT_APP` and `FEEDBACKKIT_TOKEN`, a Worker keeps no feedback: it forwards `/feedback`
-to the FeedbackKit Worker as its app and the person it acts for, and that Worker decides between a coding chat and an
-issue ([featurekit.md](featurekit.md)). This comes before the two below.
-
-### As GitHub issues
-
-The hosted Worker's Feedback, with `FEEDBACK_ISSUES_REPO` (`owner/repo`) and `FEEDBACK_ISSUES_TOKEN` (a token that
-can open issues and comment there) and no `FEEDBACK_REPO`. The same app routes and chat shape, for everyone signed in:
-
-- A new chat opens a public issue on that repo: the first line as the title, the words, the screenshots, and
-  `From @<login> in PRHub (build <n>).` The token's account opens it. The chat answers with the issue's link.
-- A reply in the app is a comment on the issue, naming the sender. Comments others write on GitHub show in the chat as
-  `agent` messages, `**@<login>:** <text>`.
-- `GET /feedback` adds `notice`: what sending does, which the app shows above a new chat. `builderOnline` is always
-  true and `isWorking` false: there is no runner.
-- Screenshots are public: `GET /feedback/images/<32 hex>.jpg|png`, with no auth, as the issue shows them. They stay
-  after Delete Account, as the issue does. The person's chats are under their own R2 prefix and go with it.
-- New chats count against `feedback_issues_per_day`; replies against the write limits ([Limits](#limits)).
-
-### Routes
+Requests for changes to the app, from the app (FeatureKit). The Worker keeps none: with `FEEDBACKKIT_URL`,
+`FEEDBACKKIT_APP` and `FEEDBACKKIT_TOKEN` it forwards `/feedback` to the FeedbackKit Worker as its app and the person
+it acts for. That Worker gives the person a coding chat or a public issue ([featurekit.md](featurekit.md)). Without
+the three, the routes answer `404`.
 
 App routes (app auth):
 
 | Route | Body | Answer |
 |---|---|---|
-| `GET /feedback` | | `{threads: [{id, title, createdAt}], builderOnline, builderStatus}`, newest first |
+| `GET /feedback` | | `{threads: [{id, title, createdAt}], builderOnline, notice?}`, newest first |
 | `POST /feedback` | `{text, build?, images?, client_ref?}` | the new chat |
 | `GET /feedback/{id}` | | the chat; `404` none |
 | `POST /feedback/{id}` | as above | the chat, with the message added |
@@ -195,27 +172,8 @@ App routes (app auth):
 - `text` at most 8,000 characters; `images` up to four JPEG or PNG `{media_type, data}` of at most 1.5 MB decoded.
   Neither: `400`. A repeat `client_ref` keeps the message once.
 - `isWorking` from a send until the agent's turn ends; `problem` says why the last message was not passed on.
-  `builderOnline`: the runner polled in the last 90 seconds and said its Mac answers. `builderStatus` says why not:
-  `{online, lastPollAt, detail}`, `detail` the runner's own reason (at most 200 characters) or that it went quiet.
-  Each list read logs one line, `{"event":"feedback_list_served", builderOnline, runnerPollAgeSeconds, detail,
-  threads}`.
-
-Runner routes (`POST`, bearer `HUB_TOKEN`, JSON body):
-
-| Route | Body | Answer |
-|---|---|---|
-| `/feedback/runner/poll` | `{orca, detail?}`: whether the agents' Mac answers, and why not | `{work: [{chat, message, first, at}]}`, oldest first |
-| `/feedback/runner/claim` | `{chat, message}` | `{ok, text, build, first, title, images}`; `409` not pending; `404` |
-| `/feedback/runner/result` | `{chat, message, status: "delivered" \| "failed", detail?}` | `{ok}`; `409` not claimed |
-| `/feedback/runner/agent` | `{chat, messages: [{id, text, at}], isWorking, activity, thread}` | `{ok}`; `404` no chat |
-
-- A message is `pending` → `delivering` (claim) → `delivered` or `failed` (result). A claim is a compare-and-swap on
-  the message's R2 version, so it succeeds once. One left `delivering` for 15 minutes shows as failed and is never
-  offered again.
-- `agent` replaces the agent's side of the chat: all its messages so far (at most 500, 20,000 characters each).
-- Storage (R2 `DIFFS`): `feedback/chats.json`, `feedback/chats/<id>/m/<at>-<message>.json`, their screenshots under
-  `img/`, the agent's side in `agent.json`, the queue in `feedback/pending/`, the runner's last poll in
-  `feedback/runner.json`.
+  `builderOnline`: the runner polled in the last 90 seconds and said its Mac answers. `notice`, when sending opens a public issue, says so;
+  the app shows it above a new chat.
 
 ## Rows and details
 
@@ -299,7 +257,7 @@ var reads as unset.
 | `GITHUB_APP_OWNER`, `GITHUB_APP_NAME` | var | The org that owns the webhook App (unset: the person's account) and its name (unset: `<login>-pr-review`) |
 | `PR_INDEX_LOCATION` | var | Durable Object location hint for the index |
 | `BOT_AUTHORS` | var | Accounts GitHub calls users that open PRs for someone else, comma-separated logins. Their PRs say they are a bot's (`authorIsBot`) and name who asked (`requestedBy`). Unset: only GitHub Apps and `[bot]` logins |
-| `APP_TOKEN`, `HUB_TOKEN`, `APNS_*`, `AGENT_PAGER_URL`, `AGENT_PAGER_PUSH_TOKEN`, `FEEDBACK_REPO`, `LINEAR_API_KEY` | | Jai's Worker; not set on a self-hosted one. With both `AGENT_PAGER_*` set, every push goes to that Worker's `POST /pr-push` instead of a device; unset, pager mode is off (`LINEAR_API_KEY` works for anyone with Linear) |
+| `APP_TOKEN`, `HUB_TOKEN`, `APNS_*`, `AGENT_PAGER_URL`, `AGENT_PAGER_PUSH_TOKEN`, `LINEAR_API_KEY` | | Jai's Worker; not set on a self-hosted one. With both `AGENT_PAGER_*` set, every push goes to that Worker's `POST /pr-push` instead of a device; unset, pager mode is off (`LINEAR_API_KEY` works for anyone with Linear) |
 
 The webhook App's manifest points at the origin `/github/setup` was opened on, so it is right on any Worker. Its
 credentials stay in R2 at `setup/github-app.json` until read once (`POST /github/app-credentials`, or
@@ -430,7 +388,6 @@ A var the Worker cannot use does not stop anything. The default serves, and the 
 | `writes_per_hour` | `LIMIT_WRITES_PER_HOUR` | 200 | off | The same |
 | `ask_questions_per_hour` | `LIMIT_ASK_QUESTIONS_PER_HOUR` | 30 | off | `POST …/ask` |
 | `ask_questions_per_day` | `LIMIT_ASK_QUESTIONS_PER_DAY` | 150 | off | The same |
-| `feedback_issues_per_day` | `LIMIT_FEEDBACK_ISSUES_PER_DAY` | 10 | n/a | New feedback issues per person ([Feedback](#as-github-issues)) |
 | `ai_jobs_per_hour` | `LIMIT_AI_JOBS_PER_HOUR` | 60 | off | A key lines or rewrite request that starts a job; a stored answer counts nothing |
 
 **Sizes and intervals.**

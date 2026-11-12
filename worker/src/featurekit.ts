@@ -5,7 +5,7 @@
  * opens a pull request, and anyone else's opens a public issue. The runner on Jai's Mac takes the agents' work.
  */
 import {
-  addFeedback, feedbackChat, feedbackList, type FeedbackStore, isFeedbackId, parseAgentSide, parseFeedbackInput,
+  addFeedback, feedbackChat, feedbackList, type FeedbackStore, isFeedbackId, listServedLog, parseAgentSide, parseFeedbackInput,
   r2Store, runnerAgent, runnerClaim, runnerPoll, runnerResult,
 } from "./feedback.ts";
 import {
@@ -67,6 +67,29 @@ export function prefixed(store: FeedbackStore, prefix: string): FeedbackStore {
   };
 }
 
+/** New issues one sender may open in 24 hours; replies on them do not count. */
+const ISSUES_PER_DAY = 10;
+
+const QUOTA_KEY = "feedback/issue-quota.json";
+
+/**
+ * Takes one of the sender's new issues for today, or answers false when they have none left. The count is one object
+ * written over its own version, so sends at once each take their own place.
+ */
+export async function takeIssue(store: FeedbackStore, now: number): Promise<boolean> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const got = await store.get<number[]>(QUOTA_KEY);
+    const recent = (got?.value ?? []).filter((at) => now - at < 86_400_000);
+    if (recent.length >= ISSUES_PER_DAY) {
+      return false;
+    }
+    if (await store.put(QUOTA_KEY, [...recent, now], got?.etag ?? "")) {
+      return true;
+    }
+  }
+  return false;
+}
+
 const IMAGES = "images/";
 const IMAGE_PATH = /^\/images\/([^/]+)$/;
 const FEEDBACK_PATH = /^\/feedback(?:\/([^/]+))?$/;
@@ -103,7 +126,8 @@ async function feedbackRoute(
   if (role !== "issue") {
     if (request.method !== "POST") {
       if (!id) {
-        const { threads, builderOnline } = await feedbackList(store, now);
+        const { threads, builderOnline, builderStatus } = await feedbackList(store, now);
+        console.log(listServedLog(builderStatus, threads.length, now));
         return Response.json({ threads, builderOnline });
       }
       const chat = await feedbackChat(store, id, now);
@@ -148,7 +172,25 @@ async function feedbackRoute(
   if (!input) {
     return Response.json({ error: "That feedback can't be sent." }, { status: 400 });
   }
-  const target = await once(store, id, body, () => addIssueFeedback(context, id ?? null, input));
+  let limited = false;
+  const target = await once(store, id, body, async () => {
+    if (!id && !(await takeIssue(store, now))) {
+      limited = true;
+      return null;
+    }
+    try {
+      return await addIssueFeedback(context, id ?? null, input);
+    } catch (error) {
+      if (!id) {
+        await giveBackIssue(store, now);
+      }
+      throw error;
+    }
+  });
+  if (limited) {
+    return Response.json({ error: `You can open ${ISSUES_PER_DAY} feedback issues a day. Try again tomorrow.` },
+      { status: 429 });
+  }
   const chat = target ? await issueChat(context, target) : null;
   return chat ? Response.json(chat) : notFound();
 }
@@ -172,6 +214,20 @@ async function once(
     await store.put(key, { chat }).catch((error) => console.error("feedback receipt not kept", error));
   }
   return chat;
+}
+
+/** An issue that was not opened: its place under the cap goes back. */
+async function giveBackIssue(store: FeedbackStore, at: number): Promise<void> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const got = await store.get<number[]>(QUOTA_KEY);
+    const index = got?.value.indexOf(at) ?? -1;
+    if (!got || index < 0) {
+      return;
+    }
+    if (await store.put(QUOTA_KEY, got.value.filter((_, i) => i !== index), got.etag)) {
+      return;
+    }
+  }
 }
 
 /** Which chats a runner message is about: the app, the sender and their store, from the body. */

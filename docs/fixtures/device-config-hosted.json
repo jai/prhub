@@ -15,7 +15,6 @@
     "writes_per_hour": 200,
     "ask_questions_per_hour": 30,
     "ask_questions_per_day": 150,
-    "feedback_issues_per_day": 10,
     "ai_jobs_per_hour": 60,
     "ask_session_budget_cents": 200,
     "github_reserve_percent": 10,

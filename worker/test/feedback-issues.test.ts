@@ -45,6 +45,7 @@ function world() {
     },
     login: "octocat",
     origin: "https://worker.example",
+    imagePath: "/feedback/images/",
     repo: "acme/app",
     now: () => (clock += 1000),
   };

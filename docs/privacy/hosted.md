@@ -35,7 +35,7 @@ through the PRHub GitHub App. The service stores these items:
 
 - **GitHub** receives your reads and your actions, such as reviews, comments and merges, sent with your own token.
 - **GitHub, in public: your feedback.** Feedback that you send from the Feedback tab opens a public issue on
-  github.com/jai/prhub, with your words, your screenshots, your GitHub username and the app's build number. Anyone can
+  github.com/jai/prhub (unless Jai has asked you to test with him, when it goes to a private coding chat), with your words, your screenshots, your GitHub username and the app's build number. Anyone can
   read it. Your replies in the app become comments on it. The screenshots are served by the service at links that
   anyone with the issue can open. Delete Account does not remove the issue or its screenshots: ask Jai to remove them.
 - **Anthropic** receives PR diffs, descriptions and your questions only when you give your own Anthropic API key and

@@ -25,8 +25,6 @@
     // for SUBSCRIPTION_LOGINS only. Defaults from docs/plans/ai-model-eval.md.
     "SUBSCRIPTION_LOGINS": "jai,poom",
     "AI_DEFAULTS": "key_lines=claude-opus-5-5:high,ask=claude-haiku-5-5:high",
-    // Feedback opens a public issue here, with FEEDBACK_ISSUES_TOKEN (a secret) (docs/api.md, "As GitHub issues").
-    "FEEDBACK_ISSUES_REPO": "jai/prhub",
     // Feedback goes to the FeedbackKit Worker (docs/featurekit.md) as PRHub; FEEDBACKKIT_TOKEN is a secret.
     "FEEDBACKKIT_URL": "__FEEDBACKKIT_URL__",
     "FEEDBACKKIT_APP": "prhub"
