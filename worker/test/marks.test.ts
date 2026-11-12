@@ -76,6 +76,19 @@ test("a delivery during a read survives it", () => {
   assert.equal(nextDueAt(sql), T0 + 4_000 + CHECKS_WINDOW_MS);
 });
 
+test("the person's own write that lands during a read stays prompt", () => {
+  const { sql } = index();
+  mark(sql, pr, "full", T0 + BUSY_WINDOW_MS);
+  const [inFlight] = dueMarks(sql, "full", T0 + BUSY_WINDOW_MS, 25);
+  mark(sql, pr, "full", T0 + 3_500 + BUSY_WINDOW_MS, true);
+  finishRead(sql, "full", inFlight!, T0 + 4_000);
+  assert.equal(nextDueAt(sql), T0 + 4_000, "read again now, not when the 15-second window ends");
+  const [again] = dueMarks(sql, "full", T0 + 4_000, 25);
+  mark(sql, pr, "full", T0 + 4_500);
+  finishRead(sql, "full", again!, T0 + 5_000);
+  assert.equal(nextDueAt(sql), T0 + 5_000 + PR_EVENT_WINDOW_MS, "a webhook after the write waits its window again");
+});
+
 test("a dirty table from before due_at gains it, its marks due at once", () => {
   const sql = memorySql();
   sql.exec("CREATE TABLE dirty (id TEXT PRIMARY KEY, repo TEXT, number INTEGER, generation INTEGER)");

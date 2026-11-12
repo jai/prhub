@@ -13,6 +13,8 @@ const ADDED_COLUMNS: [name: string, type: string][] = [
   ["tickets", "TEXT"],
   /** `.policy.yml`'s people decision at the last full read, as JSON; NULL before it was kept (`check-refresh.ts`). */
   ["people", "TEXT"],
+  /** When that full read ran: a checks-only read trusts `people` for the policy TTL alone. */
+  ["people_at", "INTEGER"],
 ];
 
 export function addMissingColumns(sql: LimitSql): void {

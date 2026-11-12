@@ -838,17 +838,40 @@ const CHECKS_FIELDS = `headRefOid updatedAt reviewDecision mergeable mergeStateS
 /**
  * Only the checks of the PRs named (`ChecksNode`), all in one query: what a check suite or a status can change. GitHub
  * prices it at one point for dozens of PRs, where a full read (`readPullRequests`) costs a point per PR and the
- * `.policy.yml` and membership REST calls besides. A PR GitHub has no answer for maps to null.
+ * `.policy.yml` and membership REST calls besides. A PR GitHub has no answer for maps to null; one it refused (SAML,
+ * say) maps to `"error"`, and the rest are still read. Throws only when the whole query failed.
  */
-export async function readChecks(refs: PullRequestRef[], env: Env): Promise<Map<PrId, ChecksNode | null>> {
+export async function readChecks(refs: PullRequestRef[], env: Env):
+Promise<Map<PrId, ChecksNode | null | "error">> {
   const fields = refs.map((ref, index) => {
     const { owner, name } = repoParts(ref.repo);
     return `p${index}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) {
       pullRequest(number: ${ref.number}) { ${CHECKS_FIELDS} ${contextsOf(ref.number)} } }`;
   });
-  const data = await graphql<Record<string, { pullRequest: ChecksNode | null } | null>>(
-    `query { ${fields.join("\n")} }`, {}, env);
-  return new Map(refs.map((ref, index) => [ref.id, data[`p${index}`]?.pullRequest ?? null]));
+  const response = await postGraphql(`query { ${fields.join("\n")} }`, {}, env);
+  if (!response.ok) {
+    throw new Error(`GitHub GraphQL answered ${response.status}`);
+  }
+  const body = (await response.json()) as {
+    data?: Record<string, { pullRequest: ChecksNode | null } | null> | null;
+    errors?: { type?: string; path?: (string | number)[] }[];
+  };
+  const failed = new Set<string>();
+  for (const error of body.errors ?? []) {
+    const alias = error.path?.[0];
+    if (typeof alias !== "string") {
+      throw new Error(`GitHub GraphQL failed: ${error.type ?? "no path"}`);
+    }
+    if (error.type !== "NOT_FOUND") {
+      failed.add(alias);
+    }
+  }
+  if (!body.data) {
+    throw new Error("GitHub GraphQL failed: no data");
+  }
+  const data = body.data;
+  return new Map(refs.map((ref, index) => [ref.id,
+    failed.has(`p${index}`) ? "error" as const : data[`p${index}`]?.pullRequest ?? null]));
 }
 
 /** A picker row for any PR, open or not (`GET /prs/{owner}/{repo}/{n}/summary`). */

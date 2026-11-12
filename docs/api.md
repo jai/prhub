@@ -786,10 +786,13 @@ suite and status of a CI run, a bot's run of comments), so each read covers a bu
   comment in the middle of a burst shows within 15 seconds.
 - **`check_suite` and `status`** read only the PR's checks, merge state and PolicyBot's status: one GraphQL query for
   up to 25 PRs, with no REST call. They read at most once every 30 seconds per PR, so a check that finishes in the
-  middle of a CI run shows within 30 seconds. A PR whose head or `updatedAt` moved is read in full instead.
+  middle of a CI run shows within 30 seconds. A PR is read in full instead (within its 15-second window) when its head
+  or `updatedAt` moved, or when its `.policy.yml` people decision is more than 10 minutes old or missing. That
+  decision outranks PolicyBot's live status. A PR GitHub refuses in that query (SAML, say) leaves the others' reads
+  alone. Merged rows are not read for checks.
 - **The one-minute poll** marks a PR whose search listing differs only in its checks rollup for a checks-only read too.
 - **More deliveries never delay a read that is waiting.** A delivery that arrives while its PR is being read is read
-  again when the window ends.
+  again when the window ends; your own write that arrives then is read at once.
 - **Your own write** (a review or a merge from the app) is read 3 seconds later, whatever came before it.
 
 `.policy.yml` texts (10 minutes) and team and org memberships (an hour) are kept in the person's index storage with

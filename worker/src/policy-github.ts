@@ -4,7 +4,8 @@ import {
   type Membership, type PeopleDecision, type PeopleNode, factsOf, parsePolicy, peopleDecision,
 } from "./policy-people.ts";
 
-const POLICY_TTL_MS = 10 * 60_000;
+/** How long a `.policy.yml` answer stands; a checks-only read trusts a people decision no older (`check-refresh.ts`). */
+export const POLICY_TTL_MS = 10 * 60_000;
 const MEMBER_TTL_MS = 60 * 60_000;
 
 /** One answer GitHub gave: when, its ETag, and what it said (a policy's text, or a membership). */

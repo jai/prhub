@@ -36,14 +36,13 @@ export interface DueMark {
 /** `dirty` predates `due_at`: an older one gains it, its marks due at once. */
 export function createMarkTables(sql: LimitSql): void {
   for (const table of Object.values(TABLES)) {
-    sql.exec(`CREATE TABLE IF NOT EXISTS ${table} (id TEXT PRIMARY KEY, repo TEXT, number INTEGER, generation INTEGER,
-      due_at INTEGER NOT NULL DEFAULT 0)`);
+    sql.exec(`CREATE TABLE IF NOT EXISTS ${table} (id TEXT PRIMARY KEY, repo TEXT, number INTEGER, generation INTEGER)`);
+    const columns = sql.exec<{ name: string }>(`PRAGMA table_info(${table})`).toArray().map(({ name }) => name);
+    for (const column of ["due_at", "urgent_generation"].filter((name) => !columns.includes(name))) {
+      sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} INTEGER NOT NULL DEFAULT 0`);
+    }
   }
   sql.exec("CREATE TABLE IF NOT EXISTS last_reads (id TEXT, scope TEXT, at INTEGER, PRIMARY KEY (id, scope))");
-  const columns = sql.exec<{ name: string }>("PRAGMA table_info(dirty)").toArray().map(({ name }) => name);
-  if (!columns.includes("due_at")) {
-    sql.exec("ALTER TABLE dirty ADD COLUMN due_at INTEGER NOT NULL DEFAULT 0");
-  }
 }
 
 /**
@@ -58,11 +57,23 @@ export function throttledDue(sql: LimitSql, id: string, scope: Scope, now: numbe
   return Math.max(now + BUSY_WINDOW_MS, last === null ? 0 : last + WINDOWS[scope]);
 }
 
-/** Marks a PR for a read due at `due`. A mark already waiting keeps the earlier time: a burst never pushes it back. */
-export function mark(sql: LimitSql, ref: PullRequestRef, scope: Scope, due: number): void {
-  sql.exec(`INSERT INTO ${TABLES[scope]} (id, repo, number, generation, due_at) VALUES (?, ?, ?, 1, ?)
-    ON CONFLICT (id) DO UPDATE SET generation = generation + 1, due_at = min(due_at, excluded.due_at)`,
-  ref.id, ref.repo, ref.number, due);
+/**
+ * Marks a PR for a read due at `due`. A mark already waiting keeps the earlier time: a burst never pushes it back. An
+ * `urgent` one (the person's own write) stays due then even when it lands during a read.
+ */
+export function mark(sql: LimitSql, ref: PullRequestRef, scope: Scope, due: number, urgent = false): void {
+  sql.exec(`INSERT INTO ${TABLES[scope]} (id, repo, number, generation, due_at, urgent_generation)
+    VALUES (?, ?, ?, 1, ?, ?)
+    ON CONFLICT (id) DO UPDATE SET generation = generation + 1, due_at = min(due_at, excluded.due_at),
+      urgent_generation = CASE WHEN ? THEN generation + 1 ELSE urgent_generation END`,
+  ref.id, ref.repo, ref.number, due, urgent ? 1 : 0, urgent ? 1 : 0);
+}
+
+/** Marks GitHub could not answer wait until `due`, so a refusal is not asked again at once. */
+export function postpone(sql: LimitSql, scope: Scope, ids: string[], due: number): void {
+  for (const id of ids) {
+    sql.exec(`UPDATE ${TABLES[scope]} SET due_at = max(due_at, ?) WHERE id = ?`, due, id);
+  }
 }
 
 /**
@@ -85,7 +96,8 @@ export function dueMarks(sql: LimitSql, scope: Scope, now: number, limit: number
  */
 export function finishRead(sql: LimitSql, scope: Scope, read: DueMark, now: number): void {
   sql.exec(`DELETE FROM ${TABLES[scope]} WHERE id = ? AND generation = ?`, read.id, read.generation);
-  sql.exec(`UPDATE ${TABLES[scope]} SET due_at = max(due_at, ?) WHERE id = ?`, now + WINDOWS[scope], read.id);
+  sql.exec(`UPDATE ${TABLES[scope]} SET due_at = max(due_at, CASE WHEN urgent_generation > ? THEN ? ELSE ? END)
+    WHERE id = ?`, read.generation, now, now + WINDOWS[scope], read.id);
   if (scope === "full" && read.checksGeneration !== null) {
     sql.exec("DELETE FROM dirty_checks WHERE id = ? AND generation <= ?", read.id, read.checksGeneration);
   }
