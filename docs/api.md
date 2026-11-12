@@ -350,6 +350,7 @@ choice, and the stored shape are the same; `costCents` is what the run would hav
   reads and searches files only: no shell and no GitHub API. The chat is kept in
   R2 at `ask/<repo>/<n>.json` and the session's transcript at `ask-sessions/<repo>/<n>.json`, so the next question
   resumes it in any container. A question at another model or effort starts a new chat.
+- The container runs in the US (`constraints.regions`): nearest the request it can land where Anthropic's API refuses it.
 - The container sleeps after two idle minutes. The first run after that waits for it to start, about 20 seconds.
 - A container that is not ready, or whose run was stopped, is asked again up to three times, five seconds apart.
 - A failed answer, on either path, is served for ten minutes; the next ask after that makes it again, so a run that
