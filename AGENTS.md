@@ -73,9 +73,10 @@ new event that breaks a rule below is a privacy policy change, not a code change
 
 One version for the repo, from conventional commits. release-please (`.github/workflows/release-please.yml`,
 `release-please-config.json`) keeps one open release PR, `chore(release): PRHub X.Y.Z`, on `main`. `feat` bumps the
-minor version, `fix` and `perf` the patch, and a `!` or `BREAKING CHANGE` the major. `feat`, `fix`, `perf` and
-`revert` commits go in `CHANGELOG.md`; other types do not. Do not tag, edit `CHANGELOG.md` or change
-`MARKETING_VERSION` by hand. release-please uses the workflow's token, so the repo's **Settings → Actions → General
+minor version, `fix` and `perf` the patch; before 1.0.0 a `!` or `BREAKING CHANGE` bumps the minor too
+(`bump-minor-pre-major`), so apps pinned below 1.0.0 keep getting PRKit. 1.0.0 is a deliberate `Release-As: 1.0.0`. `feat`, `fix`, `perf` and
+`revert` commits go in `CHANGELOG.md`; other types do not. Do not tag, edit `CHANGELOG.md`, `version.txt`
+(release-please's own record) or change `MARKETING_VERSION` by hand. release-please uses the workflow's token, so the repo's **Settings → Actions → General
 → Allow GitHub Actions to create and approve pull requests** must be on, and its release PR starts no CI runs.
 
 - **PRKit**: each release's tag `vX.Y.Z` is PRKit's version. Apps pin it (`from: "0.1.0"`); Jai's Agent Pager is one
@@ -95,7 +96,8 @@ minor version, `fix` and `perf` the patch, and a `!` or `BREAKING CHANGE` the ma
      checks and stops.
   - With no PRHub Release workflow, or with `--local`, `release/ship.sh` ships the newest release tag when TestFlight
     has no build of its version. It archives the tag's tree on a Mac that can sign for the team, with the build number
-    from `release/next-build.sh`, and uploads it. `release/ship.sh "<What to Test>"` with no release waiting ships
+    from `release/next-build.sh`, and uploads it. After a local ship, raise the workflow's Next Build Number in
+    App Store Connect past that number, or Xcode Cloud's next build repeats it and TestFlight refuses the upload. `release/ship.sh "<What to Test>"` with no release waiting ships
     the current HEAD at `app/project.yml`'s version. `PRHUB_SUBMIT=NO` prevents the Beta App Review submission, but
     only in a local ship. In Xcode Cloud, the Public group's post-action can submit the build.
   - What to Test is the version's `CHANGELOG.md` section as plain text, cut to 4000 bytes
@@ -107,6 +109,12 @@ minor version, `fix` and `perf` the patch, and a `!` or `BREAKING CHANGE` the ma
   account. macOS jobs run on GitHub's `macos-26`.
 
 ### Setting up Xcode Cloud (once)
+
+**Moving the existing PRHub Release workflow to tags.** `create-workflow` stops when the workflow already exists, so
+an existing one keeps its old start condition (a change to `app/project.yml` on `main`), which `app/ci_scripts`
+now refuses. In Xcode or App Store Connect: PRHub Release → Start Conditions → remove the branch condition, add
+**Tag Changes** for tags beginning with `v`, enable the workflow. Check: the next release tag starts a build that
+`release/ship.sh` follows.
 
 The Xcode Cloud product for PRHub must exist first. Xcode makes it, with GitHub access to `jai/prhub`. The App Store
 Connect API cannot make a product.
