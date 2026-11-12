@@ -178,7 +178,14 @@ async function feedbackRoute(
       limited = true;
       return null;
     }
-    return addIssueFeedback(context, id ?? null, input);
+    try {
+      return await addIssueFeedback(context, id ?? null, input);
+    } catch (error) {
+      if (!id) {
+        await giveBackIssue(store, now);
+      }
+      throw error;
+    }
   });
   if (limited) {
     return Response.json({ error: `You can open ${ISSUES_PER_DAY} feedback issues a day. Try again tomorrow.` },
@@ -207,6 +214,20 @@ async function once(
     await store.put(key, { chat }).catch((error) => console.error("feedback receipt not kept", error));
   }
   return chat;
+}
+
+/** An issue that was not opened: its place under the cap goes back. */
+async function giveBackIssue(store: FeedbackStore, at: number): Promise<void> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const got = await store.get<number[]>(QUOTA_KEY);
+    const index = got?.value.indexOf(at) ?? -1;
+    if (!got || index < 0) {
+      return;
+    }
+    if (await store.put(QUOTA_KEY, got.value.filter((_, i) => i !== index), got.etag)) {
+      return;
+    }
+  }
 }
 
 /** Which chats a runner message is about: the app, the sender and their store, from the body. */
