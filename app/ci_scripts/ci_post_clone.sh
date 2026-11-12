@@ -10,6 +10,8 @@
 set -euo pipefail
 source "${0:A:h}/release.sh"
 app=$CI_PRIMARY_REPOSITORY_PATH/app
+# TestFlight reached build 180 by local uploads while Xcode Cloud was at 170: its numbers start this far past them.
+BUILD_NUMBER_OFFSET=10
 if [[ -n $release_build ]]; then
     number=${CI_BUILD_NUMBER:?}
     if [[ $number != "$release_build" ]]; then
@@ -18,6 +20,12 @@ if [[ -n $release_build ]]; then
     sed -i '' -E "s/^([[:space:]]*CURRENT_PROJECT_VERSION:)[[:space:]]+[0-9]+$/\1 $number/" "$app/project.yml"
     grep -q "CURRENT_PROJECT_VERSION: $number\$" "$app/project.yml"
     echo "release: PRHub build $number — $release_notes"
+elif [[ -n ${CI_BUILD_NUMBER:-} ]]; then
+    # Every other build, Internal - TestFlight's on each push to main: Xcode Cloud's number, past the builds TestFlight
+    # had before Xcode Cloud numbered them, so each push uploads a number higher than the last.
+    number=$(( CI_BUILD_NUMBER + BUILD_NUMBER_OFFSET ))
+    sed -i '' -E "s/^([[:space:]]*CURRENT_PROJECT_VERSION:)[[:space:]]+[0-9]+$/\1 $number/" "$app/project.yml"
+    echo "PRHub build $number (Xcode Cloud $CI_BUILD_NUMBER + $BUILD_NUMBER_OFFSET)"
 fi
 HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install --quiet xcodegen
 cd "$app"
