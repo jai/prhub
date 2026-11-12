@@ -7,7 +7,7 @@
 //   swift release/xcode-cloud.swift <key.p8> latest
 //     the product's highest build number, any workflow, or 0. Every workflow of the product shares one sequence.
 //   swift release/xcode-cloud.swift <key.p8> create-workflow
-//     creates the PRHub Release workflow, or says it exists: on a push to main that changes app/project.yml,
+//     creates the PRHub Release workflow, turns it on when it is off, or says it exists: on a push to main that changes app/project.yml,
 //     archive the PRHub scheme for App Store Connect, clean, on the latest Xcode release. TestFlight post-actions
 //     are not in the API: add them in Xcode (AGENTS.md, "Releases").
 // Exits 3, saying why on stderr, when the app has no Xcode Cloud product (`create-workflow`, `latest`) or no enabled
@@ -142,8 +142,15 @@ func latestRelease() async throws -> (xcode: String, macOS: String) {
 
 func createReleaseWorkflow(product: [String: Any]) async throws {
     let productID = product["id"] as! String
-    if let existing = try await releaseWorkflow(product: productID) {
-        print("\(workflowName) already exists: workflow \(existing["id"] as? String ?? "?")")
+    if let existing = try await releaseWorkflow(product: productID), let id = existing["id"] as? String {
+        guard attributes(existing)["isEnabled"] as? Bool != true else {
+            print("\(workflowName) already exists: workflow \(id)")
+            return
+        }
+        _ = try await request("PATCH", "ciWorkflows/\(id)", json: [
+            "data": ["type": "ciWorkflows", "id": id, "attributes": ["isEnabled": true]],
+        ])
+        print("\(workflowName) was off, now on: workflow \(id)")
         return
     }
     let repositories = (product["relationships"] as? [String: Any])?["primaryRepositories"] as? [String: Any]
