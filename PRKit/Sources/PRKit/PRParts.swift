@@ -103,7 +103,7 @@ public struct PRAvatar: View {
     public let author: PullRequestDetail.Author?
     /// Grows with the text beside it, so its initial is never clipped at a large text size.
     #if os(macOS)
-    private var size: CGFloat { 20 * MacTextSize.scale }
+    private var size: CGFloat { 20 * MacTextSize.layoutScale }
     #else
     @ScaledMetric(relativeTo: .caption2) private var size: CGFloat = 20
     #endif

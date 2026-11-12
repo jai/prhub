@@ -88,6 +88,15 @@ for (const [token, style] of Object.entries(STYLES)) {
 if (families.size !== 1) fail(`every text style must share one fontFamily, found ${[...families].join(", ")}`);
 const code = typography.code;
 if (!code) fail("typography.code is required: diffs and code use it");
+const macTypography = tokens["x-mac-typography"] ?? {};
+const macStyleLines = [];
+for (const [token, style] of Object.entries(STYLES)) {
+  if (!macTypography[token]) fail(`x-mac-typography.${token} is required: the Mac has a size for every style`);
+  const type = typography[token];
+  macStyleLines.push(
+    `        .${style}: Style(size: ${points(macTypography[token])}, weight: .${weight(type.fontWeight)}),`);
+}
+if (!macTypography.code) fail("x-mac-typography.code is required: diffs and code on the Mac use it");
 
 const space = Object.entries(tokens.spacing ?? {}).map(([name, value]) => `    public static let ${camel(name)}: CGFloat = ${points(value)}`);
 const radius = Object.entries(tokens.rounded ?? {}).map(([name, value]) => `    public static let ${camel(name)}: CGFloat = ${points(value)}`);
@@ -124,6 +133,12 @@ public enum DesignTokens {
     public static let styles: [Font.TextStyle: Style] = [
 ${styleLines.join("\n")}
     ]
+
+    /// Each style on the Mac at Actual Size (\`x-mac-typography\`).
+    public static let macStyles: [Font.TextStyle: Style] = [
+${macStyleLines.join("\n")}
+    ]
+    public static let macCodeFontSize: CGFloat = ${points(macTypography.code)}
 
     /// Applied to every SF Symbol from the app's root.
     public static let iconVariant: SymbolVariants = ${VARIANTS[icons.variant]}

@@ -75,7 +75,7 @@ struct DiffMetrics {
     }
     #else
     init(_ font: DiffFont) {
-        self.init(font, scale: MacTextSize.scale)
+        self.init(font, scale: MacTextSize.codeScale)
     }
     #endif
 }
