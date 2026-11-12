@@ -84,6 +84,13 @@ export interface Env extends LimitVars {
    * an issue on, and the token that opens it. Both set, and no `FEEDBACK_REPO`, Feedback opens issues.
    */
   FEEDBACK_ISSUES_REPO?: string;
+  /**
+   * The FeedbackKit Worker (`featurekit.ts`, docs/featurekit.md): set all three, and Feedback goes there, as this app
+   * (`FEEDBACKKIT_APP`) and the signed-in person, instead of being kept here.
+   */
+  FEEDBACKKIT_URL?: string;
+  FEEDBACKKIT_TOKEN?: string;
+  FEEDBACKKIT_APP?: string;
   FEEDBACK_ISSUES_TOKEN?: string;
   /** AI model choice (`models.ts`): allowed models, the effort cap, and each feature's default. Unset: all, high, built in. */
   AI_MODELS_ALLOWED?: string;

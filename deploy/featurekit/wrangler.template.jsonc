@@ -1,0 +1,17 @@
+// The FeedbackKit Worker (docs/featurekit.md): one Worker on Jai's personal Cloudflare account that keeps every app's
+// feedback. Render it to wrangler.jsonc beside it (gitignored) by filling the placeholder, then
+// `npx wrangler@4 deploy --config ../deploy/featurekit/wrangler.jsonc` from worker/. Secrets, with `wrangler secret
+// put`: CALLER_TOKEN (the app Workers' FEEDBACKKIT_TOKEN), RUNNER_TOKEN (the runner's) and ISSUES_TOKEN (opens issues).
+{
+  "name": "featurekit",
+  "account_id": "__CLOUDFLARE_ACCOUNT_ID__",
+  "main": "../../worker/src/featurekit.ts",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "vars": {
+    // Per app: its repo, who ships (owners), who opens PRs (builders), and whether everyone else files an issue.
+    "APPS": "{\"prhub\":{\"repo\":\"jai/prhub\",\"owners\":[\"jai\"],\"builders\":[\"poom\"],\"issues\":true},\"agent-pager\":{\"repo\":\"jai/agent-pager\",\"owners\":[\"jai\"]}}"
+  },
+  "r2_buckets": [{ "binding": "FEEDBACK", "bucket_name": "featurekit" }]
+}

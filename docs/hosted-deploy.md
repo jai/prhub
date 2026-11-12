@@ -23,6 +23,7 @@ Vars, filled into `deploy/hosted/wrangler.template.jsonc` (the rest of its vars 
 | `__GITHUB_APP_ID__` | The App's App ID |
 | `__GITHUB_APP_CLIENT_ID__` | The App's client ID (`Iv…`) |
 | `__APNS_KEY_ID__` | The ID of Jai's APNs key |
+| `__FEEDBACKKIT_URL__` | The FeedbackKit Worker's URL ([featurekit.md](featurekit.md)) |
 
 Secrets, each with `wrangler secret put`, from the password manager:
 
@@ -33,6 +34,7 @@ Secrets, each with `wrangler secret put`, from the password manager:
 | `WEBHOOK_SECRET` | The App's webhook secret |
 | `TOKEN_ENCRYPTION_KEY` | `k1:` and `openssl rand -base64 32`; rotation in [api.md, "Tokens"](api.md#tokens) |
 | `APNS_KEY_P8` | Jai's APNs key (`.p8`) |
+| `FEEDBACKKIT_TOKEN` | The FeedbackKit Worker's `CALLER_TOKEN` ([featurekit.md](featurekit.md)): Feedback goes there |
 | `FEEDBACK_ISSUES_TOKEN` | Jai's fine-grained token for `jai/prhub` with Issues read and write: Feedback opens its issues ([api.md, "As GitHub issues"](api.md#as-github-issues)). Unset: no Feedback |
 
 No `GITHUB_TOKEN` and no `ANTHROPIC_API_KEY`: each person acts with their own token, and AI runs on their own key.
@@ -52,6 +54,7 @@ From the repo root:
 npx wrangler@4 r2 bucket create prhub-hosted          # once
 sed -e "s/__CLOUDFLARE_ACCOUNT_ID__/$ACCOUNT_ID/" -e "s/__GITHUB_APP_ID__/$APP_ID/" \
     -e "s/__GITHUB_APP_CLIENT_ID__/$CLIENT_ID/" -e "s/__APNS_KEY_ID__/$APNS_KEY_ID/" \
+    -e "s#__FEEDBACKKIT_URL__#$FEEDBACKKIT_URL#" \
     deploy/hosted/wrangler.template.jsonc > deploy/hosted/wrangler.jsonc
 cd worker
 npx wrangler@4 deploy --config ../deploy/hosted/wrangler.jsonc

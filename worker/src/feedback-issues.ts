@@ -60,6 +60,8 @@ export interface IssueFeedback {
   login: string;
   /** Where the screenshots are served: the Worker's origin. */
   origin: string;
+  /** The screenshots' path on that origin; unset, `/feedback/images/`. */
+  imagePath?: string;
   repo: string;
   now(): number;
 }
@@ -112,7 +114,7 @@ async function pictures(context: IssueFeedback, images: FeedbackImage[]): Promis
   return Promise.all(images.map(async (image, index) => {
     const name = `${crypto.randomUUID().replaceAll("-", "")}.${image.media_type === "image/png" ? "png" : "jpg"}`;
     await context.images.put(name, image);
-    return `![Screenshot ${index + 1}](${context.origin}/feedback/images/${name})`;
+    return `![Screenshot ${index + 1}](${context.origin}${context.imagePath ?? "/feedback/images/"}${name})`;
   }));
 }
 
