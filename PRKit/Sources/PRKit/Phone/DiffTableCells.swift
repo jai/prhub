@@ -34,6 +34,8 @@ final class DiffFileHeader: UITableViewHeaderFooterView {
     private let viewed = UIButton(type: .system)
     private var isViewed = false
     private var metrics: DiffMetrics?
+    /// The width the path's size was fitted to: fitted again only when it changes, not on every sideways scroll.
+    private var fittedWidth: CGFloat?
     var onTap: () -> Void = {}
     var onViewed: (Bool) -> Void = { _ in }
 
@@ -70,6 +72,7 @@ final class DiffFileHeader: UITableViewHeaderFooterView {
         path.font = metrics.headerPath
         change.font = metrics.headerChange
         path.text = file.path
+        fittedWidth = nil
         let text = NSMutableAttributedString(
             string: "+\(file.change.added)", attributes: [.foregroundColor: UIColor.systemGreen]
         )
@@ -123,6 +126,22 @@ final class DiffFileHeader: UITableViewHeaderFooterView {
         change.frame = CGRect(x: viewed.frame.minX - changeWidth, y: 0, width: changeWidth, height: height)
         let pathX = Space.sm + chevronWidth + Space.sm
         path.frame = CGRect(x: pathX, y: 0, width: change.frame.minX - pathX - Space.md, height: height)
+        if fittedWidth != path.bounds.width {
+            fittedWidth = path.bounds.width
+            fitPath(metrics)
+        }
+    }
+
+    /// A path too long for its room shrinks first, down to the code's own size (a heading is never smaller than what it
+    /// heads), and is cut from the front after that, so the file's name is what stays.
+    private func fitPath(_ metrics: DiffMetrics) {
+        let text = (path.text ?? "") as NSString
+        let floor = metrics.code.pointSize
+        var font = metrics.headerPath
+        while font.pointSize > floor, text.size(withAttributes: [.font: font]).width > path.bounds.width {
+            font = metrics.font.platformFont(points: max(font.pointSize - 1, floor), isBold: true)
+        }
+        path.font = font
     }
 
     @objc private func tapped() {

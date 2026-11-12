@@ -73,6 +73,8 @@ final class DiffTableContainer: NSScrollView, NSTableViewDataSource, NSTableView
         hasVerticalScroller = true
         hasHorizontalScroller = true
         autohidesScrollers = true
+        // The code stops at its edges, as on the phone: a sideways rubber band would pull it off the window's edge.
+        horizontalScrollElasticity = .none
         drawsBackground = false
         let column = NSTableColumn(identifier: .init("diff"))
         table.addTableColumn(column)
