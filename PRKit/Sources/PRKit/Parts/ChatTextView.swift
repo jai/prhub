@@ -128,6 +128,10 @@ final class PictureTextView: UITextView {
     /// Shift-Return and Option-Return are left to the text view, which starts a new line at the cursor; so is the
     /// on-screen keyboard's return key, which is not a key command.
     override var keyCommands: [UIKeyCommand]? {
+        // While a word is being composed (Japanese, Chinese), Return confirms it: the text view keeps it.
+        guard markedTextRange == nil else {
+            return super.keyCommands
+        }
         let sends = [UIKeyModifierFlags(), .command].map { flags in
             let command = UIKeyCommand(input: "\r", modifierFlags: flags, action: #selector(returnPressed(_:)))
             command.wantsPriorityOverSystemBehavior = true
@@ -137,7 +141,9 @@ final class PictureTextView: UITextView {
     }
 
     @objc func returnPressed(_ command: UIKeyCommand) {
-        send?()
+        if markedTextRange == nil {
+            send?()
+        }
     }
 
     private var clipboardHasOnlyPictures: Bool {

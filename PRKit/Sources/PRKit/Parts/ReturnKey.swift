@@ -46,6 +46,10 @@ extension View {
     public func sendsOnReturn(_ send: @escaping () -> Void) -> some View {
         #if os(macOS)
         onKeyPress(.return, phases: .down) { press in
+            // While a word is being composed (Japanese, Chinese), Return confirms it: the field keeps it.
+            if (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true {
+                return .ignored
+            }
             switch ReturnKey.action(ReturnKey.Modifiers(press.modifiers)) {
             case .send:
                 send()
