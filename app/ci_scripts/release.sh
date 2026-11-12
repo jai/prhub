@@ -5,7 +5,8 @@
 # there that is not a release fails here instead of shipping. Other workflows skip the check and get empty values. The
 # workflow is known by its id (workflows.sh), which a rename leaves alone.
 repo=${CI_PRIMARY_REPOSITORY_PATH:?not running in Xcode Cloud}
-source "${0:A:h}/workflows.sh"
+# This file's own folder, wherever it is sourced from: %x is the file being read, where $0 can be the shell.
+source "${${(%):-%x}:A:h}/workflows.sh"
 release_build=
 release_notes=
 if [[ ${CI_WORKFLOW_ID:-} != "$release_workflow" ]]; then
