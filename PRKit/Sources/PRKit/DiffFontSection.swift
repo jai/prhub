@@ -193,7 +193,7 @@ private struct DiffFontModifier: ViewModifier {
         let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
         let scale = DiffMetrics.textScale(traits)
         #else
-        let scale = MacTextSize.scale
+        let scale = MacTextSize.codeScale
         #endif
         return content.font(Font(font.platformFont(points: (font.size + step) * scale) as CTFont))
     }

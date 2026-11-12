@@ -52,6 +52,22 @@ typography:
   caption: { fontFamily: *family, fontSize: 12px, fontWeight: 400 }
   caption2: { fontFamily: *family, fontSize: 11px, fontWeight: 400 }
   code: { fontFamily: system-mono, fontSize: 12px, fontWeight: 400 }
+# The Mac's size for each style, at View → Actual Size (MacTextSize 1.0): the Mac has no Dynamic Type, and the
+# iPhone's sizes read a size too big there. Apple's macOS sizes, with nothing under 11 pt, so secondary lines stay
+# readable. Same family and weights as typography.
+x-mac-typography:
+  large-title: 28px
+  title: 22px
+  title2: 18px
+  title3: 16px
+  headline: 14px
+  subheadline: 13px
+  body: 14px
+  callout: 13px
+  footnote: 12px
+  caption: 11px
+  caption2: 11px
+  code: 12px
 rounded:
   # Inside a block (buttons, fields), a box of its own, and a chat bubble or the chat field.
   sm: 6px
@@ -115,6 +131,7 @@ run `make -C app design` if it is a token, then look at the screenshots (Checkin
 |---|---|---|
 | The font family | `fontFamily` in `large-title` above | every text style |
 | A text size | that style's `fontSize` above (`footnote: 13px`) | every view using `.appFootnote` |
+| A text size on the Mac | that style in `x-mac-typography` above (`footnote: 12px`) | every view using `.appFootnote` on the Mac |
 | Which size a part uses | the part's view (PRSectionTitle, PageHeader, PRButtonStyle) | every place the part is used |
 | The accent | `colors.primary` | buttons, tab selection, focus rings, your own chat bubbles |
 | A state's colour | `tone-good`, `tone-bad`, `tone-waiting`, `tone-merged` (and `-dark`) | state icons, signals, chips, review words |
@@ -211,6 +228,11 @@ tokens. Each style follows Dynamic Type.
 
 The scale, at the default text size: caption2 11, caption 12, footnote 13, subheadline 15, callout 16, body 17,
 title3 20.
+
+**The Mac** has its own size for each style (`x-mac-typography`): caption2 11, caption 11, footnote 12, subheadline 13,
+callout 13, body 14, title3 16, code 12. View → Make Text Bigger and Make Text Smaller scale all of them together
+(`MacTextSize`); Actual Size is these sizes. What is sized with the text (an avatar, a mark, a row's padding) scales by
+`MacTextSize.layoutScale`, the Mac's body over the iPhone's times the chosen scale, so it keeps its size beside the text.
 
 | Style | Weight | Used for |
 |---|---|---|

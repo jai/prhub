@@ -6,8 +6,8 @@ import UIKit
 /// The app's text styles, from DESIGN.md's `typography` (DesignTokens): one family, and a size and weight per style.
 /// On iPhone each follows Settings → Display & Brightness → Text Size, and with the system font at Apple's sizes it is
 /// exactly the system's Dynamic Type style. The Mac has no text size an app can follow — its Accessibility → Text Size
-/// reaches Apple's own apps only — and its own styles are small (body 13 pt, caption 10), so there each style is its
-/// token size times `MacTextSize.scale`, which View → Make Text Bigger and Make Text Smaller change.
+/// reaches Apple's own apps only — so there each style is its Mac size (`x-mac-typography`, `DesignTokens.macStyles`)
+/// times `MacTextSize.scale`, which View → Make Text Bigger and Make Text Smaller change.
 extension Font {
     public static var appLargeTitle: Font { app(.largeTitle) }
     public static var appTitle2: Font { app(.title2) }
@@ -21,15 +21,16 @@ extension Font {
     public static var appCaption2: Font { app(.caption2) }
 
     public static func app(_ style: TextStyle, design: Design? = nil, weight: Weight? = nil) -> Font {
-        let token = DesignTokens.styles[style] ?? DesignTokens.Style(size: 17, weight: .regular)
         let family = design == .monospaced ? DesignTokens.codeFontFamily : DesignTokens.fontFamily
         #if os(macOS)
+        let token = DesignTokens.macStyles[style] ?? DesignTokens.Style(size: 14, weight: .regular)
         let size = token.size * MacTextSize.scale
         if let family {
             return .custom(family, fixedSize: size).weight(weight ?? token.weight)
         }
         return .system(size: size, weight: weight ?? token.weight, design: design)
         #else
+        let token = DesignTokens.styles[style] ?? DesignTokens.Style(size: 17, weight: .regular)
         if let family {
             return .custom(family, size: token.size, relativeTo: style).weight(weight ?? token.weight)
         }
@@ -87,7 +88,7 @@ private extension Font.TextStyle {
 #endif
 
 #if os(macOS)
-/// The Mac's text size: a scale on the iPhone's default point sizes, kept between launches.
+/// The Mac's text size: a scale on the Mac's sizes (`DesignTokens.macStyles`), kept between launches. 1 is Actual Size.
 public enum MacTextSize {
     public static let key = "macTextScale"
     public static let standard = 1.0
@@ -100,7 +101,20 @@ public enum MacTextSize {
     }
 
     public static func points(_ style: Font.TextStyle) -> CGFloat {
-        (DesignTokens.styles[style]?.size ?? 17) * scale
+        (DesignTokens.macStyles[style]?.size ?? 14) * scale
+    }
+
+    /// For what is sized beside the text in iPhone points (an avatar, a mark): the Mac's body over the iPhone's, times
+    /// the chosen scale, so it keeps its size next to the words.
+    public static var layoutScale: Double {
+        let mac = DesignTokens.macStyles[.body]?.size ?? 14
+        let phone = DesignTokens.styles[.body]?.size ?? 17
+        return scale * Double(mac / phone)
+    }
+
+    /// For code, whose size is the diff font's in iPhone points: the Mac's code size over the iPhone's, times the scale.
+    public static var codeScale: Double {
+        scale * Double(DesignTokens.macCodeFontSize / DesignTokens.codeFontSize)
     }
 
     public static func bigger(than scale: Double) -> Double? {

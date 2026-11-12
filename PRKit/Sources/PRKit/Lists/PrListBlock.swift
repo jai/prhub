@@ -35,7 +35,7 @@ public struct PrListBlock: View {
         self.folds = folds
     }
     #if os(macOS)
-    private var avatarSize: CGFloat { PrListGrid.avatar * MacTextSize.scale }
+    private var avatarSize: CGFloat { PrListGrid.avatar * MacTextSize.layoutScale }
     #else
     @ScaledMetric(relativeTo: .subheadline) private var avatarSize = PrListGrid.avatar
     #endif
