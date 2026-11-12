@@ -253,9 +253,8 @@ it, in a tap target of 44 pt at least, the header row's height, that never
 moves the path or the counts. A path too long for its row shrinks first, down to the code's size and no smaller, then is
 cut from the front, so the file's name is what shows; the whole path is in the Files panel.
 
-**The diff scrolls sideways; nothing else in it does.** The code stops at its left and right edges, with no bounce. The
-file header and the words under a line (a thread, a draft, a key line's note) stay where the screen is while the code
-moves under them.
+**The diff stops at its sideways edges.** The code stops at its left and right edges, with no bounce, so the file header
+and the threads and notes, which stay where the screen is, are never pulled off it.
 
 **The diff font.** Code (a diff, a code block, a line quoted in the comment box) is `DiffFont`: one monospaced face and
 a size, chosen in Settings → Diff font and kept on the device. The default is the `code` token, the system's monospaced
