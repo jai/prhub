@@ -17,8 +17,8 @@ struct ChatTextViewKeysTests {
         var sent = 0
         view.send = { sent += 1 }
         let commands = returns(view)
-        #expect(commands.map(\.modifierFlags) == [[], .command])
-        #expect(commands.allSatisfy(\.wantsPriorityOverSystemBehavior))
+        #expect(commands.map { $0.modifierFlags } == [[], .command])
+        #expect(commands.allSatisfy { $0.wantsPriorityOverSystemBehavior })
         #expect(view.canPerformAction(#selector(PictureTextView.returnPressed(_:)), withSender: nil))
         for command in commands {
             view.returnPressed(command)
