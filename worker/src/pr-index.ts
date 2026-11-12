@@ -31,6 +31,7 @@ import { putVersioned, storeDiff } from "./versioned";
 import { newRateLimitState } from "./rate-limit";
 import { DEFAULT_CONTEXT } from "./key-lines";
 import { onSubscription } from "./agent-container";
+import { OPEN_LISTS } from "./vocab";
 import { consumeLimits, createLimitHitsTable, type LimitCheck, type LimitDecision } from "./limit-counter";
 import { indexedPullRequestsMaxOf, LimitName, limitsOf, retentionOf } from "./limits";
 import { sweepClosedPullRequests } from "./retention";
@@ -632,17 +633,18 @@ export class PrIndex extends DurableObject<Env> {
   }
 
   /**
-   * One job per new head of a PR waiting on Jai, only on the subscription: on an API key every PR nobody opens would
-   * cost money. `AiJobs` runs it, so this mirror never waits on a model.
+   * One job per new head of every open PR on Jai's lists, those waiting on his review first, only on the subscription: on
+   * an API key every PR nobody opens would cost money. `AiJobs` runs it, so this mirror never waits on a model.
    */
   private async queueKeyLines(env: Env): Promise<void> {
     if (!onSubscription(env)) {
       return;
     }
     const due = this.sql.exec<{ id: string; repo: string; number: number; head: string }>(`SELECT id, repo, number, head
-      FROM pull_requests WHERE list = 'review' AND diff_state = 'ready' AND (COALESCE(key_lines_queued, '') <> head
-        OR (COALESCE(key_lines_ready, '') <> head AND COALESCE(key_lines_tried_at, 0) < ?))
-      LIMIT ?`, Date.now() - KEY_LINES_RETRY_MS, KEY_LINES_PER_PASS).toArray();
+      FROM pull_requests WHERE list IN (${OPEN_LISTS.map((list) => `'${list}'`).join(", ")}) AND diff_state = 'ready'
+        AND (COALESCE(key_lines_queued, '') <> head
+          OR (COALESCE(key_lines_ready, '') <> head AND COALESCE(key_lines_tried_at, 0) < ?))
+      ORDER BY list = 'review' DESC LIMIT ?`, Date.now() - KEY_LINES_RETRY_MS, KEY_LINES_PER_PASS).toArray();
     for (const row of due) {
       this.sql.exec("UPDATE pull_requests SET key_lines_queued = ?, key_lines_tried_at = ? WHERE id = ?", row.head,
         Date.now(), row.id);

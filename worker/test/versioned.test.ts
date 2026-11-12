@@ -141,7 +141,8 @@ test("key lines for a head the PR has moved on from are never stored under that 
   assert.equal(store.puts.length, 1);
   assert.equal(store.puts[0].key, aiKey(job));
   const stored = JSON.parse(store.puts[0].value) as Record<string, unknown>;
-  assert.deepEqual(Object.keys(stored), ["error"]);
+  assert.deepEqual(Object.keys(stored), ["error", "moved"]);
+  assert.equal(stored.moved, true, "the app asks again at the newest commit");
   assert.match(String(stored.error), /moved on/);
   assert.deepEqual(others, [], "no model was asked");
 });
@@ -189,11 +190,19 @@ test("a container that is not ready yet is asked again, and its last words are t
     Response.json({ error: "Claude Code process exited with code 143" }, { status: 500 }),
     Response.json({ subtype: "success", output: { items: [] }, model: "m", tokens: { input: 1, output: 1 }, costUsd: 0 }),
   ];
-  const agent = { idFromName: (name: string) => name, get: () => ({ fetch: async () => answers.shift()! }) };
+  let dropped = false;
+  const agent = { idFromName: (name: string) => name, get: () => ({ fetch: async () => {
+    if (!dropped) {
+      dropped = true;
+      throw new Error("Network connection lost.");
+    }
+    return answers.shift()!;
+  } }) };
   const env = { CLAUDE_CODE_OAUTH_TOKEN: "oat", AGENT: agent } as unknown as Env;
   const answer = await runOnSubscription("s", "p", { type: "object" }, { model: "m" as never, effort: "high" }, env,
     async () => {});
   assert.deepEqual(answer.output, { items: [] });
+  assert.equal(dropped, true, "a dropped connection went again too");
   const never = { idFromName: (name: string) => name, get: () => ({ fetch: async () => new Response("busy") }) };
   await assert.rejects(runOnSubscription("s", "p", {}, { model: "m" as never, effort: "high" },
     { ...env, AGENT: never } as unknown as Env, async () => {}), /The AI container failed: busy/);

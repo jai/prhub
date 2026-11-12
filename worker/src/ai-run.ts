@@ -1,4 +1,4 @@
-import { generateKeyLines, generateRewrite } from "./ai.ts";
+import { generateKeyLines, generateRewrite, HeadMoved } from "./ai.ts";
 import { aiConfigOf } from "./config.ts";
 import { type Env, scopedKey } from "./env.ts";
 import { DEFAULT_CONTEXT } from "./key-lines.ts";
@@ -21,7 +21,8 @@ export async function runAiJob(job: AiJob, env: Env, store: Pick<R2Bucket, "put"
     return job.kind === "key_lines" && context === DEFAULT_CONTEXT
       && sameChoice(choice, aiConfigOf(env).defaults.key_lines);
   } catch (error) {
-    await store.put(key, JSON.stringify({ error: String(error) }));
+    // `moved`: the app reads the PR at its newest commit and asks again, rather than show the failure.
+    await store.put(key, JSON.stringify({ error: String(error), ...(error instanceof HeadMoved ? { moved: true } : {}) }));
     return false;
   }
 }

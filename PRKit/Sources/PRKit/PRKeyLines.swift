@@ -28,9 +28,30 @@ public struct PRRewrite: Decodable, Sendable {
     public let hadTicket: Bool
 }
 
-/// A Worker job that failed, in its own words.
+/// A Worker job that failed, in its own words. `moved`: the PR has a newer commit than the one asked about.
 public struct PRAIFailure: Decodable, Sendable {
     public let error: String
+    public let moved: Bool?
+}
+
+/// The PR moved on past the commit the answer was asked for: read it again and ask at the newest.
+struct PRAIHeadMoved: Error {}
+
+extension Error {
+    /// A failure that passes: no network, a slow or dropped request, the Worker briefly down or busy. Reading an AI
+    /// answer changes nothing, so it is read again rather than shown.
+    var isPassingAIFailure: Bool {
+        if let error = self as? URLError {
+            return [
+                .timedOut, .networkConnectionLost, .notConnectedToInternet, .cannotConnectToHost, .cannotFindHost,
+                .dnsLookupFailed, .dataNotAllowed, .internationalRoamingOff, .callIsActive, .secureConnectionFailed,
+            ].contains(error.code)
+        }
+        if let error = self as? PRWorkerError {
+            return error == .unavailable || error == .limited
+        }
+        return false
+    }
 }
 
 /// The key lines page of the navigator: what to look at first, and how much code the model read to choose.

@@ -321,6 +321,10 @@ one asked for), `effort`, `tokens` and `costCents` (list price, `null` for a mod
 model and effort has its own cached answer; the built-in default keeps the cache key from before the choice existed,
 so answers made then are still served. An answer made before then has no `model`, `effort` or `costCents`.
 
+A failed key lines or rewrite answer is `{"error": "…"}`, with `"moved": true` when the PR had moved past the asked
+commit: the app then reads the PR at its newest commit and asks again, once. The app reads a passing failure (no
+network, a timeout, a `5xx` or `429`) again rather than showing it.
+
 **Ask sessions.** A Managed Agents session's model and effort are fixed when it starts; they can't change per message.
 So a question at another model or effort than the PR's current session starts a new session, and the chat the app
 shows is that new one; the earlier conversation is no longer shown. `GET …/ask` reports the session's `model` and
@@ -341,7 +345,8 @@ With `CLAUDE_CODE_OAUTH_TOKEN` set and `AGENT` bound, key lines, rewrites and As
 Agent SDK (`agent/`), signed in to a Claude subscription, instead of on the Messages API and Managed Agents. The answer, the model and effort
 choice, and the stored shape are the same; `costCents` is what the run would have cost on the API.
 
-- Key lines are made ahead for each new head of a PR on the review list, and an alert waits for them
+- Key lines are made ahead for each new head of every open PR on the person's lists (review, reviewed, mine), the
+  review list first, five a pass. An alert waits for those on the review list
   ([Alerts](#alerts)). On an API key they are made only when the app asks.
 - Each run, on either path, logs one `ai_run` line: `feature`, `repo`, `number`, `auth` (`subscription` or
   `api_key`), `user_id`, `model`, `effort`, `input_tokens`, `output_tokens`, `cost_cents`.
@@ -352,7 +357,8 @@ choice, and the stored shape are the same; `costCents` is what the run would hav
   resumes it in any container. A question at another model or effort starts a new chat.
 - The container runs in the US (`constraints.regions`): nearest the request it can land where Anthropic's API refuses it.
 - The container sleeps after two idle minutes. The first run after that waits for it to start, about 20 seconds.
-- A container that is not ready, or whose run was stopped, is asked again up to three times, five seconds apart.
+- A container that is not ready, whose run was stopped, or that dropped the connection (a deploy replaces it) is
+  tried up to four times, five seconds apart.
 - A failed answer, on either path, is served for ten minutes; the next ask after that makes it again, so a run that
   failed for want of credit or capacity heals without **Try again**.
 

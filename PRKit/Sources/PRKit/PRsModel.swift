@@ -471,13 +471,25 @@ final class PRsModel {
         let path = "prs/\(ref.repo)/\(ref.number)/\(kind)"
         var isFirst = true
         while !Task.isCancelled {
-            if let data = try await client.aiAnswer(path: path, head: head, context: context, retry: retry && isFirst) {
+            let data: Data?
+            // `retry` goes with the first request only: again, it would drop an answer the Worker has just made.
+            let asksAgain = retry && isFirst
+            isFirst = false
+            do {
+                data = try await client.aiAnswer(path: path, head: head, context: context, retry: asksAgain)
+            } catch where error.isPassingAIFailure {
+                try await Task.sleep(for: .seconds(5))
+                continue
+            }
+            if let data {
                 if let failure = try? JSONDecoder().decode(PRAIFailure.self, from: data) {
+                    if failure.moved == true {
+                        throw PRAIHeadMoved()
+                    }
                     throw PRWorkerError.refused(failure.error)
                 }
                 return try JSONDecoder().decode(Answer.self, from: data)
             }
-            isFirst = false
             try await Task.sleep(for: .seconds(3))
         }
         throw CancellationError()

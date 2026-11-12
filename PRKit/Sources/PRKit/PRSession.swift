@@ -471,7 +471,7 @@ extension PRSession {
 
     /// From the phone if it has them, and otherwise from the Worker, which runs the model once for each commit and
     /// context. `retry` asks it to run again after a failure.
-    func loadKeyLines(retry: Bool = false) async {
+    func loadKeyLines(retry: Bool = false, afterMove: Bool = false) async {
         guard offersKeyLines, let head = content?.detail.head else {
             return
         }
@@ -493,11 +493,31 @@ extension PRSession {
             return
         } catch let error as URLError where error.code == .cancelled {
             return
+        } catch is PRAIHeadMoved where !afterMove {
+            // The PR has a newer commit: show it, then its key lines. Once, so a PR moving every second can't loop.
+            if await readNewestCommit() {
+                await loadKeyLines(afterMove: true)
+            } else if context == contextLines {
+                keyLines = .failed("This PR has moved on to a newer commit. Open it again to see that one.")
+            }
         } catch {
             if context == contextLines {
                 keyLines = .failed(error.localizedDescription)
             }
         }
+    }
+
+    /// The PR as GitHub has it now, over the copy on screen, and no key lines kept from the older commit.
+    private func readNewestCommit() async -> Bool {
+        guard let fetched = try? await model.fetch(ref, row: nil), case .ready = state else {
+            return false
+        }
+        let content = fetched.content
+            .replacing(drafts: drafts, changedLinesOnly: changedLinesOnly, note: selectedKeyLine)
+        viewedFiles = Set(content.detail.viewedFiles ?? [])
+        keyLinesByContext = [:]
+        withAnimation(AppMotion.swap) { state = .ready(content) }
+        return true
     }
 
     /// Opens the description's box with the model's words in it. Nothing reaches GitHub until Jai taps Save.
