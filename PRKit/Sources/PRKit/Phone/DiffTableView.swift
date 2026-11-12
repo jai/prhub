@@ -56,7 +56,7 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
         table.isDirectionalLockEnabled = true
         table.keyboardDismissMode = .interactive
         table.register(DiffLineCell.self, forCellReuseIdentifier: DiffLineCell.identifier)
-        table.register(UITableViewCell.self, forCellReuseIdentifier: Self.hostedIdentifier)
+        table.register(DiffHostedCell.self, forCellReuseIdentifier: Self.hostedIdentifier)
         table.register(DiffFileHeader.self, forHeaderFooterViewReuseIdentifier: DiffFileHeader.identifier)
         // Set by hand, from `update(topInset:)`: the bars leaving must not move the code.
         contentInsetAdjustmentBehavior = .never
@@ -260,7 +260,7 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
     /// A thread or a key line's note is the screen's width: it stays on screen while the code scrolls sideways, as the
     /// file headers do.
     func pinToScreen(_ cell: UITableViewCell) {
-        cell.contentView.transform = CGAffineTransform(translationX: contentOffset.x, y: 0)
+        (cell as? DiffHostedCell)?.offsetX = contentOffset.x
     }
 
     private var composingSection: Int? {

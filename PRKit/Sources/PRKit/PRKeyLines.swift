@@ -368,6 +368,7 @@ struct PRKeyLineNote: View {
                 ) { actions.setReviewed(item, !reviewed) }
                     .buttonStyle(PRButtonStyle(.secondary))
                     .contentTransition(.symbolEffect(.replace))
+                    .accessibilityLabel("Reviewed")
                     .accessibilityValue(reviewed ? "checked" : "not checked")
                     .accessibilityIdentifier("key-line-note-reviewed")
             }

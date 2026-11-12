@@ -134,6 +134,25 @@ final class DiffFileHeader: UITableViewHeaderFooterView {
     }
 }
 
+/// A row SwiftUI draws (a thread, a draft, a key line's note), moved by the table's sideways scroll so it stays on
+/// screen. Kept here, not only set from outside: the cell lays its content view out again on its own, and a frame set
+/// under a transform is undefined, so the move comes off for the layout and goes back after it.
+final class DiffHostedCell: UITableViewCell {
+    var offsetX: CGFloat = 0 {
+        didSet {
+            if offsetX != oldValue {
+                setNeedsLayout()
+            }
+        }
+    }
+
+    override func layoutSubviews() {
+        contentView.transform = .identity
+        super.layoutSubviews()
+        contentView.transform = CGAffineTransform(translationX: offsetX, y: 0)
+    }
+}
+
 final class ReportingTableView: UITableView {
     var onContent: (() -> Void)?
     /// A fold or a reload changed how tall the diff is.
