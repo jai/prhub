@@ -157,6 +157,12 @@ a runner on the owner's Mac polls for them, starts or tells a coding agent there
 The Worker never calls a model or the runner. Jai's Worker only (`FEEDBACK_REPO`, `HUB_TOKEN`); elsewhere the app's routes
 answer `404` and the runner's `401`. Agent Pager's runner, its agent and its contract: [jai/agent-pager docs/api/feedback.md](https://github.com/jai/agent-pager/blob/main/docs/api/feedback.md).
 
+### Through the FeedbackKit Worker
+
+With `FEEDBACKKIT_URL`, `FEEDBACKKIT_APP` and `FEEDBACKKIT_TOKEN`, a Worker keeps no feedback: it forwards `/feedback`
+to the FeedbackKit Worker as its app and the person it acts for, and that Worker decides between a coding chat and an
+issue ([featurekit.md](featurekit.md)). This comes before the two below.
+
 ### As GitHub issues
 
 The hosted Worker's Feedback, with `FEEDBACK_ISSUES_REPO` (`owner/repo`) and `FEEDBACK_ISSUES_TOKEN` (a token that

@@ -45,6 +45,11 @@ export function feedbackConfigured(env: Env): boolean {
   return isSet(env.FEEDBACK_REPO) && isSet(env.HUB_TOKEN);
 }
 
+/** Feedback goes to the FeedbackKit Worker, which keeps every app's. */
+export function featureKitConfigured(env: Env): boolean {
+  return isSet(env.FEEDBACKKIT_URL) && isSet(env.FEEDBACKKIT_TOKEN) && isSet(env.FEEDBACKKIT_APP);
+}
+
 /** Feedback opens a GitHub issue (`feedback-issues.ts`): the hosted Worker's, for everyone signed in. */
 export function feedbackIssuesConfigured(env: Env): boolean {
   return !feedbackConfigured(env) && isSet(env.FEEDBACK_ISSUES_REPO) && isSet(env.FEEDBACK_ISSUES_TOKEN);
@@ -63,7 +68,7 @@ export function deviceConfig(env: Env, login: string | null): DeviceConfig {
       ask_ai: ask,
       key_lines: model,
       rewrite: model,
-      feedback: feedbackConfigured(env) || feedbackIssuesConfigured(env),
+      feedback: featureKitConfigured(env) || feedbackConfigured(env) || feedbackIssuesConfigured(env),
       push: pushMode(env) !== "none",
       webhooks: isSet(env.WEBHOOK_SECRET),
     },

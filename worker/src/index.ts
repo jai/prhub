@@ -6,7 +6,9 @@ import { askChat } from "./ask";
 import { acceptAsk, askPr, withQueued } from "./ask-queue";
 import { bodyOf, parseAskInput, parseKeyLineMark } from "./boundary";
 import { eventRoute, registerRoute, unpairRoute } from "./devices";
-import { aiConfigOf, askConfigured, deviceConfig, feedbackConfigured, feedbackIssuesConfigured } from "./config";
+import {
+  aiConfigOf, askConfigured, deviceConfig, featureKitConfigured, feedbackConfigured, feedbackIssuesConfigured,
+} from "./config";
 import {
   addIssueFeedback, chatOfRef, gitHubIssues, type IssueFeedback, issueChat, issuesNotice, issueThreads, isImageName,
 } from "./feedback-issues";
@@ -355,6 +357,24 @@ async function feedbackRoute(id: string | undefined, request: Request, env: Env)
   }
 }
 
+/** Feedback, to the FeedbackKit Worker: as this app and the person this Worker acts for, whom it has checked. */
+async function featureKitRoute(pathname: string, request: Request, env: Env): Promise<Response> {
+  try {
+    const answer = await fetch(`${env.FEEDBACKKIT_URL!.replace(/\/$/, "")}${pathname}`, {
+      method: request.method,
+      headers: {
+        Authorization: `Bearer ${env.FEEDBACKKIT_TOKEN}`, "Content-Type": "application/json",
+        "X-FeedbackKit-App": env.FEEDBACKKIT_APP!, "X-FeedbackKit-Login": await githubLogin(env),
+      },
+      body: request.method === "POST" ? await request.text() : undefined,
+    });
+    return new Response(answer.body, { status: answer.status, headers: { "Content-Type": "application/json" } });
+  } catch (error) {
+    console.error("featurekit unreachable", error);
+    return Response.json({ error: "Feedback can't be reached. Try again." }, { status: 502 });
+  }
+}
+
 /** Feedback as GitHub issues (`feedback-issues.ts`): the signed-in person's chats, each one an issue. */
 async function issueFeedbackRoute(id: string | undefined, request: Request, env: Env): Promise<Response> {
   if (id !== undefined && !isFeedbackId(id)) {
@@ -638,7 +658,8 @@ async function serveAuthorized(request: Request, env: Env, context: ExecutionCon
   }
   const feedback = FEEDBACK_PATH.exec(pathname);
   if (feedback) {
-    return feedbackConfigured(env) ? feedbackRoute(feedback[1], request, env)
+    return featureKitConfigured(env) ? featureKitRoute(pathname, request, env)
+      : feedbackConfigured(env) ? feedbackRoute(feedback[1], request, env)
       : feedbackIssuesConfigured(env) ? issueFeedbackRoute(feedback[1], request, env)
       : notConfigured("Feedback");
   }
