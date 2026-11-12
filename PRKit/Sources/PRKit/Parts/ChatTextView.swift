@@ -1,3 +1,23 @@
+/// When the message field moves the keyboard: only when the screen's `focused` changes, never because it merely
+/// disagrees. On iOS 26.5 a screen's focus state can stay off while the field is first responder (a composer with no
+/// attachments never turned it on), and pushing that off value into UIKit closed the keyboard after the first letter.
+enum ChatFieldFocus: Equatable {
+    case take
+    case give
+
+    /// `last` is the `focused` the field saw at its previous update, `nil` at its first.
+    static func move(wants: Bool, last: Bool?, isFirstResponder: Bool) -> Self? {
+        guard wants != last else {
+            return nil
+        }
+        if wants {
+            return isFirstResponder ? nil : .take
+        }
+        // At the first update, off only says nothing has asked for the keyboard yet.
+        return last == nil || !isFirstResponder ? nil : .give
+    }
+}
+
 #if os(iOS)
 import SwiftUI
 import UIKit
@@ -35,10 +55,14 @@ struct ChatTextView: UIViewRepresentable {
         view.pastePicture = pastePicture
         view.accessibilityLabel = placeholder
         let wantsFocus = focused.wrappedValue
-        if wantsFocus != view.isFirstResponder {
+        let move = ChatFieldFocus.move(
+            wants: wantsFocus, last: context.coordinator.lastFocused, isFirstResponder: view.isFirstResponder
+        )
+        context.coordinator.lastFocused = wantsFocus
+        if let move {
             // After this update: a view not yet in a window can't take the keyboard.
             Task { @MainActor in
-                _ = wantsFocus ? view.becomeFirstResponder() : view.resignFirstResponder()
+                _ = move == .take ? view.becomeFirstResponder() : view.resignFirstResponder()
             }
         }
     }
@@ -58,6 +82,8 @@ struct ChatTextView: UIViewRepresentable {
 
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: ChatTextView
+        /// `focused` at the previous update, so only a change of it moves the keyboard (`ChatFieldFocus`).
+        var lastFocused: Bool?
 
         init(parent: ChatTextView) {
             self.parent = parent
