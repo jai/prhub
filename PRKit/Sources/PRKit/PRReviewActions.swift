@@ -4,10 +4,8 @@ import SwiftUI
 
 /// What a review button opens in place: Approve, Request changes or Comment. The PR's page and its diff send a review
 /// through these, the one way.
-enum PRReviewAction: Identifiable {
+enum PRReviewAction {
     case approve, requestChanges, comment
-
-    var id: Self { self }
 
     var title: String {
         switch self {
@@ -54,17 +52,13 @@ enum PRReviewAction: Identifiable {
     func target(hasDrafts: Bool) -> PRComposerTarget {
         self == .comment && hasDrafts ? .review(.comment) : target
     }
-
-    /// The author can only comment on their own PR.
-    static func offered(isAuthor: Bool) -> [PRReviewAction] {
-        isAuthor ? [.comment] : [.approve, .requestChanges, .comment]
-    }
 }
 
 /// The review buttons as one bar across the width they are given, each the same width. When one's words don't fit,
-/// all of them show their icons instead, together; each keeps its words as its accessibility label.
+/// all of them show their icons instead, together; each keeps its words as its accessibility label. The author can only
+/// comment on their own PR.
 struct PRReviewBar: View {
-    let actions: [PRReviewAction]
+    let isAuthor: Bool
     let open: (PRReviewAction) -> Void
 
     var body: some View {
@@ -74,11 +68,15 @@ struct PRReviewBar: View {
         }
     }
 
+    /// No `ForEach`: `ViewThatFits` makes a `ForEach`'s views while it lays out, which iOS can do on SwiftUI's render
+    /// thread, and the main-actor closure traps there.
     private func bar(showsWords: Bool) -> some View {
         EqualWidths(spacing: Space.sm) {
-            ForEach(actions) { action in
-                button(action, showsWords: showsWords)
+            if !isAuthor {
+                button(.approve, showsWords: showsWords)
+                button(.requestChanges, showsWords: showsWords)
             }
+            button(.comment, showsWords: showsWords)
         }
     }
 
@@ -110,7 +108,7 @@ struct PRReviewActions: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
             PRPendingComments(count: session.drafts.count)
-            PRReviewBar(actions: PRReviewAction.offered(isAuthor: isAuthor)) { next in
+            PRReviewBar(isAuthor: isAuthor) { next in
                 withAnimation(AppMotion.fold) { action = action == next ? nil : next }
             }
             if let notice = session.notice {
