@@ -472,8 +472,11 @@ final class PRsModel {
         var isFirst = true
         while !Task.isCancelled {
             let data: Data?
+            // `retry` goes with the first request only: again, it would drop an answer the Worker has just made.
+            let asksAgain = retry && isFirst
+            isFirst = false
             do {
-                data = try await client.aiAnswer(path: path, head: head, context: context, retry: retry && isFirst)
+                data = try await client.aiAnswer(path: path, head: head, context: context, retry: asksAgain)
             } catch where error.isPassingAIFailure {
                 try await Task.sleep(for: .seconds(5))
                 continue
@@ -487,7 +490,6 @@ final class PRsModel {
                 }
                 return try JSONDecoder().decode(Answer.self, from: data)
             }
-            isFirst = false
             try await Task.sleep(for: .seconds(3))
         }
         throw CancellationError()
