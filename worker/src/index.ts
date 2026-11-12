@@ -367,7 +367,11 @@ async function issueFeedbackRoute(id: string | undefined, request: Request, env:
     store: {
       get: (key) => scoped.get(scopedKey(env, key)),
       put: (key, value, ifEtag) => scoped.put(scopedKey(env, key), value, ifEtag),
-      list: (prefix) => scoped.list(scopedKey(env, prefix)),
+      // Keys as this store names them, without the person's prefix, so a `get` of one finds it.
+      list: async (prefix) => {
+        const root = scopedKey(env, "");
+        return (await scoped.list(`${root}${prefix}`)).map((key) => key.slice(root.length));
+      },
       delete: (key) => scoped.delete(scopedKey(env, key)),
     },
     images: {
