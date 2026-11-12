@@ -24,12 +24,12 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
             try picture("diff-sideways-\(name)-1-open")
 
             drag(from: 0.3, by: 200, holding: 0.5)
+            try picture("diff-sideways-\(name)-2-swiped-right")
             let after = Positions(app)
             XCTAssertEqual(after.line, before.line, "\(name): the code's first line stays at the left edge")
             XCTAssertEqual(after.header, before.header, "\(name): the header's path stays where it was")
             XCTAssertEqual(after.viewed, before.viewed, "\(name): the header's viewed mark stays where it was")
             XCTAssertTrue(after.isNoteInside, "\(name): the note is inside the screen, \(after.note)")
-            try picture("diff-sideways-\(name)-2-swiped-right")
         }
     }
 
@@ -39,6 +39,7 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
             try openKeyLineNote(textSize: textSize)
             let before = Positions(app)
             drag(from: 0.6, by: -150, holding: 0.3)
+            try picture("diff-sideways-\(name)-3-scrolled-left")
             let after = Positions(app)
             if isWide, after.line.minX == before.line.minX {
                 XCTContext.runActivity(named: "\(name): the code fits this width; nothing to scroll") { _ in }
@@ -48,7 +49,6 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
             XCTAssertEqual(after.header, before.header, "\(name): the header's path did not move")
             XCTAssertEqual(after.viewed, before.viewed, "\(name): the header's viewed mark did not move")
             XCTAssertTrue(after.isNoteInside, "\(name): the note is inside the screen, \(after.note)")
-            try picture("diff-sideways-\(name)-3-scrolled-left")
         }
     }
 
@@ -79,8 +79,10 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
     private func drag(from start: CGFloat, by distance: CGFloat, holding: TimeInterval) {
         let positions = Positions(app)
         let lines = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH 'diff-line-'"))
-        let line = (lines.allElementsBoundByIndex.first { $0.frame.minY > positions.header.maxY } ?? lines.firstMatch)
-            .frame
+        // The topmost line under the header, well above the screen's bottom edge: a sideways drag there switches apps.
+        let below = lines.allElementsBoundByIndex.map(\.frame)
+            .filter { $0.minY > positions.header.maxY && $0.maxY < positions.screen.maxY * 0.75 }
+        let line = below.min { $0.minY < $1.minY } ?? lines.firstMatch.frame
         let left = positions.header.minX
         let finger = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
             .withOffset(CGVector(dx: left + (positions.viewed.maxX - left) * start, dy: line.midY))
@@ -88,14 +90,31 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
             forDuration: 0.05, thenDragTo: finger.withOffset(CGVector(dx: distance, dy: 0)), withVelocity: .slow,
             thenHoldForDuration: holding
         )
+        // Until the code stops: a snapshot taken mid-scroll can catch the header a frame behind it.
+        let first = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH 'diff-line-'")).firstMatch
+        var frame = first.frame
+        for _ in 0..<20 {
+            RunLoop.current.run(until: Date.now.addingTimeInterval(0.15))
+            if first.frame == frame {
+                break
+            }
+            frame = first.frame
+        }
     }
 
     /// A sample PR's row on For review, scrolled to: at the largest text size a row is taller than half the screen.
     private func openPR(_ title: String) {
         let row = app.staticTexts[title]
         XCTAssertTrue(app.tab(.settings).waitForExistence(timeout: 10))
+        // On a wide screen, in the list's own column: the PR's page is beside it.
+        let list = app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.7))
         for _ in 0..<15 where !row.exists || (!isWide && !row.isHittable) {
-            app.swipeUp(velocity: .slow)
+            if isWide {
+                list.press(forDuration: 0.05, thenDragTo: list.withOffset(CGVector(dx: 0, dy: -300)), withVelocity: .slow,
+                           thenHoldForDuration: 0.1)
+            } else {
+                app.swipeUp(velocity: .slow)
+            }
         }
         XCTAssertTrue(row.exists, title)
         row.tap()
