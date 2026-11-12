@@ -24,7 +24,9 @@
     // AI runs on each person's own Anthropic key, or on the Worker's subscription (CLAUDE_CODE_OAUTH_TOKEN, a secret)
     // for SUBSCRIPTION_LOGINS only. Defaults from docs/plans/ai-model-eval.md.
     "SUBSCRIPTION_LOGINS": "jai,poom",
-    "AI_DEFAULTS": "key_lines=claude-opus-5-5:high,ask=claude-haiku-5-5:high"
+    "AI_DEFAULTS": "key_lines=claude-opus-5-5:high,ask=claude-haiku-5-5:high",
+    // Feedback opens a public issue here, with FEEDBACK_ISSUES_TOKEN (a secret) (docs/api.md, "As GitHub issues").
+    "FEEDBACK_ISSUES_REPO": "jai/prhub"
     // Limits (docs/api.md, "Limits") take their hosted defaults; set a LIMIT_* var here to change one.
   },
   "durable_objects": {

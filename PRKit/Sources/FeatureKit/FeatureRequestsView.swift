@@ -172,7 +172,7 @@ private struct FeatureListView: View {
                         .transition(.fold)
                 }
                 if model.list.threads.isEmpty, unsent == nil {
-                    Text("Say what to change in the app. An agent makes the change, tests it and ships a build.")
+                    Text(model.list.notice ?? FeatureList.agentNotice)
                         .font(.appFootnote)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, Space.lg)
@@ -291,7 +291,7 @@ struct FeatureChatView: View {
                         BuilderNote()
                     }
                     if messages.isEmpty {
-                        Text("Say what to change in the app. An agent makes the change, tests it and ships a build.")
+                        Text(model.list.notice ?? FeatureList.agentNotice)
                             .font(.appFootnote)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -399,4 +399,9 @@ struct FeatureChatView: View {
         isWriting = false
         Task { await model.send(route) }
     }
+}
+
+extension FeatureList {
+    /// What sending does when the Worker gives no notice: the owner's coding agent.
+    static let agentNotice = "Say what to change in the app. An agent makes the change, tests it and ships a build."
 }

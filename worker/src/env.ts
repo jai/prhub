@@ -77,6 +77,12 @@ export interface Env extends LimitVars {
    * runner on his Mac, which takes it with `HUB_TOKEN`.
    */
   FEEDBACK_REPO?: string;
+  /**
+   * Feedback as GitHub issues (`feedback-issues.ts`), the hosted Worker's: the public repo each person's feedback opens
+   * an issue on, and the token that opens it. Both set, and no `FEEDBACK_REPO`, Feedback opens issues.
+   */
+  FEEDBACK_ISSUES_REPO?: string;
+  FEEDBACK_ISSUES_TOKEN?: string;
   /** AI model choice (`models.ts`): allowed models, the effort cap, and each feature's default. Unset: all, high, built in. */
   AI_MODELS_ALLOWED?: string;
   AI_EFFORT_MAX?: string;

@@ -45,6 +45,11 @@ export function feedbackConfigured(env: Env): boolean {
   return isSet(env.FEEDBACK_REPO) && isSet(env.HUB_TOKEN);
 }
 
+/** Feedback opens a GitHub issue (`feedback-issues.ts`): the hosted Worker's, for everyone signed in. */
+export function feedbackIssuesConfigured(env: Env): boolean {
+  return !feedbackConfigured(env) && isSet(env.FEEDBACK_ISSUES_REPO) && isSet(env.FEEDBACK_ISSUES_TOKEN);
+}
+
 /** Each feature is on when what serves it is configured; nothing is a separate switch. */
 export function deviceConfig(env: Env, login: string | null): DeviceConfig {
   const model = makesAnswers(env);
@@ -58,7 +63,7 @@ export function deviceConfig(env: Env, login: string | null): DeviceConfig {
       ask_ai: ask,
       key_lines: model,
       rewrite: model,
-      feedback: feedbackConfigured(env),
+      feedback: feedbackConfigured(env) || feedbackIssuesConfigured(env),
       push: pushMode(env) !== "none",
       webhooks: isSet(env.WEBHOOK_SECRET),
     },

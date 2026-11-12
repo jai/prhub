@@ -18,10 +18,13 @@ public struct FeatureThread: Decodable, Equatable, Identifiable, Hashable, Senda
 public struct FeatureList: Decodable, Equatable, Sendable {
     public var threads: [FeatureThread]
     public var builderOnline: Bool
+    /// What sending does, when the Worker says (an issue Worker: a public GitHub issue); nil is the coding agent.
+    public var notice: String?
 
-    public init(threads: [FeatureThread], builderOnline: Bool) {
+    public init(threads: [FeatureThread], builderOnline: Bool, notice: String? = nil) {
         self.threads = threads
         self.builderOnline = builderOnline
+        self.notice = notice
     }
 }
 

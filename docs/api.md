@@ -136,7 +136,7 @@ Auth: a paired secret or `APP_TOKEN`. `Cache-Control: no-store`. The app reads i
 | `features.ask_ai` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ASK_AGENT_ID`, `ASK_ENVIRONMENT_ID`, `ASK_VAULT_ID`, `ASK_CREDENTIAL_ID` and a key (`ASK_ANTHROPIC_API_KEY` or `ANTHROPIC_API_KEY`) | Shows Ask on a PR and a line |
 | `features.key_lines` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ANTHROPIC_API_KEY` | Shows the Key lines panel and capsule |
 | `features.rewrite` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ANTHROPIC_API_KEY` | Shows Rewrite on the description |
-| `features.feedback` | `FEEDBACK_REPO` and `HUB_TOKEN`: Jai's Worker only ([Feedback](#feedback)) | Shows Feedback |
+| `features.feedback` | `FEEDBACK_REPO` and `HUB_TOKEN` (Jai's Worker), or `FEEDBACK_ISSUES_REPO` and `FEEDBACK_ISSUES_TOKEN` (the hosted Worker) ([Feedback](#feedback)) | Shows Feedback |
 | `features.push` | the relay (`PUSH_RELAY_URL`, `PUSH_RELAY_KEY`), or direct APNs (`APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8`, `APNS_BUNDLE_ID`) | Registers for push; off: syncs on open and foreground only |
 | `features.webhooks` | `WEBHOOK_SECRET` | Diagnostics only: updates in seconds rather than about a minute |
 | `login` | the GitHub login the Worker acts as; `null` if GitHub could not be asked | "Your PRs", and whose review a row shows |
@@ -156,6 +156,23 @@ Requests for changes to the app, from the app (FeatureKit, [plan](plans/featurek
 a runner on the owner's Mac polls for them, starts or tells a coding agent there, and sends the agent's words back.
 The Worker never calls a model or the runner. Jai's Worker only (`FEEDBACK_REPO`, `HUB_TOKEN`); elsewhere the app's routes
 answer `404` and the runner's `401`. Agent Pager's runner, its agent and its contract: [jai/agent-pager docs/api/feedback.md](https://github.com/jai/agent-pager/blob/main/docs/api/feedback.md).
+
+### As GitHub issues
+
+The hosted Worker's Feedback, with `FEEDBACK_ISSUES_REPO` (`owner/repo`) and `FEEDBACK_ISSUES_TOKEN` (a token that
+can open issues and comment there) and no `FEEDBACK_REPO`. The same app routes and chat shape, for everyone signed in:
+
+- A new chat opens a public issue on that repo: the first line as the title, the words, the screenshots, and
+  `From @<login> in PRHub (build <n>).` The token's account opens it. The chat answers with the issue's link.
+- A reply in the app is a comment on the issue, naming the sender. Comments others write on GitHub show in the chat as
+  `agent` messages, `**@<login>:** <text>`.
+- `GET /feedback` adds `notice`: what sending does, which the app shows above a new chat. `builderOnline` is always
+  true and `isWorking` false: there is no runner.
+- Screenshots are public: `GET /feedback/images/<32 hex>.jpg|png`, with no auth, as the issue shows them. They stay
+  after Delete Account, as the issue does. The person's chats are under their own R2 prefix and go with it.
+- New chats count against `feedback_issues_per_day`; replies against the write limits ([Limits](#limits)).
+
+### Routes
 
 App routes (app auth):
 
@@ -406,6 +423,7 @@ A var the Worker cannot use does not stop anything. The default serves, and the 
 | `writes_per_hour` | `LIMIT_WRITES_PER_HOUR` | 200 | off | The same |
 | `ask_questions_per_hour` | `LIMIT_ASK_QUESTIONS_PER_HOUR` | 30 | off | `POST …/ask` |
 | `ask_questions_per_day` | `LIMIT_ASK_QUESTIONS_PER_DAY` | 150 | off | The same |
+| `feedback_issues_per_day` | `LIMIT_FEEDBACK_ISSUES_PER_DAY` | 10 | n/a | New feedback issues per person ([Feedback](#as-github-issues)) |
 | `ai_jobs_per_hour` | `LIMIT_AI_JOBS_PER_HOUR` | 60 | off | A key lines or rewrite request that starts a job; a stored answer counts nothing |
 
 **Sizes and intervals.**

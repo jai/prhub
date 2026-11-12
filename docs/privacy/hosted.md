@@ -23,6 +23,8 @@ through the PRHub GitHub App. The service stores these items:
   you can see. It uses this record to send each GitHub notification only to the people who can see that repo.
 - **Your Anthropic API key, if you give one.** It is encrypted as the tokens are, and never sent back to your phone.
 - **AI answers.** Key lines, rewrites and the record of your Ask conversations, when you use them.
+- **Your feedback.** What you send from the Feedback tab, and the link to the issue it opened, so that you can
+  follow the chat in the app.
 - **Your phone's push token**, when you allow notifications. The service uses it to send pushes to your phone.
 - **Activity records.** The last 5,000 events of your account, such as syncs, pushes and errors, so that problems
   can be found. They contain no PR content.
@@ -32,6 +34,10 @@ through the PRHub GitHub App. The service stores these items:
 ## Where your data goes
 
 - **GitHub** receives your reads and your actions, such as reviews, comments and merges, sent with your own token.
+- **GitHub, in public: your feedback.** Feedback that you send from the Feedback tab opens a public issue on
+  github.com/jai/prhub, with your words, your screenshots, your GitHub username and the app's build number. Anyone can
+  read it. Your replies in the app become comments on it. The screenshots are served by the service at links that
+  anyone with the issue can open. Delete Account does not remove the issue or its screenshots: ask Jai to remove them.
 - **Anthropic** receives PR diffs, descriptions and your questions only when you give your own Anthropic API key and
   use an AI feature. The calls run on your key and in your Anthropic organization, and Anthropic's terms cover them.
 - **Apple** receives the pushes for your phone through its push service.
