@@ -60,6 +60,8 @@ const KEPT_EVENTS = 5_000;
 /** An alert's key outlives any re-request worth hushing; a month of them is a few hundred rows. */
 const ALERTS_KEPT_MS = 30 * 86_400_000;
 const KEY_LINES_PER_PASS = 5;
+/** Key lines a pass makes for open PRs not waiting on Jai's review, when the token's hour has room. */
+const OTHER_KEY_LINES_PER_PASS = 1;
 /** A job that failed, say at a usage limit, goes again after this long, so the list heals without being asked. */
 const KEY_LINES_RETRY_MS = 30 * 60_000;
 /** Raise it when what a row or detail holds changes shape: every held PR is then read again, once. */
@@ -640,11 +642,17 @@ export class PrIndex extends DurableObject<Env> {
     if (!onSubscription(env)) {
       return;
     }
-    const due = this.sql.exec<{ id: string; repo: string; number: number; head: string }>(`SELECT id, repo, number, head
-      FROM pull_requests WHERE list IN (${OPEN_LISTS.map((list) => `'${list}'`).join(", ")}) AND diff_state = 'ready'
+    // Key lines read every changed file from GitHub. Those waiting on Jai's review go five a pass; the rest, one a pass
+    // and only while the token's hour is not low, so making them never starves the list or his other tools.
+    const spare = this.rateLimitedUntil(Date.now()) === null;
+    let others = spare ? OTHER_KEY_LINES_PER_PASS : 0;
+    const lists = OPEN_LISTS.map((list) => `'${list}'`).join(", ");
+    const rows = this.sql.exec<{ id: string; repo: string; number: number; head: string; list: string }>(`SELECT id,
+      repo, number, head, list FROM pull_requests WHERE list IN (${lists}) AND diff_state = 'ready'
         AND (COALESCE(key_lines_queued, '') <> head
           OR (COALESCE(key_lines_ready, '') <> head AND COALESCE(key_lines_tried_at, 0) < ?))
       ORDER BY list = 'review' DESC LIMIT ?`, Date.now() - KEY_LINES_RETRY_MS, KEY_LINES_PER_PASS).toArray();
+    const due = rows.filter((row) => row.list === "review" || others-- > 0);
     for (const row of due) {
       this.sql.exec("UPDATE pull_requests SET key_lines_queued = ?, key_lines_tried_at = ? WHERE id = ?", row.head,
         Date.now(), row.id);
