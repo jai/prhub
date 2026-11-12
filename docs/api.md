@@ -321,6 +321,10 @@ one asked for), `effort`, `tokens` and `costCents` (list price, `null` for a mod
 model and effort has its own cached answer; the built-in default keeps the cache key from before the choice existed,
 so answers made then are still served. An answer made before then has no `model`, `effort` or `costCents`.
 
+A failed key lines or rewrite answer is `{"error": "…"}`, with `"moved": true` when the PR had moved past the asked
+commit: the app then reads the PR at its newest commit and asks again, once. The app reads a passing failure (no
+network, a timeout, a `5xx` or `429`) again rather than showing it.
+
 **Ask sessions.** A Managed Agents session's model and effort are fixed when it starts; they can't change per message.
 So a question at another model or effort than the PR's current session starts a new session, and the chat the app
 shows is that new one; the earlier conversation is no longer shown. `GET …/ask` reports the session's `model` and

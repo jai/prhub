@@ -141,7 +141,8 @@ test("key lines for a head the PR has moved on from are never stored under that 
   assert.equal(store.puts.length, 1);
   assert.equal(store.puts[0].key, aiKey(job));
   const stored = JSON.parse(store.puts[0].value) as Record<string, unknown>;
-  assert.deepEqual(Object.keys(stored), ["error"]);
+  assert.deepEqual(Object.keys(stored), ["error", "moved"]);
+  assert.equal(stored.moved, true, "the app asks again at the newest commit");
   assert.match(String(stored.error), /moved on/);
   assert.deepEqual(others, [], "no model was asked");
 });
