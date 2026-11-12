@@ -96,12 +96,13 @@ struct OnboardingView: View {
 
     private var header: some View {
         PageHeader(
-            title: build.signInWithGitHub ? "Review pull requests on your phone" : "Connect PRHub to your pr-worker",
+            title: build.signInWithGitHub
+                ? "Review pull requests on your \(AppIdentity.deviceName)" : "Connect PRHub to your pr-worker",
             message: build.signInWithGitHub
                 ? "PRHub lists the PRs waiting on you, and lets you read the diff, comment, approve and merge."
                 : "When your agent set up your pr-worker from github.com/jai/prhub, it printed a setup link and a "
-                    + "QR code. Scan the code or paste the link to connect this phone. For a new one, run npm run "
-                    + "pair there again."
+                    + "QR code. Scan the code or paste the link to connect this \(AppIdentity.deviceName). For a new "
+                    + "one, run npm run pair there again."
         )
     }
 

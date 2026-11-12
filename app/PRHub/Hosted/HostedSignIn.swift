@@ -104,12 +104,13 @@ enum SignInError: Error, Equatable, Sendable {
         case .expired: "That sign-in took too long or was already used. Sign in again."
         case .githubRefused: "GitHub didn't accept the sign-in. Sign in again."
         case .githubUnavailable: "GitHub couldn't be reached. Try again in a minute."
-        case .stateMismatch: "That sign-in didn't start on this phone, so PRHub ignored it. Sign in again."
+        case .stateMismatch:
+            "That sign-in didn't start on this \(AppIdentity.deviceName), so PRHub ignored it. Sign in again."
         case .rateLimited: "Too many sign-ins from this network. Wait a minute and try again."
         case .unreachable: "Couldn't reach PRHub. Check your internet connection and try again."
         case .server: "PRHub had a problem on its side. Try again in a minute."
         case .unreadable: "PRHub's answer didn't make sense. Try again."
-        case .keychain: "PRHub couldn't use this phone's keychain. Unlock the phone and try again."
+        case .keychain: AppIdentity.keychainProblem
         case .sessionUnavailable: "The sign-in page couldn't open. Try again."
         case .sessionEnded: "You were signed out of PRHub. Sign in again to see your PRs."
         }

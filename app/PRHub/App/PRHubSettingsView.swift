@@ -25,7 +25,8 @@ struct PRHubSettingsView: View {
                         samplesBlock(endSample)
                     } else if connection.isHosted {
                         accountBlocks
-                    } else {
+                    } else if connection.isPaired {
+                        // Before a way in is chosen, which only the Mac's Settings window can show, neither.
                         workerBlocks
                     }
                     DiffFontSection()
@@ -88,7 +89,7 @@ struct PRHubSettingsView: View {
         PRPageBlock("GitHub") {
             PRValueLine("Signed in as", value: account?.login ?? connection.config?.login ?? "…")
                 .accessibilityIdentifier("prhub-account-login")
-            if let config = connection.config, config.isOn(.push) {
+            if let config = connection.config, config.isOn(.push), AppIdentity.receivesPushes {
                 reviewAlertsLine
             }
         }
@@ -116,8 +117,8 @@ struct PRHubSettingsView: View {
         AnthropicKeySection(connection: connection)
         PRPageBlock(
             "Account",
-            note: "Sign out forgets your PRs on this phone. Delete account also deletes everything PRHub keeps for "
-                + "you and removes its access on GitHub."
+            note: "Sign out forgets your PRs on this \(AppIdentity.deviceName). Delete account also deletes everything "
+                + "PRHub keeps for you and removes its access on GitHub."
         ) {
             Button("Sign out", systemImage: AppIcon.signOut.symbol) {
                 signingOut = true
@@ -152,7 +153,7 @@ struct PRHubSettingsView: View {
                 )
                 PRValueLine("AI", value: Self.aiWords(config))
                     .accessibilityIdentifier("prhub-ai-features")
-                if config.isOn(.push) {
+                if config.isOn(.push), AppIdentity.receivesPushes {
                     reviewAlertsLine
                 }
             }

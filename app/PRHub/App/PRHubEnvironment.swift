@@ -184,7 +184,9 @@ final class PRHubEnvironment {
         guard !isSample, connection.isPaired, !connection.showsOnboarding else {
             return
         }
-        await alertPermission.offerIfDue(workerPushes: connection.config?.isOn(.push) == true)
+        await alertPermission.offerIfDue(
+            workerPushes: connection.config?.isOn(.push) == true && AppIdentity.receivesPushes
+        )
     }
 
     /// Launch, and every foreground: the Keychain again (a launch before the first unlock reads nothing), the
