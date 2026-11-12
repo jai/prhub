@@ -21,6 +21,13 @@ pairing the phone, and troubleshooting.
   `github-app/`), `docs/` (contracts, `fixtures/`, plans), `release/` (TestFlight), `scripts/` (repo checks).
 - Contracts: [docs/api.md](docs/api.md) (pairing, `/device/config`, every var and secret) and
   [docs/push-relay.md](docs/push-relay.md). Whoever changes API behaviour updates the contract in the same commit.
+- Checks a PR needs green before it merges: the Linux jobs on Ubicloud (`scrub`, `worker` and `relay` on every PR;
+  `design` when PRKit, the app or DESIGN.md change), and, for a PR that touches `app/`, `PRKit/` or `docs/fixtures/`,
+  Xcode Cloud's PRHub Tests (`PRHub | PRHub Tests | Test - iOS`): PRKit's `swift test`, then the PRHub scheme's unit
+  and UI tests on an iPhone and a 13-inch iPad Pro. It reports only for those paths: a PR that changes only
+  `Package.swift` or `DESIGN.md` starts it by hand (App Store Connect → PRHub → Xcode Cloud, or the API on a `main`
+  or `ci/…` branch).
+  The scripts in `app/ci_scripts` know each workflow by its id (`workflows.sh`), never its name.
 - Tests: `npm test` and `npm run typecheck` in `worker/` and `relay/`. The worker's contract test compares what the
   real builders send with `docs/fixtures/*.json`; after a deliberate change run `UPDATE_FIXTURES=1 npm test` and
   commit the fixtures with the code.
@@ -110,7 +117,8 @@ Connect API cannot make a product.
    access, but a push starts no build.
 3. Make the workflow. Either run `swift release/xcode-cloud.swift <key.p8> create-workflow` with `ASC_KEY_ID`,
    `ASC_ISSUER_ID` and `APP_BUNDLE_ID` set, or in Xcode's workflow editor set:
-   - **General**: name `PRHub Release` (`app/ci_scripts/release.sh` checks for this name), and select **Clean**.
+   - **General**: name `PRHub Release`, and select **Clean**. Put its id in `app/ci_scripts/workflows.sh`
+     (`release_workflow`): `release.sh` and `release/xcode-cloud.swift` know it by that, so a rename breaks nothing.
    - **Environment**: Xcode version **Latest Release**.
    - **Start Conditions**: one **Branch Changes** condition on the branch `main`. Set **Files and Folders** to
      **Any File Matches**, with the file `app/project.yml`. Delete every other start condition.

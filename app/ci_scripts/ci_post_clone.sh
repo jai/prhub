@@ -23,7 +23,6 @@ if [[ -n $release_build ]]; then
     grep -q "CURRENT_PROJECT_VERSION: $number\$" "$app/project.yml"
     echo "release: PRHub build $number — $release_notes"
 fi
-tests_workflow=8b5614fa-1899-4691-b9bd-e3a5fdfb20b0
 echo "workflow: ${CI_WORKFLOW_ID:-no id} (${CI_WORKFLOW:-no name})"
 if [[ ${CI_WORKFLOW_ID:-} == "$tests_workflow" || ( -z ${CI_WORKFLOW_ID:-} && -z $release_build ) ]]; then
     (cd "$CI_PRIMARY_REPOSITORY_PATH" && swift test)
