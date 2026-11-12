@@ -73,8 +73,9 @@ new event that breaks a rule below is a privacy policy change, not a code change
 
 - **PRKit**: tag `vX.Y.Z` on a green main. Apps pin it (`from: "0.1.0"`); Jai's Agent Pager is one of them.
 - **PRHub on every push**: Xcode Cloud's **Internal - TestFlight** workflow archives each push to `main` and gives it
-  to the Internal TestFlight group. `app/ci_scripts` numbers it Xcode Cloud's build number plus 10 and writes the
-  commit's subject as What to Test. Nothing to run.
+  to the Internal TestFlight group, with the commit's subject as What to Test. Xcode Cloud numbers the build itself;
+  its **Next Build Number** (App Store Connect → PRHub → Xcode Cloud → Settings) must stay above TestFlight's highest
+  build, or the upload is refused. Nothing to run.
 - **PRHub for the Public group**: a release is one commit on `main` that sets `CURRENT_PROJECT_VERSION` in `app/project.yml` to N, with
   the subject `chore(release): PRHub build N — <What to Test>`. Take N from `release/next-build.sh`, change nothing
   else in that commit, and change `CURRENT_PROJECT_VERSION` in no other commit.
