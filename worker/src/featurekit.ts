@@ -168,7 +168,8 @@ async function once(
   }
   const chat = await send();
   if (key && chat) {
-    await store.put(key, { chat });
+    // Sent already: a receipt that can't be kept must not answer an error, or the app sends it again.
+    await store.put(key, { chat }).catch((error) => console.error("feedback receipt not kept", error));
   }
   return chat;
 }
