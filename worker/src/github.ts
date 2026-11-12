@@ -307,13 +307,20 @@ export function readToken(env: Env): string | null {
 }
 
 /**
- * Whether a call only reads, and asks nothing about whoever makes it: a GET, or a GraphQL query with no mutation and no
- * `viewer` field in it. Only such a call may go with the read token; everything else goes as the owner.
+ * Org and team membership: GitHub hides private members and secret teams from an account outside the org, and answers
+ * it 404, which would read as "not a member". The owner's token, who is in the org, asks.
+ */
+const MEMBERSHIP_PATH = /^\/orgs\/[^/]+\/(?:members|teams\/[^/]+\/memberships)\//;
+
+/**
+ * Whether a call only reads, and asks nothing the read token's account may not see: a GET other than a membership
+ * check, or a GraphQL query with no mutation and no `viewer` field in it. Only such a call may go with the read token;
+ * everything else goes as the owner.
  */
 export function readsAsAnyone(path: string, init: RequestInit): boolean {
   const method = (init.method ?? "GET").toUpperCase();
   if (method === "GET") {
-    return true;
+    return !MEMBERSHIP_PATH.test(path);
   }
   if (method !== "POST" || path !== "/graphql" || typeof init.body !== "string") {
     return false;

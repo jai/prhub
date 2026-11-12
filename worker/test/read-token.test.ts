@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import type { Env } from "../src/env.ts";
 import {
-  graphql, mergedPullRequests, postToGitHub, readPullRequests, searchListings, sendToGitHub,
+  graphql, mergedPullRequests, readsAsAnyone, postToGitHub, readPullRequests, searchListings, sendToGitHub,
 } from "../src/github.ts";
 import { prId, repoOf } from "../src/ids.ts";
 import { prNode } from "./pr-node.ts";
@@ -96,4 +96,11 @@ test("unset, and on the hosted Worker, every call goes with GITHUB_TOKEN as befo
     assert.deepEqual(new Set(calls.map((call) => call.token)), new Set(["owner"]));
     assert.equal(calls.filter((call) => call.query.includes("...Viewer")).length, 1);
   }
+});
+
+test("org and team membership checks go with GITHUB_TOKEN; other reads with the read token", () => {
+  assert.equal(readsAsAnyone("/orgs/acme/members/octocat", {}), false);
+  assert.equal(readsAsAnyone("/orgs/acme/teams/reviewers/memberships/octocat", {}), false);
+  assert.equal(readsAsAnyone("/repos/acme/app/contents/.policy.yml", {}), true);
+  assert.equal(readsAsAnyone("/orgs/acme/repos", {}), true);
 });
