@@ -17,7 +17,16 @@
 import CryptoKit
 import Foundation
 
-let workflowName = "PRHub Release"  // CI_WORKFLOW in app/ci_scripts/release.sh
+let workflowName = "PRHub Release"
+/// The workflow's id, from app/ci_scripts/workflows.sh, which release.sh keys on too: a rename leaves it alone.
+let workflowsFile = URL(filePath: #filePath).deletingLastPathComponent()
+    .appending(path: "../app/ci_scripts/workflows.sh")
+let workflowID: String = {
+    let text = (try? String(contentsOf: workflowsFile, encoding: .utf8)) ?? ""
+    let line = text.split(separator: "\n").first { $0.hasPrefix("release_workflow=") }
+    guard let line else { fail("no release_workflow= in \(workflowsFile.standardized.path)") }
+    return String(line.dropFirst("release_workflow=".count))
+}()
 let containerFilePath = "app/PRHub.xcodeproj"
 
 func fail(_ message: String, status: Int32 = 1) -> Never {
@@ -104,7 +113,7 @@ func product() async throws -> [String: Any] {
 
 func releaseWorkflow(product: String) async throws -> [String: Any]? {
     try await list("ciProducts/\(product)/workflows", ["fields[ciWorkflows]": "name,isEnabled", "limit": "200"])
-        .first { attributes($0)["name"] as? String == workflowName }
+        .first { $0["id"] as? String == workflowID }
 }
 
 /// `<commit sha> <number> <progress> <status>` lines, newest first.
@@ -193,7 +202,8 @@ func createReleaseWorkflow(product: [String: Any]) async throws {
             ],
         ],
     ])
-    print("\(workflowName) created: workflow \((created as? [String: Any])?["id"] as? String ?? "?")")
+    let id = (created as? [String: Any])?["id"] as? String ?? "?"
+    print("\(workflowName) created: workflow \(id). Set release_workflow=\(id) in app/ci_scripts/workflows.sh.")
 }
 
 setvbuf(stdout, nil, _IOLBF, 0)
@@ -203,8 +213,8 @@ do {
     switch arguments[2] {
     case "runs":
         guard let workflow = try await releaseWorkflow(product: productID),
-            attributes(workflow)["isEnabled"] as? Bool == true, let workflowID = workflow["id"] as? String
-        else { fail("no enabled Xcode Cloud workflow named \(workflowName) for \(bundleID)", status: 3) }
+            attributes(workflow)["isEnabled"] as? Bool == true
+        else { fail("no enabled Xcode Cloud workflow \(workflowID) (\(workflowName)) for \(bundleID)", status: 3) }
         try await printRuns("ciWorkflows/\(workflowID)/buildRuns")
     case "latest":
         print(try await latestNumber(product: productID))

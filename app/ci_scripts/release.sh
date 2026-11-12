@@ -2,11 +2,13 @@
 # Sourced by ci_post_clone.sh and ci_post_xcodebuild.sh. Sets `release_build` and `release_notes` from the newest commit
 # that changed app/project.yml, which must be `chore(release): PRHub build N — <What to Test>` with N its
 # CURRENT_PROJECT_VERSION: the PRHub Release workflow starts only when app/project.yml changes on main, and a change
-# there that is not a release fails here instead of shipping. Other workflows skip the check and get empty values.
+# there that is not a release fails here instead of shipping. Other workflows skip the check and get empty values. The
+# workflow is known by its id (workflows.sh), which a rename leaves alone.
 repo=${CI_PRIMARY_REPOSITORY_PATH:?not running in Xcode Cloud}
+source "${0:A:h}/workflows.sh"
 release_build=
 release_notes=
-if [[ ${CI_WORKFLOW:-} != "PRHub Release" ]]; then
+if [[ ${CI_WORKFLOW_ID:-} != "$release_workflow" ]]; then
     return 0
 fi
 if [[ $(git -C "$repo" rev-parse --is-shallow-repository) == true ]]; then
