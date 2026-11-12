@@ -124,31 +124,20 @@ final class PictureTextView: UITextView {
     var pastePicture: (@MainActor @Sendable (Data) -> Void)?
     var send: (() -> Void)?
 
-    /// Hardware keys only: the on-screen keyboard's return key types a new line as always. Ahead of the text view's
-    /// own Return, which would type one.
+    /// Return and Command-Return from a hardware keyboard send (`ReturnKey`), ahead of the text view's own Return.
+    /// Shift-Return and Option-Return are left to the text view, which starts a new line at the cursor; so is the
+    /// on-screen keyboard's return key, which is not a key command.
     override var keyCommands: [UIKeyCommand]? {
-        let flags: [UIKeyModifierFlags] = [[], .command, .shift, .alternate]
-        let returns = flags.map { flags in
+        let sends = [UIKeyModifierFlags(), .command].map { flags in
             let command = UIKeyCommand(input: "\r", modifierFlags: flags, action: #selector(returnPressed(_:)))
             command.wantsPriorityOverSystemBehavior = true
             return command
         }
-        return (super.keyCommands ?? []) + returns
+        return (super.keyCommands ?? []) + sends
     }
 
     @objc func returnPressed(_ command: UIKeyCommand) {
-        var modifiers: ReturnKey.Modifiers = []
-        if command.modifierFlags.contains(.shift) { modifiers.insert(.shift) }
-        if command.modifierFlags.contains(.alternate) { modifiers.insert(.option) }
-        if command.modifierFlags.contains(.command) { modifiers.insert(.command) }
-        switch ReturnKey.action(modifiers) {
-        case .send: send?()
-        case .newLine: insertText("\n")
-        }
-    }
-
-    private var clipboardHasOnlyPictures: Bool {
-        pastePicture != nil && UIPasteboard.general.hasImages && !UIPasteboard.general.hasStrings
+        send?()
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
