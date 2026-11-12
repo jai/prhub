@@ -17,9 +17,17 @@ import { actingEnvFor } from "./hosted";
 import type { SignedOutReason } from "./account-core";
 import { fingerprintOf, type PairingRecord, pairingKey, parsePairingRecord } from "./pairing";
 import {
-  detailVersionOf, liveDiff, type OpenRowStatus, type PullRequest, type PullRequestRef, readPullRequests, type RowStatus,
-  searchListings,
+  type Detail, detailVersionOf, liveDiff, type OpenRowStatus, type PullRequest, type PullRequestRef, readChecks,
+  readPullRequests, type RowStatus, searchListings,
 } from "./github";
+import type { ReadPullRequest } from "./alerts";
+import { patchedRead } from "./check-refresh";
+import { createGitHubCacheTable, pruneGitHubCache, sqlCache } from "./github-cache";
+import {
+  BUSY_WINDOW_MS, createMarkTables, type DueMark, dropMark, dueMarks, finishRead, mark, markedIds, nextDueAt,
+  type Scope, throttledDue,
+} from "./marks";
+import type { PeopleDecision } from "./policy-people";
 import { parseRowStatus, parseStoredTicket, parseStoredTickets } from "./boundary";
 import { cachedTickets, createTicketsTable, refreshTickets } from "./ticket-cache";
 import { allKeys, lookUpTickets, type Ticket } from "./tickets";
@@ -43,7 +51,6 @@ import {
   reviewedKeyLines,
 } from "./reviewed-key-lines";
 
-const BUSY_WINDOW_MS = 3_000;
 /** The push that asks a hosted person to sign in again; the app shows Sign in with GitHub when it opens. */
 const SIGN_IN_AGAIN: PushMessage = {
   pushType: "alert", priority: 10, collapseId: "prhub-sign-in", lifetimeSeconds: 7 * 86_400,
@@ -51,6 +58,8 @@ const SIGN_IN_AGAIN: PushMessage = {
     reason: "signed_out" },
 };
 const READS_PER_PASS = 5;
+/** Checks-only reads one pass makes, in one query GitHub prices at a point (`readChecks`). */
+const CHECK_READS_PER_PASS = 25;
 /** A failed read tries again this soon, every time: GitHub's outage, or a token being replaced, ends. */
 const READ_RETRY_MS = 30_000;
 
@@ -123,7 +132,6 @@ export class PrIndex extends DurableObject<Env> {
       DROP TABLE IF EXISTS prs;
       CREATE TABLE IF NOT EXISTS pull_requests (id TEXT PRIMARY KEY, repo TEXT, number INTEGER, title TEXT, head TEXT,
         revision TEXT, list TEXT, updated_at TEXT, changed_at INTEGER, diff_state TEXT, diff_tried_at INTEGER);
-      CREATE TABLE IF NOT EXISTS dirty (id TEXT PRIMARY KEY, repo TEXT, number INTEGER, generation INTEGER);
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value INTEGER);
       CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, at INTEGER, kind TEXT, detail TEXT);
       CREATE TABLE IF NOT EXISTS writes (ref TEXT PRIMARY KEY, state TEXT, at INTEGER);
@@ -135,6 +143,8 @@ export class PrIndex extends DurableObject<Env> {
     createPushRegistrationsTable(this.sql);
     createReviewedKeyLinesTable(this.sql);
     createTicketsTable(this.sql);
+    createMarkTables(this.sql);
+    createGitHubCacheTable(this.sql);
     addMissingColumns(this.sql);
   }
 
@@ -156,28 +166,40 @@ export class PrIndex extends DurableObject<Env> {
     }));
   }
 
-  /** A delivery. A PR no list holds and Jai has no part in is dropped here, so it never costs a GitHub read. */
-  async mark(repo: RepoFullName, number: number, involved: boolean): Promise<void> {
+  /**
+   * A delivery. A PR no list holds and Jai has no part in is dropped here, so it never costs a GitHub read. The rest
+   * are read in full, a burst of them once (`marks.ts`). The person's own write is read soon whatever came before it.
+   */
+  async mark(repo: RepoFullName, number: number, involved: boolean, isOwnWrite = false): Promise<void> {
     const id = prId(repo, number);
     if (!involved && !this.exists("pull_requests", id)) {
       return;
     }
-    this.markDirty(id, repo, number);
-    await this.ensureAlarm(BUSY_WINDOW_MS);
+    if (isOwnWrite) {
+      mark(this.sql, { id, repo, number }, "full", Date.now() + BUSY_WINDOW_MS);
+      await this.ensureAlarm(BUSY_WINDOW_MS);
+      return;
+    }
+    await this.markThrottled([{ id, repo, number }], "full");
   }
 
-  /** A check suite or a status on a commit: each held PR at that head is read again, for its checks. */
+  /** A check suite or a status on a commit: only the checks of each held PR at that head are read again. */
   async markHead(repo: RepoFullName, sha: Sha): Promise<void> {
     const held = this.sql.exec<{ id: string; repo: string; number: number }>(
       "SELECT id, repo, number FROM pull_requests WHERE repo = ? AND head = ?", repo, sha).toArray();
-    for (const row of held) {
-      const ref = refOf(row);
-      if (ref) {
-        this.markDirty(ref.id, ref.repo, ref.number);
-      }
+    await this.markThrottled(held.flatMap((row) => refOf(row) ?? []), "checks");
+  }
+
+  private async markThrottled(refs: PullRequestRef[], scope: Scope): Promise<void> {
+    const now = Date.now();
+    let earliest: number | null = null;
+    for (const ref of refs) {
+      const due = throttledDue(this.sql, ref.id, scope, now);
+      mark(this.sql, ref, scope, due);
+      earliest = Math.min(earliest ?? due, due);
     }
-    if (held.length > 0) {
-      await this.ensureAlarm(BUSY_WINDOW_MS);
+    if (earliest !== null) {
+      await this.ensureAlarm(earliest - now);
     }
   }
 
@@ -189,15 +211,14 @@ export class PrIndex extends DurableObject<Env> {
   }
 
   private async readMarked(env: Env | null): Promise<void> {
-    const marked = this.sql.exec<{ id: string; repo: string; number: number; generation: number }>(
-      "SELECT id, repo, number, generation FROM dirty LIMIT ?", READS_PER_PASS).toArray();
-    const dirty = marked.flatMap((row) => {
+    const due = (scope: Scope, limit: number) => dueMarks(this.sql, scope, Date.now(), limit).flatMap((row) => {
       const ref = refOf(row);
       if (!ref) {
-        this.sql.exec("DELETE FROM dirty WHERE id = ?", row.id);
+        dropMark(this.sql, row.id);
       }
-      return ref ? [{ ...ref, generation: row.generation }] : [];
+      return ref ? [{ ...row, ...ref }] : [];
     });
+    const dirty = due("full", READS_PER_PASS);
     if (!env) {
       // A hosted person signed out: nothing is read until they sign in again and their account ticks this index.
       return;
@@ -213,35 +234,103 @@ export class PrIndex extends DurableObject<Env> {
         "SELECT id FROM pull_requests WHERE list IN ('review', 'reviewed')").toArray().map((row) => row.id));
       let read: Awaited<ReturnType<typeof readPullRequests>>;
       try {
-        read = await readPullRequests(dirty, env, asked,
-          (keys) => cachedTickets(this.sql, keys, Date.now(), (stale) => lookUpTickets(stale, env)));
+        const tickets = (keys: string[]) => cachedTickets(this.sql, keys, Date.now(), (stale) => lookUpTickets(stale, env));
+        read = await readPullRequests(dirty, env, asked, tickets, sqlCache(this.sql));
       } catch (error) {
-        // Not thrown: Cloudflare would retry it later and later, and new work would wait behind that retry.
-        this.addEvent("read_failed", { error: String(error) });
-        this.noteRateLimit(env);
-        await this.ctx.storage.setAlarm(this.rateLimitedUntil(Date.now()) ?? Date.now() + READ_RETRY_MS);
+        await this.readFailed(env, error);
         return;
       }
-      for (const { id, generation } of dirty) {
-        const pr = read.get(id);
-        if (pr?.status && !this.isFullFor(id)) {
+      for (const marked of dirty) {
+        const pr = read.get(marked.id);
+        if (pr?.status && !this.isFullFor(marked.id)) {
           const listed: Listed = { ...pr, status: pr.status };
           this.holdAlertsOn(listed);
           await this.store(listed, env);
         } else if (pr?.status) {
-          this.addEvent("limit_reached", { limit: LimitName.IndexedPullRequestsMax, pr: id });
+          this.addEvent("limit_reached", { limit: LimitName.IndexedPullRequestsMax, pr: marked.id });
         } else {
-          this.remove(id);
+          this.remove(marked.id);
         }
-        this.sql.exec("DELETE FROM dirty WHERE id = ? AND generation = ?", id, generation);
+        finishRead(this.sql, "full", marked, Date.now());
       }
+    }
+    if (!(await this.readMarkedChecks(env, due("checks", CHECK_READS_PER_PASS)))) {
+      return;
     }
     await this.storeDiffs(env);
     await this.queueKeyLines(env);
     this.noteRateLimit(env);
-    if (this.exists("dirty") || this.exists("pending")) {
-      await this.ctx.storage.setAlarm(this.rateLimitedUntil(Date.now()) ?? Date.now() + 250);
+    const next = this.exists("pending") ? Date.now() : nextDueAt(this.sql);
+    if (next !== null) {
+      await this.ctx.storage.setAlarm(this.rateLimitedUntil(Date.now()) ?? Math.max(next, Date.now() + 250));
     }
+  }
+
+  /** Not thrown: Cloudflare would retry it later and later, and new work would wait behind that retry. */
+  private async readFailed(env: Env, error: unknown): Promise<void> {
+    this.addEvent("read_failed", { error: String(error) });
+    this.noteRateLimit(env);
+    await this.ctx.storage.setAlarm(this.rateLimitedUntil(Date.now()) ?? Date.now() + READ_RETRY_MS);
+  }
+
+  /**
+   * The checks of PRs a check suite or a status marked, all in one query, laid over what the index holds
+   * (`check-refresh.ts`). A PR that moved past its checks is marked for a full read, due now. False when GitHub could
+   * not answer.
+   */
+  private async readMarkedChecks(env: Env, marks: (DueMark & PullRequestRef)[]): Promise<boolean> {
+    if (marks.length === 0) {
+      return true;
+    }
+    let read: Awaited<ReturnType<typeof readChecks>>;
+    try {
+      read = await readChecks(marks, env);
+    } catch (error) {
+      await this.readFailed(env, error);
+      return false;
+    }
+    for (const checks of marks) {
+      const node = read.get(checks.id);
+      if (!node || !(await this.storeChecks(checks.id, node, env))) {
+        mark(this.sql, checks, "full", Date.now());
+      }
+      finishRead(this.sql, "checks", checks, Date.now());
+    }
+    return true;
+  }
+
+  /** The held row and detail with fresh checks; false when it needs a full read instead. */
+  private async storeChecks(id: PrId, node: Parameters<typeof patchedRead>[1], env: Env): Promise<boolean> {
+    const row = this.sql.exec<{ repo: string; number: number; title: string; head: string; updated_at: string;
+      status: string | null; detail_version: string | null; people: string | null }>(`SELECT repo, number, title, head,
+      updated_at, status, detail_version, people FROM pull_requests WHERE id = ?`, id).toArray()[0];
+    const status = parseRowStatus(row?.status ?? null);
+    const repo = parseRepoFullName(row?.repo);
+    if (!row || !repo || !status || status.list === "merged" || row.people === null || row.detail_version === null
+      || this.meta("row_shape") < ROW_SHAPE) {
+      return false;
+    }
+    const stored = await env.DIFFS.get(scopedKey(env, detailKey(row.repo, row.number, row.detail_version)));
+    const detail = stored ? await stored.json<Detail>().catch(() => null) : null;
+    const people = JSON.parse(row.people) as PeopleDecision | null;
+    const patched = detail && patchedRead({ head: row.head, updatedAt: row.updated_at, status, detail, people }, node);
+    if (!patched) {
+      return false;
+    }
+    this.holdAlerts(status, {
+      repo, number: row.number, head: row.head, title: row.title, list: patched.status.list,
+      review: patched.status.review, requestedAt: patched.status.list === "review" ? patched.status.requestedAt : null,
+    });
+    const detailVersion = await detailVersionOf(patched);
+    if (detailVersion === row.detail_version) {
+      return true;
+    }
+    await putVersioned(env.DIFFS, scopedKey(env, detailKey(row.repo, row.number, detailVersion)), detailVersion,
+      JSON.stringify(patched.detail), "application/json");
+    this.sql.exec(`UPDATE pull_requests SET version = ?, detail_version = ?, status = ?, changed_at = ? WHERE id = ?
+      AND head = ?`, patched.version, detailVersion, JSON.stringify(patched.status), Date.now(), id, row.head);
+    this.setMeta("changed_at", Date.now());
+    return true;
   }
 
   /** Every minute: the safety net, because GitHub does not retry a failed delivery and personal repos send none. */
@@ -271,6 +360,7 @@ export class PrIndex extends DurableObject<Env> {
     await this.refreshTicketsOf(env, now);
     this.sql.exec("DELETE FROM alerts WHERE at < ?", now - ALERTS_KEPT_MS);
     pruneReviewedKeyLines(this.sql, now);
+    pruneGitHubCache(this.sql, now);
     await this.sweepIfDue(env, now);
     await this.pushIfDue(now);
   }
@@ -309,16 +399,22 @@ export class PrIndex extends DurableObject<Env> {
 
   private async compareWithGitHub(env: Env): Promise<void> {
     const listings = await searchListings(env);
+    const now = Date.now();
     const held = this.sql.exec<{ id: string; repo: string; number: number; version: string; status: string | null }>(
       "SELECT id, repo, number, version, status FROM pull_requests").toArray();
     const isCurrentShape = this.meta("row_shape") >= ROW_SHAPE;
     const versions = new Map<string, string | null>(
       held.map((row) => [row.id, row.status && isCurrentShape ? row.version : null]));
     this.setMeta("row_shape", ROW_SHAPE);
+    const updatedOf = (version: string | null | undefined) => version?.slice(0, version.indexOf(".")) ?? null;
     for (const { id, repo, number, version, reviewedOnly } of listings.values()) {
-      if (versions.get(id) !== version && (!reviewedOnly || versions.has(id))) {
-        this.markDirty(id, repo, number);
+      const heldVersion = versions.get(id);
+      if (heldVersion === version || (reviewedOnly && !versions.has(id))) {
+        continue;
       }
+      // The same `updatedAt` with another checks rollup: only checks moved, and a checks-only read will do.
+      const scope = heldVersion && updatedOf(heldVersion) === updatedOf(version) ? "checks" : "full";
+      mark(this.sql, { id, repo, number }, scope, now);
     }
     for (const row of held) {
       const ref = refOf(row);
@@ -326,8 +422,9 @@ export class PrIndex extends DurableObject<Env> {
         this.markDirty(ref.id, ref.repo, ref.number);
       }
     }
-    if (this.exists("dirty") || this.exists("pending")) {
-      await this.ensureAlarm(0);
+    const next = nextDueAt(this.sql);
+    if (next !== null || this.exists("pending")) {
+      await this.ensureAlarm(Math.max(0, (next ?? now) - now));
     }
   }
 
@@ -337,15 +434,17 @@ export class PrIndex extends DurableObject<Env> {
    * held.
    */
   private holdAlertsOn(pr: Listed): void {
+    const heldRow = this.sql.exec<{ status: string | null }>(
+      "SELECT status FROM pull_requests WHERE id = ?", prId(pr.repo, pr.number)).toArray()[0];
+    this.holdAlerts(parseRowStatus(heldRow?.status ?? null), { ...pr, list: pr.status.list, review: pr.status.review });
+  }
+
+  private holdAlerts(held: HeldStatus, read: ReadPullRequest): void {
     const kinds = alertKinds(this.env);
     if (kinds.size === 0) {
       return;
     }
-    const heldRow = this.sql.exec<{ status: string | null }>(
-      "SELECT status FROM pull_requests WHERE id = ?", prId(pr.repo, pr.number)).toArray()[0];
-    const held: HeldStatus = parseRowStatus(heldRow?.status ?? null);
     const now = Date.now();
-    const read = { ...pr, list: pr.status.list, review: pr.status.review };
     for (const alert of alertsFor(held, read, kinds, now)) {
       const key = alertKey(alert);
       const claimed = this.sql.exec(`INSERT INTO alerts (key, at) VALUES (?, ?) ON CONFLICT (key) DO NOTHING
@@ -430,9 +529,8 @@ export class PrIndex extends DurableObject<Env> {
     for (const row of held.filter((one) => names.has(one.repo.toLowerCase()))) {
       this.remove(row.id);
     }
-    const dirty = this.sql.exec<{ id: string; repo: string }>("SELECT id, repo FROM dirty").toArray();
-    for (const row of dirty.filter((one) => names.has(one.repo.toLowerCase()))) {
-      this.sql.exec("DELETE FROM dirty WHERE id = ?", row.id);
+    for (const row of markedIds(this.sql).filter((one) => names.has(one.repo.toLowerCase()))) {
+      dropMark(this.sql, row.id);
     }
     for (const repo of repos) {
       forgetReviewedKeyLinesOf(this.sql, repo);
@@ -570,10 +668,9 @@ export class PrIndex extends DurableObject<Env> {
       "SELECT at, kind, detail FROM events ORDER BY id DESC LIMIT ?", limit).toArray();
   }
 
-  private exists(what: "pull_requests" | "dirty" | "pending", id?: string): boolean {
+  private exists(what: "pull_requests" | "pending", id?: string): boolean {
     const query = {
       pull_requests: "SELECT 1 FROM pull_requests WHERE id = ?",
-      dirty: "SELECT 1 FROM dirty LIMIT 1",
       pending: "SELECT 1 FROM pull_requests WHERE diff_state = 'pending' AND diff_tried_at < ? LIMIT 1",
     }[what];
     const parameter = what === "pending" ? Date.now() - 60_000 : id;
@@ -587,9 +684,9 @@ export class PrIndex extends DurableObject<Env> {
       && this.sql.exec<{ n: number }>("SELECT count(*) AS n FROM pull_requests").one().n >= max;
   }
 
+  /** A full read due now: the poll, Linear or a carried index found the PR behind. */
   private markDirty(id: PrId, repo: RepoFullName, number: number): void {
-    this.sql.exec(`INSERT INTO dirty (id, repo, number, generation) VALUES (?, ?, ?, 1)
-      ON CONFLICT (id) DO UPDATE SET generation = generation + 1`, id, repo, number);
+    mark(this.sql, { id, repo, number }, "full", Date.now());
   }
 
   private async ensureAlarm(delay: number): Promise<void> {
@@ -617,18 +714,18 @@ export class PrIndex extends DurableObject<Env> {
     const held = this.sql.exec<{ detail_version: string | null }>(
       "SELECT detail_version FROM pull_requests WHERE id = ?", id).toArray()[0];
     this.sql.exec(`INSERT INTO pull_requests (id, repo, number, title, head, revision, list, updated_at, version,
-        detail_version, status, changed_at, ticket, ticket_keys, tickets, diff_state, diff_tried_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)
+        detail_version, status, changed_at, ticket, ticket_keys, tickets, people, diff_state, diff_tried_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)
       ON CONFLICT (id) DO UPDATE SET title = excluded.title, head = excluded.head, list = excluded.list,
         updated_at = excluded.updated_at, version = excluded.version, detail_version = excluded.detail_version,
         status = excluded.status, changed_at = excluded.changed_at, ticket = excluded.ticket,
-        ticket_keys = excluded.ticket_keys, tickets = excluded.tickets,
+        ticket_keys = excluded.ticket_keys, tickets = excluded.tickets, people = excluded.people,
         diff_state = CASE WHEN revision <> excluded.revision THEN 'pending' ELSE diff_state END,
         diff_tried_at = CASE WHEN revision <> excluded.revision THEN 0 ELSE diff_tried_at END,
         revision = excluded.revision`,
     id, pr.repo, pr.number, pr.title, pr.head, pr.revision, pr.status.list, pr.updatedAt, pr.version, detailVersion,
     JSON.stringify(pr.status), Date.now(), pr.ticket && JSON.stringify(pr.ticket),
-    JSON.stringify(allKeys(pr.ticketKeys)), JSON.stringify(pr.tickets));
+    JSON.stringify(allKeys(pr.ticketKeys)), JSON.stringify(pr.tickets), JSON.stringify(pr.people));
     if (held?.detail_version !== detailVersion) {
       this.setMeta("changed_at", Date.now());
     }

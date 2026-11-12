@@ -13,7 +13,7 @@ test("a table made with key_lines_ready alone gains the rest without adding it t
   addMissingColumns(sql);
   addMissingColumns(sql);
   assert.deepEqual(columnsOf(sql),
-    ["detail_version", "id", "key_lines_queued", "key_lines_ready", "key_lines_tried_at", "status", "ticket",
+    ["detail_version", "id", "key_lines_queued", "key_lines_ready", "key_lines_tried_at", "people", "status", "ticket",
       "ticket_keys", "tickets", "version"]);
 });
 
@@ -21,5 +21,5 @@ test("the first table shape gains every column", () => {
   const sql = memorySql();
   sql.exec("CREATE TABLE pull_requests (id TEXT PRIMARY KEY)");
   addMissingColumns(sql);
-  assert.equal(columnsOf(sql).length, 10);
+  assert.equal(columnsOf(sql).length, 11);
 });

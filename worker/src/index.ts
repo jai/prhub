@@ -187,7 +187,7 @@ async function write(repo: RepoFullName, number: number, request: Request, env: 
   if (failure) {
     return failure;
   }
-  await prIndex(env).mark(repo, number, true);
+  await prIndex(env).mark(repo, number, true, true);
   return (await liveDetail(repo, number, env)).response;
 }
 
