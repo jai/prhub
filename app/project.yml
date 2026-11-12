@@ -18,10 +18,10 @@ settings:
   base:
     SWIFT_VERSION: 6.0
     SWIFT_STRICT_CONCURRENCY: complete
-    # Only a `chore(release): PRHub build N — …` commit changes this number (AGENTS.md, "Releases"): a change to this
-    # file on main starts Xcode Cloud's release build, which sets it to Xcode Cloud's own number.
+    # Not the shipped build number: release/ship.sh and Xcode Cloud set their own (AGENTS.md, "Releases").
     CURRENT_PROJECT_VERSION: 180
-    MARKETING_VERSION: 0.1.0
+    # The repo's version. release-please sets it in each release; change it in no other commit.
+    MARKETING_VERSION: 0.1.0 # x-release-please-version
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: K2P9X73SPT
     IPHONEOS_DEPLOYMENT_TARGET: "26.0"

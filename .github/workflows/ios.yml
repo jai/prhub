@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   design:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5

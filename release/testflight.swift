@@ -5,6 +5,8 @@
 //   swift release/testflight.swift <key.p8> what-to-test <version> <build> <text>
 //     waits up to 30 minutes for the build to appear, then sets its en-US What to Test to <text>, cut to Apple's
 //     4000-byte limit
+//   swift release/testflight.swift <key.p8> builds <version>
+//     prints the build numbers App Store Connect has for <version>, one per line, or nothing when it has none
 //   swift release/testflight.swift <key.p8> latest
 //     prints the app's highest build number in App Store Connect, any version, or 0 when it has none
 //   swift release/testflight.swift <key.p8> add-to-group <version> <build> <beta group id>
@@ -33,6 +35,7 @@ let locale = "en-US"
 let usage = """
     usage: testflight-build <key.p8> state <version> <build>
            testflight-build <key.p8> what-to-test <version> <build> <text>
+           testflight-build <key.p8> builds <version>
            testflight-build <key.p8> latest
            testflight-build <key.p8> add-to-group <version> <build> <beta group id>
            testflight-build <key.p8> submit <version> <build>
@@ -242,6 +245,14 @@ do {
             text.removeLast()
         }
         try await waitAndSetWhatToTest(text, app: app)
+    case "builds" where arguments.count == 4:
+        let builds: [Resource] = try await call("GET", "builds", query: [
+            "filter[app]": app, "filter[preReleaseVersion.version]": version, "limit": "200",
+            "fields[builds]": "version",
+        ])
+        for found in builds {
+            print(found["version"] ?? "?")
+        }
     case "latest" where arguments.count == 3:
         print(try await allBuilds(app: app).compactMap { $0["version"].flatMap { Int($0) } }.max() ?? 0)
     case "add-to-group" where arguments.count == 6:

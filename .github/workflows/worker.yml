@@ -17,14 +17,14 @@ concurrency:
 
 jobs:
   scrub:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
       - run: scripts/scrub.sh
 
   worker:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 10
     defaults:
       run:
@@ -60,7 +60,7 @@ jobs:
         run: npx wrangler deploy --dry-run --outdir dist-hosted --config ../deploy/hosted/wrangler.jsonc
 
   relay:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 10
     defaults:
       run:

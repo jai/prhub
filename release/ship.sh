@@ -1,18 +1,19 @@
 #!/bin/zsh
 # Ships PRHub (app/, bundle com.jaigovindani.prreview, App Store Connect app 6831601628) to TestFlight from main.
-# A release is a commit on main whose subject is `chore(release): PRHub build N — <What to Test>` and that sets
-# CURRENT_PROJECT_VERSION in app/project.yml to N, with N from release/next-build.sh. Push it, then run:
+# A release is a vX.Y.Z tag on main that release-please made: merging its release PR sets MARKETING_VERSION in
+# app/project.yml to X.Y.Z, adds the version's section to CHANGELOG.md, and tags and publishes the GitHub Release. That
+# section is the build's What to Test (release/what-to-test.sh). Once the tag is on GitHub, run:
 #   release/ship.sh [--local] [--dry-run] ["<What to Test>"]
 #
 # Xcode Cloud: when App Store Connect has an Xcode Cloud product for PRHub with an enabled PRHub Release workflow
-# (release/xcode-cloud.swift), that workflow builds the release (app/ci_scripts) and hands it to TestFlight with the
-# subject's What to Test, and ship.sh follows it: it finds Xcode Cloud's build of the release, waits for it and for
-# TestFlight to process it. TestFlight's number is Xcode Cloud's; it is N when next-build.sh chose N. A What to Test
-# argument is not used: the commit's subject is the What to Test.
-# Local: with no Xcode Cloud workflow, or with --local, it archives the release on this Mac with N, signs and checks the
-# IPA for production APNs, uploads, sets What to Test and waits for the build to be VALID. With no release waiting to
-# ship, a What to Test argument ships HEAD with N from next-build.sh and no release commit, as PRHub shipped before
-# Xcode Cloud. Signing needs a login session: run it in one, not from a bare SSH shell.
+# (release/xcode-cloud.swift), that workflow starts on the tag, builds it (app/ci_scripts) and hands it to TestFlight
+# with its What to Test, and ship.sh follows it: it finds Xcode Cloud's build of the newest release, waits for it and
+# for TestFlight to process it. TestFlight's number is Xcode Cloud's. A What to Test argument is not used.
+# Local: with no Xcode Cloud workflow, or with --local, it ships the newest release when TestFlight has no build of its
+# version yet. It archives the tag's tree on this Mac with the build number from release/next-build.sh, signs and
+# checks the IPA for production APNs, uploads, sets What to Test and waits for the build to be VALID. With no release
+# waiting to ship, a What to Test argument ships HEAD at app/project.yml's version with the next build number, and
+# makes no release. Signing needs a login session: run it in one, not from a bare SSH shell.
 #
 # Then, either way, it adds the build to the TestFlight group PRHUB_TESTFLIGHT_GROUP (the public link's) and submits it
 # for Beta App Review unless it is already submitted or an earlier build is still waiting for or in review (Apple
@@ -20,7 +21,7 @@
 # `swift release/testflight.swift <key> submit <version> <build>`). With PRHUB_SUBMIT=NO it does not submit, though
 # Xcode Cloud's TestFlight External Testing post-action may.
 # --dry-run does every check, says which way it would ship, and stops before it archives, uploads or waits.
-# Prints `SHIPPED PRHub build <n>` or `SHIP FAILED: …`.
+# Prints `SHIPPED PRHub <version> build <n>` or `SHIP FAILED: …`.
 #
 # Needs, in the environment: ASC_KEY_PATH (an App Store Connect API key, .p8, with the App Manager role), ASC_KEY_ID,
 # ASC_ISSUER_ID and PRHUB_TESTFLIGHT_GROUP; and, to ship locally, a Mac whose Xcode can sign for the team in
@@ -44,23 +45,23 @@ done
 export ASC_KEY_PATH=${ASC_KEY_PATH:A}
 key=$ASC_KEY_PATH
 git pull -q --ff-only origin main || { echo "SHIP FAILED: main has moved on; rebase and push first"; exit 1; }
+git fetch -q --tags origin || { echo "SHIP FAILED: cannot fetch tags"; exit 1; }
 
 cd app
-version=$(awk '$1 == "MARKETING_VERSION:" {print $2; exit}' project.yml)
+marketing() { awk '$1 == "MARKETING_VERSION:" {print $2; exit}'; }
 team=$(awk '$1 == "DEVELOPMENT_TEAM:" {print $2; exit}' project.yml)
 bundle=$(awk '$1 == "PRODUCT_BUNDLE_IDENTIFIER:" {print $2; exit}' project.yml)
 asc=(env APP_BUNDLE_ID="$bundle" swift ../release/testflight.swift "$key")
 cloud=(env APP_BUNDLE_ID="$bundle" swift ../release/xcode-cloud.swift "$key" runs)
 
-# The release is the newest change to app/project.yml, as Xcode Cloud's ci_scripts/release.sh reads it.
-release=$(git log -1 --format=%H -- project.yml)
-release_build=$(git show "${release}:app/project.yml" | awk '$1 == "CURRENT_PROJECT_VERSION:" {print $2; exit}')
-prefix="chore(release): PRHub build $release_build — "
-subject=$(git log -1 --format=%s "$release")
-release_notes=
-[[ $subject == "$prefix"* ]] && release_notes=${subject#"$prefix"}
-git merge-base --is-ancestor "$release" origin/main \
-    || { echo "SHIP FAILED: $(git log -1 --format=%h "$release") is not pushed to main"; exit 1; }
+# The release is the newest vX.Y.Z tag on main whose app/project.yml sets MARKETING_VERSION to X.Y.Z, as Xcode Cloud's
+# ci_scripts/release.sh checks. PRKit's tags from before release-please set no such version and are not releases.
+tag=$(git tag --merged origin/main --sort=-v:refname --list 'v[0-9]*.[0-9]*.[0-9]*' | head -1)
+release_version= release_notes=
+if [[ -n $tag && $(git show "${tag}:app/project.yml" | marketing) == "${tag#v}" ]]; then
+    release_version=${tag#v}
+    release_notes=$(../release/what-to-test.sh "$release_version") || { echo "SHIP FAILED: no What to Test for $tag"; exit 1; }
+fi
 
 if (( ! local_ship )); then
     why=$("${cloud[@]}" 2>&1 >/dev/null)
@@ -72,29 +73,45 @@ if (( ! local_ship )); then
 fi
 
 if (( local_ship )); then
-    if [[ -n $release_notes && -z $("${asc[@]}" state "$version" "$release_build") ]]; then
-        build=$release_build
-        [[ -n $notes ]] && echo "What to Test comes from the release commit, not the argument"
+    shipped=
+    if [[ -n $release_version ]]; then
+        shipped=$("${asc[@]}" builds "$release_version") || { echo "SHIP FAILED: cannot read TestFlight's builds"; exit 1; }
+    fi
+    if [[ -n $release_version && -z $shipped ]]; then
+        version=$release_version
+        ref=$tag
+        [[ -n $notes ]] && echo "What to Test comes from CHANGELOG.md, not the argument"
         notes=$release_notes
     elif [[ -n $notes ]]; then
-        build=$(../release/next-build.sh) || { echo "SHIP FAILED: cannot pick the next build number"; exit 1; }
+        version=$(marketing < project.yml)
+        ref=HEAD
     else
-        echo "SHIP FAILED: no release to ship. Push a 'chore(release): PRHub build N — …' commit with N" \
-            "from release/next-build.sh, or pass What to Test"
+        if [[ -n $shipped ]]; then
+            echo "SHIP FAILED: no release to ship: TestFlight has PRHub $release_version ($tag) already." \
+                "Merge release-please's release PR, or pass What to Test"
+        else
+            echo "SHIP FAILED: no release to ship: main has no release tag. Merge release-please's release PR," \
+                "or pass What to Test"
+        fi
         exit 1
     fi
+    build=$(../release/next-build.sh) || { echo "SHIP FAILED: cannot pick the next build number"; exit 1; }
     state=$("${asc[@]}" state "$version" "$build") || { echo "SHIP FAILED: cannot read TestFlight's builds"; exit 1; }
     [[ -z $state ]] || { echo "SHIP FAILED: TestFlight already has build $build ($state)"; exit 1; }
-    echo "PRHub $version build $build from $(git rev-parse --short HEAD): $notes"
+    echo "PRHub $version build $build from $ref ($(git rev-parse --short "$ref")): $notes"
     (( dry_run )) && { echo "DRY RUN: would archive build $build here, upload it and submit it"; exit 0; }
 
+    # The release's own tree: main may have moved on past the tag.
+    tree=build/source
+    rm -rf "$tree" && mkdir -p "$tree" && git -C .. archive "$ref" | tar -x -C "$tree" \
+        || { echo "SHIP FAILED: cannot extract $ref"; exit 1; }
     archive=build/PRHub.xcarchive
     ipa=build/ipa
     auth=(-authenticationKeyPath "$key" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
     mkdir -p build
     rm -rf "$archive" "$ipa"
-    xcodegen generate --spec project.yml --quiet || { echo "SHIP FAILED: xcodegen"; exit 1; }
-    xcodebuild archive -project PRHub.xcodeproj -scheme PRHub -configuration Release \
+    xcodegen generate --spec "$tree/app/project.yml" --quiet || { echo "SHIP FAILED: xcodegen"; exit 1; }
+    xcodebuild archive -project "$tree/app/PRHub.xcodeproj" -scheme PRHub -configuration Release \
         -destination 'generic/platform=iOS' -archivePath "$archive" -derivedDataPath build/DerivedData-release \
         -allowProvisioningUpdates "${auth[@]}" CURRENT_PROJECT_VERSION="$build" 2>&1 | grep -E ' error:|\*\* ARCHIVE' | tail -5
     [[ ${pipestatus[1]} == 0 ]] || { echo "SHIP FAILED: archive of PRHub build $build"; exit 1; }
@@ -116,21 +133,23 @@ if (( local_ship )); then
     export_with upload || { echo "SHIP FAILED: upload of PRHub build $build"; exit 1; }
     "${asc[@]}" what-to-test "$version" "$build" "$notes" || { echo "SHIP FAILED: What to Test of build $build"; exit 1; }
 else
-    [[ -n $release_notes ]] || {
-        echo "SHIP FAILED: Xcode Cloud ships a release commit, and the newest change to app/project.yml is '$subject'." \
-            "Push a 'chore(release): PRHub build N — …' commit with N from release/next-build.sh, then run release/ship.sh"
+    [[ -n $release_version ]] || {
+        echo "SHIP FAILED: Xcode Cloud ships a release tag, and main has none (newest vX.Y.Z tag: ${tag:-none})." \
+            "Merge release-please's release PR, then run release/ship.sh"
         exit 1
     }
-    [[ -n $notes && $notes != "$release_notes" ]] && echo "What to Test comes from the release commit, not the argument"
-    echo "PRHub $version build $release_build: $release_notes"
-    (( dry_run )) && { echo "DRY RUN: would follow Xcode Cloud's build of build $release_build and submit it"; exit 0; }
+    [[ -n $notes && $notes != "$release_notes" ]] && echo "What to Test comes from CHANGELOG.md, not the argument"
+    version=$release_version
+    release=$(git rev-list -n 1 "$tag")
+    echo "PRHub $version from $tag: $release_notes"
+    (( dry_run )) && { echo "DRY RUN: would follow Xcode Cloud's build of $tag and submit it"; exit 0; }
 
     seen=
     started=$SECONDS
     while true; do
         git fetch -q origin main
         run=
-        # Newest first; Xcode Cloud builds the head of the push, which is the release or a commit after it.
+        # Newest first; Xcode Cloud builds the tag's commit.
         for line in "${(@f)$("${cloud[@]}")}"; do
             if [[ -n $line ]] && git merge-base --is-ancestor "$release" "${line%% *}" 2>/dev/null; then
                 run=$line
@@ -139,7 +158,7 @@ else
         done
         if [[ -z $run ]]; then
             if (( SECONDS - started > 600 )); then
-                echo "SHIP FAILED: Xcode Cloud started no build of build $release_build in 10 minutes" \
+                echo "SHIP FAILED: Xcode Cloud started no build of $tag in 10 minutes" \
                     "(App Store Connect → PRHub → Xcode Cloud → PRHub Release)"
                 exit 1
             fi
@@ -158,7 +177,6 @@ else
         fi
         sleep 30
     done
-    [[ $build == "$release_build" ]] || echo "Xcode Cloud numbered it $build; the commit says $release_build"
 fi
 
 for _ in {1..60}; do
@@ -175,4 +193,4 @@ if [[ ${PRHUB_SUBMIT:-YES} == NO ]]; then
 else
     "${asc[@]}" submit "$version" "$build" || { echo "SHIP FAILED: Beta App Review submission of build $build"; exit 1; }
 fi
-echo "SHIPPED PRHub build $build"
+echo "SHIPPED PRHub $version build $build"

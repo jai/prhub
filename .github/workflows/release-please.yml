@@ -1,0 +1,28 @@
+# release-please: on every push to main it keeps one release PR open with the next version, from the conventional
+# commits since the last release, and that version's CHANGELOG.md section. Merging the PR sets MARKETING_VERSION in
+# app/project.yml, tags vX.Y.Z and publishes the GitHub Release. PRKit's consumers pin those tags. Config:
+# release-please-config.json and .release-please-manifest.json.
+name: release-please
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 10
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

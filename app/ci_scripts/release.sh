@@ -1,26 +1,25 @@
 #!/bin/zsh
-# Sourced by ci_post_clone.sh and ci_post_xcodebuild.sh. Sets `release_build` and `release_notes` from the newest commit
-# that changed app/project.yml, which must be `chore(release): PRHub build N — <What to Test>` with N its
-# CURRENT_PROJECT_VERSION: the PRHub Release workflow starts only when app/project.yml changes on main, and a change
-# there that is not a release fails here instead of shipping. Other workflows skip the check and get empty values.
+# Sourced by ci_post_clone.sh and ci_post_xcodebuild.sh. The PRHub Release workflow starts on a vX.Y.Z tag, which
+# release-please makes for each release (AGENTS.md, "Releases"). There this sets `release_version` to X.Y.Z and
+# `release_notes` to that version's What to Test from CHANGELOG.md (release/what-to-test.sh), after checking that
+# MARKETING_VERSION in app/project.yml is X.Y.Z: a build of anything else fails here instead of shipping. Other
+# workflows skip the check and get empty values.
 repo=${CI_PRIMARY_REPOSITORY_PATH:?not running in Xcode Cloud}
-release_build=
+release_version=
 release_notes=
 if [[ ${CI_WORKFLOW:-} != "PRHub Release" ]]; then
     return 0
 fi
-if [[ $(git -C "$repo" rev-parse --is-shallow-repository) == true ]]; then
-    git -C "$repo" fetch --quiet --deepen 200
-fi
-commit=$(git -C "$repo" log -1 --format=%H -- app/project.yml)
-subject=$(git -C "$repo" log -1 --format=%s "$commit")
-# From the commit, not the working copy: ci_post_clone.sh rewrites the number there.
-build=$(git -C "$repo" show "${commit}:app/project.yml" | awk '$1 == "CURRENT_PROJECT_VERSION:" {print $2; exit}')
-prefix="chore(release): PRHub build $build — "
-if [[ $subject != "$prefix"* ]]; then
-    echo "error: not a release. The newest change to app/project.yml ($commit) is '$subject', not '$prefix…'." \
-        "Release builds start from a 'chore(release): PRHub build N — …' commit that sets CURRENT_PROJECT_VERSION to N." >&2
+tag=${CI_TAG:-}
+if [[ ! $tag =~ '^v[0-9]+\.[0-9]+\.[0-9]+$' ]]; then
+    echo "error: not a release. PRHub Release builds a vX.Y.Z tag, and this build's tag is '${tag:-none}'." \
+        "Its start condition must be Tag Changes on tags starting with v." >&2
     return 1
 fi
-release_build=$build
-release_notes=${subject#"$prefix"}
+marketing=$(awk '$1 == "MARKETING_VERSION:" {print $2; exit}' "$repo/app/project.yml")
+if [[ $marketing != "${tag#v}" ]]; then
+    echo "error: $tag sets MARKETING_VERSION to '$marketing', not ${tag#v}: it is not a release-please release" >&2
+    return 1
+fi
+release_notes=$("$repo/release/what-to-test.sh" "${tag#v}") || return 1
+release_version=${tag#v}
