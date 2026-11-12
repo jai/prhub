@@ -61,3 +61,6 @@ bodies carry the item's `app` and `login`; a claim answers them back with `repo`
 
 `FEEDBACKKIT_URL`, `FEEDBACKKIT_APP` (vars) and `FEEDBACKKIT_TOKEN` (secret, the FeedbackKit Worker's
 `CALLER_TOKEN`). With all three, `/feedback` goes to the FeedbackKit Worker and `features.feedback` is on.
+A Worker on the FeedbackKit Worker's own Cloudflare account must also bind it as `FEEDBACKKIT` (a service binding):
+Cloudflare refuses a fetch from one of an account's Workers to another's `workers.dev` URL. An answer that is not
+JSON (such a refusal) reaches the app as `502`, never as a `404`.
