@@ -19,6 +19,13 @@ struct PRAskSheet: View {
         let anchor = question.anchor.map { "\($0.path):\($0.line)" }
         return sent + [PRAskChat.Message(id: "pending", role: "you", text: question.question, anchor: anchor)]
     }
+    /// What the end of the chat shows: when it changes, the sheet scrolls to it.
+    private var tail: [String] {
+        [
+            String(messages.count), messages.last?.text ?? "", String(isWorking), String(describing: session.askSend),
+            String(isWriting),
+        ]
+    }
     /// The agent at work on a question it has. A question still on its way says so instead.
     private var isWorking: Bool { session.askSend == .idle && session.askChat?.isWorking == true }
 
@@ -33,7 +40,11 @@ struct PRAskSheet: View {
                                 .foregroundStyle(.secondary)
                                 .padding(PRStyle.inset)
                         }
-                        ForEach(messages) { message($0).transition(.fold) }
+                        // By place: the question drawn on its way becomes the chat's own message, with no fold out and
+                        // back in, which left the sheet scrolled past it.
+                        ForEach(Array(messages.enumerated()), id: \.offset) {
+                            message($0.element).transition(.fold)
+                        }
                         status.id(Self.end)
                     }
                     .padding(.horizontal, Space.md)
@@ -43,7 +54,9 @@ struct PRAskSheet: View {
                     .animation(AppMotion.swap, value: session.askSend)
                 }
                 .dismissesKeyboard($isWriting)
-                .onChange(of: messages.count) {
+                // The foot follows anything that changes the end: a message, its words, the agent's work, the send's
+                // state, and the keyboard going as the question is sent.
+                .onChange(of: tail) {
                     withAnimation(AppMotion.fold) { proxy.scrollTo(Self.end, anchor: .bottom) }
                 }
                 .onAppear { proxy.scrollTo(Self.end, anchor: .bottom) }
