@@ -42,8 +42,7 @@ export function askConfigured(env: Env): boolean {
 
 /** Feedback goes to the FeedbackKit Worker, which keeps every app's. */
 export function featureKitConfigured(env: Env): boolean {
-  return (env.FEEDBACKKIT !== undefined || isSet(env.FEEDBACKKIT_URL)) && isSet(env.FEEDBACKKIT_TOKEN)
-    && isSet(env.FEEDBACKKIT_APP);
+  return isSet(env.FEEDBACKKIT_URL) && isSet(env.FEEDBACKKIT_TOKEN) && isSet(env.FEEDBACKKIT_APP);
 }
 
 
