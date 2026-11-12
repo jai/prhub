@@ -6,12 +6,10 @@ import Testing
 struct PRPushTests {
     /// docs/fixtures/alert.json, which the worker's contract test writes from the real builder.
     static func fixture(_ name: String) throws -> [AnyHashable: Any] {
-        let url = URL(filePath: #filePath).deletingLastPathComponent()
-            .appending(path: "../../../docs/fixtures/\(name)").standardized
-        return try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [AnyHashable: Any])
+        try #require(JSONSerialization.jsonObject(with: RepoFixtures.data(name)) as? [AnyHashable: Any])
     }
 
-    @Test func theWorkersAlertOpensItsPR() throws {
+    @Test(.enabled(if: RepoFixtures.areHere)) func theWorkersAlertOpensItsPR() throws {
         let push = PRPush(userInfo: try Self.fixture("alert.json"))
         #expect(push == .alert(kind: .reviewRequested, pullRequest: PullRequestRef(repo: "acme/app", number: 7)))
         #expect(push?.openedPullRequest == PullRequestRef(repo: "acme/app", number: 7))

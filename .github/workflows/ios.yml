@@ -1,7 +1,6 @@
-# PRKit and the PRHub app on GitHub's macOS runners: PRKit's tests on macOS, then the app's and PRKit's unit tests and
-# the UI tests on an iPhone and on a 13-inch iPad Simulator, in sample mode, with no secrets. The iPad runs on every PR
-# and push like the iPhone: the repo is public, so its macOS minutes are free, and it runs beside the iPhone, so it adds
-# no wait. The UI tests' pictures of every screen (light, dark and large text) are uploaded as an artifact per device.
+# The design checks for PRKit and the PRHub app, on Ubicloud. The tests run in Xcode Cloud's "PRHub Tests" workflow
+# (app/ci_scripts): PRKit's `swift test` on its build Mac, then the PRHub scheme's unit and UI tests on an iPhone and on
+# a 13-inch iPad Pro.
 name: ios
 
 on:
@@ -32,81 +31,3 @@ jobs:
         run: make -C app design-check
       - name: No literal fonts, colours, paddings, corners or animations in views
         run: scripts/design-lint.sh
-
-  prkit:
-    runs-on: macos-26
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v5
-      - name: Xcode
-        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)" && xcodebuild -version
-      - name: swift test
-        run: swift test
-
-  app:
-    name: app (${{ matrix.device }})
-    runs-on: macos-26
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - device: iPhone
-            # The newest numbered iPhone.
-            pattern: "^iPhone [0-9]+$"
-          - device: iPad
-            # The 13-inch iPad Pro: the regular width, with the list beside the PR.
-            pattern: '^iPad Pro 13-inch \(M[0-9]+\)$'
-    steps:
-      - uses: actions/checkout@v5
-      - name: Xcode and XcodeGen
-        run: |
-          sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
-          xcodebuild -version
-          brew install xcodegen
-      - name: Simulator
-        env:
-          FAMILY: ${{ matrix.device }}
-          PATTERN: ${{ matrix.pattern }}
-        run: |
-          # The newest iOS runtime, and the newest device of the matrix's kind it supports.
-          json=$(xcrun simctl list runtimes -j)
-          runtime=$(jq -r '[.runtimes[] | select(.platform == "iOS" and .isAvailable)] | last | .identifier' <<<"$json")
-          type=$(jq -r --arg r "$runtime" --arg family "$FAMILY" --arg pattern "$PATTERN" '.runtimes[]
-            | select(.identifier == $r) | [.supportedDeviceTypes[]
-            | select(.productFamily == $family and (.name | test($pattern)))] | max_by(.name) | .identifier' <<<"$json")
-          [[ -n $type && $type != null ]] || { echo "no $FAMILY matching $PATTERN on $runtime"; exit 1; }
-          echo "runtime $runtime, device $type"
-          echo "SIM=$(xcrun simctl create ci "$type" "$runtime")" >> "$GITHUB_ENV"
-      - name: Build
-        working-directory: app
-        run: |
-          xcodegen generate --spec project.yml --quiet
-          xcodebuild build-for-testing -project PRHub.xcodeproj -scheme PRHub -destination "id=$SIM" \
-            -derivedDataPath build/DerivedData -quiet
-      - name: Unit tests (PRHubTests, PRKitTests)
-        working-directory: app
-        run: |
-          xcodebuild test-without-building -project PRHub.xcodeproj -scheme PRHub -destination "id=$SIM" \
-            -derivedDataPath build/DerivedData -resultBundlePath build/unit.xcresult \
-            -only-testing:PRHubTests -only-testing:PRKitTests
-      - name: UI tests and screenshots
-        working-directory: app
-        env:
-          TEST_RUNNER_SCREENSHOTS_DIR: ${{ github.workspace }}/app/build/screenshots
-        run: |
-          xcodebuild test-without-building -project PRHub.xcodeproj -scheme PRHub -destination "id=$SIM" \
-            -derivedDataPath build/DerivedData -resultBundlePath build/ui.xcresult -only-testing:PRHubUITests
-      - name: Screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots-${{ matrix.device }}
-          path: app/build/screenshots
-          if-no-files-found: warn
-      - name: Results
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: xcresults-${{ matrix.device }}
-          path: app/build/*.xcresult

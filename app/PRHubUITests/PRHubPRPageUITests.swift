@@ -138,10 +138,11 @@ final class PRHubPRPageUITests: XCTestCase {
         let now = app.buttons["inline-composer-alternate"]
         XCTAssertTrue(now.waitForExistence(timeout: 2))
         now.tap()
-        XCTAssertTrue(waitFor(timeout: 1) { !now.exists }, "the box closes at once")
         let words = app.staticTexts["pr-review-toast-words"]
-        // A CI simulator can take seconds to draw it; the samples answer at once, so it may show the outcome already.
+        // Looked for before the box: the samples answer at once and the toast leaves 2 s later
+        // (`ToastStyle.dwell`), which a loaded iPad Simulator can spend on one query.
         XCTAssertTrue(words.waitForExistence(timeout: 10), "the toast follows the comment")
+        XCTAssertFalse(now.exists, "the box closed at once")
         // The samples answer at once, so it may already have landed.
         XCTAssertTrue(["Posting comment…", "Comment posted"].contains(words.label), words.label)
         try? picture("diff-toast-comment")

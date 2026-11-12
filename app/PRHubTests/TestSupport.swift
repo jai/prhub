@@ -1,6 +1,19 @@
 import Foundation
 import Synchronization
 
+/// The worker's golden fixtures (docs/fixtures/) this target reads, copied into the test bundle (project.yml): Xcode
+/// Cloud's test Mac has the built products and no sources.
+enum Fixture {
+    private final class InBundle {}
+
+    static func data(_ name: String) throws -> Data {
+        guard let url = Bundle(for: InBundle.self).url(forResource: name, withExtension: nil) else {
+            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: name])
+        }
+        return try Data(contentsOf: url)
+    }
+}
+
 /// A value the closures of one test share.
 final class Shared<Value: Sendable>: Sendable {
     private let state: Mutex<Value>
