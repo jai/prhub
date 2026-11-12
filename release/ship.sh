@@ -186,8 +186,13 @@ for _ in {1..60}; do
     sleep 30
 done
 [[ $state == VALID ]] || { echo "SHIP FAILED: PRHub build $build is still ${state:-missing} after 30 minutes"; exit 1; }
-"${asc[@]}" add-to-group "$version" "$build" "$PRHUB_TESTFLIGHT_GROUP" \
-    || { echo "SHIP FAILED: adding build $build to the TestFlight group"; exit 1; }
+# App Store Connect can answer 404 for a build it has just called VALID: try again for a few minutes.
+added=0
+for attempt in 1 2 3 4 5 6; do
+    "${asc[@]}" add-to-group "$version" "$build" "$PRHUB_TESTFLIGHT_GROUP" && { added=1; break; }
+    (( attempt < 6 )) && sleep 30
+done
+(( added )) || { echo "SHIP FAILED: adding build $build to the TestFlight group"; exit 1; }
 if [[ ${PRHUB_SUBMIT:-YES} == NO ]]; then
     echo "build $build not submitted for Beta App Review: PRHUB_SUBMIT=NO"
 else
