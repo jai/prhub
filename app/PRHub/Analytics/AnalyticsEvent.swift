@@ -86,7 +86,7 @@ enum AnalyticsValue: Equatable, Sendable {
 
 /// Generic names only: never a PR's title or repo.
 enum AnalyticsScreen: String, CaseIterable, Sendable {
-    case onboarding, samples, prs, settings
+    case onboarding, samples, prs, feedback, settings
     case signedOut = "signed_out"
 }
 

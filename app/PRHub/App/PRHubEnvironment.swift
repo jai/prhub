@@ -1,3 +1,4 @@
+import FeatureKit
 import Foundation
 import Observation
 
@@ -15,6 +16,8 @@ final class PRHubEnvironment {
     let connection: WorkerConnection
     let prs: PRKitController
     let navigation: PRHubNavigation
+    /// The Feedback tab's requests, over the PR screens' connection. Kept for the app's life, so drafts outlive the tab.
+    let feedback: FeatureRequestsModel
     /// Anonymous usage events, and Settings' switch for them.
     let usage: UsageAnalytics
     /// Runs on the bundled samples (`PRHubEnvironment.sample()`), with no Worker.
@@ -55,6 +58,7 @@ final class PRHubEnvironment {
         )
         refusals.connection = connection
         navigation = PRHubNavigation(pullRequests: prs)
+        feedback = FeatureRequestsModel(client: FeatureClient(viewer: prs.client))
         isSample = false
         let connection = connection
         host.config = { connection.config }
@@ -76,6 +80,7 @@ final class PRHubEnvironment {
         prs = PRKitController(host: host)
         self.isSample = isSample
         navigation = PRHubNavigation(pullRequests: prs)
+        feedback = FeatureRequestsModel(client: FeatureClient(viewer: prs.client))
         host.config = { connection.config }
         host.isCheckingInstallations = { connection.isCheckingInstallations }
         host.leavesForGitHub = { connection.leavesForGitHub($0) }

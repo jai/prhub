@@ -107,6 +107,8 @@ targets:
     dependencies:
       - package: PRKit
         product: PRKit
+      - package: PRKit
+        product: FeatureKit
       - package: PostHog
         product: PostHog
       - target: PRHubNotifications

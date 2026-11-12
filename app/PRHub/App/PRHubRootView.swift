@@ -1,3 +1,4 @@
+import FeatureKit
 import SwiftUI
 
 /// PRHub's window: onboarding until the phone is signed in with GitHub or paired with a pr-worker, then the PRs and
@@ -96,25 +97,43 @@ struct PRHubRootView: View {
     }
 }
 
-/// The PRs and Settings, over a paired Worker or over the samples. `endSample` is Settings' way back from the samples.
+/// The PRs, Feedback when the Worker serves it, and Settings, over a paired Worker or over the samples. `endSample` is
+/// Settings' way back from the samples.
 private struct PRHubTabs: View {
     let environment: PRHubEnvironment
     let endSample: (() -> Void)?
 
+    private var tabs: [PRHubTab] {
+        environment.connection.config?.isOn(.feedback) == true ? [.prs, .feedback, .settings] : [.prs, .settings]
+    }
+
     var body: some View {
         @Bindable var navigation = environment.navigation
+        let tabs = tabs
         TabView(selection: $navigation.selectedTab) {
             Tab("PRs", systemImage: "arrow.triangle.pull", value: PRHubTab.prs) {
                 PRKitRoot(environment.prs)
                     .compactWidthForUITests()
             }
             .accessibilityIdentifier(PRHubTab.prs.identifier)
+            if tabs.contains(.feedback) {
+                Tab("Feedback", systemImage: AppIcon.conversation.symbol, value: PRHubTab.feedback) {
+                    FeatureRequestsView(model: environment.feedback)
+                }
+                .accessibilityIdentifier(PRHubTab.feedback.identifier)
+            }
             Tab("Settings", systemImage: AppIcon.settings.symbol, value: PRHubTab.settings) {
                 PRHubSettingsView(environment: environment, endSample: endSample)
             }
             .accessibilityIdentifier(PRHubTab.settings.identifier)
         }
-        .background(TabBarIdentifiers(identifiers: [PRHubTab.prs, .settings].map(\.identifier)))
+        .background(TabBarIdentifiers(identifiers: tabs.map(\.identifier)))
+        // A Worker that stops serving Feedback under it: the PRs instead.
+        .onChange(of: tabs, initial: true) { _, tabs in
+            if !tabs.contains(navigation.selectedTab) {
+                navigation.selectedTab = .prs
+            }
+        }
         .readableContentWidth()
         .prKitEnvironment(environment.prs)
         .alertsOffer(environment.alertPermission)
@@ -171,6 +190,7 @@ extension PRHubTab {
     fileprivate var analyticsScreen: AnalyticsScreen {
         switch self {
         case .prs: .prs
+        case .feedback: .feedback
         case .settings: .settings
         }
     }
@@ -179,6 +199,7 @@ extension PRHubTab {
     fileprivate var identifier: String {
         switch self {
         case .prs: "prhub-tab-prs"
+        case .feedback: "prhub-tab-feedback"
         case .settings: "prhub-tab-settings"
         }
     }
@@ -195,11 +216,12 @@ private struct TabBarIdentifiers: UIViewRepresentable {
     }
 
     func updateUIView(_ probe: Probe, context: Context) {
+        probe.identifiers = identifiers
         probe.apply()
     }
 
     final class Probe: UIView {
-        private let identifiers: [String]
+        var identifiers: [String]
 
         init(identifiers: [String]) {
             self.identifiers = identifiers

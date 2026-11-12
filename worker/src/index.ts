@@ -6,7 +6,10 @@ import { askChat } from "./ask";
 import { acceptAsk, askPr, withQueued } from "./ask-queue";
 import { bodyOf, parseAskInput, parseKeyLineMark } from "./boundary";
 import { eventRoute, registerRoute, unpairRoute } from "./devices";
-import { aiConfigOf, askConfigured, deviceConfig, feedbackConfigured } from "./config";
+import { aiConfigOf, askConfigured, deviceConfig, feedbackConfigured, feedbackIssuesConfigured } from "./config";
+import {
+  addIssueFeedback, chatOfRef, gitHubIssues, type IssueFeedback, issueChat, issuesNotice, issueThreads, isImageName,
+} from "./feedback-issues";
 import { makesAnswers } from "./agent-container";
 import { AgentContainer } from "./agent-container-object";
 import { aiJobs, askQueue, type Env, githubLogin, isSet, prIndex, scopedKey } from "./env";
@@ -22,7 +25,7 @@ import {
 import { DEFAULT_CONTEXT } from "./key-lines";
 import { type AiConfig, type AiFeature, resolveChoice } from "./models";
 import { detailKey, diffKey, PrIndex } from "./pr-index";
-import { codeHashOf, deviceSecretOf, fingerprintOf, isPairedSecret, normalizePairingCode } from "./pairing";
+import { codeHashOf, deviceSecretOf, fingerprintOf, isPairedSecret, normalizePairingCode, sha256Hex } from "./pairing";
 import {
   fetchRepoIndex, isRepoIndex, rankRepos, type RepoIndex, REPOS_FORCED_GAP_MS, REPOS_KEY, REPOS_RETRY_GAP_MS,
   REPOS_STALE_MS,
@@ -352,6 +355,101 @@ async function feedbackRoute(id: string | undefined, request: Request, env: Env)
   }
 }
 
+/** Feedback as GitHub issues (`feedback-issues.ts`): the signed-in person's chats, each one an issue. */
+async function issueFeedbackRoute(id: string | undefined, request: Request, env: Env): Promise<Response> {
+  if (id !== undefined && !isFeedbackId(id)) {
+    return new Response("not found\n", { status: 404 });
+  }
+  const bucket = env.DIFFS;
+  const scoped = r2Store(bucket);
+  const repo = env.FEEDBACK_ISSUES_REPO!;
+  const context: IssueFeedback = {
+    store: {
+      get: (key) => scoped.get(scopedKey(env, key)),
+      put: (key, value, ifEtag) => scoped.put(scopedKey(env, key), value, ifEtag),
+      // Keys as this store names them, without the person's prefix, so a `get` of one finds it.
+      list: async (prefix) => {
+        const root = scopedKey(env, "");
+        return (await scoped.list(`${root}${prefix}`)).map((key) => key.slice(root.length));
+      },
+      delete: (key) => scoped.delete(scopedKey(env, key)),
+    },
+    images: {
+      async put(name, image) {
+        const bytes = Uint8Array.from(atob(image.data), (char) => char.charCodeAt(0));
+        await bucket.put(`${FEEDBACK_IMAGES}${name}`, bytes, { httpMetadata: { contentType: image.media_type } });
+      },
+    },
+    issues: gitHubIssues(repo, env.FEEDBACK_ISSUES_TOKEN!),
+    login: await githubLogin(env),
+    origin: new URL(request.url).origin,
+    repo,
+    now: Date.now,
+  };
+  let receipt: string | null = null;
+  try {
+    if (request.method !== "POST") {
+      if (!id) {
+        return Response.json({ threads: await issueThreads(context.store), builderOnline: true, notice: issuesNotice(repo) });
+      }
+      const answer = await issueChat(context, id);
+      return answer ? Response.json(answer) : Response.json({ error: "Not found." }, { status: 404 });
+    }
+    const body = (await bodyOf(request))?.value;
+    const input = parseFeedbackInput(body);
+    if (!input) {
+      return Response.json({ error: "That feedback can't be sent." }, { status: 400 });
+    }
+    const ref = clientRefOf(body);
+    receipt = ref && `feedback:${id ?? "new"}:${ref}`;
+    const limited = await personLimitAnswer(env,
+      id ? [LimitName.WritesPerMinute, LimitName.WritesPerHour] : [LimitName.FeedbackIssuesPerDay], receipt);
+    if (limited) {
+      return limited;
+    }
+    const claim = receipt ? await prIndex(env).claimWrite(receipt, Date.now()) : "go";
+    if (claim === "busy") {
+      return busyAnswer();
+    }
+    let target: string | null | undefined = id;
+    if (claim === "go") {
+      target = await addIssueFeedback(context, id ?? null, input, id || !receipt ? null : await sha256Hex(receipt));
+      if (receipt) {
+        await prIndex(env).finishWrite(receipt, target !== null, Date.now());
+      }
+    } else if (!target) {
+      // A repeat of new feedback already sent: the chat that send made.
+      target = receipt ? await chatOfRef(context.store, await sha256Hex(receipt)) : null;
+    }
+    const chat = target ? await issueChat(context, target) : null;
+    return chat ? Response.json(chat) : Response.json({ error: "Not found." }, { status: 404 });
+  } catch (error) {
+    console.error("feedback issue failed", error);
+    if (receipt) {
+      await prIndex(env).finishWrite(receipt, false, Date.now());
+    }
+    return Response.json({ error: "Your feedback couldn't be sent. Try again." }, { status: 502 });
+  }
+}
+
+/** Where the issues' screenshots are kept: public, as the issues are, and outside any person's prefix. */
+const FEEDBACK_IMAGES = "feedback-images/";
+const FEEDBACK_IMAGE_PATH = /^\/feedback\/images\/([^/]+)$/;
+
+/** A screenshot an issue shows: to anyone with its link, as GitHub fetches it. */
+async function feedbackImageRoute(name: string, env: Env): Promise<Response> {
+  const object = isImageName(name) ? await env.DIFFS.get(`${FEEDBACK_IMAGES}${name}`) : null;
+  if (!object) {
+    return new Response("not found\n", { status: 404 });
+  }
+  return new Response(object.body, {
+    headers: {
+      "Content-Type": object.httpMetadata?.contentType ?? "image/jpeg",
+      "Cache-Control": "public, max-age=31536000, immutable",
+    },
+  });
+}
+
 /** The runner on Jai's Mac (`HUB_TOKEN`): it polls, claims a message, says how its delivery went, and sends the agent's side. */
 async function runnerRoute(kind: string, request: Request, env: Env): Promise<Response> {
   const store = r2Store(env.DIFFS);
@@ -540,7 +638,9 @@ async function serveAuthorized(request: Request, env: Env, context: ExecutionCon
   }
   const feedback = FEEDBACK_PATH.exec(pathname);
   if (feedback) {
-    return feedbackConfigured(env) ? feedbackRoute(feedback[1], request, env) : notConfigured("Feedback");
+    return feedbackConfigured(env) ? feedbackRoute(feedback[1], request, env)
+      : feedbackIssuesConfigured(env) ? issueFeedbackRoute(feedback[1], request, env)
+      : notConfigured("Feedback");
   }
   const pullRequest = PULL_REQUEST_PATH.exec(pathname);
   if (pullRequest) {
@@ -582,6 +682,10 @@ export default {
     const { pathname } = new URL(request.url);
     if (pathname === "/") {
       return new Response("hello world\n");
+    }
+    const image = FEEDBACK_IMAGE_PATH.exec(pathname);
+    if (image && request.method === "GET" && isSet(env.FEEDBACK_ISSUES_REPO)) {
+      return feedbackImageRoute(image[1], env);
     }
     const hosted = hostedMode(env);
     if (hosted.kind === "misconfigured") {
