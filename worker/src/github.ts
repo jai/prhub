@@ -5,7 +5,7 @@ import { backoffOf, heldBackoff, holdBackoff, observe, stops, waitAnswer } from 
 import {
   parseSha, prId, type PrId, repoOf, type RepoFullName, repoParts, type Revision, revisionOf, type Sha, shaOf,
 } from "./ids.ts";
-import { peopleOf } from "./policy-github.ts";
+import { type GitHubCache, peopleOf } from "./policy-github.ts";
 import { PEOPLE_FIELDS, type PeopleDecision, type PeopleNode } from "./policy-people.ts";
 import { botAuthorsOf, isBotAuthor, type RequestedBy, requestedByOf } from "./requester.ts";
 import {
@@ -183,6 +183,8 @@ export interface PullRequest {
   ticket: Ticket | null;
   /** When review was last asked of the user, for alerts (`alerts.ts`). */
   requestedAt: string | null;
+  /** What `.policy.yml`'s people decided (`peopleOf`): with it, a checks-only read (`readChecks`) keeps the review. */
+  people: PeopleDecision | null;
 }
 
 /**
@@ -307,7 +309,8 @@ async function github(path: string, env: Env, accept: string, init: RequestInit 
   const send = async (token: string) => {
     const response = await fetch(`https://api.github.com${path}`, {
       ...init,
-      headers: { Accept: accept, Authorization: `Bearer ${token}`, "User-Agent": "pr-viewer" },
+      headers: { ...init.headers as Record<string, string> | undefined, Accept: accept, Authorization: `Bearer ${token}`,
+        "User-Agent": "pr-viewer" },
     });
     const now = Date.now();
     const reserve = gitHubReserveOf(limitsOf(env));
@@ -333,14 +336,19 @@ export function postToGitHub(path: string, body: object, env: Env): Promise<Resp
   return sendToGitHub("POST", path, body, env);
 }
 
-/** A file's text at a commit or branch; with an empty `ref`, on the default branch. */
-export function fetchFile(repo: string, path: string, ref: string, env: Env): Promise<Response> {
+/**
+ * A file's text at a commit or branch; with an empty `ref`, on the default branch. With `etag`, GitHub answers 304 when
+ * the file is unchanged, and a 304 costs nothing of the token's hour.
+ */
+export function fetchFile(repo: string, path: string, ref: string, env: Env, etag?: string): Promise<Response> {
   const encoded = path.split("/").map(encodeURIComponent).join("/");
-  return github(`/repos/${repo}/contents/${encoded}${ref ? `?ref=${ref}` : ""}`, env, "application/vnd.github.raw+json");
+  return github(`/repos/${repo}/contents/${encoded}${ref ? `?ref=${ref}` : ""}`, env, "application/vnd.github.raw+json",
+    etag ? { headers: { "If-None-Match": etag } } : {});
 }
 
-export function getFromGitHub(path: string, env: Env): Promise<Response> {
-  return github(path, env, "application/vnd.github+json");
+/** With `etag`, a conditional GET: 304 when nothing changed, free of the token's hour. */
+export function getFromGitHub(path: string, env: Env, etag?: string): Promise<Response> {
+  return github(path, env, "application/vnd.github+json", etag ? { headers: { "If-None-Match": etag } } : {});
 }
 
 /** A PR GitHub has no answer for is a null in the data and a NOT_FOUND here. Anything else fails the whole read. */
@@ -606,13 +614,45 @@ export function reviewDueAt(requestedAt: string | null, week: ReviewWeek | null)
   return new Date(due - offset).toISOString().replace(".000Z", "Z");
 }
 
+/** What a check run or a commit status can move on a PR: its checks, PolicyBot's status among them, its merge state. */
+export interface ChecksNode {
+  headRefOid: string;
+  updatedAt: string;
+  reviewDecision: string | null;
+  mergeable: string;
+  mergeStateStatus: string;
+  overall: Node["overall"];
+  commits: Node["commits"];
+}
+
+/** A PR's checks as its row and its detail say them, and the version they make (`PullRequest.version`). */
+export interface ChecksRead {
+  version: string;
+  checks: ChecksSummary;
+  review: ReviewState;
+  merge: MergeState;
+  detail: Pick<Detail, "reviewDecision" | "mergeState" | "merge" | "review" | "policy" | "checks">;
+}
+
+/** The one reading of a PR's checks, for a full read (`pullRequest`) and a checks-only one (`readChecks`) alike. */
+export function checksRead(node: ChecksNode, people: PeopleDecision | null): ChecksRead {
+  const { checks, review, decision, policy, overall, contexts } = verdictOf(node, people);
+  const merge = mergeOf(node.mergeable, node.mergeStateStatus);
+  return {
+    version: `${node.updatedAt}.${overall ?? "NONE"}`, checks, review, merge,
+    detail: {
+      reviewDecision: decision, mergeState: node.mergeStateStatus, merge, review, policy,
+      checks: latestChecks(contexts).filter((context) => !isPolicyBot(context)).map(checkOf),
+    },
+  };
+}
+
 /** A PR read from GitHub, as the index stores it and the phone shows it. Rows and the detail share one verdict. */
 export function pullRequest(
   node: Node, login: string, wasAsked: boolean, week: ReviewWeek | null, people: PeopleDecision | null,
   bots: ReadonlySet<string> = new Set(),
 ): PullRequest {
-  const { checks, review, decision, policy, overall, contexts } = verdictOf(node, people);
-  const merge = mergeOf(node.mergeable, node.mergeStateStatus);
+  const { version, checks, review, merge, detail: verdict } = checksRead(node, people);
   const list = listOf(node, login, wasAsked);
   const requestedAt = reviewRequestedAt(node.requestEvents.nodes, login);
   const head = shaOf(node.headRefOid);
@@ -624,8 +664,9 @@ export function pullRequest(
     title: node.title,
     head,
     revision: revisionOf(head, node.baseRefName),
-    version: `${node.updatedAt}.${overall ?? "NONE"}`,
+    version,
     updatedAt: node.updatedAt,
+    people,
     status: list && rowStatus(
       list, node.author?.login ?? null, checks, review, merge, jaiReview(node, login), reviewDueAt(requestedAt, week),
       requestedAt,
@@ -640,11 +681,11 @@ export function pullRequest(
       author: node.author, isAuthor: node.viewerDidAuthor, authorIsBot,
       requestedBy: authorIsBot ? requestedByOf(node, bots) : null, tickets: resolvedTickets(ticketKeys, new Map()),
       body: node.body, additions: node.additions,
-      deletions: node.deletions, changedFiles: node.changedFiles, reviewDecision: decision,
-      mergeState: node.mergeStateStatus, merge, review, mergeMethod: node.repository.viewerDefaultMergeMethod, policy,
-      reviewers: reviewersOf(node),
+      deletions: node.deletions, changedFiles: node.changedFiles, reviewDecision: verdict.reviewDecision,
+      mergeState: verdict.mergeState, merge, review, mergeMethod: node.repository.viewerDefaultMergeMethod,
+      policy: verdict.policy, reviewers: reviewersOf(node),
       viewedFiles: (node.files?.nodes ?? []).filter((file) => file.viewerViewedState === "VIEWED").map((file) => file.path),
-      labels: node.labels.nodes, checks: latestChecks(contexts).filter((context) => !isPolicyBot(context)).map(checkOf),
+      labels: node.labels.nodes, checks: verdict.checks,
       comments: node.comments, reviews: node.reviews, reviewThreads: node.reviewThreads,
     },
   };
@@ -758,6 +799,7 @@ export async function mergedPullRequests(
 export async function readPullRequests(
   refs: PullRequestRef[], env: Env, asked: ReadonlySet<string> = new Set(),
   lookUp: (keys: string[]) => Promise<Map<string, Ticket>> = (keys) => lookUpTickets(keys, env),
+  cache?: GitHubCache,
 ): Promise<Map<PrId, PullRequest | null>> {
   const fields = refs.map((ref, index) => {
     const { owner, name } = repoParts(ref.repo);
@@ -772,7 +814,7 @@ export async function readPullRequests(
   const bots = botAuthorsOf(env);
   const people = await Promise.all(refs.map((ref, index) => {
     const node = data[`p${index}`]?.pullRequest;
-    return node ? peopleOf(ref.repo, node, env).catch(() => null) : null;
+    return node ? peopleOf(ref.repo, node, env, cache).catch(() => null) : null;
   }));
   const read = refs.map((ref, index) => {
     const node = data[`p${index}`]?.pullRequest;
@@ -788,6 +830,48 @@ export async function readPullRequests(
     }
   }
   return new Map(refs.map((ref, index) => [ref.id, read[index] ?? null]));
+}
+
+const CHECKS_FIELDS = `headRefOid updatedAt reviewDecision mergeable mergeStateStatus
+  overall: commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }`;
+
+/**
+ * Only the checks of the PRs named (`ChecksNode`), all in one query: what a check suite or a status can change. GitHub
+ * prices it at one point for dozens of PRs, where a full read (`readPullRequests`) costs a point per PR and the
+ * `.policy.yml` and membership REST calls besides. A PR GitHub has no answer for maps to null; one it refused (SAML,
+ * say) maps to `"error"`, and the rest are still read. Throws only when the whole query failed.
+ */
+export async function readChecks(refs: PullRequestRef[], env: Env):
+Promise<Map<PrId, ChecksNode | null | "error">> {
+  const fields = refs.map((ref, index) => {
+    const { owner, name } = repoParts(ref.repo);
+    return `p${index}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) {
+      pullRequest(number: ${ref.number}) { ${CHECKS_FIELDS} ${contextsOf(ref.number)} } }`;
+  });
+  const response = await postGraphql(`query { ${fields.join("\n")} }`, {}, env);
+  if (!response.ok) {
+    throw new Error(`GitHub GraphQL answered ${response.status}`);
+  }
+  const body = (await response.json()) as {
+    data?: Record<string, { pullRequest: ChecksNode | null } | null> | null;
+    errors?: { type?: string; path?: (string | number)[] }[];
+  };
+  const failed = new Set<string>();
+  for (const error of body.errors ?? []) {
+    const alias = error.path?.[0];
+    if (typeof alias !== "string") {
+      throw new Error(`GitHub GraphQL failed: ${error.type ?? "no path"}`);
+    }
+    if (error.type !== "NOT_FOUND") {
+      failed.add(alias);
+    }
+  }
+  if (!body.data) {
+    throw new Error("GitHub GraphQL failed: no data");
+  }
+  const data = body.data;
+  return new Map(refs.map((ref, index) => [ref.id,
+    failed.has(`p${index}`) ? "error" as const : data[`p${index}`]?.pullRequest ?? null]));
 }
 
 /** A picker row for any PR, open or not (`GET /prs/{owner}/{repo}/{n}/summary`). */

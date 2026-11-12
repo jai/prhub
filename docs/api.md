@@ -138,7 +138,7 @@ Auth: a paired secret or `APP_TOKEN`. `Cache-Control: no-store`. The app reads i
 | `features.rewrite` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ANTHROPIC_API_KEY` with `AI_ON_API_KEY=on` | Shows Rewrite on the description |
 | `features.feedback` | `FEEDBACKKIT_URL`, `FEEDBACKKIT_APP` and `FEEDBACKKIT_TOKEN` ([Feedback](#feedback)) | Shows Feedback |
 | `features.push` | the relay (`PUSH_RELAY_URL`, `PUSH_RELAY_KEY`), or direct APNs (`APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8`, `APNS_BUNDLE_ID`) | Registers for push; off: syncs on open and foreground only |
-| `features.webhooks` | `WEBHOOK_SECRET` | Diagnostics only: updates in seconds rather than about a minute |
+| `features.webhooks` | `WEBHOOK_SECRET` | Diagnostics only: updates in seconds rather than about a minute ([Webhook reads](#webhook-reads)) |
 | `login` | the GitHub login the Worker acts as; `null` if GitHub could not be asked | "Your PRs", and whose review a row shows |
 | `orgs` | `GITHUB_ORGS`, comma-separated; absent when unset | The PR filter's default selection |
 | `ai.features.<feature>` | one entry per AI feature that is on (`key_lines`, `rewrite`, `ask`); `ai` is absent when none is | The model picker: `default` is what runs when the app sends no choice; `allowed` is every model and effort it may send ([AI model choice](#ai-model-choice)) |
@@ -765,7 +765,8 @@ its repos each one can see. Who sees what comes only from each person's own toke
 - **`pull_request`, `pull_request_review`, `pull_request_review_comment`, `pull_request_review_thread`,
   `issue_comment` (on a PR).** Marked in the index of each member whose list has the repo, `involved` when they wrote
   the PR or are asked to review it. A PR an index does not hold, with the person not involved, costs nothing.
-- **`check_suite`, `status`.** The PRs each such member's index holds at that head are read again.
+- **`check_suite`, `status`.** Only the checks of the PRs each such member's index holds at that head are read again
+  ([Webhook reads](#webhook-reads)).
 - **In doubt.** A member is in doubt about a repo the installation gained, or a delivery named first, after their list
   was read. The delivery waits in the installation while their own token is asked (`GET /repos/{repo}`): yes delivers
   it and is kept; no drops it and is kept until the repo is added again; no answer (GitHub away, or rate limited) is
@@ -773,6 +774,30 @@ its repos each one can see. Who sees what comes only from each person's own toke
 
 The index reads GitHub only with the person's token, so even a mark that reached the wrong index could show nothing
 their token cannot read.
+
+### Webhook reads
+
+A delivery only marks a PR; the index's alarm reads it (`marks.ts`). This applies to the hosted Worker and to a
+self-hosted one with `WEBHOOK_SECRET` alike. A busy org sends many deliveries for the same PR or head (each check
+suite and status of a CI run, a bot's run of comments), so each read covers a burst:
+
+- **After quiet**, the first delivery is read 3 seconds later.
+- **PR events and comments** read the whole PR (detail, review, policy, tickets) at most once every 15 seconds. A
+  comment in the middle of a burst shows within 15 seconds.
+- **`check_suite` and `status`** read only the PR's checks, merge state and PolicyBot's status: one GraphQL query for
+  up to 25 PRs, with no REST call. They read at most once every 30 seconds per PR, so a check that finishes in the
+  middle of a CI run shows within 30 seconds. A PR is read in full instead (within its 15-second window) when its head
+  or `updatedAt` moved, or when its `.policy.yml` people decision is more than 10 minutes old or missing. That
+  decision outranks PolicyBot's live status. A PR GitHub refuses in that query (SAML, say) leaves the others' reads
+  alone. Merged rows are not read for checks.
+- **The one-minute poll** marks a PR whose search listing differs only in its checks rollup for a checks-only read too.
+- **More deliveries never delay a read that is waiting.** A delivery that arrives while its PR is being read is read
+  again when the window ends; your own write that arrives then is read at once.
+- **Your own write** (a review or a merge from the app) is read 3 seconds later, whatever came before it.
+
+`.policy.yml` texts (10 minutes) and team and org memberships (an hour) are kept in the person's index storage with
+their ETags. Past those times they are asked again with `If-None-Match`, and GitHub's `304` does not count against
+the person's hour.
 
 ### Rate limits
 
