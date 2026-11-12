@@ -30,6 +30,8 @@
     "FEEDBACKKIT_APP": "prhub"
     // Limits (docs/api.md, "Limits") take their hosted defaults; set a LIMIT_* var here to change one.
   },
+  // FeedbackKit on the same account: Cloudflare refuses a fetch of its workers.dev URL, so through a binding.
+  "services": [{ "binding": "FEEDBACKKIT", "service": "featurekit" }],
   "durable_objects": {
     "bindings": [
       { "name": "PR_INDEX", "class_name": "PrIndex" },

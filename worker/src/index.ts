@@ -300,7 +300,10 @@ const FEEDBACK_PATH = /^\/feedback(?:\/([^/]+))?$/;
 /** Feedback, to the FeedbackKit Worker: as this app and the person this Worker acts for, whom it has checked. */
 async function featureKitRoute(pathname: string, request: Request, env: Env): Promise<Response> {
   try {
-    const answer = await fetch(`${env.FEEDBACKKIT_URL!.replace(/\/$/, "")}${pathname}`, {
+    // The public URL even through the binding: FeedbackKit links issue screenshots to the origin it was asked at.
+    const base = (env.FEEDBACKKIT_URL ?? "").replace(/\/$/, "");
+    const send = env.FEEDBACKKIT ? env.FEEDBACKKIT.fetch.bind(env.FEEDBACKKIT) : fetch;
+    const answer = await send(`${base}${pathname}`, {
       method: request.method,
       headers: {
         Authorization: `Bearer ${env.FEEDBACKKIT_TOKEN}`, "Content-Type": "application/json",
@@ -308,6 +311,11 @@ async function featureKitRoute(pathname: string, request: Request, env: Env): Pr
       },
       body: request.method === "POST" ? await request.text() : undefined,
     });
+    if (!(answer.headers.get("Content-Type") ?? "").includes("json")) {
+      // Not FeedbackKit's answer (a Cloudflare error page): say so, never as the app's own 404.
+      console.error("featurekit answered", answer.status, (await answer.text()).slice(0, 200));
+      return Response.json({ error: "Feedback can't be reached. Try again." }, { status: 502 });
+    }
     return new Response(answer.body, { status: answer.status, headers: { "Content-Type": "application/json" } });
   } catch (error) {
     console.error("featurekit unreachable", error);

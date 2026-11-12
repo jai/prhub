@@ -79,6 +79,11 @@ export interface Env extends LimitVars {
    * (`FEEDBACKKIT_APP`) and the signed-in person, instead of being kept here.
    */
   FEEDBACKKIT_URL?: string;
+  /**
+   * The FeedbackKit Worker as a service binding. A Worker on the same Cloudflare account must use it: Cloudflare
+   * refuses its fetch of another of the account's `workers.dev` URLs. Set, requests to `FEEDBACKKIT_URL` go through it.
+   */
+  FEEDBACKKIT?: Fetcher;
   FEEDBACKKIT_TOKEN?: string;
   FEEDBACKKIT_APP?: string;
   /** AI model choice (`models.ts`): allowed models, the effort cap, and each feature's default. Unset: all, high, built in. */
