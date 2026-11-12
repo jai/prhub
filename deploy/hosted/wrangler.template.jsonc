@@ -45,9 +45,13 @@
     { "tag": "limits-v1", "new_sqlite_classes": ["IpLimit"] },
     { "tag": "agent-v1", "new_sqlite_classes": ["AgentContainer"] }
   ],
-  // The Agent SDK container (agent/), for AI on the subscription.
+  // The Agent SDK container (agent/), for AI on the subscription. In the US only: by default a container starts nearest
+  // the request, and from Bangkok that can be Hong Kong, where Anthropic's API refuses it (403, unsupported region).
   "containers": [
-    { "class_name": "AgentContainer", "image": "../../agent/Dockerfile", "instance_type": "standard-1", "max_instances": 2 }
+    {
+      "class_name": "AgentContainer", "image": "../../agent/Dockerfile", "instance_type": "standard-1", "max_instances": 2,
+      "constraints": { "regions": ["WNAM", "ENAM"] }
+    }
   ],
   "r2_buckets": [{ "binding": "DIFFS", "bucket_name": "prhub-hosted" }]
 }
