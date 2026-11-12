@@ -20,7 +20,7 @@ settings:
     SWIFT_STRICT_CONCURRENCY: complete
     # Only a `chore(release): PRHub build N — …` commit changes this number (AGENTS.md, "Releases"): a change to this
     # file on main starts Xcode Cloud's release build, which sets it to Xcode Cloud's own number.
-    CURRENT_PROJECT_VERSION: 181
+    CURRENT_PROJECT_VERSION: 182
     MARKETING_VERSION: 0.1.0
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: K2P9X73SPT
