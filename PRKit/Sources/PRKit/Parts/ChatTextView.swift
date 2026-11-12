@@ -1,6 +1,8 @@
 /// When the message field moves the keyboard: only when the screen's `focused` changes, never because it merely
 /// disagrees. On iOS 26.5 a screen's focus state can stay off while the field is first responder (a composer with no
 /// attachments never turned it on), and pushing that off value into UIKit closed the keyboard after the first letter.
+/// Such a screen can't put the keyboard away through `focused` either, since setting it off changes nothing: it
+/// needs a way that doesn't go through focus, such as `scrollDismissesKeyboard`.
 enum ChatFieldFocus: Equatable {
     case take
     case give
@@ -61,8 +63,14 @@ struct ChatTextView: UIViewRepresentable {
         context.coordinator.lastFocused = wantsFocus
         if let move {
             // After this update: a view not yet in a window can't take the keyboard.
+            let coordinator = context.coordinator
             Task { @MainActor in
-                _ = move == .take ? view.becomeFirstResponder() : view.resignFirstResponder()
+                if move == .give {
+                    _ = view.resignFirstResponder()
+                } else if !view.becomeFirstResponder() {
+                    // Not taken: the next update asks again.
+                    coordinator.lastFocused = nil
+                }
             }
         }
     }
