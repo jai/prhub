@@ -15,7 +15,7 @@ import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models";
  * The session holds the conversation and a checkout, and sessions last until deleted, so this keeps only which one is
  * this PR's. A repo is fixed for a session's life; its GitHub token isn't, and each question brings a fresh one. On Jai's
  * Worker that is minted by the Ask GitHub App, read only across every repo it is installed on. A self-hosted Worker
- * has no App: its own PAT goes instead, `ASK_GITHUB_TOKEN` (read only) or else `GITHUB_TOKEN`. On the hosted Worker
+ * has no App: its own PAT goes instead, `ASK_GITHUB_TOKEN` (read only), else `GITHUB_READ_TOKEN`, else `GITHUB_TOKEN`. On the hosted Worker
  * the PRHub App mints it, read only and for this one repo, after the person's own token has read the PR: an
  * installation token reaches repos the person may not, so it is never minted for one they can't see. The same token is
  * `GH_TOKEN` in the vault, for GitHub's API. A hosted person's sessions run in their own Anthropic org, on their key, and

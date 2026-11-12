@@ -1,6 +1,6 @@
 // The repo index for quick jump (docs/api.md, "Quick jump"): every repo the token can see, so the app
 // filters by name on the phone and a PR number then opens directly.
-import { type Env, isSet } from "./env.ts";
+import { type Env, githubLogin, isSet } from "./env.ts";
 import { postGraphql } from "./github.ts";
 import { countOf, LimitName, limitsOf } from "./limits.ts";
 
@@ -117,7 +117,7 @@ export async function fetchRepoNodes(env: Env): Promise<RepoNode[]> {
 /** How many of the user's recent PRs each repo holds: the ranking hint. A failed search ranks by push alone. */
 export async function fetchRecentCounts(env: Env, now: number): Promise<Map<string, number>> {
   const since = new Date(now - RECENT_DAYS * 86_400_000).toISOString().slice(0, 10);
-  const q = `is:pr involves:@me updated:>=${since}`;
+  const q = `is:pr involves:${await githubLogin(env)} updated:>=${since}`;
   const counts = new Map<string, number>();
   let after: string | null = null;
   let seen = 0;

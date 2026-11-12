@@ -193,13 +193,13 @@ test("GITHUB_ORGS names the owners; unset, the index is every repo the user owns
       nodes: first ? [repoNode("acme/api", "2026-11-01T00:00:00Z"), null] : [repoNode("jai/notes", "2026-11-02T00:00:00Z")],
     } } } };
   });
-  const index = await fetchRepoIndex(env({}), NOW);
+  const index = await fetchRepoIndex(env({ GITHUB_LOGIN: "jai" }), NOW);
   assert.deepEqual(index.repos.map((repo) => [repo.nameWithOwner, repo.recentPrs]), [["jai/notes", 0], ["acme/api", 2]]);
   assert.deepEqual(index.owners, ["acme", "jai"]);
   const viewerQueries = asked.filter(({ query }) => query.includes("viewer"));
   assert.deepEqual(viewerQueries.map(({ variables }) => variables.after), [null, "c1"]);
   assert.match(asked.find(({ query }) => query.includes("search("))?.variables.q as string,
-    /^is:pr involves:@me updated:>=2026-08-09$/);
+    /^is:pr involves:jai updated:>=2026-08-09$/);
 });
 
 test("an owner GitHub won't show costs only that owner, and a failed relevance search only the hint", async () => {
