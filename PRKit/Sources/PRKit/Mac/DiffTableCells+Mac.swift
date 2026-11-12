@@ -91,6 +91,8 @@ final class DiffFileHeaderView: NSView, PinnedToWindow {
     private let viewed = NSButton()
     private var isViewed = false
     private let metrics: DiffMetrics
+    /// The width the path's size was fitted to: fitted again only when it changes, not on every sideways scroll.
+    private var fittedWidth: CGFloat?
     var onTap: () -> Void = {}
     var onViewed: (Bool) -> Void = { _ in }
 
@@ -163,8 +165,6 @@ final class DiffFileHeaderView: NSView, PinnedToWindow {
         let inset = Space.sm
         let chevronWidth = metrics.chevronSymbolSize + Space.xs
         let changeWidth = change.fittingSize.width
-        let lineHeight = path.fittingSize.height
-        let textY = (height - lineHeight) / 2
         let rotation = chevron.frameCenterRotation
         chevron.frameCenterRotation = 0
         chevron.frame = NSRect(x: inset, y: 0, width: chevronWidth, height: height)
@@ -172,10 +172,19 @@ final class DiffFileHeaderView: NSView, PinnedToWindow {
         viewed.frame = NSRect(
             x: width - metrics.viewedTarget, y: 0, width: metrics.viewedTarget, height: height
         )
-        change.frame = NSRect(x: viewed.frame.minX - changeWidth, y: textY, width: changeWidth, height: lineHeight)
+        let changeHeight = change.fittingSize.height
+        change.frame = NSRect(
+            x: viewed.frame.minX - changeWidth, y: (height - changeHeight) / 2, width: changeWidth, height: changeHeight
+        )
         // Not from the chevron's frame: turned, its frame is the box around it, wider than it stands.
         let pathX = inset + chevronWidth + Space.sm
-        path.frame = NSRect(x: pathX, y: textY, width: change.frame.minX - pathX - Space.sm, height: lineHeight)
+        let pathWidth = change.frame.minX - pathX - Space.sm
+        if fittedWidth != pathWidth {
+            fittedWidth = pathWidth
+            path.font = metrics.headerPath(fitting: path.stringValue, in: pathWidth)
+        }
+        let pathHeight = path.fittingSize.height
+        path.frame = NSRect(x: pathX, y: (height - pathHeight) / 2, width: pathWidth, height: pathHeight)
     }
 
     @objc private func clicked() {

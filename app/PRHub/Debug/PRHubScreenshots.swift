@@ -247,9 +247,9 @@ extension PRSampleSet {
         author: "mona", checks: "passing", review: "required", merge: "clean",
         body: "Adds an access membership for each of the deploy team.",
         diff: """
-        diff --git a/zero-trust/access_memberships.tf b/zero-trust/access_memberships.tf
+        diff --git a/zero-trust/cloudflare/access/deploy_memberships.tf b/zero-trust/cloudflare/access/deploy_memberships.tf
         --- /dev/null
-        +++ b/zero-trust/access_memberships.tf
+        +++ b/zero-trust/cloudflare/access/deploy_memberships.tf
         @@ -0,0 +1,\(longDiffMembers.count * 5) @@
 
         """ + longDiffMembers.map { name in

@@ -43,6 +43,9 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
         super.init(frame: .zero)
         isDirectionalLockEnabled = true
         alwaysBounceVertical = false
+        // The code stops at its edges: a bounce would pull it off the screen's edge, with the header cut where the
+        // table ends and the threads pushed off the other side. The table still bounces up and down.
+        bounces = false
         showsHorizontalScrollIndicator = false
         // The status bar's tap scrolls one view to the top, and only when one alone asks: the table.
         scrollsToTop = false
