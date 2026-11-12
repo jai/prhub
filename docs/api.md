@@ -341,7 +341,8 @@ With `CLAUDE_CODE_OAUTH_TOKEN` set and `AGENT` bound, key lines, rewrites and As
 Agent SDK (`agent/`), signed in to a Claude subscription, instead of on the Messages API and Managed Agents. The answer, the model and effort
 choice, and the stored shape are the same; `costCents` is what the run would have cost on the API.
 
-- Key lines are made ahead for each new head of a PR on the review list, and an alert waits for them
+- Key lines are made ahead for each new head of every open PR on the person's lists (review, reviewed, mine), the
+  review list first, five a pass. An alert waits for those on the review list
   ([Alerts](#alerts)). On an API key they are made only when the app asks.
 - Each run, on either path, logs one `ai_run` line: `feature`, `repo`, `number`, `auth` (`subscription` or
   `api_key`), `user_id`, `model`, `effort`, `input_tokens`, `output_tokens`, `cost_cents`.
