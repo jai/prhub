@@ -15,6 +15,8 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    /// Where everything is once the finger lifts. XCUITest can't look while the finger is down, where a bounce shows:
+    /// that is `DiffTableEdgeTests`' and the recording's.
     func testASwipeRightAtTheLeftEdgeMovesNothing() throws {
         for (name, textSize) in Self.textSizes {
             try openKeyLineNote(textSize: textSize)

@@ -128,20 +128,8 @@ final class DiffFileHeader: UITableViewHeaderFooterView {
         path.frame = CGRect(x: pathX, y: 0, width: change.frame.minX - pathX - Space.md, height: height)
         if fittedWidth != path.bounds.width {
             fittedWidth = path.bounds.width
-            fitPath(metrics)
+            path.font = metrics.headerPath(fitting: path.text ?? "", in: path.bounds.width)
         }
-    }
-
-    /// A path too long for its room shrinks first, down to the code's own size (a heading is never smaller than what it
-    /// heads), and is cut from the front after that, so the file's name is what stays.
-    private func fitPath(_ metrics: DiffMetrics) {
-        let text = (path.text ?? "") as NSString
-        let floor = metrics.code.pointSize
-        var font = metrics.headerPath
-        while font.pointSize > floor, text.size(withAttributes: [.font: font]).width > path.bounds.width {
-            font = metrics.font.platformFont(points: max(font.pointSize - 1, floor), isBold: true)
-        }
-        path.font = font
     }
 
     @objc private func tapped() {
