@@ -621,3 +621,15 @@ test("no Ask token is minted for a PR the person's own token cannot read", async
     globalThis.fetch = real;
   }
 });
+
+test("with the API-key path off, a key is refused before Anthropic is asked, and removing one still works", async () => {
+  const { world, alice } = await twoOrgs({ AI_ON_API_KEY: undefined });
+  world.anthropic.valid.add(ALICE_KEY);
+  const put = await world.route("/account/anthropic-key", {
+    method: "PUT", body: JSON.stringify({ key: ALICE_KEY }), ...bearer(alice),
+  });
+  assert.equal(put.status, 409);
+  assert.equal(((await put.json()) as { error: { code: string } }).error.code, "api_key_off");
+  const removed = await world.route("/account/anthropic-key", { method: "DELETE", ...bearer(alice) });
+  assert.equal(removed.status, 204);
+});

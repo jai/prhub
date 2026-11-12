@@ -106,6 +106,10 @@ export async function askChat(repo: RepoFullName, number: number, env: Env): Pro
   if (!record) {
     return chatOf([], null);
   }
+  if (!onApiKey(env)) {
+    // A chat from Managed Agents, which ran on an API key: not read while that is off.
+    return { ...chatOf([], null), problem: "This chat ran on an API key, which is off for now. Ask again to start a new one." };
+  }
   const events = [];
   for await (const event of client(env).beta.sessions.events.list(record.session)) {
     events.push(event);

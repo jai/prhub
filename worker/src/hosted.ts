@@ -26,6 +26,7 @@ import {
 } from "./token-crypto.ts";
 import { verifySignature } from "./webhook.ts";
 import { checkAnthropicKey, createAskResources } from "./ask-setup.ts";
+import { onApiKey } from "./agent-container.ts";
 import type { IpLimit } from "./account.ts";
 
 export type HostedMode = { kind: "off" } | { kind: "on"; app: OAuthApp } | { kind: "misconfigured"; missing: string[] };
@@ -540,6 +541,9 @@ export async function anthropicKeyRoute(request: Request, env: Env, services: Ho
   if (request.method === "DELETE") {
     await account.setAnthropicKey(null, null);
     return new Response(null, { status: 204 });
+  }
+  if (!onApiKey(env)) {
+    return errorAnswer(409, "api_key_off", "AI runs on the subscription for now, so a key can't be added");
   }
   const body = (await bodyOf(request))?.value as { key?: unknown } | undefined;
   const key = typeof body?.key === "string" ? body.key.trim() : null;
