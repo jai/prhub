@@ -561,14 +561,17 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
   right closes it. In place: no sheet. A diff's Files and Key lines (`PRNavigator`) use it. It opens on Key lines when
   the PR offers them, else on Files. Where a regular width has room (`PanelStyle`), the diff's panel is a column beside
   the code instead, open until its button puts it away, and a pick in it keeps it open.
-- **A key line:** a heading line, then why it matters across the whole width. The heading holds its kind as a
-  `StatusChip` (Risk in `toneBad`; Decision, Logic quiet), its path and line (scrolling sideways, never cut), Explain
-  (`AppIcon.askAI`: Ask AI about that line, asked to explain it) and its tick. Its note under the line in the diff
-  has the same heading, with Close instead of the path and Explain.
-- **A key line's tick:** `PRKeyLineCheck`, `AppIcon.taskOpen` or `.taskDone` in `toneGood`, in its heading in Key
-  lines (last) and in its note under the line (before Close), 44 pt square. A ticked line's words fade to `PRStyle.doneOpacity` and stay, and
-  the list says how many are reviewed. Previous and Next pass over ticked lines until all are ticked. Ticks are the
-  Worker's, by head, so each device shows the same ones and a new commit starts again (docs/api.md, "Reviewed key lines").
+- **A key line:** in Key lines, a heading (its kind as a `StatusChip`: Risk in `toneBad`, Decision and Logic quiet;
+  its path and line, scrolling sideways, never cut; Explain, `AppIcon.askAI`, which asks Ask AI to explain that line;
+  its tick), then why it matters across the whole width, copied whole from its long-press menu. Its note under the
+  line in the diff: the kind and Close on top, the why (selectable, to copy), then Explain on the left and Mark
+  reviewed / Reviewed on the right, as `PRButtonStyle(.secondary)` buttons. The note stays on screen while the code
+  scrolls sideways, as threads and file headers do.
+- **A key line's tick:** `PRKeyLineCheck`, `AppIcon.taskOpen` or `.taskDone` in `toneGood`, last in its heading in
+  Key lines, 44 pt square; in the note it is the Mark reviewed button. A ticked line's words fade to
+  `PRStyle.doneOpacity` and its controls stay, and the list says how many are reviewed. Previous and Next pass over
+  ticked lines until all are ticked. Ticks are the Worker's, by head, so each device shows the same ones and a new
+  commit starts again (docs/api.md, "Reviewed key lines").
 - **A PR's checks:** each check once, as the Worker sends them (a check run again is its latest run). A name two
   workflows share says its workflow after it, quieter: "detect-changes · Test Coverage". A job's matrix legs ("visual
   proof (web 1/8)") are one line under the job's name with their count and their worst state ("visual proof · 8

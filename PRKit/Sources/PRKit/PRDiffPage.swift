@@ -118,6 +118,7 @@ struct PRDiffPage: View {
             closeNote: { session.closeKeyLine() },
             isReviewed: { session.isReviewed($0) },
             setReviewed: { session.setReviewed($1, $0) },
+            explain: session.offersAsk ? { session.explain($0, in: document) } : nil,
             setBarsHidden: { isHidden in
                 guard session.barsHidden != isHidden else {
                     return

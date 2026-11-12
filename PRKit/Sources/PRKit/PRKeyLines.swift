@@ -196,6 +196,9 @@ struct PRKeyLinesList: View {
             .accessibilityLabel("\(item.kindTitle), \(item.path):\(item.line), \(item.why)")
             .accessibilityAddTraits(isSelected ? .isSelected : [])
             .accessibilityIdentifier("key-line-\(item.id)")
+            .contextMenu {
+                Button("Copy", systemImage: AppIcon.copy.symbol) { Pasteboard.copy(item.why) }
+            }
         }
     }
 }
@@ -302,12 +305,6 @@ struct PRKeyLineCheck: View {
     let toggle: () -> Void
     let identifier: String
 
-    init(isReviewed: Bool, identifier: String, toggle: @escaping () -> Void) {
-        self.isReviewed = isReviewed
-        self.identifier = identifier
-        self.toggle = toggle
-    }
-
     init(item: PRKeyLines.Item, session: PRSession) {
         isReviewed = session.isReviewed(item)
         identifier = "key-line-reviewed-\(item.id)"
@@ -330,27 +327,25 @@ struct PRKeyLineCheck: View {
     }
 }
 
-/// Under its line in the diff, while it's the key line being looked at, with its tick: check it off where it's read.
+/// Under its line in the diff, while it's the key line being looked at: its kind and Close on top, why it matters
+/// (long-press to copy), then Explain and Reviewed, so it's checked off where it's read.
 struct PRKeyLineNote: View {
     let item: PRKeyLines.Item
-    /// Read in the body, so the note follows a tick made in the list (`DiffActions.isReviewed`).
-    let isReviewed: (PRKeyLines.Item) -> Bool
-    let setReviewed: (PRKeyLines.Item, Bool) -> Void
-    let close: () -> Void
+    /// Read in the body, so the note follows a tick made in the list.
+    let actions: DiffActions
 
     var body: some View {
-        let reviewed = isReviewed(item)
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: Space.sm) {
+        let reviewed = actions.isReviewed(item)
+        VStack(alignment: .leading, spacing: Space.sm) {
+            HStack {
                 StatusChip(text: item.kindTitle, tint: item.kindTint)
                 Spacer(minLength: 0)
-                PRKeyLineCheck(isReviewed: reviewed, identifier: "key-line-note-reviewed") {
-                    setReviewed(item, !reviewed)
-                }
-                Button("Close", systemImage: AppIcon.close.symbol, action: close)
+                Button("Close", systemImage: AppIcon.close.symbol, action: actions.closeNote)
                     .labelStyle(.iconOnly)
-                    .font(.appCaption)
+                    .font(.appFootnote)
                     .foregroundStyle(.secondary)
+                    .frame(width: PRStyle.rowHeight, height: PRStyle.rowHeight)
+                    .contentShape(.rect)
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("key-line-note-close")
             }
@@ -358,9 +353,28 @@ struct PRKeyLineNote: View {
                 .font(.appFootnote)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .opacity(reviewed ? PRStyle.doneOpacity : 1)
+                .textSelection(.enabled)
                 .accessibilityIdentifier("key-line-note")
+            HStack(spacing: Space.sm) {
+                if let explain = actions.explain {
+                    Button("Explain", systemImage: AppIcon.askAI.symbol) { explain(item) }
+                        .buttonStyle(PRButtonStyle(.secondary))
+                        .accessibilityIdentifier("key-line-note-explain")
+                }
+                Spacer(minLength: 0)
+                Button(
+                    reviewed ? "Reviewed" : "Mark reviewed",
+                    systemImage: (reviewed ? AppIcon.taskDone : AppIcon.taskOpen).symbol
+                ) { actions.setReviewed(item, !reviewed) }
+                    .buttonStyle(PRButtonStyle(.secondary))
+                    .contentTransition(.symbolEffect(.replace))
+                    .accessibilityLabel("Reviewed")
+                    .accessibilityValue(reviewed ? "checked" : "not checked")
+                    .accessibilityIdentifier("key-line-note-reviewed")
+            }
         }
-        .padding(PRStyle.inset)
+        .padding([.leading, .bottom, .trailing], PRStyle.inset)
+        .padding(.top, Space.xs)
         .prCard()
     }
 }
