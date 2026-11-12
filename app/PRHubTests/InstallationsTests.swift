@@ -24,9 +24,7 @@ struct InstallationsTests {
     }
 
     @Test func theWorkersHostedFixtureDecodesWithItsInstallations() throws {
-        let url = URL(filePath: #filePath).deletingLastPathComponent()
-            .appending(path: "../../docs/fixtures/device-config-hosted.json").standardized
-        let config = try JSONDecoder().decode(DeviceConfig.self, from: Data(contentsOf: url))
+        let config = try JSONDecoder().decode(DeviceConfig.self, from: Fixture.data("device-config-hosted.json"))
         #expect(config.hosted && config.account?.login == "octocat")
         let installations = try #require(config.installations)
         #expect(installations.map(\.account) == ["octocat", "acme"])

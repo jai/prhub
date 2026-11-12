@@ -169,6 +169,11 @@ targets:
     platform: iOS
     sources:
       - PRHubTests
+      # The worker's fixtures these tests read, in the bundle: Xcode Cloud's test Mac has no sources.
+      - path: ../docs/fixtures/device-config.json
+        buildPhase: resources
+      - path: ../docs/fixtures/device-config-hosted.json
+        buildPhase: resources
     dependencies:
       - target: PRHub
     settings:

@@ -147,7 +147,7 @@ struct PRNavigationTests {
         #expect(session.topFile == 2 && session.jump?.path == "c")
     }
 
-    @Test func viewedFromTheKeyboardMarksTheFileOnTop() async throws {
+    @Test(.enabled(if: RepoFixtures.areHere)) func viewedFromTheKeyboardMarksTheFileOnTop() async throws {
         let samples = PRSampleSet(samples: [], mergedReviewed: [], mergedMine: [], answersOnPhone: false)
         let kit = PRKitController(host: PRKitControllerTests.Host(samples: samples))
         let text = "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-x\n+y\n"

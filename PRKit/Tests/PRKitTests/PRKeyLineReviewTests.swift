@@ -5,6 +5,7 @@ import Testing
 
 /// Key lines checked off as reviewed: at once on screen, kept by the Worker so another device shows them, at one head.
 @MainActor
+@Suite(.enabled(if: RepoFixtures.areHere, "starts from docs/fixtures/detail.json"))
 struct PRKeyLineReviewTests {
     /// The Worker's `key-lines-reviewed` route, as docs/api.md has it, or a Worker that refuses or lacks it.
     final class Worker: Sendable {

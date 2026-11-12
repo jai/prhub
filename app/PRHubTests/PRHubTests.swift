@@ -68,9 +68,7 @@ struct PRHubTests {
     }
 
     @Test func theWorkersFixtureDecodes() throws {
-        let url = URL(filePath: #filePath).deletingLastPathComponent()
-            .appending(path: "../../docs/fixtures/device-config.json").standardized
-        let config = try JSONDecoder().decode(DeviceConfig.self, from: Data(contentsOf: url))
+        let config = try JSONDecoder().decode(DeviceConfig.self, from: Fixture.data("device-config.json"))
         #expect(config.features == [.keyLines, .rewrite, .push])
         #expect(config.login == "alex" && config.orgs == ["acme"])
     }
