@@ -140,6 +140,10 @@ final class PictureTextView: UITextView {
         send?()
     }
 
+    private var clipboardHasOnlyPictures: Bool {
+        pastePicture != nil && UIPasteboard.general.hasImages && !UIPasteboard.general.hasStrings
+    }
+
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         if action == #selector(paste(_:)), clipboardHasOnlyPictures {
             return true
