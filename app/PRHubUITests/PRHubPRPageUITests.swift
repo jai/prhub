@@ -140,7 +140,8 @@ final class PRHubPRPageUITests: XCTestCase {
         now.tap()
         XCTAssertTrue(waitFor(timeout: 1) { !now.exists }, "the box closes at once")
         let words = app.staticTexts["pr-review-toast-words"]
-        XCTAssertTrue(words.waitForExistence(timeout: 2), "the toast follows the comment")
+        // A CI simulator can take seconds to draw it; the samples answer at once, so it may show the outcome already.
+        XCTAssertTrue(words.waitForExistence(timeout: 10), "the toast follows the comment")
         // The samples answer at once, so it may already have landed.
         XCTAssertTrue(["Posting comment…", "Comment posted"].contains(words.label), words.label)
         try? picture("diff-toast-comment")
