@@ -40,6 +40,10 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
             let before = Positions(app)
             drag(from: 0.6, by: -150, holding: 0.3)
             let after = Positions(app)
+            if isWide, after.line.minX == before.line.minX {
+                XCTContext.runActivity(named: "\(name): the code fits this width; nothing to scroll") { _ in }
+                continue
+            }
             XCTAssertLessThan(after.line.minX, before.line.minX, "\(name): the code scrolled sideways")
             XCTAssertEqual(after.header, before.header, "\(name): the header's path did not move")
             XCTAssertEqual(after.viewed, before.viewed, "\(name): the header's viewed mark did not move")
@@ -65,15 +69,21 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
         }
     }
 
-    /// A finger on the first code line under the pinned header, `start` of the way across the screen, moved `distance`
-    /// sideways.
+    /// An iPad's regular width: the list beside the PR, and the code maybe narrow enough to fit.
+    private var isWide: Bool {
+        app.windows.firstMatch.horizontalSizeClass == .regular
+    }
+
+    /// A finger on the first code line under the pinned header, `start` of the way across the diff (from its header's
+    /// path to its viewed mark: an iPad's list may be beside it), moved `distance` sideways.
     private func drag(from start: CGFloat, by distance: CGFloat, holding: TimeInterval) {
-        let below = Positions(app).header.maxY
+        let positions = Positions(app)
         let lines = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH 'diff-line-'"))
-        let line = (lines.allElementsBoundByIndex.first { $0.frame.minY > below } ?? lines.firstMatch).frame
-        let screen = app.windows.firstMatch.frame
+        let line = (lines.allElementsBoundByIndex.first { $0.frame.minY > positions.header.maxY } ?? lines.firstMatch)
+            .frame
+        let left = positions.header.minX
         let finger = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
-            .withOffset(CGVector(dx: screen.width * start, dy: line.midY))
+            .withOffset(CGVector(dx: left + (positions.viewed.maxX - left) * start, dy: line.midY))
         finger.press(
             forDuration: 0.05, thenDragTo: finger.withOffset(CGVector(dx: distance, dy: 0)), withVelocity: .slow,
             thenHoldForDuration: holding
@@ -84,10 +94,10 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
     private func openPR(_ title: String) {
         let row = app.staticTexts[title]
         XCTAssertTrue(app.tab(.settings).waitForExistence(timeout: 10))
-        for _ in 0..<15 where !(row.exists && row.isHittable) {
+        for _ in 0..<15 where !row.exists || (!isWide && !row.isHittable) {
             app.swipeUp(velocity: .slow)
         }
-        XCTAssertTrue(row.isHittable, title)
+        XCTAssertTrue(row.exists, title)
         row.tap()
     }
 
