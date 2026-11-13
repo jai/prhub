@@ -32,6 +32,22 @@ enum PRReviewAction {
         }
     }
 
+    /// The words once it is your standing review. Comment never stands: it is not a verdict.
+    var doneTitle: String? {
+        switch self {
+        case .approve: "Approved"
+        case .requestChanges: "Changes requested"
+        case .comment: nil
+        }
+    }
+
+    func isYours(_ review: PRJaiReview?) -> Bool {
+        switch (self, review) {
+        case (.approve, .approved), (.requestChanges, .changesRequested): true
+        default: false
+        }
+    }
+
     var identifier: String {
         switch self {
         case .approve: "pr-review-approve"
@@ -56,9 +72,11 @@ enum PRReviewAction {
 
 /// The review buttons as one bar across the width they are given, each the same width. When one's words don't fit,
 /// all of them show their icons instead, together; each keeps its words as its accessibility label. The author can only
-/// comment on their own PR.
+/// comment on their own PR. Your standing review is chosen: its tone's ground, its icon and what you did. Another tap
+/// still opens its box, to send it again or change it.
 struct PRReviewBar: View {
     let isAuthor: Bool
+    var yourReview: PRJaiReview?
     let open: (PRReviewAction) -> Void
 
     var body: some View {
@@ -81,9 +99,13 @@ struct PRReviewBar: View {
     }
 
     private func button(_ action: PRReviewAction, showsWords: Bool) -> some View {
-        Button { open(action) } label: {
+        let isYours = action.isYours(yourReview)
+        return Button { open(action) } label: {
             Group {
-                if showsWords {
+                if showsWords, isYours, let done = action.doneTitle {
+                    Label(done, systemImage: action.icon.symbol)
+                        .lineLimit(1)
+                } else if showsWords {
                     Text(action.title)
                         .lineLimit(1)
                 } else {
@@ -92,10 +114,12 @@ struct PRReviewBar: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .buttonStyle(PRButtonStyle(action == .approve ? .primary : .secondary, inset: PRStyle.barButtonInset))
+        .buttonStyle(PRButtonStyle(isYours ? .chosen : .secondary, inset: PRStyle.barButtonInset))
         .tint(action.tone)
-        .accessibilityLabel(action.title)
+        .accessibilityLabel(isYours ? action.doneTitle ?? action.title : action.title)
+        .accessibilityAddTraits(isYours ? .isSelected : [])
         .accessibilityIdentifier(action.identifier)
+        .animation(AppMotion.swap, value: isYours)
     }
 }
 
@@ -108,7 +132,7 @@ struct PRReviewActions: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
             PRPendingComments(count: session.drafts.count)
-            PRReviewBar(isAuthor: isAuthor) { next in
+            PRReviewBar(isAuthor: isAuthor, yourReview: session.yourReview) { next in
                 withAnimation(AppMotion.fold) { action = action == next ? nil : next }
             }
             if let notice = session.notice {

@@ -17,6 +17,8 @@ extension PRSession {
     /// Why key lines are off and how to turn them on, while they are (`PRKitConfiguration.keyLinesHint`).
     var keyLinesHint: PREmptyHint? { offersKeyLines ? nil : model.configuration.keyLinesHint }
     var offersAsk: Bool { model.configuration.isOn(.askAI) }
+    /// Your standing review, which the review bar shows as chosen.
+    var yourReview: PRJaiReview? { model.yourReview(on: ref) }
     var offersRewrite: Bool { model.configuration.isOn(.rewrite) }
 
     /// Previous or next key line not yet checked off, going round; every one once all are. With none selected, next
