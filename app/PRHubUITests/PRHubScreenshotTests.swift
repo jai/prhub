@@ -23,6 +23,20 @@ final class PRHubScreenshotTests: XCTestCase {
         }
     }
 
+    func testWideListSeparationInEveryLook() throws {
+        defer { XCUIDevice.shared.orientation = .portrait }
+        XCUIDevice.shared.orientation = .landscapeLeft
+        for look in Look.allCases {
+            launch(look, ["-PRHubPaired"])
+            let checkout = app.staticTexts["Show a retry button when checkout fails"]
+            XCTAssertTrue(checkout.waitForExistence(timeout: 10))
+            try picture("2-list-wide", look)
+            checkout.tap()
+            XCTAssertTrue(app.buttons["pr-review-changes"].waitForExistence(timeout: 5))
+            try picture("3-pr-wide", look)
+        }
+    }
+
     private func launch(_ look: Look, _ arguments: [String]) {
         app.launch(
             arguments + (look == .largeText

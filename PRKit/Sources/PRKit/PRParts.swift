@@ -3,6 +3,21 @@ import PRKitDesign
 import SwiftUI
 
 extension View {
+    package func sidebarSurface() -> some View {
+        background {
+            Color.groundPage
+                .ignoresSafeArea()
+                .shadow(color: Color.scrim, radius: Space.sm, x: Space.xxs)
+        }
+        .overlay(alignment: .trailing) {
+            Color.line
+                .frame(width: PRStyle.hairline)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+
     /// The box every comment and section sits in. It clips, so what opens inside it slides in from under the header.
     public func prCard() -> some View {
         frame(maxWidth: .infinity, alignment: .leading)

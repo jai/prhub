@@ -93,6 +93,7 @@ public struct FeatureRequestsView: View {
             // The app's readable width is the window's; this column is narrower than it.
             .contentMargins(.horizontal, 0, for: .scrollContent)
             .navigationTitle("Feedback")
+            .sidebarSurface()
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button("New feedback", systemImage: AppIcon.compose.symbol) {

@@ -210,7 +210,7 @@ Every colour is a role in `PRKitDesign/AppColor.swift`. Views use the role, neve
 | Accent | `.tint`, `Color.accentColor` | controls only: buttons, tab selection, a focused field's ring. Never a row's content |
 | Ground | `Color.groundPage`, `Color.groundCard` | the page, and a block or box on it. Both, always: `.background` is black on black in dark |
 | Fill | `Color.groundFill` | behind a field or a quiet button |
-| Line | `Color.line` | a box's hairline border |
+| Line | `Color.line` | a box's hairline border, or the edge between sidebar and detail |
 | Scrim | `Color.scrim` | the dim under a side panel |
 | Linear | `LinearMark`; a state's own colour from Linear's API | the mark and circle only, never words |
 
@@ -273,12 +273,13 @@ text; an icon is centred in it, so a wide icon never moves the title), **text**,
 Text stays at the avatar's width plus 12, so a part that sits at the text column follows the avatar when the text
 grows.
 
-Division has three levels, one signal each. No other lines, boxes or shadows.
+Division follows these boundaries. Keep edges quiet and continuous.
 
 | Between | Signal |
 |---|---|
 | Sections | the section's title, on the page's grey |
 | Blocks | a band of the page's grey, 8 pt, across the whole width |
+| Sidebar and detail | a trailing `Color.line` hairline extending through the safe areas, with a soft `Color.scrim` shadow (`Space.sm` radius, `Space.xxs` offset) |
 | A PR and its tickets | the rail: a line from the first avatar, turning right to each ticket |
 
 Rows and blocks go to the screen's edges; their corners are square. A list with notes scrolls in a plain `VStack`: a
@@ -599,7 +600,7 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
 - **Don't** write a near-copy of a part. Extend the part.
 - **Don't** put a status anywhere but its part.
 - **Don't** use the accent for a link in a row. Position says it is a link.
-- **Don't** add a line, box or shadow to separate things. There are three divisions.
+- **Don't** add lines, boxes or shadows beyond the boundaries in Layout.
 - **Don't** use the system's colours (`.green`, `.orange`, `.red`) for a state. Use its tone.
 - **Don't** use `.bordered`, `.borderedProminent` or `.textFieldStyle(.roundedBorder)`. They read as stock.
 - **Don't** use a list's swipe for a row: rows sit in a plain stack. `PRSwipeRow` is the one swipe, and it pans only
