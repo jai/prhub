@@ -10,6 +10,7 @@ import {
   aiConfigOf, askConfigured, deviceConfig, featureKitConfigured,
 } from "./config";
 import { makesAnswers } from "./agent-container";
+import { askEvent } from "./ask-trace";
 import { AgentContainer } from "./agent-container-object";
 import { aiJobs, askQueue, type Env, githubLogin, isSet, prIndex, scopedKey } from "./env";
 import { aiStoreKey, isStaleFailure } from "./ai-run";
@@ -290,7 +291,11 @@ async function askRoute(
     claim: (key) => prIndex(env).claimWrite(key, Date.now()),
     finish: (key, sent) => prIndex(env).finishWrite(key, sent, Date.now()),
     limited: (key) => personLimitAnswer(env, [LimitName.AskQuestionsPerHour, LimitName.AskQuestionsPerDay], key),
-    queue: (stored) => askQueue(env).queueAsk(stored, pr, userId),
+    queue: async (stored) => {
+      const view = await askQueue(env).queueAsk(stored, pr, userId);
+      askEvent(stored ? "queued" : "received", question.id, { pr, user_id: userId, repeat: stored === null });
+      return view;
+    },
     busy: busyAnswer,
   }, question, receipt);
 }

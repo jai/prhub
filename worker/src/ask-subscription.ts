@@ -1,6 +1,7 @@
 // Ask on a subscription (docs/api.md, "AI on a subscription"): each question is one Agent SDK turn in the container, on a
 // checkout of the PR at its head. The chat the phone reads and the session's transcript live in R2, so any container can
 // take the next question.
+import { AskFailure, askEvent, errorWords, failedLine, sideOf } from "./ask-trace.ts";
 import { type AgentAnswer, askContainer } from "./agent-container.ts";
 import { type AskChat, type AskInput, type AskMessage, askPrompt, askRecordKey } from "./ask-chat.ts";
 import type { AskGrant } from "./app-token.ts";
@@ -89,25 +90,34 @@ export async function askOnSubscription(
     system: () => Promise<string>; grant: () => Promise<AskGrant>; diff: () => Promise<string>; budgetUsd: number;
     /** Whether the token is read only by how it was made: only then may the agent's tools reach GitHub with it. */
     readOnly: boolean; now?: () => number;
+    /** The turn's id, the question's own: its `ask_event` lines and its failure line carry it. */
+    turn?: string;
   },
 ): Promise<void> {
   const now = services.now ?? Date.now;
+  const turn = services.turn ?? crypto.randomUUID();
+  const started = now();
+  const trace = { pr: `${repo}#${number}`, user_id: env.SIGNED_IN_USER_ID ?? null };
   const key = askRecordKey(repo, number, env);
   const stored = await (await env.DIFFS.get(key))?.json<unknown>();
   const known = isSubscriptionRecord(stored) && sameChoice(stored.choice ?? BUILT_IN_DEFAULTS.ask, choice) ? stored : null;
+  // A turn a deploy cut short runs again from the queue: its question is already in the chat, so it is not added twice.
+  const resumed = known?.messages.some((message) => message.id === turn) ?? false;
   const asked: AskMessage = {
-    id: crypto.randomUUID(), role: "you", text: input.question,
+    id: turn, role: "you", text: input.question,
     anchor: input.anchor ? `${input.anchor.path}:${input.anchor.line}` : null,
   };
+  askEvent(resumed ? "resumed" : "handed_over", turn, { ...trace, model: choice.model, effort: choice.effort });
   let record: SubscriptionRecord = {
     kind: "subscription", session: known?.session ?? null, head: input.head, choice,
-    messages: [...(known?.messages ?? []), asked], workingSince: now(), problem: null,
+    messages: resumed ? known!.messages : [...(known?.messages ?? []), asked], workingSince: now(), problem: null,
     costCents: known?.costCents ?? null, model: known?.model ?? null,
   };
   await env.DIFFS.put(key, JSON.stringify(record));
   try {
     const entries = record.session ? await (await env.DIFFS.get(transcriptKey(repo, number, env)))?.json<unknown[]>() : [];
-    const grant = await services.grant();
+    const grant = await grantWithRetry(services.grant);
+    askEvent("grant", turn, { ...trace, ms: now() - started, read_only: services.readOnly, repos: grant.repos?.length ?? null });
     const answer = await askContainer<AskAnswer>("/ask", JSON.stringify({
       system: await services.system(), prompt: `${DIFF_NOTE}\n${askPrompt(input, null)}`, model: choice.model, effort: choice.effort,
       scope: env.SIGNED_IN_USER_ID ?? "self", repo, number,
@@ -116,8 +126,9 @@ export async function askOnSubscription(
       budgetUsd: services.budgetUsd,
     }), env.AGENT!, undefined, askInstance(env));
     if (answer.error) {
-      throw new Error(answer.error);
+      throw new AskFailure(MODEL_TROUBLE.test(answer.error) ? "model" : "container", answer.error);
     }
+    askEvent("container", turn, { ...trace, ms: now() - started, subtype: answer.subtype ?? null, tools: answer.tools ?? null });
     if (answer.session && answer.entries) {
       await env.DIFFS.put(transcriptKey(repo, number, env), JSON.stringify(answer.entries));
     }
@@ -134,11 +145,30 @@ export async function askOnSubscription(
       effort: choice.effort, session: record.session, cost_cents: spent, read_only: services.readOnly,
       reachable: grant.repos?.length ?? null, tools: answer.tools ?? null,
     });
+    askEvent("answered", turn, { ...trace, ms: now() - started, model: record.model, cost_cents: spent });
   } catch (error) {
-    record = { ...record, workingSince: null, problem: "The AI couldn't be reached. Ask again." };
-    console.error("ask on subscription failed", error);
+    record = { ...record, workingSince: null, problem: failedLine(error, turn) };
+    askEvent("failed", turn, { ...trace, ms: now() - started, side: sideOf(error), reason: errorWords(error),
+      status: error instanceof AskFailure ? error.status : null });
+    console.error("ask on subscription failed", errorWords(error), error);
   }
   await env.DIFFS.put(key, JSON.stringify(record));
+}
+
+/** What the model's side says when it, not the container, stopped the turn. */
+const MODEL_TROUBLE = /usage limit|rate.?limit|overloaded|\b(429|529)\b|credit|invalid.*(token|api key)|authentication/i;
+
+/** GitHub's token for the turn: a refusal says why at once; anything else, a blip, gets one more try. */
+async function grantWithRetry(grant: () => Promise<AskGrant>): Promise<AskGrant> {
+  try {
+    return await grant();
+  } catch (error) {
+    if (error instanceof AskFailure) {
+      throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    return grant();
+  }
 }
 
 /** The PR's title, author, branches, link, state and description, as the token reads them; null when GitHub won't say. */
