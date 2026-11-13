@@ -52,9 +52,18 @@ extension PRSession {
     func retryAsk() async {
         if case let .failed(question, _) = askSend {
             await send(question)
-        } else if let words = askChat?.unsentQuestion, let head = content?.detail.head {
-            await send(PRAskQuestion(question: words, head: head, anchor: nil))
+        } else if let failed = askChat?.unsentQuestion, let head = content?.detail.head {
+            await send(PRAskQuestion(question: failed.text, head: head, anchor: failed.askedAbout))
         }
+    }
+
+    /// A failed question's words back in the box, to change before they go again. Sent, they take its place.
+    func editFailedAsk() {
+        guard let failed = askChat?.unsentQuestion else {
+            return
+        }
+        askDraft = failed.text
+        askAnchor = failed.askedAbout ?? askAnchor
     }
 
     private func send(_ question: PRAskQuestion) async {
@@ -108,11 +117,23 @@ extension PRSession {
 }
 
 extension PRAskChat {
-    /// The question the Worker kept but could not hand to the agent (`worker/src/ask-queue.ts`), for Try again.
-    var unsentQuestion: String? {
-        guard !isWorking, problem != nil, let last = messages.last, last.isJai, last.id.hasPrefix("queued:") else {
+    /// The last question when it got no answer: one the Worker could not hand to the agent (`ask-queue.ts`), or a turn
+    /// that failed (`ask-subscription.ts`). Retry sends its words again, and the Worker puts them in its place.
+    var unsentQuestion: Message? {
+        guard !isWorking, problem != nil, let last = messages.last, last.isJai else {
             return nil
         }
-        return last.text
+        return last
+    }
+}
+
+extension PRAskChat.Message {
+    /// The line a question was about, from its `path:line` and side, so a Retry asks about the same line.
+    var askedAbout: PRAskQuestion.Anchor? {
+        guard let anchor, let colon = anchor.lastIndex(of: ":"),
+              let line = Int(anchor[anchor.index(after: colon)...]) else {
+            return nil
+        }
+        return PRAskQuestion.Anchor(path: String(anchor[..<colon]), line: line, side: side ?? PRDiffSide.right.rawValue)
     }
 }

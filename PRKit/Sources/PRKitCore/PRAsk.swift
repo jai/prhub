@@ -34,12 +34,15 @@ public struct PRAskChat: Decodable, Equatable, Sendable {
         public let role: String
         public let text: String
         public let anchor: String?
+        /// The anchored line's side, `LEFT` (old) or `RIGHT` (new); absent on older Workers and on whole-PR questions.
+        public let side: String?
 
-        public init(id: String, role: String, text: String, anchor: String?) {
+        public init(id: String, role: String, text: String, anchor: String?, side: String? = nil) {
             self.id = id
             self.role = role
             self.text = text
             self.anchor = anchor
+            self.side = side
         }
 
         public var isJai: Bool { role == "you" }

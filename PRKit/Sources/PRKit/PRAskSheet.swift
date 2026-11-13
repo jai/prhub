@@ -119,15 +119,23 @@ struct PRAskSheet: View {
     }
 
     /// Why a question didn't go, and the way to send it again.
+    /// The reason is the Worker's own, technical (side, status, words, turn id): selectable, to paste to an agent.
     private func failure(_ reason: String) -> some View {
         VStack(alignment: .trailing, spacing: Space.xs) {
             Text(reason)
                 .font(.appFootnote)
                 .foregroundStyle(Color.toneBad)
                 .multilineTextAlignment(.trailing)
-            Button("Try again", systemImage: AppIcon.refresh.symbol) { retry() }
-                .buttonStyle(PRButtonStyle(.secondary))
-                .accessibilityIdentifier("pr-ask-retry")
+                .textSelection(.enabled)
+                .accessibilityIdentifier("pr-ask-failed-reason")
+            HStack(spacing: Space.sm) {
+                Button("Edit", systemImage: AppIcon.compose.symbol) { editFailed() }
+                    .buttonStyle(PRButtonStyle(.secondary))
+                    .accessibilityIdentifier("pr-ask-edit")
+                Button("Retry", systemImage: AppIcon.refresh.symbol) { retry() }
+                    .buttonStyle(PRButtonStyle(.secondary))
+                    .accessibilityIdentifier("pr-ask-retry")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
         .padding(.horizontal, PRStyle.inset)
@@ -203,6 +211,17 @@ struct PRAskSheet: View {
 
     private func retry() {
         Task { await session.retryAsk() }
+    }
+
+    /// The failed question's words back in the box, to change before they go again.
+    private func editFailed() {
+        if case let .failed(question, _) = session.askSend {
+            session.askDraft = question.question
+            session.askAnchor = question.anchor ?? session.askAnchor
+        } else {
+            session.editFailedAsk()
+        }
+        isWriting = true
     }
 }
 
