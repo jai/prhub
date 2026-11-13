@@ -1,5 +1,5 @@
-# The Worker and the relay: tests, typecheck and a bundle on every pull request and push to main, and the scrub that
-# keeps private names and values out of this public repo.
+# The Worker, the AI container's read tools and the relay: tests, typecheck and a bundle on every pull request and push
+# to main, and the scrub that keeps private names and values out of this public repo.
 name: worker
 
 on:
@@ -58,6 +58,23 @@ jobs:
               wrangler.template.jsonc > wrangler.jsonc
       - name: wrangler deploy --dry-run (hosted)
         run: npx wrangler deploy --dry-run --outdir dist-hosted --config ../deploy/hosted/wrangler.jsonc
+
+  agent:
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: agent/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      # Ask's read tools: the hook allows reads and denies writes, pushes and other methods.
+      - run: npm test
 
   relay:
     runs-on: ubicloud-standard-2

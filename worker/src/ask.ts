@@ -3,10 +3,10 @@ import { askPrompt, askRecordKey, chatOf, QUESTION } from "./ask-chat";
 import type { AskChat, AskInput } from "./ask-chat";
 import { type Env, isSet } from "./env";
 import { prId, type RepoFullName } from "./ids";
-import { askRepoToken, InstallationTokenRefused } from "./app-token";
+import { askGitHubReach, askGrant, askRepoToken, InstallationTokenRefused } from "./app-token";
 import { onApiKey, onSubscription } from "./agent-container";
-import { askSystemPrompt } from "./ask-setup";
-import { askOnSubscription, isSubscriptionRecord, prDiff, subscriptionChat } from "./ask-subscription";
+import { askSubscriptionPrompt } from "./ask-setup";
+import { askOnSubscription, isSubscriptionRecord, prDiff, prFacts, subscriptionChat } from "./ask-subscription";
 import { askBudgetOf, limitsOf } from "./limits";
 import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models";
 
@@ -130,11 +130,15 @@ export async function askChat(repo: RepoFullName, number: number, env: Env): Pro
  */
 export async function ask(repo: RepoFullName, number: number, input: AskInput, choice: ModelChoice, env: Env): Promise<void> {
   if (onSubscription(env)) {
-    const token = () => askRepoToken(repo, number, env).catch((error: unknown) => {
+    const grant = () => askGrant(repo, number, env).catch((error: unknown) => {
       throw error instanceof InstallationTokenRefused ? new AskRefused(error.message) : error;
     });
+    const reach = askGitHubReach(env);
     return askOnSubscription(repo, number, input, choice, env, {
-      system: askSystemPrompt(env.GITHUB_LOGIN ?? null, "subscription"), token, diff: () => prDiff(repo, number, input.head, env),
+      system: async () => askSubscriptionPrompt({
+        reviewer: env.GITHUB_LOGIN ?? null, repo, number, pr: await prFacts(repo, number, env), reach,
+      }),
+      grant, readOnly: reach !== "none", diff: () => prDiff(repo, number, input.head, env),
       budgetUsd: askBudgetOf(limitsOf(env)) / 100,
     });
   }

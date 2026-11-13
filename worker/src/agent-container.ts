@@ -42,13 +42,14 @@ const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  */
 export async function askContainer<Answer extends { error?: string }>(
   path: "/run" | "/ask", body: string, agent: NonNullable<Env["AGENT"]>, wait: (ms: number) => Promise<void> = pause,
+  instance = "ai",
 ): Promise<Answer> {
   let failure = "";
   for (let tryNumber = 1; tryNumber <= CONTAINER_TRIES; tryNumber++) {
     let response: Response;
     let text: string;
     try {
-      response = await agent.get(agent.idFromName("ai")).fetch(`http://agent${path}`, {
+      response = await agent.get(agent.idFromName(instance)).fetch(`http://agent${path}`, {
         method: "POST", headers: { "content-type": "application/json" }, body,
       });
       text = await response.text();
