@@ -187,6 +187,8 @@ checked on every run: [`row.json`](fixtures/row.json), [`merged-row.json`](fixtu
   `requestedAt` (when review was last asked of the user himself, null for a team's request) and `reviewDueAt` are on
   `review` rows alone, `mergedAt` on `merged` rows alone. A stored status that no longer parses is
   served as `status: null`.
+- An open row's `status.draft` says whether the PR is a draft. A row stored before it was kept has none: not known
+  until the PR is read again.
 - A detail's `merge` (`clean`, `behind`, `blocked`, `conflicting`, `unstable`, `unknown`) and `review` (`approved`,
   `changes_requested`, `required`, `none`) are worked out as the row's are, so the two never disagree: a conflict wins
   over a merge state that lags, and a draft is `blocked`. `mergeState` (GitHub's raw value) and `reviewDecision` stay
@@ -224,6 +226,11 @@ and `unanswered` for one GitHub would not answer for. A state holds `title`, `st
 `review_due_at` is when Jai's review is due by the SLA (`REVIEW_SLA_*`), ISO 8601 in UTC (`2026-11-09T03:00:00Z`), the
 same time as a review row's `reviewDueAt`. It is null unless `jai_review_requested` is true, when only a team was
 asked, and when the SLA is unset.
+
+The PR index reads them, with its own cache of `.policy.yml` texts and team and org memberships, so a repeat from any
+isolate is a cache hit or a free `304`. Each answer's `Server-Timing: github;desc="github calls";dur=<n>` counts the
+GitHub calls it made (GraphQL and `304`s included). While the token's hour is below its reserve it answers `502`
+rather than spend the rest.
 
 ## Configuration
 

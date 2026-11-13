@@ -134,6 +134,7 @@ const COMMON_STATUS = {
   merge: z.enum(PULL_REQUEST_MERGE_STATES),
   jaiReview: NULLABLE_TEXT,
   jaiReviewedAt: NULLABLE_TEXT,
+  draft: z.boolean().optional(),
 };
 
 /**

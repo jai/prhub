@@ -142,6 +142,8 @@ interface CommonStatus {
   /** Jai's own latest review that counts (`jaiReview`), its state lowercased. */
   jaiReview: string | null;
   jaiReviewedAt: string | null;
+  /** A draft PR. Absent on a row stored before it was kept: read as not known. */
+  draft?: boolean;
 }
 
 /**
@@ -706,10 +708,13 @@ export function pullRequest(
     version,
     updatedAt: node.updatedAt,
     people,
-    status: list && rowStatus(
-      list, node.author?.login ?? null, checks, review, merge, jaiReview(node, login), reviewDueAt(requestedAt, week),
-      requestedAt,
-    ),
+    status: list && {
+      ...rowStatus(
+        list, node.author?.login ?? null, checks, review, merge, jaiReview(node, login), reviewDueAt(requestedAt, week),
+        requestedAt,
+      ),
+      draft: node.isDraft,
+    },
     requestedAt,
     ticketKeys,
     tickets: [],

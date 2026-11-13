@@ -14,6 +14,7 @@
     "merge": "blocked",
     "jaiReview": null,
     "jaiReviewedAt": null,
+    "draft": false,
     "requestedAt": "2026-11-06T03:00:00Z",
     "reviewDueAt": "2026-11-09T03:00:00Z"
   },

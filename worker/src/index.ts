@@ -573,7 +573,7 @@ export async function serveOwner(
     return finishAppCreation(searchParams, env);
   }
   if (pathname === "/prs/states" && request.method === "POST") {
-    return hasToken(request, env.HUB_TOKEN) ? statesRoute(request, env, reviewWeek(env))
+    return hasToken(request, env.HUB_TOKEN) ? statesRoute(request, reviewWeek(env), (refs, week) => prIndex(env).states(refs, week))
       : new Response("unauthorized\n", { status: 401 });
   }
   if (!isHostAuthorized && !(await isAuthorized(request, env))) {

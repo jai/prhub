@@ -18,11 +18,12 @@ import type { SignedOutReason } from "./account-core";
 import { fingerprintOf, type PairingRecord, pairingKey, parsePairingRecord } from "./pairing";
 import {
   type ChecksNode, type Detail, detailVersionOf, liveDiff, type OpenRowStatus, type PullRequest, type PullRequestRef,
-  readChecks, readPullRequests, type RowStatus, searchListings,
+  readChecks, readPullRequests, type ReviewWeek, type RowStatus, searchListings,
 } from "./github";
 import type { ReadPullRequest } from "./alerts";
 import { patchedRead } from "./check-refresh";
 import { createGitHubCacheTable, pruneGitHubCache, sqlCache } from "./github-cache";
+import { GitHubFailure, readStates, type StatesResult } from "./pr-states";
 import {
   BUSY_WINDOW_MS, createMarkTables, type DueMark, dropMark, dueMarks, finishRead, mark, markedIds, nextDueAt,
   postpone, type Scope, throttledDue,
@@ -487,6 +488,27 @@ export class PrIndex extends DurableObject<Env> {
     }));
     if (nextAt !== null) {
       await this.ensureAlarm(Math.max(0, nextAt - now));
+    }
+  }
+
+  /**
+   * `POST /prs/states` (pr-states.ts), read here so `.policy.yml` texts and memberships come from this index's own
+   * cache: a repeat from any isolate is a hit or a free 304, not a paid REST call. Says the GitHub calls it made.
+   */
+  async states(refs: PrId[], week: ReviewWeek | null): Promise<StatesResult> {
+    const env = await this.actingEnv();
+    if (!env) {
+      return { failure: "signed out of GitHub", githubCalls: 0 };
+    }
+    const rate = env.GITHUB_RATE ?? newRateLimitState();
+    const counted = { ...env, GITHUB_RATE: rate };
+    try {
+      return { answer: await readStates(refs, week, counted, sqlCache(this.sql)), githubCalls: rate.calls };
+    } catch (failure) {
+      if (failure instanceof GitHubFailure) {
+        return { failure: failure.message, githubCalls: rate.calls };
+      }
+      throw failure;
     }
   }
 

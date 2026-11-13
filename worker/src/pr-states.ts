@@ -3,7 +3,7 @@ import {
   contextsOf, detailState, jaiReview, mergeOf, postGraphql, type RequestEvent, reviewDueAt, reviewRequestedAt,
   type ReviewWeek, verdictOf,
 } from "./github.ts";
-import { peopleOf } from "./policy-github.ts";
+import { type GitHubCache, peopleOf } from "./policy-github.ts";
 import { parseRepoFullName, prId, type PrId, type RepoFullName, repoParts } from "./ids.ts";
 import { PEOPLE_FIELDS, type PeopleDecision, type PeopleNode } from "./policy-people.ts";
 import type { ChecksSummary, MergeState, PullRequestState, ReviewState } from "./vocab.ts";
@@ -154,7 +154,7 @@ export function statesFrom(
 
 export class GitHubFailure extends Error {}
 
-async function ask(refs: PrId[], week: ReviewWeek | null, env: Env): Promise<StatesAnswer | "refused"> {
+async function ask(refs: PrId[], week: ReviewWeek | null, env: Env, cache?: GitHubCache): Promise<StatesAnswer | "refused"> {
   const { query, aliases } = statesQuery(refs);
   const response = await postGraphql(query, {}, env);
   if (!response.ok) {
@@ -164,7 +164,7 @@ async function ask(refs: PrId[], week: ReviewWeek | null, env: Env): Promise<Sta
   if (answer.data) {
     const people = new Map(await Promise.all([...aliases].map(async ([ref, [repo, pull]]) => {
       const node = answer.data?.[repo]?.[pull];
-      const decision = node ? await peopleOf(parseRef(ref)?.repo ?? "", node, env).catch(() => null) : null;
+      const decision = node ? await peopleOf(parseRef(ref)?.repo ?? "", node, env, cache).catch(() => null) : null;
       return [ref, decision] as const;
     })));
     return statesFrom(answer, aliases, await githubLogin(env), week, people);
@@ -175,15 +175,20 @@ async function ask(refs: PrId[], week: ReviewWeek | null, env: Env): Promise<Sta
   return "refused";
 }
 
-/** One PR can spoil a whole query, so a query GitHub refused outright is asked again one PR at a time, once. */
-export async function readStates(refs: PrId[], week: ReviewWeek | null, env: Env): Promise<StatesAnswer> {
-  const answer = await ask(refs, week, env);
+/**
+ * One PR can spoil a whole query, so a query GitHub refused outright is asked again one PR at a time, once. `cache`
+ * keeps `.policy.yml` texts and memberships (`policy-github.ts`): the PR index's own, so a repeat is a hit or a free 304.
+ */
+export async function readStates(
+  refs: PrId[], week: ReviewWeek | null, env: Env, cache?: GitHubCache,
+): Promise<StatesAnswer> {
+  const answer = await ask(refs, week, env, cache);
   if (answer !== "refused") {
     return answer;
   }
   const result: StatesAnswer = { states: {}, unanswered: [] };
   for (const ref of refs) {
-    const alone = await ask([ref], week, env);
+    const alone = await ask([ref], week, env, cache);
     if (alone === "refused") {
       result.unanswered.push(ref);
     } else {
@@ -194,18 +199,23 @@ export async function readStates(refs: PrId[], week: ReviewWeek | null, env: Env
   return result;
 }
 
-/** `week` is the review SLA's (`reviewWeek`), so a state's due time is the one the PRs tab's row has. */
-export async function statesRoute(request: Request, env: Env, week: ReviewWeek | null): Promise<Response> {
+/** What the PR index answers for `POST /prs/states`: the states, or GitHub's refusal; and the GitHub calls it made (304s and GraphQL included). */
+export type StatesResult = ({ answer: StatesAnswer } | { failure: string }) & { githubCalls: number };
+
+/**
+ * `week` is the review SLA's (`reviewWeek`), so a state's due time is the one the PRs tab's row has. The PR index reads
+ * them (`PrIndex.states`), with its own cache of `.policy.yml` and memberships. `Server-Timing` says the GitHub calls it made.
+ */
+export async function statesRoute(
+  request: Request, week: ReviewWeek | null, read: (refs: PrId[], week: ReviewWeek | null) => Promise<StatesResult>,
+): Promise<Response> {
   const refs = parseRefs(await request.json().catch(() => null));
   if (!refs) {
     return new Response("bad request\n", { status: 400 });
   }
-  try {
-    return Response.json(await readStates(refs, week, env));
-  } catch (failure) {
-    if (failure instanceof GitHubFailure) {
-      return Response.json({ reason: failure.message }, { status: 502 });
-    }
-    throw failure;
-  }
+  const result = await read(refs, week);
+  const headers = { "Server-Timing": `github;desc="github calls";dur=${result.githubCalls}` };
+  console.log("states_read", { prs: refs.length, github_calls: result.githubCalls, failed: "failure" in result });
+  return "answer" in result ? Response.json(result.answer, { headers })
+    : Response.json({ reason: result.failure }, { status: 502, headers });
 }
