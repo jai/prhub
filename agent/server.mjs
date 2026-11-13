@@ -6,7 +6,7 @@ import { createServer } from "node:http";
 import { promisify } from "node:util";
 import { InMemorySessionStore, query } from "@anthropic-ai/claude-agent-sdk";
 import {
-  authArgs, gitEnv, lockConfig, readOnlyHooks, readToolNames, readTools, SAFE_GIT, SERVER, vetRepo,
+  authArgs, gitEnv, lockConfig, readOnlyHooks, readToolNames, readTools, SAFE_GIT, SERVER, vetRepo, WEB_TOOLS,
 } from "./read-tools.mjs";
 
 const exec = promisify(execFile);
@@ -45,10 +45,12 @@ async function run({ system, prompt, model, effort, schema }) {
 }
 
 /**
- * Read only, and no shell: Read, Grep and Glob, and the read tools of `read-tools.mjs` (git, and with a read-only token
- * clone_repo and github_api), which this process runs. Nothing a repo says can run a command beside this container's token.
+ * Read only, and no shell: Read, Grep and Glob, the read tools of `read-tools.mjs` (git, and with a read-only token
+ * clone_repo and github_api), which this process runs, and the web, WebSearch and WebFetch, for docs, changelogs and
+ * issues. Nothing a repo says can run a command beside this container's token, and no tool reads the tokens. What the
+ * agent read can leave by a WebFetch URL: open by Jai's choice (`readOnlyHooks`).
  */
-const ASK_TOOLS = ["Read", "Grep", "Glob"];
+const ASK_TOOLS = ["Read", "Grep", "Glob", ...WEB_TOOLS];
 const WORK = "/home/agent/work";
 
 /** Git's own words on a failure, never the command line: that carries the token's header. */

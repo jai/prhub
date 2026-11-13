@@ -226,6 +226,9 @@ export function inGrant(repo, reachable) {
  * github_api pass their vetting. With `reachable` (hosted: the repos this question's token names), only those clones
  * can be read or made: one cloned while the person could see it is shut once they can't. Anything else is denied.
  */
+/** Claude Code's own web tools, which Ask may use: they fetch pages and search, and run nothing here. */
+export const WEB_TOOLS = ["WebSearch", "WebFetch"];
+
 export function readOnlyHooks(cwd, clones, reachable = null) {
   const roots = reachable ? [cwd, ...reachable.map((repo) => `${clones}/${repo}`)] : [cwd, clones];
   // No matcher: every tool comes here. A hook that fails blocks its call rather than letting it through.
@@ -244,6 +247,11 @@ export function readOnlyHooks(cwd, clones, reachable = null) {
           || (reachable !== null && isInside(clones, target) && cloneInGrant(clones, target, reachable));
         return inRoot && !escapes ? {}
           : DENY("Only the checkout and the repos you cloned can be read.");
+      }
+      // The web, open by Jai's choice (2026-11-13: "we need feature richness"): WebFetch can put what the agent read in a
+      // URL it fetches, so a prompt in a PR could send code out. The tokens can't go: no tool reads them.
+      if (WEB_TOOLS.includes(name)) {
+        return {};
       }
       const granted = (repo) => (inGrant(repo, reachable) ? null : cantAccess(repo));
       const reason = name === `mcp__${SERVER}__git`

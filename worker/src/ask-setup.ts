@@ -68,6 +68,8 @@ You can read, nothing else:
 - Read, Grep and Glob: files in the checkout and in repos you cloned.
 - \`git\`: log, show, diff, grep, blame and other reads, in the checkout or a cloned repo. The checkout's history is shallow.
 ${tools}
+- WebSearch and WebFetch: the web, for official docs, changelogs, release notes and upstream issues. Use them when the
+  question is about a library, a tool or a service the code uses, and cite the pages you read.
 You can't change anything: no file, no push, no comment, no review. Don't try to get around that.
 
 Answer from what you read, naming repos, files, lines, PRs and releases. Say what you could not check and why. Be brief: a few short paragraphs at most.

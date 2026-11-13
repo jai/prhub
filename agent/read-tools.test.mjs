@@ -82,6 +82,8 @@ test("the hook allows reads in the checkout and the clones, and denies everythin
   assert.equal(await decide(hooks, "mcp__prhub__github_api", { path: "https://evil.example/" }), "deny");
   assert.equal(await decide(hooks, "Bash", { command: "cat /proc/self/environ" }), "deny");
   assert.equal(await decide(hooks, "Write", { file_path: `${cwd}/a` }), "deny");
+  assert.equal(await decide(hooks, "WebSearch", { query: "grafana alert rule query_type" }), "allow");
+  assert.equal(await decide(hooks, "WebFetch", { url: "https://grafana.com/docs/", prompt: "summarise" }), "allow");
 });
 
 test("the git tool runs a read in the checkout, refuses a write itself, and keeps no token in what it says", async () => {
