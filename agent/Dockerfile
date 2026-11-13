@@ -4,7 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ca-certific
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && useradd -m agent && chown -R agent /app
-COPY server.mjs ./
+COPY server.mjs read-tools.mjs ./
 USER agent
 ENV HOME=/home/agent
 EXPOSE 8080

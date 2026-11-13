@@ -3,8 +3,9 @@
 // take the next question.
 import { type AgentAnswer, askContainer } from "./agent-container.ts";
 import { type AskChat, type AskInput, type AskMessage, askPrompt, askRecordKey } from "./ask-chat.ts";
+import type { PrFacts } from "./ask-setup.ts";
 import { type Env, scopedKey } from "./env.ts";
-import { liveDiff } from "./github.ts";
+import { getFromGitHub, liveDiff } from "./github.ts";
 import { isRevisionOf, type RepoFullName, type Sha } from "./ids.ts";
 import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models.ts";
 
@@ -40,7 +41,10 @@ export function isSubscriptionRecord(record: unknown): record is SubscriptionRec
   return typeof record === "object" && record !== null && (record as { kind?: unknown }).kind === "subscription";
 }
 
-/** The phone's chat from the record. */
+/**
+ * The phone's chat from the record. No cost: the subscription is billed by plan, not by question. The record keeps what
+ * the turns would have cost on the API, and each `ai_run` line logs it.
+ */
 export function subscriptionChat(record: SubscriptionRecord, now: number): AskChat {
   const lost = record.workingSince !== null && now - record.workingSince >= TURN_LOST_MS;
   const isWorking = record.workingSince !== null && !lost;
@@ -49,8 +53,7 @@ export function subscriptionChat(record: SubscriptionRecord, now: number): AskCh
     isWorking,
     activity: isWorking ? "Reading the repo" : null,
     problem: lost ? "The agent stopped before it answered. Ask again." : record.problem,
-    // Whole cents for the phone, which reads an integer; the record keeps hundredths so small turns still add up.
-    costCents: record.costCents === null ? null : Math.round(record.costCents),
+    costCents: null,
     model: record.model,
     effort: record.choice.effort,
   };
@@ -72,7 +75,9 @@ const STOPS: Record<string, string> = {
 export async function askOnSubscription(
   repo: RepoFullName, number: number, input: AskInput, choice: ModelChoice, env: Env,
   services: {
-    system: string; token: () => Promise<string>; diff: () => Promise<string>; budgetUsd: number; now?: () => number;
+    system: () => Promise<string>; token: () => Promise<string>; diff: () => Promise<string>; budgetUsd: number;
+    /** Whether the token is read only by how it was made: only then may the agent's tools reach GitHub with it. */
+    readOnly: boolean; now?: () => number;
   },
 ): Promise<void> {
   const now = services.now ?? Date.now;
@@ -92,9 +97,9 @@ export async function askOnSubscription(
   try {
     const entries = record.session ? await (await env.DIFFS.get(transcriptKey(repo, number, env)))?.json<unknown[]>() : [];
     const answer = await askContainer<AskAnswer>("/ask", JSON.stringify({
-      system: services.system, prompt: `${DIFF_NOTE}\n${askPrompt(input, null)}`, model: choice.model, effort: choice.effort,
+      system: await services.system(), prompt: `${DIFF_NOTE}\n${askPrompt(input, null)}`, model: choice.model, effort: choice.effort,
       scope: env.SIGNED_IN_USER_ID ?? "self", repo, number,
-      head: input.head, token: await services.token(), diff: await services.diff(), session: record.session, entries: entries ?? [],
+      head: input.head, token: await services.token(), readOnly: services.readOnly, diff: await services.diff(), session: record.session, entries: entries ?? [],
       budgetUsd: services.budgetUsd,
     }), env.AGENT!);
     if (answer.error) {
@@ -120,6 +125,29 @@ export async function askOnSubscription(
     console.error("ask on subscription failed", error);
   }
   await env.DIFFS.put(key, JSON.stringify(record));
+}
+
+/** The PR's title, author, branches, link, state and description, as the token reads them; null when GitHub won't say. */
+export async function prFacts(repo: RepoFullName, number: number, env: Env): Promise<PrFacts | null> {
+  try {
+    const response = await getFromGitHub(`/repos/${repo}/pulls/${number}`, env);
+    if (!response.ok) {
+      await response.body?.cancel();
+      return null;
+    }
+    const pull = await response.json() as {
+      title?: string; user?: { login?: string } | null; base?: { ref?: string }; head?: { ref?: string; label?: string };
+      html_url?: string; state?: string; merged?: boolean; draft?: boolean; body?: string | null;
+    };
+    const state = pull.merged ? "merged" : pull.draft && pull.state === "open" ? "draft" : pull.state ?? null;
+    return {
+      title: pull.title ?? "", author: pull.user?.login ?? null, base: pull.base?.ref ?? null,
+      head: pull.head?.label ?? pull.head?.ref ?? null, url: pull.html_url ?? `https://github.com/${repo}/pull/${number}`,
+      state, body: pull.body ?? "",
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** The diff the agent reads first, cut at `DIFF_KEPT` bytes. */

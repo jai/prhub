@@ -84,3 +84,19 @@ export async function askRepoToken(
   }
   return isSet(env.GITHUB_READ_TOKEN) ? env.GITHUB_READ_TOKEN : env.GITHUB_TOKEN;
 }
+
+/**
+ * What the subscription's agent may reach on GitHub with the token `askRepoToken` gives. Only a token read only by how
+ * it was made reaches past the checkout: an App's installation token, minted with `ASK_PERMISSIONS` (hosted: this repo
+ * alone, `repo`; Jai's Ask App: every repo it is installed on, `wide`), or `ASK_GITHUB_TOKEN`, set as a read-only PAT
+ * (`wide`). `GITHUB_READ_TOKEN` and `GITHUB_TOKEN` can be classic PATs that write: with either, `none`, and the agent
+ * keeps to the checkout.
+ */
+export function askGitHubReach(
+  env: Pick<Env, "SIGNED_IN_USER_ID" | "ASK_GITHUB_APP_ID" | "ASK_GITHUB_APP_KEY" | "ASK_GITHUB_TOKEN">,
+): "none" | "repo" | "wide" {
+  if (isSet(env.SIGNED_IN_USER_ID)) {
+    return "repo";
+  }
+  return (isSet(env.ASK_GITHUB_APP_ID) && isSet(env.ASK_GITHUB_APP_KEY)) || isSet(env.ASK_GITHUB_TOKEN) ? "wide" : "none";
+}

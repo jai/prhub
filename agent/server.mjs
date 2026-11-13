@@ -1,11 +1,11 @@
 // The AI container (docs/api.md, "AI on a subscription"): Claude Agent SDK runs, signed in with the Worker's
 // CLAUDE_CODE_OAUTH_TOKEN. The Worker is its only caller; nothing here reaches R2 or keeps state between runs.
 import { execFile } from "node:child_process";
-import { existsSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { isAbsolute, relative, resolve } from "node:path";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { promisify } from "node:util";
 import { InMemorySessionStore, query } from "@anthropic-ai/claude-agent-sdk";
+import { authArgs, readOnlyHooks, readToolNames, readTools, SERVER } from "./read-tools.mjs";
 
 const exec = promisify(execFile);
 
@@ -42,7 +42,10 @@ async function run({ system, prompt, model, effort, schema }) {
   };
 }
 
-/** Read only: no shell, so nothing a repo says can run a command beside this container's token. */
+/**
+ * Read only, and no shell: Read, Grep and Glob, and the read tools of `read-tools.mjs` (git, and with a read-only token
+ * clone_repo and github_api), which this process runs. Nothing a repo says can run a command beside this container's token.
+ */
 const ASK_TOOLS = ["Read", "Grep", "Glob"];
 const WORK = "/home/agent/work";
 
@@ -67,7 +70,7 @@ async function locked(dir, work) {
 
 /** PR `number` of `repo` at `head`, in `dir`: one person's own (`scope`) for that PR. The token rides one command's header and is never written to disk. */
 async function checkout(dir, repo, head, token) {
-  const auth = ["-c", `http.extraHeader=Authorization: Basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`];
+  const auth = authArgs(token);
   if (!existsSync(`${dir}/.git`)) {
     await git("init", ["init", "-q", dir]);
     await git("remote", ["-C", dir, "remote", "add", "origin", `https://github.com/${repo}.git`]);
@@ -102,63 +105,41 @@ function placeDiff(dir, diff) {
   writeFileSync(`${dir}/.git/info/exclude`, `${DIFF_FILE}\n`);
 }
 
-/** Whether `path`, symlinks followed, is inside `root`. A path that does not exist yet is judged as written. */
-function isInside(root, path) {
-  const absolute = isAbsolute(path) ? path : resolve(root, path);
-  let real = absolute;
-  try {
-    real = realpathSync(absolute);
-  } catch {}
-  const from = relative(realpathSync(root), real);
-  return from === "" || (!from.startsWith("..") && !isAbsolute(from));
-}
-
-/** Every Read, Grep and Glob stays in the checkout: nothing outside it, such as /proc, holds anything to answer from. */
-function insideOnly(cwd) {
-  return [{
-    matcher: "Read|Grep|Glob",
-    hooks: [async (input) => {
-      const { file_path: file, path, pattern, glob } = input.tool_input ?? {};
-      const target = file ?? path ?? cwd;
-      // A Glob pattern, and Grep's file filter, are paths too: absolute or climbing ones reach outside.
-      const patterns = [input.tool_name === "Glob" ? pattern : null, glob].filter((value) => typeof value === "string");
-      const escapes = patterns.some((value) => isAbsolute(value) || value.startsWith("~") || value.split(/[\\/]/).includes(".."));
-      return isInside(cwd, target) && !escapes ? {} : {
-        hookSpecificOutput: {
-          hookEventName: "PreToolUse", permissionDecision: "deny",
-          permissionDecisionReason: "Only the repository's own files can be read.",
-        },
-      };
-    }],
-  }];
-}
-
-/** The subscription token, never in an answer: a defence beside `insideOnly`. */
-function scrub(text) {
-  const token = process.env.CLAUDE_CODE_OAUTH_TOKEN;
-  return token && text ? text.split(token).join("[redacted]") : text;
+/** The subscription token and the GitHub token, never in an answer: a defence beside `readOnlyHooks`. */
+function scrub(text, ...more) {
+  return [process.env.CLAUDE_CODE_OAUTH_TOKEN, ...more].reduce(
+    (kept, secret) => (secret && kept ? kept.split(secret).join("[redacted]") : kept), text);
 }
 
 /** One Ask turn on `repo` at `head`: the answer's text, the session, and its whole transcript for the next turn. */
 const SAFE = { scope: /^[\w-]{1,64}$/, repo: /^[\w.-]+\/[\w.-]+$/, head: /^[0-9a-f]{40}$/ };
 
-async function ask({ system, prompt, model, effort, scope, repo, number, head, token, diff, session, entries, budgetUsd }) {
+async function ask({
+  system, prompt, model, effort, scope, repo, number, head, token, readOnly, diff, session, entries, budgetUsd,
+}) {
   if (!SAFE.scope.test(scope) || !SAFE.repo.test(repo) || repo.includes("..") || !Number.isInteger(number)
     || !SAFE.head.test(head)) {
     throw new Error("The question names no PR this container can check out.");
   }
   const dir = `${WORK}/${scope}/${repo}/${number}`;
+  // This person's other repos, cloned by clone_repo. GitHub owners never start with a dot, so no PR's checkout is here.
+  const clones = `${WORK}/${scope}/.clones`;
+  mkdirSync(clones, { recursive: true });
   return locked(dir, async () => {
     const cwd = await checkout(dir, repo, head, token);
     placeDiff(cwd, diff);
+    // Only a token the Worker vouches is read only reaches GitHub from the tools: anything else stays on the checkout.
+    const reads = readOnly === true ? token : null;
+    const allowed = [...ASK_TOOLS, ...readToolNames(reads !== null)];
     const store = new SeededStore(session ? entries : []);
     let result = null;
     for await (const message of query({
       prompt,
       options: {
-        systemPrompt: system, model, effort, cwd, tools: ASK_TOOLS, allowedTools: ASK_TOOLS, permissionMode: "dontAsk",
-        settingSources: [], maxTurns: 40, maxBudgetUsd: budgetUsd ?? undefined, sessionStore: store,
-        hooks: { PreToolUse: insideOnly(cwd) },
+        systemPrompt: system, model, effort, cwd, tools: ASK_TOOLS, allowedTools: allowed, permissionMode: "dontAsk",
+        mcpServers: { [SERVER]: readTools({ prDir: cwd, prRepo: repo, clones, token: reads, locked }) },
+        settingSources: [], maxTurns: 60, maxBudgetUsd: budgetUsd ?? undefined, sessionStore: store,
+        hooks: { PreToolUse: readOnlyHooks(cwd, clones) },
         resume: session ?? undefined,
       },
     })) {
@@ -171,7 +152,7 @@ async function ask({ system, prompt, model, effort, scope, repo, number, head, t
     }
     return {
       subtype: result.subtype,
-      text: typeof result.result === "string" ? scrub(result.result) : null,
+      text: typeof result.result === "string" ? scrub(result.result, token) : null,
       session: result.session_id,
       entries: store.entries,
       model: model in (result.modelUsage ?? {}) ? model : Object.keys(result.modelUsage ?? {})[0] ?? model,

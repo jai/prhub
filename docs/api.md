@@ -246,7 +246,7 @@ var reads as unset.
 | `AGENT` | container binding | `AgentContainer`, the Agent SDK container built from `agent/Dockerfile` |
 | `SUBSCRIPTION_LOGINS` | var | Hosted only: the GitHub logins, comma-separated, whose AI runs on `CLAUDE_CODE_OAUTH_TOKEN`. Unset: nobody's |
 | `ASK_AGENT_ID`, `ASK_ENVIRONMENT_ID`, `ASK_VAULT_ID`, `ASK_CREDENTIAL_ID` | var | From `npm run ask-agent` |
-| `ASK_GITHUB_TOKEN` | secret | A read-only PAT for Ask's agent; unset, it gets `GITHUB_READ_TOKEN`, else `GITHUB_TOKEN` |
+| `ASK_GITHUB_TOKEN` | secret | A read-only PAT for Ask's agent; unset, it gets `GITHUB_READ_TOKEN`, else `GITHUB_TOKEN`. On a subscription, only it or the Ask App lets the agent clone other repos and read GitHub's API |
 | `ASK_GITHUB_APP_ID`, `ASK_GITHUB_APP_KEY` | secret | A GitHub App that mints a read-only token per question; wins over the PATs. The key is PKCS#8 (`BEGIN PRIVATE KEY`); GitHub's download is PKCS#1, so pipe it through `openssl pkcs8 -topk8 -nocrypt` |
 | `AI_MODELS_ALLOWED` | var | Models the app may pick, comma-separated, from `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`. Unset: all three |
 | `AI_EFFORT_MAX` | var | Highest effort offered: `low`, `medium` or `high`. Unset: `high`; nothing goes above it |
@@ -311,7 +311,7 @@ network, a timeout, a `5xx` or `429`) again rather than showing it.
 **Ask sessions.** A Managed Agents session's model and effort are fixed when it starts; they can't change per message.
 So a question at another model or effort than the PR's current session starts a new session, and the chat the app
 shows is that new one; the earlier conversation is no longer shown. `GET …/ask` reports the session's `model` and
-`effort` beside `costCents`.
+`effort` beside `costCents` (`null` on a subscription, which is billed by plan).
 
 **Asking.** `POST …/ask` stores the question and answers `202` with the chat as `GET …/ask` last read it, the question
 at its end and `isWorking` true. It never waits on GitHub or the agent: the person's ask queue (an `AiJobs` object of
@@ -326,7 +326,8 @@ and stores nothing.
 
 With `CLAUDE_CODE_OAUTH_TOKEN` set and `AGENT` bound, key lines, rewrites and Ask run in a container with the Claude
 Agent SDK (`agent/`), signed in to a Claude subscription, instead of on the Messages API and Managed Agents. The answer, the model and effort
-choice, and the stored shape are the same; `costCents` is what the run would have cost on the API.
+choice, and the stored shape are the same. A key lines or rewrite answer's `costCents` is what the run would have
+cost on the API; Ask's chat has `costCents` `null`, so the app shows no cost, and the API cost goes to `ai_run` alone.
 
 - Key lines are made ahead for each new head of every open PR on the person's lists: the review list five a pass;
   reviewed and mine one a pass, and only while the GitHub token's hour is above its reserve, since each run reads every
@@ -334,11 +335,35 @@ choice, and the stored shape are the same; `costCents` is what the run would hav
   ([Alerts](#alerts)). On an API key they are made only when the app asks.
 - Each run, on either path, logs one `ai_run` line: `feature`, `repo`, `number`, `auth` (`subscription` or
   `api_key`), `user_id`, `model`, `effort`, `input_tokens`, `output_tokens`, `cost_cents`.
-- Ask: each question is one Agent SDK turn on a checkout of the PR at its head, fetched with the same read-only
-  token as on Managed Agents, with the PR's diff beside it as `.prhub-pr.diff` (the first 400,000 characters). The agent
-  reads and searches files only: no shell and no GitHub API. The chat is kept in
-  R2 at `ask/<repo>/<n>.json` and the session's transcript at `ask-sessions/<repo>/<n>.json`, so the next question
-  resumes it in any container. A question at another model or effort starts a new chat.
+- Ask: each question is one Agent SDK turn on a checkout of the PR at its head, fetched with the same token as on
+  Managed Agents, with the PR's diff beside it as `.prhub-pr.diff` (the first 400,000 characters). The system prompt
+  names the repo, the PR's number, title, author, head and base branches, state and link, and holds its description
+  (the first 6,000 characters) fenced in `<pr-description>` as data the agent must not take instructions from. The
+  chat is kept in R2 at `ask/<repo>/<n>.json` and the session's transcript at `ask-sessions/<repo>/<n>.json`, so the
+  next question resumes it in any container. A question at another model or effort starts a new chat.
+- Ask's agent reads, nothing else. It has no shell and no write or edit tool. Its tools, which the container runs
+  itself (`agent/read-tools.mjs`), are:
+  - Read, Grep and Glob, inside the PR's checkout and the person's cloned repos (`<scope>/.clones/<owner>/<name>`),
+    symlinks followed.
+  - `git`: one subcommand of `log`, `show`, `diff`, `grep`, `blame`, `shortlog`, `describe`, `rev-parse`, `rev-list`,
+    `merge-base`, `name-rev`, `ls-files`, `ls-tree`, `cat-file` and `for-each-ref`, run without a shell and with no
+    global or system git config. Refused: any other subcommand (so no `push`, `fetch`, `commit` or `checkout`), any
+    option before the subcommand (`-c`, `--git-dir`), `--output`, `--no-index`, `--ext-diff`, `--open-files-in-pager`,
+    `--contents`, `--file`, `--exec` and their abbreviations, grep's `-O` and `-f`, and a path that is absolute,
+    starts with `~` or climbs with `..`.
+  - `clone_repo` (`owner/name`, optional branch, tag or commit): a blobless clone with branches and tags into the
+    person's clones; again, it updates.
+  - `github_api`: one `GET` of a path on `https://api.github.com`, redirects not followed. No other method is offered.
+
+  A PreToolUse hook checks each call against these rules and denies any other tool; each tool checks again. The token
+  rides each git command's header and the API request, never the agent's view or disk, and is taken out of every
+  tool's output and the answer, as is `CLAUDE_CODE_OAUTH_TOKEN`.
+- `clone_repo` and `github_api` exist only when the token is read only by how it was made: hosted, the PRHub App's
+  installation token, for the PR's repo alone (other private repos answer 404); on a Worker with the Ask App
+  (`ASK_GITHUB_APP_ID`), its installation token across every repo it is installed on; else `ASK_GITHUB_TOKEN`. Each
+  installation token asks `contents`, `pull_requests`, `issues`, `checks`, `actions` and `statuses` read and lasts an
+  hour. With `GITHUB_READ_TOKEN` or `GITHUB_TOKEN`, which may write, the agent keeps to `git` on the checkout, and
+  its prompt says so.
 - The container runs in the US (`constraints.regions`): nearest the request it can land where Anthropic's API refuses it.
 - The container sleeps after two idle minutes. The first run after that waits for it to start, about 20 seconds.
 - A container that is not ready, whose run was stopped, or that dropped the connection (a deploy replaces it) is
