@@ -47,8 +47,8 @@ async function run({ system, prompt, model, effort, schema }) {
 /**
  * Read only, and no shell: Read, Grep and Glob, the read tools of `read-tools.mjs` (git, and with a read-only token
  * clone_repo and github_api), which this process runs, and the web, WebSearch and WebFetch, for docs, changelogs and
- * issues. Nothing a repo says can run a command beside this container's token, and the reads it could leak stay inside
- * the checkout (`insideOnly`).
+ * issues. Nothing a repo says can run a command beside this container's token, and no tool reads the tokens. What the
+ * agent read can leave by a WebFetch URL: open by Jai's choice (`readOnlyHooks`).
  */
 const ASK_TOOLS = ["Read", "Grep", "Glob", ...WEB_TOOLS];
 const WORK = "/home/agent/work";

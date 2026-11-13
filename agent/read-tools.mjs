@@ -248,7 +248,8 @@ export function readOnlyHooks(cwd, clones, reachable = null) {
         return inRoot && !escapes ? {}
           : DENY("Only the checkout and the repos you cloned can be read.");
       }
-      // The web reads pages and searches: nothing it fetches comes from this container, so nothing here can leave by it.
+      // The web, open by Jai's choice (2026-11-13: "we need feature richness"): WebFetch can put what the agent read in a
+      // URL it fetches, so a prompt in a PR could send code out. The tokens can't go: no tool reads them.
       if (WEB_TOOLS.includes(name)) {
         return {};
       }
