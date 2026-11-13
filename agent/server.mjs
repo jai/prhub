@@ -141,6 +141,7 @@ async function ask({
     const allowed = [...ASK_TOOLS, ...readToolNames(reads !== null)];
     const store = new SeededStore(session ? entries : []);
     let result = null;
+    let tools = [];
     for await (const message of query({
       prompt,
       options: {
@@ -153,6 +154,9 @@ async function ask({
         resume: session ?? undefined,
       },
     })) {
+      if (message.type === "system" && message.subtype === "init") {
+        tools = message.tools ?? [];
+      }
       if (message.type === "result") {
         result = message;
       }
@@ -162,6 +166,8 @@ async function ask({
     }
     return {
       subtype: result.subtype,
+      // The tools the turn began with, for the Worker's log: what the agent could use, not what it says it could.
+      tools,
       text: typeof result.result === "string" ? scrub(result.result, token) : null,
       session: result.session_id,
       entries: store.entries,

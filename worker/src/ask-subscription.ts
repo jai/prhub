@@ -44,6 +44,8 @@ interface AskAnswer extends Partial<Omit<AgentAnswer, "output" | "tokens">> {
   text?: string | null;
   session?: string;
   entries?: unknown[];
+  /** The tools the turn began with. */
+  tools?: string[];
 }
 
 export function isSubscriptionRecord(record: unknown): record is SubscriptionRecord {
@@ -129,7 +131,8 @@ export async function askOnSubscription(
     };
     console.log("ai_run", {
       feature: "ask", repo, number, auth: "subscription", user_id: env.SIGNED_IN_USER_ID ?? null, model: record.model,
-      effort: choice.effort, session: record.session, cost_cents: spent,
+      effort: choice.effort, session: record.session, cost_cents: spent, read_only: services.readOnly,
+      reachable: grant.repos?.length ?? null, tools: answer.tools ?? null,
     });
   } catch (error) {
     record = { ...record, workingSince: null, problem: "The AI couldn't be reached. Ask again." };
