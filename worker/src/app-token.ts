@@ -7,7 +7,25 @@ import { getFromGitHub } from "./github.ts";
 import { parseRepoFullName, type RepoFullName, repoParts } from "./ids.ts";
 
 /** GitHub would not mint one: the App is not on the repo, or it refused. The message says which, for the person. */
-export class InstallationTokenRefused extends Error {}
+export class InstallationTokenRefused extends Error {
+  readonly status: number | null;
+
+  constructor(message: string, status: number | null = null) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/** GitHub's words for a refusal that is its rate limit, with when it resets; null for any other refusal. */
+export function rateLimitWords(response: Response): string | null {
+  const remaining = response.headers.get("x-ratelimit-remaining");
+  if (!(response.status === 429 || (response.status === 403 && remaining === "0"))) {
+    return null;
+  }
+  const reset = Number(response.headers.get("x-ratelimit-reset"));
+  const at = Number.isFinite(reset) && reset > 0 ? `, resets ${new Date(reset * 1000).toISOString().slice(11, 16)} UTC` : "";
+  return `GitHub's rate limit for your account is used up${at}`;
+}
 
 function base64url(data: ArrayBuffer | string): string {
   const bytes = typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data);
@@ -39,7 +57,8 @@ function appHeaders(jwt: string): Record<string, string> {
 async function installationOf(repo: RepoFullName, jwt: string, fetcher: typeof fetch): Promise<number> {
   const installation = await fetcher(`https://api.github.com/repos/${repo}/installation`, { headers: appHeaders(jwt) });
   if (!installation.ok) {
-    throw new InstallationTokenRefused(`The AI can't read ${repo}: the GitHub App isn't installed there.`);
+    throw new InstallationTokenRefused(rateLimitWords(installation)
+      ?? `The AI can't read ${repo}: the GitHub App isn't installed there.`, installation.status);
   }
   return (await installation.json() as { id: number }).id;
 }
@@ -53,7 +72,8 @@ async function mint(
     body: JSON.stringify({ ...(names ? { repositories: names } : {}), permissions: ASK_PERMISSIONS }),
   });
   if (!minted.ok) {
-    throw new InstallationTokenRefused(`GitHub wouldn't give the AI read access to ${repo} (${minted.status}).`);
+    throw new InstallationTokenRefused(rateLimitWords(minted)
+      ?? `GitHub wouldn't give the AI read access to ${repo}.`, minted.status);
   }
   return (await minted.json() as { token: string }).token;
 }
@@ -137,7 +157,9 @@ export async function askGrant(
 async function personSeesPr(repo: RepoFullName, number: number, env: Env): Promise<void> {
   const visible = await getFromGitHub(`/repos/${repo}/pulls/${number}`, env);
   if (!visible.ok) {
-    throw new InstallationTokenRefused(`The AI can't read ${repo}: your GitHub account can't see this pull request.`);
+    await visible.body?.cancel();
+    throw new InstallationTokenRefused(rateLimitWords(visible)
+      ?? `The AI can't read ${repo}: your GitHub account can't see this pull request.`, visible.status);
   }
 }
 

@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AskInput } from "../src/ask-chat.ts";
-import { askGitHubReach } from "../src/app-token.ts";
+import { askGitHubReach, rateLimitWords } from "../src/app-token.ts";
+import { AskFailure } from "../src/ask-trace.ts";
 import { askSubscriptionPrompt, PR_BODY_KEPT, type PrFacts } from "../src/ask-setup.ts";
 import { askOnSubscription, subscriptionChat, type SubscriptionRecord, TURN_LOST_MS } from "../src/ask-subscription.ts";
 import type { Env } from "../src/env.ts";
@@ -78,7 +79,7 @@ test("a failed turn ends working with a problem, and a turn running too long rea
     w.services).catch(() => {});
   const chat = subscriptionChat(w.record(), 2_000);
   assert.equal(chat.isWorking, false);
-  assert.match(chat.problem ?? "", /couldn't be reached/);
+  assert.match(chat.problem ?? "", /^AI container: boom · turn [\w-]{8}$/, "which side failed, its words and the turn");
   const running = { ...w.record(), workingSince: 0, problem: null };
   assert.equal(subscriptionChat(running, TURN_LOST_MS - 1).isWorking, true);
   assert.match(subscriptionChat(running, TURN_LOST_MS).problem ?? "", /stopped/);
@@ -134,4 +135,68 @@ test("each turn's ai_run line says whether the container was told the token is r
   assert.equal(line?.read_only, true);
   assert.equal(line?.reachable, 2);
   assert.deepEqual(line?.tools, ["Read", "mcp__prhub__git", "mcp__prhub__github_api"]);
+});
+
+test("a GitHub refusal says so with its status, and a turn re-run after a deploy doesn't repeat the question", async () => {
+  const w = world([{ subtype: "success", text: "ok", session: "s1", entries: [], model: "claude-sonnet-5-5", costUsd: 0 }]);
+  const refused = { ...w.services, turn: "turn-0001-abcd",
+    grant: async () => { throw new AskFailure("github", "GitHub's rate limit for your account is used up, resets 02:59 UTC", 403); } };
+  await askOnSubscription(REPO, 7, input("Why?"), { model: "claude-sonnet-5-5", effort: "high" }, w.env, refused);
+  assert.equal(w.record().problem,
+    "GitHub 403: GitHub's rate limit for your account is used up, resets 02:59 UTC · turn turn-000");
+  assert.equal(w.sent.length, 0, "the container is never asked without a token");
+  await askOnSubscription(REPO, 7, input("Why?"), { model: "claude-sonnet-5-5", effort: "high" }, w.env,
+    { ...w.services, turn: "turn-0001-abcd" });
+  assert.deepEqual(w.record().messages.map(({ role }) => role), ["you", "agent"], "the question once, then the answer");
+  assert.equal(w.record().problem, null);
+});
+
+test("a blip while minting GitHub's token gets one more try", async () => {
+  const w = world([{ subtype: "success", text: "ok", session: "s1", entries: [], model: "claude-sonnet-5-5", costUsd: 0 }]);
+  let tries = 0;
+  const flaky = { ...w.services, grant: async () => {
+    tries++;
+    if (tries === 1) {
+      throw new TypeError("Network connection lost.");
+    }
+    return { token: "read-token", repos: null };
+  } };
+  await askOnSubscription(REPO, 7, input("Why?"), { model: "claude-sonnet-5-5", effort: "high" }, w.env, flaky);
+  assert.equal(tries, 2);
+  assert.equal(w.record().problem, null);
+});
+
+test("GitHub's rate limit is named as such, with when it resets; another refusal is not", () => {
+  const limited = new Response("", { status: 403, headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": "1794536340" } });
+  assert.equal(rateLimitWords(limited), "GitHub's rate limit for your account is used up, resets 02:19 UTC");
+  assert.equal(rateLimitWords(new Response("", { status: 403, headers: { "x-ratelimit-remaining": "41" } })), null);
+  assert.equal(rateLimitWords(new Response("", { status: 404 })), null);
+});
+
+/** Shaped like an installation token, built in pieces so no real-looking token sits in the source. */
+const FAKE_GITHUB_TOKEN = ["gh", "s_", "ABCDEFGHIJKLMNOPQRSTUVWX"].join("");
+
+test("a replay of a turn already answered asks nothing, and no token reaches the chat or the log", async () => {
+  const w = world([
+    { subtype: "success", text: "ok", session: "s1", entries: [], model: "claude-sonnet-5-5", costUsd: 0 },
+    { error: `git fetch failed: auth ${FAKE_GITHUB_TOKEN} and read-token` },
+  ]);
+  const once = { ...w.services, turn: "turn-0002-abcd" };
+  await askOnSubscription(REPO, 7, input("Why?"), { model: "claude-sonnet-5-5", effort: "high" }, w.env, once);
+  await askOnSubscription(REPO, 7, input("Why?"), { model: "claude-sonnet-5-5", effort: "high" }, w.env, once);
+  assert.equal(w.sent.length, 1, "the model is asked once");
+  assert.deepEqual(w.record().messages.map(({ role }) => role), ["you", "agent"]);
+  const logged: string[] = [];
+  const [log, error] = [console.log, console.error];
+  console.log = (...args: unknown[]) => void logged.push(JSON.stringify(args));
+  console.error = (...args: unknown[]) => void logged.push(JSON.stringify(args));
+  try {
+    await askOnSubscription(REPO, 7, input("And now?"), { model: "claude-sonnet-5-5", effort: "high" }, w.env,
+      { ...w.services, turn: "turn-0003-abcd" });
+  } finally {
+    [console.log, console.error] = [log, error];
+  }
+  const problem = w.record().problem ?? "";
+  assert.match(problem, /^AI container: git fetch failed: auth \[redacted\] and \[redacted\] · turn turn-000$/);
+  assert.equal(logged.some((line) => line.includes(FAKE_GITHUB_TOKEN) || line.includes("read-token")), false);
 });

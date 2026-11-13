@@ -6,6 +6,7 @@ import { prId, type RepoFullName } from "./ids";
 import { askGitHubReach, askGrant, askRepoToken, InstallationTokenRefused } from "./app-token";
 import { onApiKey, onSubscription } from "./agent-container";
 import { askSubscriptionPrompt } from "./ask-setup";
+import { AskFailure } from "./ask-trace";
 import { askOnSubscription, isSubscriptionRecord, prDiff, prFacts, subscriptionChat } from "./ask-subscription";
 import { askBudgetOf, limitsOf } from "./limits";
 import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models";
@@ -128,10 +129,12 @@ export async function askChat(repo: RepoFullName, number: number, env: Env): Pro
  * Sends the question. The route reads the conversation after, so a repeat that finds this sent reads it too. Each
  * question is one `ai_run` log line; its cost is the session's, read from Anthropic, as the turn has not run yet.
  */
-export async function ask(repo: RepoFullName, number: number, input: AskInput, choice: ModelChoice, env: Env): Promise<void> {
+export async function ask(
+  repo: RepoFullName, number: number, input: AskInput, choice: ModelChoice, env: Env, turn?: string,
+): Promise<void> {
   if (onSubscription(env)) {
     const grant = () => askGrant(repo, number, env).catch((error: unknown) => {
-      throw error instanceof InstallationTokenRefused ? new AskRefused(error.message) : error;
+      throw error instanceof InstallationTokenRefused ? new AskFailure("github", error.message, error.status) : error;
     });
     const reach = askGitHubReach(env);
     return askOnSubscription(repo, number, input, choice, env, {
@@ -139,7 +142,7 @@ export async function ask(repo: RepoFullName, number: number, input: AskInput, c
         reviewer: env.GITHUB_LOGIN ?? null, repo, number, pr: await prFacts(repo, number, env), reach,
       }),
       grant, readOnly: reach !== "none", diff: () => prDiff(repo, number, input.head, env),
-      budgetUsd: askBudgetOf(limitsOf(env)) / 100,
+      budgetUsd: askBudgetOf(limitsOf(env)) / 100, turn,
     });
   }
   if (!onApiKey(env)) {

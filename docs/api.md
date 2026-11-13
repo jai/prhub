@@ -389,6 +389,26 @@ cost on the API; Ask's chat has `costCents` `null`, so the app shows no cost, an
 - A failed answer, on either path, is served for ten minutes; the next ask after that makes it again, so a run that
   failed for want of credit or capacity heals without **Try again**.
 
+## Tracing an Ask
+
+Each Ask turn has one id, the question's own (its `client_ref`, else one the Worker makes). Every stage writes one
+`ask_event` log line with `turn`, `stage`, `pr` and `user_id`, and the fields of that stage:
+
+| `stage` | When | Fields |
+|---|---|---|
+| `queued` / `received` | `POST …/ask` stored the question, or found it already there (`repeat`) | |
+| `handed_over` / `resumed` | The queue gave it to the agent; `resumed` when a turn a deploy cut short runs again | `model`, `effort` |
+| `grant` | GitHub's read-only token for the turn is minted | `ms`, `read_only`, `repos` |
+| `container` | The Agent SDK container answered | `ms`, `subtype`, `tools` |
+| `answered` | The answer is in the chat | `ms`, `model`, `cost_cents` |
+| `failed` | The turn ended without an answer | `ms`, `side`, `reason`, `status` |
+
+`side` is where it failed: `app`, `worker`, `github`, `container` or `model`. The chat's problem for a failed turn is
+`<side>[ <status>]: <reason> · turn <first 8 characters of the id>`, for example `GitHub 403: GitHub's rate limit for
+your account is used up, resets 02:59 UTC · turn 3f2a9c1e`. A GitHub token that fails for a passing reason (no answer,
+a dropped connection) is asked for once more before the turn fails. `scripts/ask-trace.sh <id> [worker]` prints a
+turn's lines from Workers Logs.
+
 ## Reviewed key lines
 
 The key lines the person has checked off, kept in their index so each of their devices shows the same ticks. They are

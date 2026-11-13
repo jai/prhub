@@ -9,6 +9,7 @@ import { actingEnvFor } from "./hosted";
 import { parseAiJob } from "./boundary";
 import { prId } from "./ids";
 import { makesAnswers } from "./agent-container";
+import { askEvent, errorWords, failedLine, scrubbed, sideOf } from "./ask-trace";
 import { type Env, prIndex } from "./env";
 import { type AiJob, aiKey } from "./models";
 import { type CarriedAskState, readCarriedAskState, writeCarriedAskState } from "./carry";
@@ -111,14 +112,16 @@ export class AiJobs extends DurableObject<Env> {
       return "Sign in again to ask.";
     }
     try {
-      await ask(question.repo, question.number, question.input, question.choice, env);
+      await ask(question.repo, question.number, question.input, question.choice, env, question.id);
       return null;
     } catch (error) {
       if (error instanceof AskRefused) {
         return error.message;
       }
-      console.error("ask failed", error);
-      return "The AI couldn't be reached. Try again.";
+      console.error("ask failed", errorWords(error), scrubbed(error instanceof Error ? error.stack ?? "" : ""));
+      askEvent("failed", question.id, { pr: `${question.repo}#${question.number}`, side: sideOf(error),
+        reason: errorWords(error) });
+      return failedLine(error, question.id);
     }
   }
 
