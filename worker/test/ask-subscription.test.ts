@@ -117,3 +117,21 @@ test("only an App's token or ASK_GITHUB_TOKEN reaches past the checkout", () => 
   assert.equal(askGitHubReach({ ASK_GITHUB_TOKEN: "t" }), "wide");
   assert.equal(askGitHubReach({}), "none", "GITHUB_TOKEN may write");
 });
+
+test("each turn's ai_run line says whether the container was told the token is read only, and the tools it began with", async () => {
+  const w = world([{ subtype: "success", text: "ok", session: "s1", entries: [], model: "claude-sonnet-5-5", costUsd: 0,
+    tools: ["Read", "mcp__prhub__git", "mcp__prhub__github_api"] }]);
+  const logged: unknown[] = [];
+  const log = console.log;
+  console.log = (...args: unknown[]) => void logged.push(args);
+  try {
+    await askOnSubscription(REPO, 7, input("Which PRs touch this?"), { model: "claude-sonnet-5-5", effort: "high" },
+      w.env, w.services);
+  } finally {
+    console.log = log;
+  }
+  const line = logged.map((args) => args as [string, Record<string, unknown>]).find(([name]) => name === "ai_run")?.[1];
+  assert.equal(line?.read_only, true);
+  assert.equal(line?.reachable, 2);
+  assert.deepEqual(line?.tools, ["Read", "mcp__prhub__git", "mcp__prhub__github_api"]);
+});
