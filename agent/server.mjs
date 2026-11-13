@@ -6,7 +6,7 @@ import { createServer } from "node:http";
 import { promisify } from "node:util";
 import { InMemorySessionStore, query } from "@anthropic-ai/claude-agent-sdk";
 import {
-  authArgs, gitEnv, lockConfig, readOnlyHooks, readToolNames, readTools, SAFE_GIT, SERVER, vetRepo,
+  authArgs, gitEnv, lockConfig, readOnlyHooks, readToolNames, readTools, SAFE_GIT, SERVER, vetRepo, WEB_TOOLS,
 } from "./read-tools.mjs";
 
 const exec = promisify(execFile);
@@ -50,7 +50,7 @@ async function run({ system, prompt, model, effort, schema }) {
  * issues. Nothing a repo says can run a command beside this container's token, and the reads it could leak stay inside
  * the checkout (`insideOnly`).
  */
-const ASK_TOOLS = ["Read", "Grep", "Glob", "WebSearch", "WebFetch"];
+const ASK_TOOLS = ["Read", "Grep", "Glob", ...WEB_TOOLS];
 const WORK = "/home/agent/work";
 
 /** Git's own words on a failure, never the command line: that carries the token's header. */
