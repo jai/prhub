@@ -147,6 +147,11 @@ test("key lines for a head the PR has moved on from are never stored under that 
   assert.deepEqual(others, [], "no model was asked");
 });
 
+const SUMMARY = {
+  risk: "low", riskWhy: "Small and tested.", points: ["One", "Two", "Three", "Four", "Five", "Six"],
+  bugs: [{ path: "x", line: 99, side: "RIGHT", why: "Off by one." }],
+};
+
 test("on the subscription, key lines come from the Agent SDK container, never the API", async () => {
   const others: string[] = [];
   gitHubAt(NEW, others);
@@ -156,7 +161,7 @@ test("on the subscription, key lines come from the Agent SDK container, never th
     get: () => ({
       fetch: async (_url: string, init: RequestInit) => {
         asked.push(JSON.parse(String(init.body)) as Record<string, unknown>);
-        return Response.json({ subtype: "success", output: { items: [] }, model: "claude-sonnet-5-5",
+        return Response.json({ subtype: "success", output: { items: [], summary: SUMMARY }, model: "claude-sonnet-5-5",
           tokens: { input: 10, output: 2 }, costUsd: 0.0123 });
       },
     }),
@@ -172,6 +177,10 @@ test("on the subscription, key lines come from the Agent SDK container, never th
   const stored = JSON.parse(store.puts[0].value) as { items: unknown[]; costCents: number; model: string };
   assert.deepEqual(stored.items, []);
   assert.equal(stored.costCents, 1.23);
+  const summary = (stored as unknown as { summary: { points: string[]; bugs: unknown[]; risk: string } }).summary;
+  assert.equal(summary.risk, "low");
+  assert.equal(summary.points.length, 5, "five points at most");
+  assert.deepEqual(summary.bugs, [], "a bug at a line the diff doesn't show is dropped");
   assert.deepEqual(others, [], "the API was never asked");
 });
 

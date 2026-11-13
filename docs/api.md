@@ -334,6 +334,10 @@ one asked for), `effort`, `tokens` and `costCents` (list price, `null` for a mod
 model and effort has its own cached answer; the built-in default keeps the cache key from before the choice existed,
 so answers made then are still served. An answer made before then has no `model`, `effort` or `costCents`.
 
+A key lines answer also has `summary`: `risk` (`low`, `medium`, `high`), `riskWhy` (one sentence), `points` (3 to 5
+bullets: what the PR does) and `bugs` (`{path, line, side, why}`, each at a line the diff shows; empty when none was
+found). Answers are kept under `key-lines-v2-<context>`: one made before the summary is made again when next asked for.
+
 A failed key lines or rewrite answer is `{"error": "…"}`, with `"moved": true` when the PR had moved past the asked
 commit: the app then reads the PR at its newest commit and asks again, once. The app reads a passing failure (no
 network, a timeout, a `5xx` or `429`) again rather than showing it.

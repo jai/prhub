@@ -103,14 +103,14 @@ test("a request picks within the allowed list and the cap, or gets the feature's
   assert.ok(!refused.ok && refused.error === "effort must be one of low, medium for claude-haiku-5-5", "Ask falls to the first allowed model");
 });
 
-test("each model and effort has its own cache key; the built-in default keeps the key from before", () => {
+test("each model and effort has its own cache key, and the built-in default has one key", () => {
   const job = { kind: "key_lines" as const, repo: "a/b", number: 7, head, context: 100 };
-  const legacy = `ai/a/b/7/${head}/key-lines-100.json`;
+  const legacy = `ai/a/b/7/${head}/key-lines-v2-100.json`;
   assert.equal(aiKey(job), legacy, "a job queued before the choice existed");
   assert.equal(aiKey({ ...job, choice: BUILT_IN_DEFAULTS.key_lines }), legacy);
   const haiku = aiKey({ ...job, choice: { model: "claude-haiku-5-5", effort: "low" } });
   const haikuMedium = aiKey({ ...job, choice: { model: "claude-haiku-5-5", effort: "medium" } });
-  assert.equal(haiku, `ai/a/b/7/${head}/key-lines-100-claude-haiku-5-5-low.json`);
+  assert.equal(haiku, `ai/a/b/7/${head}/key-lines-v2-100-claude-haiku-5-5-low.json`);
   assert.notEqual(haiku, haikuMedium);
   assert.equal(aiKey({ ...job, kind: "rewrite", choice: BUILT_IN_DEFAULTS.rewrite }), `ai/a/b/7/${head}/rewrite.json`);
   assert.equal(aiKey({ ...job, kind: "rewrite", choice: { model: "claude-sonnet-5-5", effort: "low" } }),
