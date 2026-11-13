@@ -51,6 +51,21 @@ public struct PRAskChat: Decodable, Equatable, Sendable {
     public var problem: String?
     public var costCents: Int?
 
+    private enum CodingKeys: String, CodingKey {
+        case messages, isWorking, activity, problem, costCents
+    }
+
+    /// `costCents` is read as a number and rounded: a Worker that sends hundredths of a cent must not make the whole
+    /// chat unreadable.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        messages = try container.decode([Message].self, forKey: .messages)
+        isWorking = try container.decode(Bool.self, forKey: .isWorking)
+        activity = try container.decodeIfPresent(String.self, forKey: .activity)
+        problem = try container.decodeIfPresent(String.self, forKey: .problem)
+        costCents = try container.decodeIfPresent(Double.self, forKey: .costCents).map { Int($0.rounded()) }
+    }
+
     public init(messages: [Message], isWorking: Bool, activity: String?, problem: String?, costCents: Int?) {
         self.messages = messages
         self.isWorking = isWorking

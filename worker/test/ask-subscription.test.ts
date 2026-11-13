@@ -64,6 +64,15 @@ test("a question's answer joins the chat, and the next question resumes the same
   assert.equal(chat.costCents, 3);
 });
 
+test("the phone gets whole cents, though the record keeps hundredths", async () => {
+  const w = world([{ error: "boom" }]);
+  await askOnSubscription(REPO, 7, input("Why?"), { model: "claude-haiku-5-5", effort: "high" }, w.env,
+    w.services).catch(() => {});
+  const chat = subscriptionChat({ ...w.record(), costCents: 12.34 }, 2_000);
+  assert.equal(chat.costCents, 12);
+  assert.ok(Number.isInteger(chat.costCents));
+});
+
 test("a failed turn ends working with a problem, and a turn running too long reads as lost", async () => {
   const w = world([{ error: "boom" }, { error: "boom" }, { error: "boom" }]);
   await askOnSubscription(REPO, 7, input("Why?"), { model: "claude-haiku-5-5", effort: "high" }, w.env,
