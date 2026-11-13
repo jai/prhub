@@ -45,10 +45,12 @@ async function run({ system, prompt, model, effort, schema }) {
 }
 
 /**
- * Read only, and no shell: Read, Grep and Glob, and the read tools of `read-tools.mjs` (git, and with a read-only token
- * clone_repo and github_api), which this process runs. Nothing a repo says can run a command beside this container's token.
+ * Read only, and no shell: Read, Grep and Glob, the read tools of `read-tools.mjs` (git, and with a read-only token
+ * clone_repo and github_api), which this process runs, and the web, WebSearch and WebFetch, for docs, changelogs and
+ * issues. Nothing a repo says can run a command beside this container's token, and the reads it could leak stay inside
+ * the checkout (`insideOnly`).
  */
-const ASK_TOOLS = ["Read", "Grep", "Glob"];
+const ASK_TOOLS = ["Read", "Grep", "Glob", "WebSearch", "WebFetch"];
 const WORK = "/home/agent/work";
 
 /** Git's own words on a failure, never the command line: that carries the token's header. */
