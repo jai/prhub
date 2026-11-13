@@ -134,6 +134,8 @@ export interface AskGrant {
   repos: RepoFullName[] | null;
   /** How the person's sight of the PR was checked: their token, or, with it rate limited, the repos it last listed. */
   checkedBy?: "person" | "person_cached";
+  /** False when the token may write (a fallback): it checks the repo out, and the agent's tools get no GitHub with it. */
+  readOnly?: boolean;
 }
 
 /**
@@ -146,7 +148,18 @@ export async function askGrant(
   now = Date.now(),
 ): Promise<AskGrant> {
   if (!isSet(env.SIGNED_IN_USER_ID)) {
-    return { token: await askRepoToken(repo, number, env, fetcher), repos: null };
+    try {
+      return { token: await askRepoToken(repo, number, env, fetcher), repos: null };
+    } catch (error) {
+      // Jai's Ask App reaches the repos it is installed on; on another (his own jai/* repos) the Worker's token checks
+      // the PR out instead, and, since it may write, the agent's tools get no GitHub with it.
+      const fallback = isSet(env.GITHUB_READ_TOKEN) ? env.GITHUB_READ_TOKEN : env.GITHUB_TOKEN;
+      if (error instanceof InstallationTokenRefused && error.status === 404 && isSet(env.ASK_GITHUB_APP_ID)
+        && isSet(fallback)) {
+        return { token: fallback, repos: null, readOnly: false };
+      }
+      throw error;
+    }
   }
   const sight = await personSeesPr(repo, number, env);
   const jwt = await appJwt({ id: env.GITHUB_APP_ID ?? "", key: env.GITHUB_APP_PRIVATE_KEY ?? "" });

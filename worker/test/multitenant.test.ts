@@ -720,6 +720,16 @@ test("hosted, with the person's GitHub limit used up, only the repos their own t
   }
 });
 
+test("Jai's Worker: where his Ask App isn't installed, the Worker's token checks the PR out, not read only", async () => {
+  const notInstalled = (async () => new Response("{}", { status: 404 })) as unknown as typeof fetch;
+  const env = { ASK_GITHUB_APP_ID: "9", ASK_GITHUB_APP_KEY: PEM, GITHUB_TOKEN: "worker-token" } as unknown as Env;
+  const grant = await askGrant(repo("jai/prhub"), 48, env, notInstalled);
+  assert.deepEqual(grant, { token: "worker-token", repos: null, readOnly: false });
+  const refused = (async () => new Response("{}", { status: 403 })) as unknown as typeof fetch;
+  await assert.rejects(askGrant(repo("jai/prhub"), 48, env, refused), /GitHub App isn't installed|read access/,
+    "any other refusal still fails the turn");
+});
+
 test("with the API-key path off, a key is refused before Anthropic is asked, and removing one still works", async () => {
   const { world, alice } = await twoOrgs({ AI_ON_API_KEY: undefined });
   world.anthropic.valid.add(ALICE_KEY);

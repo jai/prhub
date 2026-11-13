@@ -232,3 +232,10 @@ test("a queued question keeps its line's side, so its Retry asks about the same 
   assert.equal(chat.messages[0].side, "LEFT");
   assert.equal(chat.messages[0].anchor, "a.ts:3");
 });
+
+test("a grant that may write tells the container so: the agent's tools get no GitHub with it", async () => {
+  const w = world([{ subtype: "success", text: "ok", session: "s1", entries: [], model: "m", costUsd: 0 }]);
+  await askOnSubscription(REPO, 7, input("Why?"), { model: "claude-sonnet-5-5", effort: "high" }, w.env,
+    { ...w.services, grant: async () => ({ token: "worker-token", repos: null, readOnly: false }) });
+  assert.equal(w.sent[0].readOnly, false);
+});

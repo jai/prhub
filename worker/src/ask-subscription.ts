@@ -130,12 +130,13 @@ export async function askOnSubscription(
     const entries = record.session ? await (await env.DIFFS.get(transcriptKey(repo, number, env)))?.json<unknown[]>() : [];
     const grant = await grantWithRetry(services.grant);
     token = grant.token;
-    askEvent("grant", turn, { ...trace, ms: now() - started, read_only: services.readOnly, repos: grant.repos?.length ?? null,
+    const readOnly = grant.readOnly ?? services.readOnly;
+    askEvent("grant", turn, { ...trace, ms: now() - started, read_only: readOnly, repos: grant.repos?.length ?? null,
       checked_by: grant.checkedBy ?? null });
     const answer = await askContainer<AskAnswer>("/ask", JSON.stringify({
       system: await services.system(), prompt: `${DIFF_NOTE}\n${askPrompt(input, null)}`, model: choice.model, effort: choice.effort,
       scope: env.SIGNED_IN_USER_ID ?? "self", repo, number,
-      head: input.head, token: grant.token, readOnly: services.readOnly,
+      head: input.head, token: grant.token, readOnly,
       reachable: grant.repos, diff: await services.diff(), session: record.session, entries: entries ?? [],
       budgetUsd: services.budgetUsd,
     }), env.AGENT!, undefined, askInstance(env));
@@ -156,7 +157,7 @@ export async function askOnSubscription(
     };
     console.log("ai_run", {
       feature: "ask", repo, number, auth: "subscription", user_id: env.SIGNED_IN_USER_ID ?? null, model: record.model,
-      effort: choice.effort, session: record.session, cost_cents: spent, read_only: services.readOnly,
+      effort: choice.effort, session: record.session, cost_cents: spent, read_only: readOnly,
       reachable: grant.repos?.length ?? null, tools: answer.tools ?? null,
     });
     askEvent("answered", turn, { ...trace, ms: now() - started, model: record.model, cost_cents: spent });
