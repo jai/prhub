@@ -172,6 +172,11 @@ extension PRSampleSet {
                 "why": "If retryPayment throws, retrying stays true and the button stays disabled."},
                {"path": "src/checkout/payments.ts", "line": 12, "side": "RIGHT", "kind": "decision",
                 "why": "The retry relies on the server ignoring a second payment. Is that guaranteed?"}],
+     "summary": {"risk": "medium", "riskWhy": "A retry can pay twice if the server doesn't ignore repeats.",
+                 "points": ["Adds a Retry button when a payment fails", "Retries through a new retryPayment call",
+                            "Disables the button while a retry runs"],
+                 "bugs": [{"path": "src/checkout/CheckoutError.tsx", "line": 9, "side": "RIGHT",
+                           "why": "A thrown retry leaves the button disabled for good."}]},
      "context": 100, "leftOut": []}
     """
 
@@ -196,6 +201,8 @@ extension PRSampleSet {
     private static let rateLimitKeyLines = """
     {"items": [{"path": "app/routes/password_reset.py", "line": 5, "side": "RIGHT", "kind": "risk",
                 "why": "The limit is per email, so one client can still try many addresses. Add a limit per IP too?"}],
+     "summary": {"risk": "low", "riskWhy": "One small, contained limit on password resets.",
+                 "points": ["Limits password reset requests per email", "Answers 429 past the limit"], "bugs": []},
      "context": 100, "leftOut": []}
     """
 

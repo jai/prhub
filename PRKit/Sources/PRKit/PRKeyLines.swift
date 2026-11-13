@@ -18,6 +18,8 @@ public struct PRKeyLines: Decodable, Sendable {
     }
 
     public let items: [Item]
+    /// The PR at a glance, made with the key lines (`PRKeyLinesSummaryCard.swift`): absent on an older answer.
+    public let summary: Summary?
     public let context: Int
     /// Files too big to send, named so a short list isn't read as a whole one.
     public let leftOut: [String]
@@ -124,6 +126,9 @@ struct PRKeyLinesList: View {
             }
         case let .ready(lines):
             VStack(alignment: .leading, spacing: Space.xs) {
+                if let summary = lines.summary {
+                    PRKeyLinesSummaryCard(summary: summary, session: session)
+                }
                 if !lines.items.isEmpty {
                     Text("\(session.reviewedKeyLineCount) of \(lines.items.count) reviewed")
                         .font(.appCaption.monospacedDigit())

@@ -188,3 +188,18 @@ struct PRKeyLineReviewTests {
         try await settle(session, posts: 3)
     }
 }
+
+struct PRKeyLinesSummaryTests {
+    @Test func aSummaryReadsWithItsRiskBugsAndPointsAndAnOlderAnswerHasNone() throws {
+        let json = #"""
+        {"items": [], "context": 100, "leftOut": [],
+         "summary": {"risk": "high", "riskWhy": "Drops a column.", "points": ["Drops users.email"],
+                     "bugs": [{"path": "db/m.sql", "line": 3, "side": "RIGHT", "why": "No backfill."}]}}
+        """#
+        let lines = try JSONDecoder().decode(PRKeyLines.self, from: Data(json.utf8))
+        #expect(lines.summary?.riskMark == "🔴")
+        #expect(lines.summary?.bugs.first?.asItem.kind == "risk")
+        let older = try JSONDecoder().decode(PRKeyLines.self, from: Data(#"{"items": [], "context": 0, "leftOut": []}"#.utf8))
+        #expect(older.summary == nil)
+    }
+}
