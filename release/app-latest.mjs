@@ -9,7 +9,7 @@
 // Needs ASC_KEY_P8, ASC_KEY_ID and ASC_ISSUER_ID (as release/cadence.mjs), and, to write, GITHUB_TOKEN with contents
 // write and GITHUB_REPOSITORY. --dry-run prints the file and writes nothing. Exits non-zero only when an API fails.
 import { fileURLToPath } from "node:url";
-import { client } from "./cadence.mjs";
+import { client, githubClient } from "./cadence.mjs";
 
 /** PRHub's App Store Connect app (release/ship.sh). */
 export const APP_ID = "6831601628";
@@ -54,26 +54,6 @@ export function latestFile(builds) {
   const internal = newestOf(builds, "internal");
   const published = newestOf(builds, "external");
   return `${JSON.stringify({ ...(internal ? { internal } : {}), ...(published ? { public: published } : {}) }, null, 2)}\n`;
-}
-
-/** A small GitHub REST client for `repository`: `github(method, path, body?)` returns the JSON, or null on a 404. */
-export function githubClient({ token, repository, fetchImpl = fetch }) {
-  return async function github(method, path, body) {
-    const response = await fetchImpl(`https://api.github.com/repos/${repository}/${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        ...(body ? { "Content-Type": "application/json" } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (response.status === 404) return null;
-    const text = await response.text();
-    if (!response.ok) throw new Error(`${method} ${path}: HTTP ${response.status} ${text}`);
-    return JSON.parse(text);
-  };
 }
 
 /**

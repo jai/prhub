@@ -86,13 +86,19 @@ new event that breaks a rule below is a privacy policy change, not a code change
 
 ## Releases
 
-- **PRKit**: tag `vX.Y.Z` on a green main. Apps pin it (`from: "0.1.0"`); Jai's Agent Pager is one of them.
+- **Versions are automatic.** Never tag `v*` or edit `MARKETING_VERSION` by hand. Before each Internal build,
+  `release/cadence.mjs` (`release/version.mjs`) reads the conventional commits since the newest `vX.Y.Z` tag on
+  `main`: below 1.0.0, a `feat` or breaking change bumps the minor, a `fix` or `perf` the patch; only other types keep
+  the version and make no tag. It tags `main`'s head (annotated; the message lists the feat/fix subjects) and makes a
+  GitHub Release with the same notes. Xcode Cloud (`app/ci_scripts/ci_post_clone.sh`) builds every workflow as the
+  newest tag reachable from its commit. PRKit's tags are the same tags: apps pin it (`from: "0.1.0"`); Jai's Agent
+  Pager is one of them.
 - **PRHub for the Internal group**: every 15 minutes, `.github/workflows/internal-testflight.yml` runs
   `release/cadence.mjs`, which starts Xcode Cloud's **Internal - TestFlight** workflow on `main` only when `app/`,
   `PRKit/`, `Package.swift` or `DESIGN.md` changed since its last build, and never while a build of it is running.
-  The build goes to the Internal TestFlight group with the commit's subject as What to Test. Xcode Cloud numbers the
-  build itself; its **Next Build Number** (App Store Connect → PRHub → Xcode Cloud → Settings) must stay above
-  TestFlight's highest build, or the upload is refused. Nothing to run; `node release/cadence.mjs --dry-run` says
+  The build goes to the Internal TestFlight group with its version's notes as What to Test (the commit's subject when
+  it made no new version). Xcode Cloud numbers the build itself; its **Next Build Number** (App Store Connect → PRHub
+  → Xcode Cloud → Settings) must stay above TestFlight's highest build, or the upload is refused. Nothing to run; `node release/cadence.mjs --dry-run` says
   what it would do.
 - **PRHub for the Public group**: a release is one commit on `main` that sets `CURRENT_PROJECT_VERSION` in `app/project.yml` to N, with
   the subject `chore(release): PRHub build N — <What to Test>`. Take N from `release/next-build.sh`, change nothing

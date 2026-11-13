@@ -6,13 +6,17 @@
 // newest run that SUCCEEDED (or, with none in the last 10, the newest run). It starts a build when main's head differs
 // from it and the commits between touch app/, PRKit/, Package.swift or DESIGN.md, unless a run at the head already
 // succeeded or failed (a failed commit is not retried; the next app change starts a build).
-// Needs ASC_KEY_P8 (the .p8 key's PEM text), ASC_KEY_ID and ASC_ISSUER_ID. The workflow is known by its id,
-// internal_workflow in app/ci_scripts/workflows.sh. --dry-run prints the decision and starts nothing.
+// Before it starts one it makes the build's version (release/version.mjs): a feat or fix since the newest vX.Y.Z tag
+// tags main's head with the next version and makes its GitHub Release; a head with a v-tag keeps it.
+// Needs ASC_KEY_P8 (the .p8 key's PEM text), ASC_KEY_ID and ASC_ISSUER_ID, and GITHUB_TOKEN (contents: write) and
+// GITHUB_REPOSITORY to tag. The workflow is known by its id, internal_workflow in app/ci_scripts/workflows.sh.
+// --dry-run prints the decision and the version, and starts and tags nothing.
 // Exits non-zero only when the API or git fails.
 import { createPrivateKey, sign } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { planVersion, publishVersion } from "./version.mjs";
 
 const API = "https://api.appstoreconnect.apple.com/v1/";
 const APP_PATHS = ["app/", "PRKit/", "Package.swift", "DESIGN.md"];
@@ -88,6 +92,26 @@ export function client({ keyPEM, keyID, issuerID, fetchImpl = fetch }) {
   };
 }
 
+/** A small GitHub REST client for `repository` (owner/name): `github(method, path, body?)` returns the JSON, or null on a 404. */
+export function githubClient({ token, repository, fetchImpl = fetch }) {
+  return async function github(method, path, body) {
+    const response = await fetchImpl(`https://api.github.com/repos/${repository}/${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        ...(body ? { "Content-Type": "application/json" } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (response.status === 404) return null;
+    const text = await response.text();
+    if (!response.ok) throw new Error(`${method} ${path}: HTTP ${response.status} ${text}`);
+    return JSON.parse(text);
+  };
+}
+
 export async function recentRuns(request, workflowID) {
   const fields = "number,executionProgress,completionStatus,sourceCommit";
   const document = await request(
@@ -132,20 +156,26 @@ export async function startBuild(request, workflowID, referenceID) {
   return created.data.attributes?.number;
 }
 
-/** Runs one cadence check. Returns the decision; `log` gets one line. */
-export async function run({ request, workflowID, head, changedSince, dryRun, log = console.log }) {
+/**
+ * Runs one cadence check. Returns the decision; `log` gets one line. Before a build starts, `version.plan()` plans its
+ * version and `version.publish(plan)` tags main's head and makes the Release (release/version.mjs), so Xcode Cloud's
+ * clone sees the tag.
+ */
+export async function run({ request, workflowID, head, changedSince, version, dryRun, log = console.log }) {
   const decision = decide({ runs: await recentRuns(request, workflowID), head, changedSince });
   if (decision.action !== "start") {
     log(decision.reason);
     return decision;
   }
+  const plan = version.plan();
   if (dryRun) {
-    log(`would start a build of ${short(head)}: ${decision.reason}`);
-    return decision;
+    log(`would start a build of ${short(head)} as ${plan.version} (${plan.action} ${plan.tag ?? "no tag"}): ${decision.reason}`);
+    return { ...decision, plan };
   }
+  const published = await version.publish(plan);
   const number = await startBuild(request, workflowID, await mainReference(request, workflowID));
-  log(`started build ${number ?? "?"} of ${short(head)}: ${decision.reason}`);
-  return { ...decision, number };
+  log(`started build ${number ?? "?"} of ${short(head)}, ${published}: ${decision.reason}`);
+  return { ...decision, plan, number };
 }
 
 function git(...args) {
@@ -162,6 +192,19 @@ function changedSinceInGit(commit) {
   return out ? out.split("\n") : [];
 }
 
+/** The commits in `range`, newest first, as `{ subject, body }`. */
+function commitsInGit(range) {
+  const out = git("log", "--format=%s%x1f%b%x1e", range);
+  return out
+    .split("\x1e")
+    .map((record) => record.replace(/^\n/, ""))
+    .filter(Boolean)
+    .map((record) => {
+      const [subject, body = ""] = record.split("\x1f");
+      return { subject, body };
+    });
+}
+
 function workflowIDFromFile() {
   const text = readFileSync(new URL("../app/ci_scripts/workflows.sh", import.meta.url), "utf8");
   const id = text.match(/^internal_workflow=(\S+)$/m)?.[1];
@@ -175,13 +218,19 @@ async function main() {
     console.error("usage: node release/cadence.mjs [--dry-run]");
     process.exit(2);
   }
-  for (const name of ["ASC_KEY_P8", "ASC_KEY_ID", "ASC_ISSUER_ID"]) {
+  const dryRun = args.includes("--dry-run");
+  for (const name of ["ASC_KEY_P8", "ASC_KEY_ID", "ASC_ISSUER_ID", ...(dryRun ? [] : ["GITHUB_TOKEN", "GITHUB_REPOSITORY"])]) {
     if (!process.env[name]) {
       console.error(`${name} is not set`);
       process.exit(2);
     }
   }
-  git("fetch", "--quiet", "origin", "main");
+  git("fetch", "--quiet", "--tags", "origin", "main");
+  const head = git("rev-parse", "origin/main");
+  const lines = (out) => (out ? out.split("\n") : []);
+  const github = dryRun
+    ? null
+    : githubClient({ token: process.env.GITHUB_TOKEN, repository: process.env.GITHUB_REPOSITORY });
   await run({
     request: client({
       keyPEM: process.env.ASC_KEY_P8,
@@ -189,9 +238,18 @@ async function main() {
       issuerID: process.env.ASC_ISSUER_ID,
     }),
     workflowID: workflowIDFromFile(),
-    head: git("rev-parse", "origin/main"),
+    head,
     changedSince: changedSinceInGit,
-    dryRun: args.includes("--dry-run"),
+    version: {
+      plan: () =>
+        planVersion({
+          tags: lines(git("tag", "--merged", head, "--list", "v*")),
+          headTags: lines(git("tag", "--points-at", head, "--list", "v*")),
+          commitsSince: (tag) => commitsInGit(tag ? `${tag}..${head}` : head),
+        }),
+      publish: (plan) => publishVersion(github, plan, head, (tag) => git("tag", "--list", "--format=%(contents)", tag)),
+    },
+    dryRun,
   });
 }
 

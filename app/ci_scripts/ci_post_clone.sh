@@ -7,6 +7,8 @@
 # Xcode Cloud resolves packages only from a Package.resolved, and the generated project has none: app/Package.resolved
 # pins the remote ones (PostHog) and goes into the project here. Refresh it when project.yml's packages change:
 # `xcodebuild -resolvePackageDependencies` in app/, then copy the project's Package.resolved back to app/.
+# In every workflow it sets MARKETING_VERSION to the newest vX.Y.Z tag reachable from the commit (release/version.mjs
+# makes them from conventional commits; nobody edits MARKETING_VERSION). The clone can be shallow and without tags.
 # In the Internal - TestFlight workflow it marks the build as the Internal group's (PRHUB_INTERNAL_TESTFLIGHT).
 # In the PRHub Tests workflow it runs PRKit's `swift test` here, on the one Mac with the sources: the test Macs get only
 # the built products, so the PRHub scheme's PRKitTests skip what reads docs/fixtures/, and the Mac's code runs only here.
@@ -15,6 +17,18 @@
 set -euo pipefail
 source "${0:A:h}/release.sh"
 app=$CI_PRIMARY_REPOSITORY_PATH/app
+repo_git=(git -C "$CI_PRIMARY_REPOSITORY_PATH")
+if [[ $("${repo_git[@]}" rev-parse --is-shallow-repository) == true ]]; then
+    "${repo_git[@]}" fetch --quiet --unshallow --tags
+else
+    "${repo_git[@]}" fetch --quiet --tags
+fi
+version_tag=$("${repo_git[@]}" describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' HEAD)
+version=${version_tag#v}
+[[ $version =~ '^[0-9]+\.[0-9]+\.[0-9]+$' ]] || { echo "error: the newest v-tag, $version_tag, is not vX.Y.Z" >&2; exit 1; }
+sed -i '' -E "s/^([[:space:]]*MARKETING_VERSION:)[[:space:]]+.+$/\1 $version/" "$app/project.yml"
+grep -q "MARKETING_VERSION: $version\$" "$app/project.yml"
+echo "version: PRHub $version ($version_tag)"
 if [[ -n $release_build ]]; then
     number=${CI_BUILD_NUMBER:?}
     if [[ $number != "$release_build" ]]; then

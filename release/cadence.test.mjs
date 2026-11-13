@@ -41,7 +41,18 @@ function stubAPI(runs) {
 const succeeded = { number: 5, commit: LAST, progress: "COMPLETE", status: "SUCCEEDED" };
 const posts = (calls) => calls.filter((c) => c.method === "POST");
 
-async function check(runs, changed) {
+const PLAN = { action: "tag", tag: "v0.18.0", version: "0.18.0", notes: "- feat: x" };
+
+function stubVersion() {
+  const published = [];
+  return {
+    published,
+    plan: () => PLAN,
+    publish: async (plan) => (published.push(plan), "version 0.18.0 (tagged v0.18.0, release created)"),
+  };
+}
+
+async function check(runs, changed, version = stubVersion()) {
   const { request, calls } = stubAPI(runs);
   const lines = [];
   const decision = await run({
@@ -49,6 +60,7 @@ async function check(runs, changed) {
     workflowID: WORKFLOW,
     head: HEAD,
     changedSince: () => changed,
+    version,
     dryRun: false,
     log: (line) => lines.push(line),
   });
@@ -80,11 +92,19 @@ test("changes outside the app paths: no change", async () => {
   assert.equal(posts(calls).length, 0);
 });
 
-test("a change inside the app paths starts the workflow on main", async () => {
-  const { decision, calls, line } = await check([succeeded], ["worker/x", "PRKit/Sources/A.swift"]);
+test("nothing to build: no version is made", async () => {
+  const version = stubVersion();
+  await check([succeeded], ["worker/x"], version);
+  assert.deepEqual(version.published, []);
+});
+
+test("a change inside the app paths makes the version, then starts the workflow on main", async () => {
+  const version = stubVersion();
+  const { decision, calls, line } = await check([succeeded], ["worker/x", "PRKit/Sources/A.swift"], version);
   assert.equal(decision.action, "start");
   assert.equal(decision.number, 9);
-  assert.match(line, /^started build 9/);
+  assert.deepEqual(version.published, [PLAN]);
+  assert.match(line, /^started build 9 of hhhhhhh, version 0\.18\.0 \(tagged v0\.18\.0/);
   const [post] = posts(calls);
   assert.deepEqual(post.body.data.relationships, {
     workflow: { data: { type: "ciWorkflows", id: WORKFLOW } },
@@ -92,19 +112,22 @@ test("a change inside the app paths starts the workflow on main", async () => {
   });
 });
 
-test("--dry-run decides but starts nothing", async () => {
+test("--dry-run decides and plans the version but starts and tags nothing", async () => {
   const { request, calls } = stubAPI([succeeded]);
+  const version = stubVersion();
   const lines = [];
   const decision = await run({
     request,
     workflowID: WORKFLOW,
     head: HEAD,
     changedSince: () => ["app/x"],
+    version,
     dryRun: true,
     log: (l) => lines.push(l),
   });
   assert.equal(decision.action, "start");
-  assert.match(lines[0], /^would start/);
+  assert.match(lines[0], /^would start a build of hhhhhhh as 0\.18\.0 \(tag v0\.18\.0\)/);
+  assert.deepEqual(version.published, []);
   assert.equal(calls.length, 1);
 });
 
