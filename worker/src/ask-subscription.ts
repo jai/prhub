@@ -3,6 +3,7 @@
 // take the next question.
 import { type AgentAnswer, askContainer } from "./agent-container.ts";
 import { type AskChat, type AskInput, type AskMessage, askPrompt, askRecordKey } from "./ask-chat.ts";
+import type { AskGrant } from "./app-token.ts";
 import type { PrFacts } from "./ask-setup.ts";
 import { type Env, scopedKey } from "./env.ts";
 import { getFromGitHub, liveDiff } from "./github.ts";
@@ -11,6 +12,14 @@ import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models.ts";
 
 /** Said with every question: a session begun before the diff file existed reads only its first system prompt. */
 const DIFF_NOTE = "The PR's diff at this head is in .prhub-pr.diff at the repository's root. Read it first.";
+
+/**
+ * The container a person's questions run in: their own, so one person's checkouts and clones are never on the disk
+ * another person's agent reads. Key lines and rewrites, which read no files, share `ai`.
+ */
+export function askInstance(env: Pick<Env, "SIGNED_IN_USER_ID">): string {
+  return `ask:${env.SIGNED_IN_USER_ID ?? "self"}`;
+}
 
 /** A turn that has run this long is taken as lost: the job that ran it ended without saying so. */
 export const TURN_LOST_MS = 20 * 60_000;
@@ -75,7 +84,7 @@ const STOPS: Record<string, string> = {
 export async function askOnSubscription(
   repo: RepoFullName, number: number, input: AskInput, choice: ModelChoice, env: Env,
   services: {
-    system: () => Promise<string>; token: () => Promise<string>; diff: () => Promise<string>; budgetUsd: number;
+    system: () => Promise<string>; grant: () => Promise<AskGrant>; diff: () => Promise<string>; budgetUsd: number;
     /** Whether the token is read only by how it was made: only then may the agent's tools reach GitHub with it. */
     readOnly: boolean; now?: () => number;
   },
@@ -96,12 +105,14 @@ export async function askOnSubscription(
   await env.DIFFS.put(key, JSON.stringify(record));
   try {
     const entries = record.session ? await (await env.DIFFS.get(transcriptKey(repo, number, env)))?.json<unknown[]>() : [];
+    const grant = await services.grant();
     const answer = await askContainer<AskAnswer>("/ask", JSON.stringify({
       system: await services.system(), prompt: `${DIFF_NOTE}\n${askPrompt(input, null)}`, model: choice.model, effort: choice.effort,
       scope: env.SIGNED_IN_USER_ID ?? "self", repo, number,
-      head: input.head, token: await services.token(), readOnly: services.readOnly, diff: await services.diff(), session: record.session, entries: entries ?? [],
+      head: input.head, token: grant.token, readOnly: services.readOnly,
+      reachable: grant.repos, diff: await services.diff(), session: record.session, entries: entries ?? [],
       budgetUsd: services.budgetUsd,
-    }), env.AGENT!);
+    }), env.AGENT!, undefined, askInstance(env));
     if (answer.error) {
       throw new Error(answer.error);
     }

@@ -345,19 +345,26 @@ cost on the API; Ask's chat has `costCents` `null`, so the app shows no cost, an
   itself (`agent/read-tools.mjs`), are:
   - Read, Grep and Glob, inside the PR's checkout and the person's cloned repos (`<scope>/.clones/<owner>/<name>`),
     symlinks followed.
-  - `git`: one subcommand of `log`, `show`, `diff`, `grep`, `blame`, `shortlog`, `describe`, `rev-parse`, `rev-list`,
-    `merge-base`, `name-rev`, `ls-files`, `ls-tree`, `cat-file` and `for-each-ref`, run without a shell and with no
-    global or system git config. Refused: any other subcommand (so no `push`, `fetch`, `commit` or `checkout`), any
-    option before the subcommand (`-c`, `--git-dir`), `--output`, `--no-index`, `--ext-diff`, `--open-files-in-pager`,
-    `--contents`, `--file`, `--exec` and their abbreviations, grep's `-O` and `-f`, and a path that is absolute,
-    starts with `~` or climbs with `..`.
+  - `git`: one subcommand of `log`, `show`, `rev-list`, `shortlog`, `diff`, `grep`, `blame`, `describe`,
+    `rev-parse`, `merge-base`, `name-rev`, `ls-files`, `ls-tree`, `cat-file` and `for-each-ref`, each with its own
+    allow-list of options (`GIT_READS` in `agent/read-tools.mjs`). An option not on it, and any abbreviation, is
+    refused; none on it names a file or a program, so blame's `-S`, `--contents` and `--ignore-revs-file`, grep's `-f`
+    and `-O`, `--output`, `--no-index`, `--ext-diff` and cat-file's `--batch` are all refused. Git runs without a
+    shell, with an empty stdin and no global or system config, in the repo's real path inside the person's directory;
+    a path argument that is absolute, starts with `~`, climbs with `..`, or resolves out of the repo through a
+    symlink is refused.
   - `clone_repo` (`owner/name`, optional branch, tag or commit): a blobless clone with branches and tags into the
     person's clones; again, it updates.
   - `github_api`: one `GET` of a path on `https://api.github.com`, redirects not followed. No other method is offered.
 
   A PreToolUse hook checks each call against these rules and denies any other tool; each tool checks again. The token
-  rides each git command's header and the API request, never the agent's view or disk, and is taken out of every
-  tool's output and the answer, as is `CLAUDE_CODE_OAUTH_TOKEN`.
+  rides each git command's header and the API request, never the agent's view or disk. It and
+  `CLAUDE_CODE_OAUTH_TOKEN` are taken out of every tool's output and of the answer.
+- Hosted, the container is told the repos this question's token names, and only those clones can be read, gitted or
+  made: a clone made while the person could see a repo is shut once they can't.
+- Each person's questions run in a container of their own (`ask:<user id>`; `ask:self` on a Worker of one's own), so
+  no person's agent shares a disk with another's checkouts. Key lines and rewrites share one (`ai`). Each sleeps after
+  two idle minutes, and the hosted Worker allows eight at once.
 - `clone_repo` and `github_api` exist only when the token is read only by how it was made: hosted, the PRHub App's
   installation token for the PR's installation, naming every repo of it the person can see (up to 500). The Worker
   reads that list with the person's own token, `GET /user/installations/{id}/repositories`, keeps it under their

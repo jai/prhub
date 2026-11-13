@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { promisify } from "node:util";
 import { InMemorySessionStore, query } from "@anthropic-ai/claude-agent-sdk";
-import { authArgs, readOnlyHooks, readToolNames, readTools, SERVER } from "./read-tools.mjs";
+import { authArgs, readOnlyHooks, readToolNames, readTools, SERVER, vetRepo } from "./read-tools.mjs";
 
 const exec = promisify(execFile);
 
@@ -115,15 +115,18 @@ function scrub(text, ...more) {
 const SAFE = { scope: /^[\w-]{1,64}$/, repo: /^[\w.-]+\/[\w.-]+$/, head: /^[0-9a-f]{40}$/ };
 
 async function ask({
-  system, prompt, model, effort, scope, repo, number, head, token, readOnly, diff, session, entries, budgetUsd,
+  system, prompt, model, effort, scope, repo, number, head, token, readOnly, reachable, diff, session, entries, budgetUsd,
 }) {
   if (!SAFE.scope.test(scope) || !SAFE.repo.test(repo) || repo.includes("..") || !Number.isInteger(number)
     || !SAFE.head.test(head)) {
     throw new Error("The question names no PR this container can check out.");
   }
+  // Hosted, the repos this question's token names: the only clones the agent may read. Null on a Worker of one's own.
+  const granted = Array.isArray(reachable) ? reachable.filter((one) => vetRepo(one) === null) : null;
   const dir = `${WORK}/${scope}/${repo}/${number}`;
   // This person's other repos, cloned by clone_repo. GitHub owners never start with a dot, so no PR's checkout is here.
-  const clones = `${WORK}/${scope}/.clones`;
+  const home = `${WORK}/${scope}`;
+  const clones = `${home}/.clones`;
   mkdirSync(clones, { recursive: true });
   return locked(dir, async () => {
     const cwd = await checkout(dir, repo, head, token);
@@ -137,9 +140,11 @@ async function ask({
       prompt,
       options: {
         systemPrompt: system, model, effort, cwd, tools: ASK_TOOLS, allowedTools: allowed, permissionMode: "dontAsk",
-        mcpServers: { [SERVER]: readTools({ prDir: cwd, prRepo: repo, clones, token: reads, locked }) },
+        mcpServers: { [SERVER]: readTools({
+          prDir: cwd, prRepo: repo, clones, scope: home, token: reads, locked, reachable: granted,
+        }) },
         settingSources: [], maxTurns: 60, maxBudgetUsd: budgetUsd ?? undefined, sessionStore: store,
-        hooks: { PreToolUse: readOnlyHooks(cwd, clones) },
+        hooks: { PreToolUse: readOnlyHooks(cwd, clones, granted) },
         resume: session ?? undefined,
       },
     })) {

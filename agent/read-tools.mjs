@@ -2,55 +2,141 @@
 // another repo, and GETs on GitHub's API. Each is a tool this process runs, never a shell: the agent names a git
 // subcommand and its arguments, or an API path, and the token stays here. The vetting below gates each call twice, in
 // the PreToolUse hook and again in the tool itself.
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { promisify } from "node:util";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-
-const exec = promisify(execFile);
 
 /** The MCP server's name: its tools are `mcp__prhub__<name>`. */
 export const SERVER = "prhub";
 
-/** Git subcommands that only read. `fetch`, `checkout` and every other writer are not here. */
-export const GIT_READS = new Set([
-  "log", "show", "diff", "grep", "blame", "shortlog", "describe", "rev-parse", "rev-list", "merge-base", "name-rev",
-  "ls-files", "ls-tree", "cat-file", "for-each-ref",
-]);
+const words = (text) => text.trim().split(/\s+/);
 
-/** Options that write a file, read one from outside the repo, or run a program, whatever the subcommand. */
-const GIT_DENIED = ["--output", "--no-index", "--ext-diff", "--open-files-in-pager", "--contents", "--file", "--exec"];
+/** What a diff can show: no option here names a file or a program. */
+const DIFF_FLAGS = words(`-p --patch --no-patch -s --stat --shortstat --numstat --name-only --name-status --summary --raw
+  -w -b --ignore-all-space --ignore-space-change --no-renames -M -R --patience --histogram --minimal --no-color
+  --word-diff --full-index --binary`);
+const DIFF_VALUES = words("-U --unified --diff-filter --stat-width --abbrev");
 
-/** Why a git call is refused, or null when it only reads. `args` start with the subcommand. */
+/** What a history can show. `-S` and `-G` here search the history for a string: they name no file. */
+const LOG_FLAGS = [...DIFF_FLAGS, ...words(`--oneline --graph --decorate --no-decorate --all --branches --tags --remotes
+  --merges --no-merges --first-parent --reverse --date-order --topo-order --author-date-order --abbrev-commit
+  --no-abbrev-commit --full-history --simplify-merges --ancestry-path --left-right --cherry-pick --cherry-mark
+  --boundary --follow -i --regexp-ignore-case --all-match --invert-grep -E --extended-regexp -F --fixed-strings -m
+  --cc --full-diff --source --use-mailmap --parents --children --no-walk --count --notes --no-notes`)];
+const LOG_VALUES = [...DIFF_VALUES, ...words(`-n --max-count --skip --since --until --after --before --author
+  --committer --grep -S -G -L --format --pretty --date --min-parents --max-parents --decorate-refs`)];
+
+/**
+ * Git subcommands that only read, each with the only options it takes. An option not listed is refused, and so is
+ * every abbreviation: `--ignore-revs-f` is not `--ignore-revs-file`, it is unknown. None listed names a file to read
+ * or write, or a program to run (blame's `-S`, `--contents` and `--ignore-revs-file`, grep's `-f` and `-O`, `--output`,
+ * `--no-index`, `--ext-diff`, `--textconv`, cat-file's `--batch`).
+ */
+export const GIT_READS = new Map(Object.entries({
+  log: { flags: LOG_FLAGS, values: LOG_VALUES, counts: true },
+  show: { flags: LOG_FLAGS, values: LOG_VALUES, counts: true },
+  "rev-list": { flags: LOG_FLAGS, values: LOG_VALUES, counts: true },
+  shortlog: { flags: words("-s --summary -n --numbered -e --email --all --merges --no-merges"),
+    values: words("--since --until --after --before --author -n --max-count --format"), counts: true },
+  diff: { flags: [...DIFF_FLAGS, "--cached", "--staged", "--merge-base"], values: DIFF_VALUES },
+  grep: { flags: words(`-n --line-number -i --ignore-case -w --word-regexp -v --invert-match -l --files-with-matches
+    -L --files-without-match -c --count -h -H --full-name -E --extended-regexp -F --fixed-strings -G --basic-regexp
+    -P --perl-regexp -I --heading --break --cached --all-match --and --or --not -o --only-matching --column -p
+    --show-function -W --function-context -a --text`),
+    values: words("-e -A -B -C --context --after-context --before-context --max-depth -m --max-count") },
+  blame: { flags: words("-l -s -e --show-email -w -M -C --porcelain --line-porcelain -t --root --show-name --show-number -f -n"),
+    values: words("-L") },
+  describe: { flags: words("--tags --all --always --long --contains --exact-match --first-parent"),
+    values: words("--abbrev --match --exclude --candidates") },
+  "rev-parse": { flags: words("--short --abbrev-ref --verify -q --quiet --symbolic-full-name --is-shallow-repository"),
+    values: [] },
+  "merge-base": { flags: words("--is-ancestor --all --octopus --independent"), values: [] },
+  "name-rev": { flags: words("--tags --name-only --always"), values: [] },
+  "ls-files": { flags: words("--cached --stage -s --full-name --error-unmatch --deleted --modified"), values: [] },
+  "ls-tree": { flags: words("-r -t -d --name-only --name-status -l --long --full-name --full-tree"), values: words("--abbrev") },
+  "cat-file": { flags: words("-t -s -p -e"), values: [] },
+  "for-each-ref": { flags: [], values: words("--contains --no-contains --merged --no-merged --points-at --sort --format --count") },
+}));
+
+/** A path argument as given: none absolute, from home, or climbing. */
+function outsidePath(arg) {
+  return isAbsolute(arg) || arg.startsWith("~") || arg.split(/[\\/]/).includes("..");
+}
+
+/**
+ * Why a git call is refused, or null when it only reads. `args` start with the subcommand. Every option must be on the
+ * subcommand's list, whole; a listed value option takes `--name=value`, `--name value`, `-x value` or `-xvalue`.
+ * Everything else is a revision or a path, and a path stays inside the repo.
+ */
 export function vetGit(args) {
   if (!Array.isArray(args) || args.length === 0 || args.some((arg) => typeof arg !== "string")) {
     return "Give git a subcommand and its arguments, as a list of strings.";
   }
   const [command, ...rest] = args;
-  if (!GIT_READS.has(command)) {
-    return `git ${command} is not allowed. Allowed: ${[...GIT_READS].join(", ")}.`;
+  const allowed = GIT_READS.get(command);
+  if (!allowed) {
+    return `git ${command} is not allowed. Allowed: ${[...GIT_READS.keys()].join(", ")}.`;
   }
-  for (const arg of rest) {
-    if (arg.includes("\0") || arg.includes("\n")) {
+  let paths = false;
+  for (let at = 0; at < rest.length; at++) {
+    const arg = rest[at];
+    if (/[\0-\x1f]/.test(arg)) {
       return "An argument holds a control character.";
     }
-    const name = arg.split("=")[0];
-    // Git takes a long option's unique prefix too: `--outp` is `--output`.
-    if (name.startsWith("--") && name.length > 2 && GIT_DENIED.some((denied) => denied.startsWith(name))) {
-      return `${name} is not allowed: it writes a file, reads one outside the repo, or runs a program.`;
+    if (paths || !arg.startsWith("-") || arg === "-") {
+      if (outsidePath(arg)) {
+        return "Paths stay inside the repo: no absolute paths, ~ or ..";
+      }
+      continue;
     }
-    // A path outside the repo turns `git diff` into a diff of any two files: every path stays inside.
-    if (!arg.startsWith("-") && (isAbsolute(arg) || arg.startsWith("~") || arg.split(/[\\/]/).includes(".."))) {
-      return "Paths stay inside the repo: no absolute paths, ~ or ...";
+    if (arg === "--") {
+      paths = true;
+      continue;
     }
-    // grep's -O opens a pager program and -f reads patterns from any file, alone or among other short options.
-    if (command === "grep" && /^-[^-]/.test(arg) && /[Of]/.test(arg)) {
-      return "git grep's -O and -f are not allowed.";
+    if (allowed.counts && /^-\d+$/.test(arg)) {
+      continue;
     }
+    if (allowed.flags.includes(arg)) {
+      continue;
+    }
+    const long = /^(--[a-z][a-z-]*)=/.exec(arg);
+    if (long && allowed.values.includes(long[1])) {
+      continue;
+    }
+    if (allowed.values.includes(arg)) {
+      if (at + 1 >= rest.length) {
+        return `${arg} needs a value.`;
+      }
+      at++;
+      continue;
+    }
+    const short = /^(-[A-Za-z])./.exec(arg);
+    if (short && !arg.startsWith("--") && allowed.values.includes(short[1])) {
+      continue;
+    }
+    return `git ${command} ${arg.split("=")[0]} is not allowed. Its options: ${[...allowed.flags, ...allowed.values].join(" ")}.`;
   }
   return null;
+}
+
+/**
+ * The real directory for a git call: `dir` with symlinks followed, inside `scope`, and each argument that names an
+ * existing file resolving inside it. A repo's committed symlink can't point git elsewhere.
+ */
+export function realGitDir(dir, scope, args) {
+  const real = realOf(dir);
+  if (!isInside(scope, real)) {
+    return { refused: "That repo is outside this person's files." };
+  }
+  for (const arg of args.slice(1)) {
+    const candidate = resolve(real, arg);
+    if (!arg.startsWith("-") && existsSync(candidate) && !isInside(real, candidate)) {
+      return { refused: `${arg} is a link out of the repo.` };
+    }
+  }
+  return { dir: real };
 }
 
 /** `owner/name` as GitHub spells them, and nothing that climbs a directory. */
@@ -98,12 +184,19 @@ const DENY = (reason) => ({
   hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason },
 });
 
+/** Whether `repo` is in `reachable`, the repos this question's token names; null names no limit. GitHub ignores case. */
+export function inGrant(repo, reachable) {
+  return reachable === null || reachable === undefined
+    || reachable.some((one) => one.toLowerCase() === String(repo).toLowerCase());
+}
+
 /**
  * The PreToolUse gate. Read, Grep and Glob stay in `cwd` (the PR's checkout) or `clones`; git, clone_repo and
- * github_api pass their vetting. Anything else the agent tries is denied.
+ * github_api pass their vetting. With `reachable` (hosted: the repos this question's token names), only those clones
+ * can be read or made: one cloned while the person could see it is shut once they can't. Anything else is denied.
  */
-export function readOnlyHooks(cwd, clones) {
-  const roots = [cwd, clones];
+export function readOnlyHooks(cwd, clones, reachable = null) {
+  const roots = reachable ? [cwd, ...reachable.map((repo) => `${clones}/${repo}`)] : [cwd, clones];
   // No matcher: every tool comes here. A hook that fails blocks its call rather than letting it through.
   return [{
     onFailure: "block",
@@ -116,11 +209,15 @@ export function readOnlyHooks(cwd, clones) {
         // A Glob pattern, and Grep's file filter, are paths too: absolute or climbing ones reach outside.
         const patterns = [name === "Glob" ? pattern : null, glob].filter((value) => typeof value === "string");
         const escapes = patterns.some((value) => isAbsolute(value) || value.startsWith("~") || value.split(/[\\/]/).includes(".."));
-        return roots.some((root) => isInside(root, target)) && !escapes ? {}
+        const inRoot = roots.some((root) => isInside(root, target))
+          || (reachable !== null && isInside(clones, target) && cloneInGrant(clones, target, reachable));
+        return inRoot && !escapes ? {}
           : DENY("Only the checkout and the repos you cloned can be read.");
       }
-      const reason = name === `mcp__${SERVER}__git` ? vetGit(given.args) ?? (given.repo === undefined ? null : vetRepo(given.repo))
-        : name === `mcp__${SERVER}__clone_repo` ? vetRepo(given.repo) ?? vetRef(given.ref)
+      const granted = (repo) => (inGrant(repo, reachable) ? null : cantAccess(repo));
+      const reason = name === `mcp__${SERVER}__git`
+        ? vetGit(given.args) ?? (given.repo === undefined ? null : vetRepo(given.repo) ?? granted(given.repo))
+        : name === `mcp__${SERVER}__clone_repo` ? vetRepo(given.repo) ?? vetRef(given.ref) ?? granted(given.repo)
           : name === `mcp__${SERVER}__github_api` ? vetApiPath(given.path)
             : "Only reading is allowed.";
       return reason === null ? {} : DENY(reason);
@@ -128,11 +225,18 @@ export function readOnlyHooks(cwd, clones) {
   }];
 }
 
-/** What a tool says back, cut so one answer can't fill the context, and with the token out of it. */
+/** Whether a path under `clones` is in a repo of `reachable`, matched without case as GitHub names repos. */
+function cloneInGrant(clones, target, reachable) {
+  const [owner, name] = relative(realOf(clones), realOf(isAbsolute(target) ? target : resolve(clones, target))).split(/[\\/]/);
+  return Boolean(owner && name) && inGrant(`${owner}/${name}`, reachable);
+}
+
+/** What a tool says back, cut so one answer can't fill the context, and with both tokens out of it. */
 const KEPT = 60_000;
 
 function said(text, token) {
-  const clean = token ? String(text).split(token).join("[redacted]") : String(text);
+  const clean = [token, process.env.CLAUDE_CODE_OAUTH_TOKEN].reduce(
+    (kept, secret) => (secret ? kept.split(secret).join("[redacted]") : kept), String(text));
   return clean.length > KEPT ? `${clean.slice(0, KEPT)}\n[cut at ${KEPT} characters]` : clean;
 }
 
@@ -156,39 +260,68 @@ export function authArgs(token) {
   return token ? ["-c", `http.extraHeader=Authorization: Basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`] : [];
 }
 
-async function runGit(dir, args, token, timeout = 120_000) {
-  try {
-    const { stdout } = await exec("git", ["-C", dir, ...authArgs(token), ...args], {
-      env: gitEnv(), timeout, maxBuffer: 32 * 1024 * 1024,
+/** Most bytes of output kept from one git command: the rest is dropped and the command stopped. */
+const GIT_OUTPUT_MAX = 8 * 1024 * 1024;
+
+/**
+ * Git in `dir` with an empty stdin, so a command that reads it (`cat-file --batch`, `shortlog` with no revision) ends
+ * at once. Git's own words on a failure, never the command line: that carries the token's header.
+ */
+export function runGit(dir, args, token, timeout = 120_000) {
+  return new Promise((done) => {
+    const child = spawn("git", ["-C", dir, ...authArgs(token), ...args], {
+      env: gitEnv(), stdio: ["ignore", "pipe", "pipe"], timeout,
     });
-    return { ok: true, text: stdout };
-  } catch (error) {
-    // Git's own words, never the command line: that carries the token's header.
-    return { ok: false, text: String(error?.stderr ?? "").trim() || `git exited ${error?.code ?? "?"}` };
-  }
+    const out = [];
+    const err = [];
+    let size = 0;
+    child.stdout.on("data", (chunk) => {
+      size += chunk.length;
+      if (size <= GIT_OUTPUT_MAX) {
+        out.push(chunk);
+      } else {
+        child.kill();
+      }
+    });
+    child.stderr.on("data", (chunk) => err.push(chunk));
+    child.on("error", (error) => done({ ok: false, text: `git could not run: ${error.message}` }));
+    child.on("close", (code, signal) => {
+      const stdout = Buffer.concat(out).toString();
+      if (code === 0 || (size > GIT_OUTPUT_MAX && stdout)) {
+        done({ ok: true, text: stdout });
+        return;
+      }
+      done({ ok: false, text: Buffer.concat(err).toString().trim() || `git exited ${code ?? signal ?? "?"}` });
+    });
+  });
 }
 
 /**
  * The tools, for one question. `prDir` is the PR's checkout of `prRepo`; `clones` is where this person's other repos
- * go. `token`, read only, reaches GitHub; null leaves git on the checkout alone.
+ * go; `scope` holds both, and git never runs outside it. `token`, read only, reaches GitHub; null leaves git on the
+ * checkout alone. `reachable`, hosted, names the repos the token reaches: no other clone is read or made.
  */
-export function readTools({ prDir, prRepo, clones, token, locked }) {
+export function readTools({ prDir, prRepo, clones, scope, token, locked, reachable = null }) {
   const dirOf = (repo) => (repo === undefined ? prDir : `${clones}/${repo}`);
   const git = tool(
     "git",
-    `Runs one read-only git command, without a shell: ${[...GIT_READS].join(", ")}. \`repo\` (owner/name) picks a repo you cloned with clone_repo; leave it out for the PR's checkout of ${prRepo}.`,
+    `Runs one read-only git command, without a shell: ${[...GIT_READS.keys()].join(", ")}, each with a fixed set of options; a refused option says which ones it takes. \`repo\` (owner/name) picks a repo you cloned with clone_repo; leave it out for the PR's checkout of ${prRepo}.`,
     { args: z.array(z.string()).min(1).describe('The subcommand and its arguments, such as ["log", "--oneline", "-20"]'),
       repo: z.string().optional() },
     async ({ args, repo }) => {
-      const refused = vetGit(args) ?? (repo === undefined ? null : vetRepo(repo));
+      const refused = vetGit(args) ?? (repo === undefined ? null
+        : vetRepo(repo) ?? (inGrant(repo, reachable) ? null : cantAccess(repo)));
       if (refused) {
         return reply(refused, token, true);
       }
-      const dir = dirOf(repo);
-      if (!existsSync(`${dir}/.git`)) {
+      if (!existsSync(`${dirOf(repo)}/.git`)) {
         return reply(`${repo} is not cloned yet: clone it with clone_repo first.`, token, true);
       }
-      const { ok, text } = await runGit(dir, args, token);
+      const real = realGitDir(dirOf(repo), scope, args);
+      if (real.refused) {
+        return reply(real.refused, token, true);
+      }
+      const { ok, text } = await runGit(real.dir, args, token);
       return reply(text || "(no output)", token, !ok);
     },
   );
@@ -200,7 +333,7 @@ export function readTools({ prDir, prRepo, clones, token, locked }) {
     "Clones a GitHub repo, read only, at its default branch or `ref` (a branch, tag or commit), with its branches and tags. Read it with Read, Grep and Glob at the directory it names, or with git and `repo`. Cloning again updates it.",
     { repo: z.string().describe("owner/name"), ref: z.string().optional() },
     async ({ repo, ref }) => {
-      const refused = vetRepo(repo) ?? vetRef(ref);
+      const refused = vetRepo(repo) ?? vetRef(ref) ?? (inGrant(repo, reachable) ? null : cantAccess(repo));
       if (refused) {
         return reply(refused, token, true);
       }

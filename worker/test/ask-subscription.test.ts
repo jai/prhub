@@ -24,8 +24,9 @@ const input = (question: string): AskInput => ({ question, head: HEAD, anchor: n
 
 function world(answers: Record<string, unknown>[]) {
   const sent: Record<string, unknown>[] = [];
+  const instances: string[] = [];
   const agent = {
-    idFromName: (name: string) => name,
+    idFromName: (name: string) => void instances.push(name) ?? name,
     get: () => ({
       fetch: async (url: string, init: RequestInit) => {
         assert.equal(url, "http://agent/ask");
@@ -36,10 +37,10 @@ function world(answers: Record<string, unknown>[]) {
   };
   const r2 = memoryR2();
   const env = { DIFFS: r2, AGENT: agent, CLAUDE_CODE_OAUTH_TOKEN: "oat" } as unknown as Env;
-  const services = { system: async () => "sys", token: async () => "read-token", diff: async () => "diff --git a/x b/x",
+  const services = { system: async () => "sys", grant: async () => ({ token: "read-token", repos: ["acme/api", "acme/actions"] as RepoFullName[] }), diff: async () => "diff --git a/x b/x",
     budgetUsd: 5, readOnly: true, now: () => 1_000 };
   const record = () => JSON.parse(r2.objects.get(`ask/${REPO}/7.json`)!) as SubscriptionRecord;
-  return { sent, r2, env, services, record };
+  return { sent, instances, r2, env, services, record };
 }
 
 test("a question's answer joins the chat, and the next question resumes the same session with its transcript", async () => {
@@ -55,10 +56,12 @@ test("a question's answer joins the chat, and the next question resumes the same
   assert.equal(w.sent[0].session, null);
   assert.equal(w.sent[0].token, "read-token");
   assert.equal(w.sent[0].readOnly, true, "the container hears whether the token is read only");
+  assert.deepEqual(w.sent[0].reachable, ["acme/api", "acme/actions"], "and which repos its clones may be");
   assert.equal(w.sent[0].system, "sys");
   assert.equal(w.sent[0].diff, "diff --git a/x b/x", "the PR's diff goes with the question");
   assert.match(String(w.sent[0].prompt), /\.prhub-pr\.diff/, "and each question says where it is");
   assert.equal(w.sent[0].scope, "self", "a self-hosted Worker's checkouts are its own");
+  assert.deepEqual(w.instances, ["ask:self"], "and run in a container of their own, not the shared one");
   await askOnSubscription(REPO, 7, input("Is that enough?"), choice, w.env, w.services);
   assert.equal(w.sent[1].session, "s1");
   assert.deepEqual(w.sent[1].entries, [{ type: "user" }, { type: "assistant" }], "the stored transcript goes back");

@@ -130,7 +130,7 @@ export async function askChat(repo: RepoFullName, number: number, env: Env): Pro
  */
 export async function ask(repo: RepoFullName, number: number, input: AskInput, choice: ModelChoice, env: Env): Promise<void> {
   if (onSubscription(env)) {
-    const token = () => askGrant(repo, number, env).then(({ token: granted }) => granted, (error: unknown) => {
+    const grant = () => askGrant(repo, number, env).catch((error: unknown) => {
       throw error instanceof InstallationTokenRefused ? new AskRefused(error.message) : error;
     });
     const reach = askGitHubReach(env);
@@ -138,7 +138,7 @@ export async function ask(repo: RepoFullName, number: number, input: AskInput, c
       system: async () => askSubscriptionPrompt({
         reviewer: env.GITHUB_LOGIN ?? null, repo, number, pr: await prFacts(repo, number, env), reach,
       }),
-      token, readOnly: reach !== "none", diff: () => prDiff(repo, number, input.head, env),
+      grant, readOnly: reach !== "none", diff: () => prDiff(repo, number, input.head, env),
       budgetUsd: askBudgetOf(limitsOf(env)) / 100,
     });
   }
