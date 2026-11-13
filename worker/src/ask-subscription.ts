@@ -49,7 +49,8 @@ export function subscriptionChat(record: SubscriptionRecord, now: number): AskCh
     isWorking,
     activity: isWorking ? "Reading the repo" : null,
     problem: lost ? "The agent stopped before it answered. Ask again." : record.problem,
-    costCents: record.costCents,
+    // Whole cents for the phone, which reads an integer; the record keeps hundredths so small turns still add up.
+    costCents: record.costCents === null ? null : Math.round(record.costCents),
     model: record.model,
     effort: record.choice.effort,
   };
