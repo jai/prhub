@@ -26,12 +26,25 @@ struct PRHubApp: App {
         #endif
     }()
 
+    #if os(macOS) && DEBUG
+    init() {
+        PRHubMacSnapshot.openWindowIfNoneOpened {
+            PRHubRootView(environment: Self.screenshotEnvironment ?? .shared)
+                .symbolVariant(DesignTokens.iconVariant)
+                .task { await PRHubMacSnapshot.runIfAsked() }
+        }
+    }
+    #endif
+
     var body: some Scene {
         WindowGroup {
             root
                 // DESIGN.md's icon style, for every symbol in the app.
                 .symbolVariant(DesignTokens.iconVariant)
                 .preferredColorScheme(Self.screenshotColorScheme)
+                #if os(macOS) && DEBUG
+                .task { await PRHubMacSnapshot.runIfAsked() }
+                #endif
         }
         #if os(macOS)
         .defaultSize(width: 1_200, height: 800)
