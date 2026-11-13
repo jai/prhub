@@ -393,7 +393,7 @@ struct PRsList: View {
 /// Orgs on top, then the repos in them, each with how many PRs it holds on this page. A popover and not a menu: it
 /// scrolls a long list, and the repos change the moment an org does. They come from rows already on the phone, so none
 /// has to load.
-private struct PRFilterPanel: View {
+struct PRFilterPanel: View {
     let orgs: [String]
     let repoCounts: [String: Int]
     @Binding var filter: PROrgFilter
@@ -456,6 +456,7 @@ private struct PRFilterPanel: View {
             }
             .padding(.vertical, Space.md)
         }
+        .presentedScrollMargins()
         .frame(width: 300, height: 440)
     }
 

@@ -42,6 +42,9 @@ extension View {
         #endif
     }
 
+    /// A sheet's or popover's own scroll margins, not the readable-width screen's it inherits (UI bug 015: a strip).
+    public func presentedScrollMargins() -> some View { contentMargins(.horizontal, 0, for: .scrollContent) }
+
     /// A sheet's content: a sheet sets its own width, so on an iPad it swaps the margins of the screen under it for a
     /// form's own. No margin at all would take the corners off its sections.
     public func sheetContentWidth() -> some View {

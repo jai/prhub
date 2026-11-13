@@ -75,9 +75,7 @@ struct PRAskSheet: View {
         .task(id: session.askChat?.isWorking == true || session.isSendingAsk || session.askSend.isOnItsWay) {
             await session.followAsk()
         }
-        // Its own margins, not the screen's under it: `readableContentWidth` keeps a wide iPad's or Mac's page to a column
-        // with scroll margins that a sheet inherits, and on a Mac's wide window they took all but a strip of the chat.
-        .contentMargins(.horizontal, 0, for: .scrollContent)
+        .presentedScrollMargins()
         .askSheetSize()
         // Only when there is nothing yet: words from a line's box are already on their way.
         .onAppear { isWriting = messages.isEmpty && session.askDraft.isEmpty && session.askSend == .idle }

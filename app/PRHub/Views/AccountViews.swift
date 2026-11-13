@@ -181,6 +181,7 @@ struct DeleteAccountSheet: View {
             .padding(Space.lg)
             .animation(AppMotion.fold, value: failure)
         }
+        .presentedScrollMargins()
         .background(Color.groundCard)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
