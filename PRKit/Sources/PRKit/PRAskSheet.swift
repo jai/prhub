@@ -98,6 +98,10 @@ struct PRAskSheet: View {
         case let .failed(_, reason):
             failure(reason)
         case .idle:
+            if session.askChat?.messages.last?.isJai == true, session.askChat?.unsentQuestion == nil {
+                quietMark("Sent", icon: .done)
+                    .accessibilityIdentifier("pr-ask-sent")
+            }
             chatStatus
         }
     }
@@ -105,6 +109,8 @@ struct PRAskSheet: View {
     /// Where a question on its way stands: grey, as the chat's own progress is. Nothing is wrong yet.
     private func quietMark(_ words: String, icon: AppIcon) -> some View {
         IconText(words, icon: icon)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(words)
             .font(.appCaption)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .trailing)

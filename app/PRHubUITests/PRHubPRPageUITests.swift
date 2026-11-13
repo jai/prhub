@@ -16,6 +16,27 @@ final class PRHubPRPageUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
     }
 
+    func testAskShowsSentWhileTheAgentIsThinking() throws {
+        launch(["-PRHubAskWorking"])
+        openCheckout()
+        app.buttons["pr-ask"].tap()
+        let sent = app.descendants(matching: .any)["pr-ask-sent"]
+        XCTAssertTrue(sent.waitForExistence(timeout: 5))
+        XCTAssertTrue(sent.label.contains("Sent"))
+        XCTAssertTrue(app.descendants(matching: .any)["pr-ask-working"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["pr-ask-sending"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["pr-ask-failed"].exists)
+        try picture("ask-sent-thinking")
+    }
+
+    func testAnEmptyAskChatDoesNotClaimAMessageWasSent() {
+        launch()
+        openCheckout()
+        app.buttons["pr-ask"].tap()
+        XCTAssertTrue(app.buttons["sessionReplySend"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.descendants(matching: .any)["pr-ask-sent"].exists)
+    }
+
     /// One job name in two workflows says its workflow; a job's matrix legs are one line that opens to them.
     func testTheChecksGroupMatrixLegsAndNameTheirWorkflow() throws {
         launch()

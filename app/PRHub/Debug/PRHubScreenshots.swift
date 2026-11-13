@@ -65,6 +65,12 @@ enum PRHubScreenshots {
         let features: Set<DeviceFeature> = arguments.contains("-PRHubNoAI")
             ? [.push] : [.askAI, .keyLines, .rewrite, .push]
         var samples: PRSampleSet = arguments.contains("-PRHubLongDiff") ? .prHubLongDiff : .prHub
+        if arguments.contains("-PRHubAskWorking") {
+            samples.askChat = PRAskChat(
+                messages: [.init(id: "question-1", role: "you", text: "Is this change tested?", anchor: nil)],
+                isWorking: true, activity: nil, problem: nil, costCents: nil
+            )
+        }
         if arguments.contains("-PRHubRefuseFirstReview") {
             samples.refusesFirstReview = "GitHub didn't answer in time."
             // Long enough for a loaded test Mac, and a recording, to see each step.
