@@ -170,6 +170,9 @@ public enum PRKitEvent: Equatable, Sendable {
     case questionRefused(String)
     /// A PR's content is on screen: how it was opened, whether the phone had it, and how long it took.
     case contentShown(PROpenReport)
+    /// A request to the Worker failed: what it was for, and its status or why there was none. Each area's kind of
+    /// failure at most once a minute (`PRViewerClient.reporting`).
+    case requestFailed(PRRequestArea, PRRequestFailure)
 }
 
 /// One PR opened, from the tap to its content on screen (`PRKitEvent.contentShown`).

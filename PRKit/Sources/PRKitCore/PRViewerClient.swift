@@ -1,77 +1,6 @@
 import Foundation
 import PRKitNetwork
 
-/// Why the pr-worker didn't answer with what was asked, read once from its status and body. Each case says what
-/// happened and what to do; the status stays in `unexpected` for a log, never on screen.
-public enum PRWorkerError: LocalizedError, Equatable, Sendable {
-    /// PRHub before it has paired: nothing was sent.
-    case notPaired
-    /// `401`: the bearer was dropped, and the next request reads a new one.
-    case signedOut
-    /// `404`, `410`.
-    case notFound
-    /// `406`, `413`: GitHub won't send something this big.
-    case tooLarge
-    /// `400`, `422`: the Worker couldn't read what the phone sent, so sending it again can't help.
-    case unreadableRequest
-    /// `429`.
-    case limited
-    /// `5xx`.
-    case unavailable
-    case unexpected(status: Int)
-    /// The Worker's own words: GitHub's for a write, the model's for an AI answer. `isPermanent` from its status.
-    case refused(String, isPermanent: Bool = false)
-
-    public init(status: Int) {
-        switch status {
-        case 401: self = .signedOut
-        case 404, 410: self = .notFound
-        case 406, 413: self = .tooLarge
-        case 400, 422: self = .unreadableRequest
-        case 429: self = .limited
-        case 500...599: self = .unavailable
-        default: self = .unexpected(status: status)
-        }
-    }
-
-    /// The Worker's words when its body carries them, else what the status means.
-    public init(status: Int, body: Data) {
-        if let refusal = try? JSONDecoder().decode(WorkerRefusal.self, from: body) {
-            self = .refused(refusal.error, isPermanent: PRWorkerError(status: status).isPermanent)
-        } else {
-            self.init(status: status)
-        }
-    }
-
-    /// Asking again gets the same answer.
-    public var isPermanent: Bool {
-        switch self {
-        case .notFound, .tooLarge, .unreadableRequest: true
-        case let .refused(_, isPermanent): isPermanent
-        case .notPaired, .signedOut, .limited, .unavailable, .unexpected: false
-        }
-    }
-
-    public var errorDescription: String? {
-        switch self {
-        case .notPaired: "This phone isn't connected to a Worker yet. Connect one in Settings."
-        case .signedOut: "The Worker didn't recognise this phone. Try again; if it keeps happening, connect it again."
-        case .notFound: "The Worker can't find this PR. It may have been deleted or moved."
-        case .tooLarge: "This is too large for GitHub to send."
-        case .unreadableRequest: "The Worker couldn't read that request. Update the app and your Worker, then retry."
-        case .limited: "Too many requests for now. Wait a minute and try again."
-        case .unavailable: "The Worker couldn't answer just now. Try again in a minute."
-        case .unexpected: "The Worker gave an answer this app doesn't know. Update the app and your Worker."
-        case let .refused(reason, _): reason
-        }
-    }
-}
-
-/// `{"error": "…"}`: a PR route's refusal, in words for the phone.
-private struct WorkerRefusal: Decodable {
-    let error: String
-}
-
 public enum PRReviewEvent: String, Sendable {
     case approve = "APPROVE"
     case requestChanges = "REQUEST_CHANGES"
@@ -194,6 +123,8 @@ public struct PRViewerClient: Sendable {
     /// One request, once: the app's `URLSession`, or a test's stand-in.
     private let exchange: @Sendable (URLRequest) async throws -> (Data, URLResponse)
     public let access: PRViewerAccess
+    /// Where each failed request goes (`reporting`); nil reports nothing.
+    private var reporter: PRFailureReporter?
 
     /// `isInForeground` decides whether a request waits for a network: in the app, while someone is looking at it.
     public init(access: PRViewerAccess, isInForeground: @escaping @Sendable () async -> Bool) {
@@ -215,6 +146,22 @@ public struct PRViewerClient: Sendable {
         self.exchange = exchange
     }
 
+    /// This client, with each failed request told to `report`: its area, and its status or why there was none. A
+    /// request is one try: a caller that tries again reports again, but each area's kind of failure at most once a
+    /// minute (`PRFailureReporter`). Not sent: a phone that isn't paired, a cancelled request, a 2xx.
+    public func reporting(
+        _ report: @escaping @Sendable (PRRequestArea, PRRequestFailure) -> Void
+    ) -> PRViewerClient {
+        var client = self
+        client.reporter = PRFailureReporter(report: report)
+        return client
+    }
+
+    /// A failed try of `path`, to the reporter. Callers outside the client (an outbox's own request) report theirs.
+    public func reportFailure(path: String, _ failure: PRRequestFailure) {
+        reporter?.failed(PRRequestArea(path: path), failure)
+    }
+
     public struct List: Decodable, Sendable {
         public let prs: [PullRequestRow]
         // swiftlint:disable:next identifier_name
@@ -222,7 +169,7 @@ public struct PRViewerClient: Sendable {
     }
 
     public func pullRequests() async throws -> List {
-        try await JSONDecoder().decode(List.self, from: get(path: "prs"))
+        try decode(List.self, from: await get(path: "prs"), path: "prs")
     }
 
     public struct Merged: Decodable, Sendable {
@@ -232,8 +179,9 @@ public struct PRViewerClient: Sendable {
     /// The last 50 merged PRs Jai wrote, or reviewed, newest merge first. Read from GitHub each time: they are kept
     /// nowhere.
     public func mergedPullRequests(reviewed: Bool) async throws -> [PullRequestRow] {
-        try await JSONDecoder().decode(
-            Merged.self, from: get(path: "prs/merged", query: reviewed ? ["of": "reviewed"] : [:])
+        try decode(
+            Merged.self, from: await get(path: "prs/merged", query: reviewed ? ["of": "reviewed"] : [:]),
+            path: "prs/merged"
         ).prs
     }
 
@@ -255,8 +203,8 @@ public struct PRViewerClient: Sendable {
     public func aiAnswer(path: String, head: String, context: Int, retry: Bool) async throws -> Data? {
         var query = ["head": head, "context": String(context)]
         query["retry"] = retry ? "1" : nil
-        let (data, response) = try await fetch(authorized(path: path, query: query))
-        try await check(response, body: data)
+        let (data, response) = try await fetch(authorized(path: path, query: query), path: path)
+        try await check(response, body: data, path: path)
         return (response as? HTTPURLResponse)?.statusCode == 202 ? nil : data
     }
 
@@ -270,12 +218,13 @@ public struct PRViewerClient: Sendable {
 
     /// GitHub's refusal comes back in its own words, and the PR as it now stands otherwise.
     public func write(_ write: PRWrite, to ref: PullRequestRef) async throws -> Data {
-        var request = try await authorized(path: "prs/\(ref.repo)/\(ref.number)/write", query: [:])
+        let path = "prs/\(ref.repo)/\(ref.number)/write"
+        var request = try await authorized(path: path, query: [:])
         request.httpMethod = "POST"
         request.httpBody = try JSONEncoder().encode(write)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let (data, response) = try await fetch(request)
-        try await check(response, body: data)
+        let (data, response) = try await fetch(request, path: path)
+        try await check(response, body: data, path: path)
         return data
     }
 
@@ -295,25 +244,27 @@ public struct PRViewerClient: Sendable {
 
     /// The conversation on this PR with its AI agent; empty until the first question.
     public func askChat(_ ref: PullRequestRef) async throws -> PRAskChat {
-        try await JSONDecoder().decode(PRAskChat.self, from: get(path: "prs/\(ref.repo)/\(ref.number)/ask"))
+        let path = "prs/\(ref.repo)/\(ref.number)/ask"
+        return try decode(PRAskChat.self, from: await get(path: path), path: path)
     }
 
     /// Once: a retry after a timeout could ask twice. The agent's answer comes through `askChat`.
     public func ask(_ question: PRAskQuestion, about ref: PullRequestRef) async throws -> PRAskChat {
-        var request = try await authorized(path: "prs/\(ref.repo)/\(ref.number)/ask", query: [:])
+        let path = "prs/\(ref.repo)/\(ref.number)/ask"
+        var request = try await authorized(path: path, query: [:])
         request.httpMethod = "POST"
         request.httpBody = try JSONEncoder().encode(question)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let (data, response) = try await fetch(request)
-        try await check(response, body: data)
-        return try JSONDecoder().decode(PRAskChat.self, from: data)
+        let (data, response) = try await fetch(request, path: path)
+        try await check(response, body: data, path: path)
+        return try decode(PRAskChat.self, from: data, path: path)
     }
 
     /// A read of any route on the Worker, decoded.
     public func read<Answer: Decodable>(
         _ path: String, query: [String: String] = [:], as type: Answer.Type
     ) async throws -> Answer {
-        try await JSONDecoder().decode(type, from: get(path: path, query: query))
+        try decode(type, from: await get(path: path, query: query), path: path)
     }
 
     /// A POST whose answer is decoded, and whose refusal comes back in the Worker's words.
@@ -323,9 +274,9 @@ public struct PRViewerClient: Sendable {
         request.httpMethod = "POST"
         request.httpBody = try JSONEncoder().encode(body)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let (data, response) = try await fetch(request)
-        try await check(response, body: data)
-        return try JSONDecoder().decode(type, from: data)
+        let (data, response) = try await fetch(request, path: path)
+        try await check(response, body: data, path: path)
+        return try decode(type, from: data, path: path)
     }
 
     public func post(_ path: String, _ body: some Encodable & Sendable) async throws {
@@ -333,16 +284,16 @@ public struct PRViewerClient: Sendable {
         request.httpMethod = "POST"
         request.httpBody = try JSONEncoder().encode(body)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let (data, response) = try await fetch(request)
-        try await check(response, body: data)
+        let (data, response) = try await fetch(request, path: path)
+        try await check(response, body: data, path: path)
     }
 
     /// A `DELETE` of any route on the Worker.
     public func delete(_ path: String) async throws {
         var request = try await authorized(path: path, query: [:])
         request.httpMethod = "DELETE"
-        let (data, response) = try await fetch(request)
-        try await check(response, body: data)
+        let (data, response) = try await fetch(request, path: path)
+        try await check(response, body: data, path: path)
     }
 
     private func authorized(path: String, query: [String: String]) async throws -> URLRequest {
@@ -356,24 +307,43 @@ public struct PRViewerClient: Sendable {
         return request
     }
 
-    private func fetch(_ request: URLRequest) async throws -> (Data, URLResponse) {
-        try await exchange(request)
+    /// One try: a failure of the connection itself is reported here, a refusal by `check`.
+    private func fetch(_ request: URLRequest, path: String) async throws -> (Data, URLResponse) {
+        do {
+            return try await exchange(request)
+        } catch {
+            if let failure = PRRequestFailure(transport: error) {
+                reportFailure(path: path, failure)
+            }
+            throw error
+        }
     }
 
     private func get(path: String, query: [String: String] = [:]) async throws -> Data {
-        let (data, response) = try await fetch(authorized(path: path, query: query))
-        try await check(response, body: data)
+        let (data, response) = try await fetch(authorized(path: path, query: query), path: path)
+        try await check(response, body: data, path: path)
         return data
     }
 
     /// A refusal in the Worker's words where its body has them (`{"error": "…"}`), else what the status means.
-    private func check(_ response: URLResponse, body: Data) async throws {
+    private func check(_ response: URLResponse, body: Data, path: String) async throws {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
+            reportFailure(path: path, .status(status))
             if status == 401 {
                 await access.discard()
             }
-            throw PRWorkerError(status: status, body: body)
+            throw PRWorkerError(status: status, body: body, area: PRRequestArea(path: path))
+        }
+    }
+
+    /// An answer this app can't read is a failure of its own kind.
+    private func decode<Answer: Decodable>(_ type: Answer.Type, from data: Data, path: String) throws -> Answer {
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            reportFailure(path: path, .unreadable)
+            throw error
         }
     }
 }

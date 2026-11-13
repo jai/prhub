@@ -28,6 +28,9 @@ enum AnalyticsEvent: Equatable, Sendable {
     case pushPrefetch(PRPushPrefetch.Outcome, milliseconds: Int)
     case pullRequestsSynced(PRSyncTrigger, PRSyncOutcome)
     case pullRequestWriteRefused
+    /// From PRKit (`PRKitEvent.requestFailed`): a request to the Worker failed, what it was for and how. Each area's
+    /// kind of failure at most once a minute.
+    case requestFailed(PRRequestArea, PRRequestFailure)
 
     /// The event's name in the vendor's project: one literal each.
     var name: String {
@@ -50,6 +53,7 @@ enum AnalyticsEvent: Equatable, Sendable {
         case .pushPrefetch: "push_prefetch"
         case .pullRequestsSynced: "prs_synced"
         case .pullRequestWriteRefused: "pr_write_refused"
+        case .requestFailed: "request_failed"
         }
     }
 
@@ -71,6 +75,9 @@ enum AnalyticsEvent: Equatable, Sendable {
             ]
         case let .pushPrefetch(outcome, milliseconds):
             ["outcome": .word(outcome.rawValue), "ms": .number(milliseconds)]
+        case let .requestFailed(area, failure):
+            ["area": .word(area.rawValue), "failure": .word(RequestFailureKind(failure).rawValue)]
+                .merging(failure.status.map { ["status": .number($0)] } ?? [:]) { first, _ in first }
         case .signInSucceeded, .workerPaired, .samplesLeft, .anthropicKeySet, .anthropicKeyRemoved, .signedOut,
              .accountDeleted, .workerDisconnected, .pullRequestWriteRefused:
             [:]
@@ -182,6 +189,8 @@ extension AnalyticsEvent {
             self = .pullRequestWriteRefused
         case .questionRefused:
             return nil
+        case let .requestFailed(area, failure):
+            self = .requestFailed(area, failure)
         }
     }
 }
@@ -193,5 +202,30 @@ extension PRSyncOutcome {
         case .unchanged: "unchanged"
         case .failed: "failed"
         }
+    }
+}
+
+/// How a request failed, as `request_failed`'s `failure`: a status (sent in `status`) or why there was none.
+enum RequestFailureKind: String, CaseIterable, Sendable {
+    case status, offline, timeout, network, unreadable
+
+    init(_ failure: PRRequestFailure) {
+        self = switch failure {
+        case .status: .status
+        case .offline: .offline
+        case .timeout: .timeout
+        case .network: .network
+        case .unreadable: .unreadable
+        }
+    }
+}
+
+extension PRRequestFailure {
+    /// The HTTP status, when there was one.
+    fileprivate var status: Int? {
+        if case let .status(code) = self {
+            return code
+        }
+        return nil
     }
 }
