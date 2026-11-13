@@ -18,8 +18,13 @@ query=$(jq -n --arg worker "$worker" --arg turn "$turn" --argjson from $(( now -
     {key: "$metadata.service", operation: "eq", type: "string", value: $worker},
     {key: "$metadata.message", operation: "includes", type: "string", value: "ask_event"},
     {key: "turn", operation: "includes", type: "string", value: $turn}]}}')
-curl -sS -X POST "https://api.cloudflare.com/client/v4/accounts/$account/workers/observability/telemetry/query" \
-    -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "$query" \
-  | jq -r '.result.events.events // [] | sort_by(.timestamp) | if length == 0 then "no ask_event lines for that turn" else
+answer=$(curl -sS -X POST "https://api.cloudflare.com/client/v4/accounts/$account/workers/observability/telemetry/query" \
+    -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "$query")
+# Cloudflare's own refusal (a bad token, no access) is not an empty trace: say it and fail.
+if [[ $(jq -r '.success // false' <<< "$answer" 2>/dev/null) != true ]]; then
+    echo "ask-trace: Cloudflare refused the query: $(jq -c '.errors // .' <<< "$answer" 2>/dev/null || print -r -- "$answer")" >&2
+    exit 1
+fi
+jq -r '.result.events.events // [] | sort_by(.timestamp) | if length == 0 then "no ask_event lines for that turn" else
       .[] | [(.timestamp / 1000 | floor | strftime("%Y-%m-%d %H:%M:%SZ")), .source.stage, ((.source.ms // "") | tostring),
-        (.source | del(.message, .stage, .ms) | tostring)] | @tsv end'
+        (.source | del(.message, .stage, .ms) | tostring)] | @tsv end' <<< "$answer"
