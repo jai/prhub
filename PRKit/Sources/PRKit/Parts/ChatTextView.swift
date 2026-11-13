@@ -125,24 +125,40 @@ final class PictureTextView: UITextView {
     var send: (() -> Void)?
 
     /// Return and Command-Return from a hardware keyboard send (`ReturnKey`), ahead of the text view's own Return.
-    /// Shift-Return and Option-Return are left to the text view, which starts a new line at the cursor; so is the
-    /// on-screen keyboard's return key, which is not a key command.
+    /// Shift-Return and Option-Return start a new line at the cursor, as key commands of their own: left to the text
+    /// view, the iPad's keyboard sent them nowhere (Agent Pager's iPad set, 2026-11-13). The on-screen keyboard's return
+    /// key is not a key command, and starts a new line as before.
     override var keyCommands: [UIKeyCommand]? {
         // While a word is being composed (Japanese, Chinese), Return confirms it: the text view keeps it.
         guard markedTextRange == nil else {
             return super.keyCommands
         }
         let sends = [UIKeyModifierFlags(), .command].map { flags in
-            let command = UIKeyCommand(input: "\r", modifierFlags: flags, action: #selector(returnPressed(_:)))
-            command.wantsPriorityOverSystemBehavior = true
-            return command
+            command(flags, #selector(returnPressed(_:)))
         }
-        return (super.keyCommands ?? []) + sends
+        let lines = [UIKeyModifierFlags.shift, .alternate].map { flags in
+            command(flags, #selector(newLinePressed(_:)))
+        }
+        return (super.keyCommands ?? []) + sends + lines
+    }
+
+    private func command(_ flags: UIKeyModifierFlags, _ action: Selector) -> UIKeyCommand {
+        let command = UIKeyCommand(input: "\r", modifierFlags: flags, action: action)
+        command.wantsPriorityOverSystemBehavior = true
+        return command
     }
 
     @objc func returnPressed(_ command: UIKeyCommand) {
         if markedTextRange == nil {
             send?()
+        }
+    }
+
+    /// A new line at the cursor, in place of any selection, as typing one would: undo takes it back, and the field's
+    /// owner hears the change.
+    @objc func newLinePressed(_ command: UIKeyCommand) {
+        if markedTextRange == nil {
+            insertText("\n")
         }
     }
 
@@ -155,7 +171,7 @@ final class PictureTextView: UITextView {
             return true
         }
         // The text view refuses actions it does not know, which would disable the Return commands and swallow the key.
-        if action == #selector(returnPressed(_:)) {
+        if action == #selector(returnPressed(_:)) || action == #selector(newLinePressed(_:)) {
             return true
         }
         return super.canPerformAction(action, withSender: sender)
