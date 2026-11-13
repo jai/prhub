@@ -353,6 +353,9 @@ async function github(path: string, env: Env, accept: string, init: RequestInit 
       headers: { ...init.headers as Record<string, string> | undefined, Accept: accept, Authorization: `Bearer ${token}`,
         "User-Agent": "pr-viewer" },
     });
+    if (env.GITHUB_CALLS) {
+      env.GITHUB_CALLS.count += 1;
+    }
     const now = Date.now();
     const reserve = gitHubReserveOf(limitsOf(env));
     if (env.GITHUB_RATE) {

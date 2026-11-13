@@ -160,7 +160,14 @@ async function ask(refs: PrId[], week: ReviewWeek | null, env: Env, cache?: GitH
   if (!response.ok) {
     throw new GitHubFailure(`HTTP ${response.status}`);
   }
-  const answer = (await response.json()) as GraphqlAnswer;
+  let answer: GraphqlAnswer;
+  try {
+    answer = (await response.json()) as GraphqlAnswer;
+  } catch (error) {
+    // A big answer can arrive cut off (JSON ending mid-string near 218 KB): asked again one PR at a time, like a refusal.
+    console.warn("states answer unreadable", { prs: refs.length, error: String(error) });
+    return "refused";
+  }
   if (answer.data) {
     const people = new Map(await Promise.all([...aliases].map(async ([ref, [repo, pull]]) => {
       const node = answer.data?.[repo]?.[pull];

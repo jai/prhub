@@ -187,6 +187,8 @@ checked on every run: [`row.json`](fixtures/row.json), [`merged-row.json`](fixtu
   `requestedAt` (when review was last asked of the user himself, null for a team's request) and `reviewDueAt` are on
   `review` rows alone, `mergedAt` on `merged` rows alone. A stored status that no longer parses is
   served as `status: null`.
+- `GET …/detail`, `…/diff`, `…/key-lines` and `…/rewrite` answer with `Server-Timing: github;desc="github calls";dur=<n>`,
+  the GitHub calls that request made (`0` when R2 answered), so a client can measure its share of the token's hour.
 - An open row's `status.draft` says whether the PR is a draft. A row stored before it was kept has none: not known
   until the PR is read again.
 - A detail's `merge` (`clean`, `behind`, `blocked`, `conflicting`, `unstable`, `unknown`) and `review` (`approved`,

@@ -11,6 +11,7 @@ import {
 } from "./config";
 import { makesAnswers } from "./agent-container";
 import { askEvent } from "./ask-trace";
+import { counted } from "./github-calls";
 import { AgentContainer } from "./agent-container-object";
 import { aiJobs, askQueue, type Env, githubLogin, isSet, prIndex, scopedKey } from "./env";
 import { aiStoreKey, isStaleFailure } from "./ai-run";
@@ -386,6 +387,16 @@ async function reposRoute(params: URLSearchParams, env: Env, context: ExecutionC
 }
 
 function pullRequestRoute(
+  match: RegExpExecArray, params: URLSearchParams, request: Request, env: Env, context: ExecutionContext,
+): Promise<Response> {
+  const kind = match[4];
+  // What a PR's screen reads says what it cost GitHub, so the apps' share of the token's hour can be measured.
+  return ["detail", "diff", "key-lines", "rewrite"].includes(kind)
+    ? counted(env, (counting) => pullRequestRead(match, params, request, counting, context))
+    : pullRequestRead(match, params, request, env, context);
+}
+
+function pullRequestRead(
   match: RegExpExecArray, params: URLSearchParams, request: Request, env: Env, context: ExecutionContext,
 ): Promise<Response> {
   const [, owner, name, number, kind] = match;

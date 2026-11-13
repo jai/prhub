@@ -135,6 +135,8 @@ export interface Env extends LimitVars {
   IP_LIMITS?: DurableObjectNamespace<IpLimit>;
   /** Set by the Worker on the env it acts with for one signed-in person (`userEnv`); never a var. */
   SIGNED_IN_USER_ID?: string;
+  /** Set by a route that says what it spent (`Server-Timing`): each GitHub call counts one; never a var. */
+  GITHUB_CALLS?: { count: number };
   /** Set by the PR index on the env a background run reads with (`rate-limit.ts`); never a var. */
   GITHUB_RATE?: RateLimitState;
   DIFFS: R2Bucket;
