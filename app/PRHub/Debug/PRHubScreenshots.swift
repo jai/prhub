@@ -17,7 +17,8 @@ import UIKit
 ///   Settings. The App is installed on `octocat`, on two of acme's repos and, suspended, on initech; with
 ///   `-PRHubInstallations none` on no account, and with `-PRHubInstallations onReturn` on `octocat` alone until the
 ///   app leaves the foreground (as for GitHub), and on acme too when it comes back.
-/// - `-PRHubPaired`: the PRs and Settings over the sample PRs as if paired, every AI feature on. With `-PRHubNoAI` the
+/// - `-PRHubPaired`: the PRs and Settings over the sample PRs as if paired, every AI feature on. With `-PRHubAskWorking`
+///   Ask has a question the agent is still on; with `-PRHubAskAnswered` the agent's long answer to it. With `-PRHubNoAI` the
 ///   Worker has no model key; with `-PRHubSettings` it opens on Settings; with `-PRHubLongDiff` For review starts with a
 ///   PR whose one file is longer than the screen, for the diff's bars; with `-PRHubOpen <link>` it opens that PR as a
 ///   link would (`…/pull/N/files` on its diff); with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View;
@@ -66,12 +67,7 @@ enum PRHubScreenshots {
         let features: Set<DeviceFeature> = arguments.contains("-PRHubNoAI")
             ? [.push] : [.askAI, .keyLines, .rewrite, .push]
         var samples: PRSampleSet = arguments.contains("-PRHubLongDiff") ? .prHubLongDiff : .prHub
-        if arguments.contains("-PRHubAskWorking") {
-            samples.askChat = PRAskChat(
-                messages: [.init(id: "question-1", role: "you", text: "Is this change tested?", anchor: nil)],
-                isWorking: true, activity: nil, problem: nil, costCents: nil
-            )
-        }
+        samples.askChat = askChat(arguments)
         if arguments.contains("-PRHubRefuseFirstReview") {
             samples.refusesFirstReview = "GitHub didn't answer in time."
             // Long enough for a loaded test Mac, and a recording, to see each step.
@@ -91,6 +87,30 @@ enum PRHubScreenshots {
             environment.prs.open(text: arguments[index + 1])
         }
         return environment
+    }
+
+    /// `-PRHubAskWorking`: a question the agent is on. `-PRHubAskAnswered`: its long answer, in Markdown with code.
+    static func askChat(_ arguments: [String]) -> PRAskChat? {
+        let question = PRAskChat.Message(id: "question-1", role: "you", text: "Is this change tested?", anchor: nil)
+        if arguments.contains("-PRHubAskWorking") {
+            return PRAskChat(messages: [question], isWorking: true, activity: nil, problem: nil, costCents: nil)
+        }
+        guard arguments.contains("-PRHubAskAnswered") else {
+            return nil
+        }
+        let answer = PRAskChat.Message(
+            id: "answer-1", role: "agent",
+            text: """
+                Partly. The retry path is covered, but two things are not:
+
+                - **Idempotency:** `retryPayment` sends the same payment key on every attempt, and \
+                `PaymentServiceTests.testRetryReusesTheKey` checks it whether or not the flag is set.
+                - **Reachability:** at this head, `recordOtpVerified` has no caller in `functions/src` outside tests, \
+                so the recovery screen can never reach it. Either call it from `verifyOtp` or drop it from this PR.
+                """,
+            anchor: nil
+        )
+        return PRAskChat(messages: [question, answer], isWorking: false, activity: nil, problem: nil, costCents: nil)
     }
 
     /// `-PRHubNewerBuild <n>`'s `n`, nil without it; `-PRHubForgetLater` forgets an earlier Later first.

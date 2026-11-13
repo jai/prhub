@@ -29,6 +29,26 @@ final class PRHubPRPageUITests: XCTestCase {
         try picture("ask-sent-thinking")
     }
 
+    /// An agent's long answer takes most of the chat's width from its leading edge, so its words don't break mid-word
+    /// (UI bug 015, seen on a Mac; `AskSheetWidthTests` pictures the sheet there).
+    func testALongAnswerTakesTheChatsWidth() throws {
+        launch(["-PRHubAskAnswered"])
+        openCheckout()
+        app.buttons["pr-ask"].tap()
+        let answer = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'recovery screen'")).firstMatch
+        XCTAssertTrue(answer.waitForExistence(timeout: 5))
+        let field = app.descendants(matching: .any)["sessionReplyField"].firstMatch
+        // The chat's width: from the reply box's leading edge to the send button's trailing one.
+        let width = app.buttons["sessionReplySend"].frame.maxX - field.frame.minX
+        try picture("ask-long-answer")
+        XCTAssertGreaterThan(
+            answer.frame.width, width * 0.6, "the answer is \(Int(answer.frame.width)) pt of \(Int(width))"
+        )
+        XCTAssertLessThan(
+            answer.frame.minX - field.frame.minX, width * 0.1, "the answer starts at the chat's leading edge"
+        )
+    }
+
     func testAnEmptyAskChatDoesNotClaimAMessageWasSent() {
         launch()
         openCheckout()
