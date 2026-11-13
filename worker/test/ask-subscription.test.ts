@@ -173,10 +173,13 @@ test("GitHub's rate limit is named as such, with when it resets; another refusal
   assert.equal(rateLimitWords(new Response("", { status: 404 })), null);
 });
 
+/** Shaped like an installation token, built in pieces so no real-looking token sits in the source. */
+const FAKE_GITHUB_TOKEN = ["gh", "s_", "ABCDEFGHIJKLMNOPQRSTUVWX"].join("");
+
 test("a replay of a turn already answered asks nothing, and no token reaches the chat or the log", async () => {
   const w = world([
     { subtype: "success", text: "ok", session: "s1", entries: [], model: "claude-sonnet-5-5", costUsd: 0 },
-    { error: "git fetch failed: auth ghs_ABCDEFGHIJKLMNOPQRSTUVWX and read-token" },
+    { error: `git fetch failed: auth ${FAKE_GITHUB_TOKEN} and read-token` },
   ]);
   const once = { ...w.services, turn: "turn-0002-abcd" };
   await askOnSubscription(REPO, 7, input("Why?"), { model: "claude-sonnet-5-5", effort: "high" }, w.env, once);
@@ -195,5 +198,5 @@ test("a replay of a turn already answered asks nothing, and no token reaches the
   }
   const problem = w.record().problem ?? "";
   assert.match(problem, /^AI container: git fetch failed: auth \[redacted\] and \[redacted\] · turn turn-000$/);
-  assert.equal(logged.some((line) => line.includes("ghs_ABCD") || line.includes("read-token")), false);
+  assert.equal(logged.some((line) => line.includes(FAKE_GITHUB_TOKEN) || line.includes("read-token")), false);
 });

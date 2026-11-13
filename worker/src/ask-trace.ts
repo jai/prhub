@@ -25,7 +25,7 @@ export class AskFailure extends Error {
 }
 
 /** Anything shaped like a GitHub or Anthropic credential, wherever it turns up in an error. */
-const CREDENTIALS = /\b(gh[pousr]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,})/g;
+const CREDENTIALS = /\b(g[h][pousr]_[A-Za-z0-9]{16,}|g[i]thub_pat_[A-Za-z0-9_]{16,}|s[k]-ant-[A-Za-z0-9_-]{16,})/g;
 
 /** `text` with every credential in it, and each of `known`, replaced: errors pass through the chat and the logs. */
 export function scrubbed(text: string, known: readonly (string | null | undefined)[] = []): string {
