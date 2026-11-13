@@ -37,7 +37,6 @@ struct AnthropicKeySection: View {
                 Button("Remove key", systemImage: AppIcon.delete.symbol, role: .destructive) {
                     run { try await connection.removeAnthropicKey() }
                 }
-                .labelStyle(.iconText)
                 .buttonStyle(PRButtonStyle(.secondary))
                 .tint(Color.toneBad)
                 .disabled(isWorking)

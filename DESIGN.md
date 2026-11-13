@@ -326,7 +326,7 @@ The shared parts. Use these; extend one rather than writing a near-copy. Each is
 | `.prCard()` | a box on a PR's page | PRKit `PRParts.swift` |
 | `PRAuthorLine`, `PRAvatar` | who said it and when | PRKit `PRParts.swift` |
 | `PRCommentText`, `MarkdownText` | what people and agents write, in GitHub's Markdown: one renderer for descriptions, comments and chat | PRKit `Parts/Markdown*.swift` |
-| `PRButtonStyle` | every button on a row or screen | PRKit `PRParts.swift` |
+| `PRButtonStyle` | every button on a row or screen, its icon and words included | PRKit `PRParts.swift` |
 | `PRReviewActions`, `PRReviewBar`, `PRReviewComposer` | a review: Approve, Request changes and Comment as one bar, and the box each opens, on a PR's page and under its diff | PRKit `PRReviewActions.swift` |
 | `PRReviewToastView` | a review on its way after its box closed: Submitting, then what landed, or why it didn't with Retry | PRKit `PRReviewToast.swift` |
 | `.prField(isFocused:)` | every field you type in | PRKit `PRParts.swift` |
@@ -536,8 +536,11 @@ antiPatterns:
 name: PRButtonStyle
 purpose: Every button on a row or screen.
 rules:
-  - Primary for the one action a place asks (Approve, Connect, Save), secondary for the rest, plain for Cancel.
+  - Primary for the one action a place asks (Connect, Save), secondary for the rest, plain for Cancel, chosen for a
+    standing choice (your review in PRReviewBar): the tint's words on the tint at PRStyle.toneGroundOpacity.
   - Corner Radius.sm, height PRStyle.controlHeight, words appFootnote semibold.
+  - The style lays out an icon and its words as `.iconText` does; a caller never sets a label style. Icon alone is
+    `PRButtonStyle(_, iconOnly: true)`.
 antiPatterns:
   - .bordered, .borderedProminent or .glassProminent on content. Glass only over the diff.
 ---
@@ -549,7 +552,10 @@ parts:
 rules:
   - One bar across the width of the content it sits in (the page's cards; the diff's column), each button the same width.
   - When one button's words don't fit its share, every button shows its icon instead, together.
-  - Approve is primary in toneGood, Request changes secondary in toneBad, Comment secondary. The author sees Comment alone.
+  - Each is secondary: Approve's words in toneGood, Request changes' in toneBad, Comment's in the accent. None is solid:
+    a solid one reads as already chosen. The author sees Comment alone.
+  - Your standing review (Approved, Changes requested) is chosen: its icon and what you did ("Approved"), with
+    `.isSelected`. It shows the moment you send it, ahead of the Worker. A tap opens its box again.
   - What a button opens (PRReviewComposer) opens in place: under the bar on the page, in the bar's place under the diff.
   - Under the diff it leaves with the bars as you read down, and returns with them.
 antiPatterns:

@@ -41,8 +41,7 @@ public struct DiffFontSection: View {
     private func sizeButton(_ label: String, icon: AppIcon, step: CGFloat) -> some View {
         let size = diffFont.size + step
         return Button(label, systemImage: icon.symbol) { sizeBinding.wrappedValue = size }
-            .labelStyle(.iconOnly)
-            .buttonStyle(PRButtonStyle(.secondary))
+            .buttonStyle(PRButtonStyle(.secondary, iconOnly: true))
             .disabled(!DiffFont.sizes.contains(size))
     }
 

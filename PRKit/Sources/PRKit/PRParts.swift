@@ -46,24 +46,35 @@ extension View {
 }
 
 /// A button on a PR's screens. The system's `.bordered` is a capsule on iOS 26, so these are drawn here. `.tint` colours
-/// primary and secondary.
+/// primary and secondary. An icon and words sit as `.iconText` draws them, so no caller sets a label style; the stock
+/// label leaves a wide gap between them on iOS 26.
 public struct PRButtonStyle: ButtonStyle {
     public enum Kind {
-        case primary, secondary, plain
+        /// `chosen` is a standing choice, as your review in `PRReviewBar`: the tint's words on its own ground.
+        case primary, secondary, chosen, plain
     }
 
     public let kind: Kind
     /// Words from the button's sides: `PRStyle.inset`, or `PRStyle.barButtonInset` in a bar of equal buttons.
     public let inset: CGFloat
+    /// The icon alone; its words stay the accessibility label.
+    public let iconOnly: Bool
     @Environment(\.isEnabled) private var isEnabled
 
-    public init(_ kind: Kind, inset: CGFloat = PRStyle.inset) {
+    public init(_ kind: Kind, inset: CGFloat = PRStyle.inset, iconOnly: Bool = false) {
         self.kind = kind
         self.inset = inset
+        self.iconOnly = iconOnly
     }
 
     public func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        Group {
+            if iconOnly {
+                configuration.label.labelStyle(.iconOnly)
+            } else {
+                configuration.label.labelStyle(.iconText)
+            }
+        }
             .font(.appFootnote.weight(.semibold))
             .foregroundStyle(foreground)
             .padding(.horizontal, inset)
@@ -77,7 +88,7 @@ public struct PRButtonStyle: ButtonStyle {
     private var foreground: AnyShapeStyle {
         switch kind {
         case .primary: AnyShapeStyle(Color.onAccent)
-        case .secondary: AnyShapeStyle(.tint)
+        case .secondary, .chosen: AnyShapeStyle(.tint)
         case .plain: AnyShapeStyle(.secondary)
         }
     }
@@ -86,6 +97,7 @@ public struct PRButtonStyle: ButtonStyle {
         switch kind {
         case .primary: AnyShapeStyle(.tint)
         case .secondary: AnyShapeStyle(Color.groundFill)
+        case .chosen: AnyShapeStyle(.tint.opacity(PRStyle.toneGroundOpacity))
         case .plain: AnyShapeStyle(.clear)
         }
     }
@@ -238,8 +250,7 @@ public struct InlineComposer: View {
                 }
                 if let ask {
                     Button("Ask AI", systemImage: AppIcon.askAI.symbol) { ask(trimmed) }
-                        .labelStyle(.iconOnly)
-                        .buttonStyle(PRButtonStyle(.secondary))
+                        .buttonStyle(PRButtonStyle(.secondary, iconOnly: true))
                         .accessibilityLabel("Ask AI")
                         .accessibilityIdentifier("inline-composer-ask")
                 }

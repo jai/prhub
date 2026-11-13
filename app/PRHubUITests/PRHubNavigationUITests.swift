@@ -64,6 +64,11 @@ final class PRHubNavigationUITests: XCTestCase {
         send.tap()
         XCTAssertTrue(app.descendants(matching: .any)["pr-notice"].waitForExistence(timeout: 5), "the review went")
         XCTAssertTrue(waitFor { !send.exists }, "and its box closed")
+        let approve = app.buttons["pr-review-approve"]
+        XCTAssertTrue(waitFor { approve.exists && approve.label == "Approved" }, "the bar shows your review")
+        XCTAssertTrue(approve.isSelected)
+        XCTAssertFalse(app.buttons["pr-review-request-changes"].isSelected)
+        try? picture("nav-diff-review-bar-approved")
     }
 
     func testTheRowsReviewButtonLandsOnTheDiffWithKeyLinesOpenAndBackGoesToThePR() {

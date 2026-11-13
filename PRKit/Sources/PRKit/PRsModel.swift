@@ -507,6 +507,20 @@ final class PRsModel {
         return row.hasDiff && document == nil ? nil : PRContent(detail: detail, document: document)
     }
 
+    /// Your standing review on this PR: the newer of the one sent from this device and the Worker's.
+    func yourReview(on ref: PullRequestRef) -> PRJaiReview? {
+        guard let row = rows.first(where: {
+            $0.repo.caseInsensitiveCompare(ref.repo) == .orderedSame && $0.number == ref.number
+        }) else {
+            return nil
+        }
+        let worker = row.status?.jaiReview
+        let local = localAnswers[row.id]
+        let date = { (text: String?) in text.flatMap { try? Date($0, strategy: .iso8601) } ?? .distantPast }
+        let isLocalNewer = local.map { date($0.sentAt) > date(row.status?.jaiReviewedAt) } ?? false
+        return (isLocalNewer ? local?.review : worker).flatMap(PRJaiReview.init(rawValue:))
+    }
+
     /// The row reads as answered from now, ahead of the Worker.
     func noteAnswer(_ review: String, on ref: PullRequestRef, head: String) {
         let answer = PRLocalAnswer(review: review, sentAt: Date.now.ISO8601Format(), head: head)

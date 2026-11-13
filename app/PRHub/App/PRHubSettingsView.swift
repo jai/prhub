@@ -67,7 +67,6 @@ struct PRHubSettingsView: View {
                 connection.build.signInWithGitHub ? "Sign in with GitHub" : "Connect your own Worker",
                 systemImage: (connection.build.signInWithGitHub ? AppIcon.signIn : AppIcon.ownWorker).symbol
             ) { endSample() }
-                .labelStyle(.iconText)
                 .buttonStyle(PRButtonStyle(.primary))
                 .accessibilityIdentifier("prhub-connect-own-worker")
         }
@@ -126,14 +125,12 @@ struct PRHubSettingsView: View {
                     signingOut = false
                 }
             }
-            .labelStyle(.iconText)
             .buttonStyle(PRButtonStyle(.secondary))
             .disabled(signingOut)
             .accessibilityIdentifier("prhub-sign-out")
             Button("Delete account", systemImage: AppIcon.delete.symbol, role: .destructive) {
                 confirmsDelete = true
             }
-            .labelStyle(.iconText)
             .buttonStyle(PRButtonStyle(.secondary))
             .tint(Color.toneBad)
             .accessibilityIdentifier("prhub-delete-account")
@@ -185,7 +182,6 @@ struct PRHubSettingsView: View {
             Button("Turn on review alerts", systemImage: AppIcon.alertsTurnOn.symbol) {
                 Task { await permission.ask() }
             }
-            .labelStyle(.iconText)
             .buttonStyle(PRButtonStyle(.secondary))
             .accessibilityIdentifier("prhub-turn-on-alerts")
         case .denied:
@@ -195,7 +191,6 @@ struct PRHubSettingsView: View {
                     UIApplication.shared.open(url)
                 }
             }
-            .labelStyle(.iconText)
             .buttonStyle(PRButtonStyle(.secondary))
             #else
             PRValueLine("Review alerts", value: "Off in System Settings")
