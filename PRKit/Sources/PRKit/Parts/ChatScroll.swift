@@ -13,7 +13,7 @@ public struct ChatScroll<Content: View>: View {
     public var body: some View {
         ScrollView {
             content
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .defaultScrollAnchor(.bottom, for: .initialOffset)
         // Laid out with the page, not after it: the foot moves with the reply box in the same frame.

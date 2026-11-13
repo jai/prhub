@@ -39,6 +39,8 @@ struct PRAskSheet: View {
                                 .font(.appFootnote)
                                 .foregroundStyle(.secondary)
                                 .padding(PRStyle.inset)
+                                // The sheet's width, not the lazy stack's first measure: on an iPad that was a phone's.
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         // By place: the question drawn on its way becomes the chat's own message, with no fold out and
                         // back in, which left the sheet scrolled past it.
