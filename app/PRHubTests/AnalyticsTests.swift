@@ -35,6 +35,7 @@ struct AnalyticsTests {
         .anthropicKeyRemoved, .signedOut, .accountDeleted, .workerDisconnected, .diffFontChanged(.menlo, size: 13),
         .pullRequestOpened(.push, .hit, timeToContentMs: 180, networkMs: 0, decodeMs: 40),
         .pullRequestsSynced(.pull, .changed), .pullRequestWriteRefused, .pushPrefetch(.landed, milliseconds: 412),
+        .requestFailed(.feedback, .status(404)),
     ]
 
     nonisolated static func kind(_ event: AnalyticsEvent) -> Int {
@@ -57,13 +58,14 @@ struct AnalyticsTests {
         case .pullRequestsSynced: 15
         case .pullRequestWriteRefused: 16
         case .pushPrefetch: 17
+        case .requestFailed: 18
         }
     }
 
     // MARK: - What an event can carry
 
     @Test func everyCaseIsListed() {
-        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0...17))
+        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0...18))
     }
 
     @Test func eachEventHasItsOwnSnakeCaseName() {
@@ -94,6 +96,7 @@ struct AnalyticsTests {
                 + PairingFailureCode.allCases.map(\.rawValue) + DiffFontFace.allCases.map(\.rawValue)
                 + PROpenReport.Source.allCases.map(\.rawValue) + PROpenReport.Cache.allCases.map(\.rawValue)
                 + PRPushPrefetch.Outcome.allCases.map(\.rawValue)
+                + PRRequestArea.allCases.map(\.rawValue) + RequestFailureKind.allCases.map(\.rawValue)
                 + ["push", "other_push", "foreground", "pull", "changed", "unchanged", "failed"]
         )
         for (key, value) in event.properties {
@@ -128,6 +131,16 @@ struct AnalyticsTests {
         #expect(AnalyticsEvent(.reviewRequests(3)) == nil)
         #expect(AnalyticsEvent(.synced(.pull, .changed)) == .pullRequestsSynced(.pull, .changed))
         #expect(AnalyticsEvent(.synced(.foreground, .unchanged)) == .pullRequestsSynced(.foreground, .unchanged))
+    }
+
+    @Test func aFailedRequestSendsItsAreaAndStatusOrWhyThereWasNone() {
+        #expect(AnalyticsEvent(.requestFailed(.feedback, .status(404))) == .requestFailed(.feedback, .status(404)))
+        #expect(AnalyticsEvent.requestFailed(.feedback, .status(404)).properties == [
+            "area": .word("feedback"), "failure": .word("status"), "status": .number(404),
+        ])
+        #expect(AnalyticsEvent.requestFailed(.diff, .offline).properties == [
+            "area": .word("diff"), "failure": .word("offline"),
+        ])
     }
 
     @Test func aPushesSyncIsReportedOnlyWhenItFails() {

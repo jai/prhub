@@ -14,6 +14,7 @@ public final class PRKitController {
 
     public init(host: some PRKitHost) {
         let client = PRViewerClient(access: host.access, isInForeground: { await host.isInForeground() })
+            .reporting { area, failure in Task { @MainActor in host.receive(.requestFailed(area, failure)) } }
         model = PRsModel(client: client, samples: host.samples, directory: host.mirrorDirectory)
         launchOptions = host.launchOptions
         model.outboxSource = { host.outbox }

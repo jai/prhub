@@ -488,7 +488,7 @@ final class PRsModel {
                     }
                     throw PRWorkerError.refused(failure.error)
                 }
-                return try JSONDecoder().decode(Answer.self, from: data)
+                return try client.decode(Answer.self, from: data, path: path)
             }
             try await Task.sleep(for: .seconds(3))
         }
@@ -567,7 +567,14 @@ final class PRsModel {
         async let diff = readDiff(ref, row: row)
         let (detailData, diffData) = try await (detail, diff)
         let arrived = ContinuousClock.now
-        let content = PRContent(detail: try PullRequestDetail.decode(detailData), document: diffData.map(DiffDocument.init))
+        let decoded: PullRequestDetail
+        do {
+            decoded = try PullRequestDetail.decode(detailData)
+        } catch {
+            client.reportFailure(path: "prs/\(ref.repo)/\(ref.number)/detail", .unreadable)
+            throw error
+        }
+        let content = PRContent(detail: decoded, document: diffData.map(DiffDocument.init))
         return PRFetched(
             content: content, networkMilliseconds: (arrived - started).milliseconds,
             decodeMilliseconds: (ContinuousClock.now - arrived).milliseconds
