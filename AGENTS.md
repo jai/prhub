@@ -21,7 +21,8 @@ pairing the phone, and troubleshooting.
   `github-app/`), `docs/` (contracts, `fixtures/`, plans), `release/` (TestFlight), `scripts/` (repo checks).
 - Contracts: [docs/api.md](docs/api.md) (pairing, `/device/config`, every var and secret) and
   [docs/push-relay.md](docs/push-relay.md). Whoever changes API behaviour updates the contract in the same commit.
-- **Push to `main`, then deploy. No pull requests.** Commit (signed) on `main`, `git pull --rebase`, run the local
+- **Push to `main`, then deploy. No pull requests.** GitHub enforces it: no new branches (except `ci/…` and
+  release-please's), and `main` takes only signed, linear pushes, never a force push; `v*` tags never move. Commit (signed) on `main`, `git pull --rebase`, run the local
   checks below for what you touched, push, and deploy what changed in the same session:
   - `worker/` or `agent/`: the hosted Worker ([docs/hosted-deploy.md](docs/hosted-deploy.md)), and Jai's other
     deployments through a `deploy/prhub.ref` commit in jai/agent-pager (its CI deploys them; never by hand).
