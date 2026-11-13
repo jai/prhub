@@ -45,7 +45,7 @@ final class PRHubEnvironment {
         authenticate: @escaping Authenticate = WebSignIn.live, usage: UsageAnalytics = .disabled()
     ) {
         self.alertPermission = alertPermission
-        update = PRHubUpdate(defaults: defaults)
+        update = PRHubUpdate(defaults: defaults, usage: usage)
         self.usage = usage
         let refusals = SessionRefusals()
         let host = PRHubPRHost(

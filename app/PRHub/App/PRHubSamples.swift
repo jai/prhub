@@ -29,7 +29,7 @@ extension PRHubEnvironment {
         )
         return PRHubEnvironment(
             connection: connection, access: access, samples: samples, isSample: isSample, usage: usage, outbox: outbox,
-            update: PRHubUpdate(defaults: defaults, isEnabled: checksUpdates)
+            update: PRHubUpdate(defaults: defaults, isEnabled: checksUpdates, usage: usage)
         )
     }
 }

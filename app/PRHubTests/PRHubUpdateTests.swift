@@ -60,6 +60,17 @@ struct PRHubUpdateTests {
         #expect(update.offered?.build == "202")
     }
 
+    @Test func theOfferAndTheAnswerAreReported() {
+        let sink = AnalyticsTests.RecordingAnalytics()
+        let update = PRHubUpdate(
+            running: Self.running, defaults: UserDefaults(suiteName: "prhub-update-\(UUID().uuidString)")!,
+            isEnabled: true, usage: AnalyticsTests.usage(sink)
+        )
+        update.check(Self.config(public: "201"))
+        update.later()
+        #expect(sink.events == [.updateOffered(.public, build: 201), .updateAnswered(.later)])
+    }
+
     @Test func checkedAtMostHourly() {
         let clock = Shared(Date.now)
         let update = Self.update(clock: clock)

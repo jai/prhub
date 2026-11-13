@@ -31,6 +31,10 @@ enum AnalyticsEvent: Equatable, Sendable {
     /// From PRKit (`PRKitEvent.requestFailed`): a request to the Worker failed, what it was for and how. Each area's
     /// kind of failure at most once a minute.
     case requestFailed(PRRequestArea, PRRequestFailure)
+    /// Update available showed (`PRHubUpdate`): the TestFlight group and the build it offered. The running build is
+    /// the vendor's own `$app_build`.
+    case updateOffered(TestFlightGroup, build: Int)
+    case updateAnswered(UpdateAnswer)
 
     /// The event's name in the vendor's project: one literal each.
     var name: String {
@@ -54,6 +58,8 @@ enum AnalyticsEvent: Equatable, Sendable {
         case .pullRequestsSynced: "prs_synced"
         case .pullRequestWriteRefused: "pr_write_refused"
         case .requestFailed: "request_failed"
+        case .updateOffered: "update_offered"
+        case .updateAnswered: "update_answered"
         }
     }
 
@@ -78,6 +84,8 @@ enum AnalyticsEvent: Equatable, Sendable {
         case let .requestFailed(area, failure):
             ["area": .word(area.rawValue), "failure": .word(RequestFailureKind(failure).rawValue)]
                 .merging(failure.status.map { ["status": .number($0)] } ?? [:]) { first, _ in first }
+        case let .updateOffered(group, build): ["group": .word(group.rawValue), "build": .number(build)]
+        case let .updateAnswered(answer): ["answer": .word(answer.rawValue)]
         case .signInSucceeded, .workerPaired, .samplesLeft, .anthropicKeySet, .anthropicKeyRemoved, .signedOut,
              .accountDeleted, .workerDisconnected, .pullRequestWriteRefused:
             [:]
@@ -92,6 +100,11 @@ enum AnalyticsValue: Equatable, Sendable {
 }
 
 /// Generic names only: never a PR's title or repo.
+/// Update available's buttons.
+enum UpdateAnswer: String, CaseIterable, Sendable {
+    case update, later
+}
+
 enum AnalyticsScreen: String, CaseIterable, Sendable {
     case onboarding, samples, prs, feedback, settings
     case signedOut = "signed_out"

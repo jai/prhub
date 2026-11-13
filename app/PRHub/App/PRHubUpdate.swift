@@ -25,7 +25,7 @@ struct AppBuild: Codable, Equatable, Sendable {
 /// The TestFlight group this build was made for: Xcode Cloud's Internal - TestFlight workflow builds for the Internal
 /// group (`app/ci_scripts/ci_post_clone.sh` sets `PRHUB_INTERNAL_TESTFLIGHT`); every other build is a release, for the
 /// Public group.
-enum TestFlightGroup: Sendable {
+enum TestFlightGroup: String, CaseIterable, Sendable {
     case `internal`, `public`
 
     static var current: TestFlightGroup {
@@ -56,13 +56,16 @@ final class PRHubUpdate {
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let now: @Sendable () -> Date
     @ObservationIgnored private let isEnabled: Bool
+    @ObservationIgnored private let usage: UsageAnalytics
     @ObservationIgnored private var checkedAt: Date?
 
     /// Off in a Debug build unless a UI test asks for it: a build from Xcode is never on TestFlight.
     init(
         running: AppBuild = .running, group: TestFlightGroup = .current, defaults: UserDefaults = .standard,
-        isEnabled: Bool = PRHubUpdate.isReleaseBuild, now: @escaping @Sendable () -> Date = { .now }
+        isEnabled: Bool = PRHubUpdate.isReleaseBuild, usage: UsageAnalytics = .disabled(),
+        now: @escaping @Sendable () -> Date = { .now }
     ) {
+        self.usage = usage
         self.running = running
         self.group = group
         self.defaults = defaults
@@ -93,18 +96,22 @@ final class PRHubUpdate {
             return
         }
         offered = latest
+        usage.record(.updateOffered(group, build: Int(latest.build) ?? 0))
     }
 
     /// Update, as the alert opens `testFlightURL`: offered again at the next check if still not installed.
     func update() {
         offered = nil
+        usage.record(.updateAnswered(.update))
     }
 
     /// Later: not this build again.
     func later() {
-        if let offered {
-            defaults.set(offered.build, forKey: Self.laterKey)
+        guard let offered else {
+            return
         }
-        offered = nil
+        defaults.set(offered.build, forKey: Self.laterKey)
+        self.offered = nil
+        usage.record(.updateAnswered(.later))
     }
 }
