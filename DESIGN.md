@@ -486,9 +486,9 @@ parts:
   field:  { holds: ".prField(isFocused:)", font: appFootnote, lines: 3 to 10 }
   cancel: { holds: PRButtonStyle(.plain) }
   other:  { holds: PRButtonStyle(.secondary), optional: true }
-  send:   { holds: PRButtonStyle(.primary), last }
+  send:   { holds: PRButtonStyle(.primary) }
 rules:
-  - Buttons sit at the right, send last.
+  - Buttons sit at the right, send last. Approve stays at the left when its review box opens; Cancel stays at the right.
 antiPatterns:
   - A sheet.
 ```

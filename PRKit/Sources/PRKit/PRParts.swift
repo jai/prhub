@@ -200,6 +200,7 @@ public struct InlineComposer: View {
     public let buttonTitle: String
     public var context: String?
     public var needsText = true
+    var sendAtLeading = false
     public var lines = 3...10
     public var alternate: Alternate?
     /// Takes the words to the PR's AI agent instead.
@@ -232,6 +233,9 @@ public struct InlineComposer: View {
                     .transition(.fold)
             }
             HStack(spacing: Space.sm) {
+                if sendAtLeading {
+                    sendButton
+                }
                 if let ask {
                     Button("Ask AI", systemImage: AppIcon.askAI.symbol) { ask(trimmed) }
                         .labelStyle(.iconOnly)
@@ -248,24 +252,30 @@ public struct InlineComposer: View {
                         .disabled(isSending || trimmed.isEmpty)
                         .accessibilityIdentifier("inline-composer-alternate")
                 }
-                Button {
-                    Task { await submit(through: send) }
-                } label: {
-                    if isSending {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(Color.onAccent)
-                    } else {
-                        Text(buttonTitle)
-                    }
+                if !sendAtLeading {
+                    sendButton
                 }
-                .buttonStyle(PRButtonStyle(.primary))
-                .disabled(isSending || (needsText && trimmed.isEmpty))
-                .accessibilityIdentifier("inline-composer-send")
             }
         }
         .sensoryFeedback(.success, trigger: posted)
         .onAppear { isFocused = text.isEmpty }
+    }
+
+    private var sendButton: some View {
+        Button {
+            Task { await submit(through: send) }
+        } label: {
+            if isSending {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(Color.onAccent)
+            } else {
+                Text(buttonTitle)
+            }
+        }
+        .buttonStyle(PRButtonStyle(.primary))
+        .disabled(isSending || (needsText && trimmed.isEmpty))
+        .accessibilityIdentifier("inline-composer-send")
     }
 
     private var trimmed: String {

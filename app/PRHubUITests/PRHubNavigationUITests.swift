@@ -52,9 +52,14 @@ final class PRHubNavigationUITests: XCTestCase {
             .map { app.buttons[$0].frame.width }
         XCTAssertEqual(widths.max()! - widths.min()!, 0, accuracy: 1, "one bar of equal buttons")
         try? picture("nav-diff-review-bar")
-        app.buttons["pr-review-approve"].tap()
+        let approve = app.buttons["pr-review-approve"]
+        let approveLeft = approve.frame.minX
+        approve.tap()
         let send = app.buttons["inline-composer-send"]
         XCTAssertTrue(send.waitForExistence(timeout: 5))
+        XCTAssertEqual(send.frame.minX, approveLeft, accuracy: 1, "Approve stays on the left when its box opens")
+        XCTAssertLessThan(send.frame.maxX, app.buttons["Cancel"].frame.minX)
+        try? picture("nav-diff-approve-open")
         XCTAssertFalse(app.buttons["pr-review-approve"].exists, "the box takes the bar's place")
         send.tap()
         XCTAssertTrue(app.descendants(matching: .any)["pr-notice"].waitForExistence(timeout: 5), "the review went")

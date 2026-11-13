@@ -103,6 +103,8 @@ final class PRHubPRPageUITests: XCTestCase {
         approve.tap()
         let send = app.buttons["inline-composer-send"]
         XCTAssertTrue(send.waitForExistence(timeout: 5))
+        XCTAssertLessThan(send.frame.maxX, app.buttons["Cancel"].frame.minX)
+        try? picture("nav-page-approve-open")
         send.tap()
         XCTAssertTrue(waitFor(timeout: 1) { !send.exists }, "the box closes at once")
         let words = app.staticTexts["pr-review-toast-words"]

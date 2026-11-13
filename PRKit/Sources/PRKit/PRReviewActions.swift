@@ -143,7 +143,8 @@ struct PRReviewComposer: View {
         InlineComposer(
             text: session.text(for: action.target),
             placeholder: action == .approve ? "Add a note, or just approve" : "Say something",
-            buttonTitle: action.title, needsText: action != .approve && session.drafts.isEmpty
+            buttonTitle: action.title, needsText: action != .approve && session.drafts.isEmpty,
+            sendAtLeading: action == .approve
         ) { text in
             try session.submitReview(text, to: action.target(hasDrafts: !session.drafts.isEmpty))
             isSent = true
