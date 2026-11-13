@@ -1,5 +1,6 @@
 // AI on a subscription (docs/api.md, "AI on a subscription"): key lines and rewrites run in a container with the Claude
 // Agent SDK (`agent/`), signed in with CLAUDE_CODE_OAUTH_TOKEN, instead of on an API key.
+import { scrubbed } from "./ask-trace.ts";
 import { type Env, isSet } from "./env.ts";
 import type { Effort, ModelChoice } from "./models.ts";
 
@@ -85,6 +86,7 @@ export async function runOnSubscription(
   const body = { system, prompt, model: choice.model, effort: choice.effort satisfies Effort, schema };
   const answer = await askContainer<ContainerAnswer>("/run", JSON.stringify(body), env.AGENT!, wait);
   if (answer.error) {
+    console.error("agent_container_failed", { path: "/run", model: choice.model, reason: scrubbed(answer.error) });
     throw new Error(`The AI container failed: ${answer.error}`);
   }
   if (answer.subtype !== "success" || answer.output === null || answer.output === undefined) {

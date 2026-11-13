@@ -152,13 +152,29 @@ export function statesFrom(
   return result;
 }
 
-export class GitHubFailure extends Error {}
+/** GitHub refused or cut a states read. `code` is stable, for counting: `github_rate_limited`, `github_unavailable`, `github_failed`. */
+export class GitHubFailure extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+/** The failure's code from GitHub's answer: its rate limit, its own trouble (5xx), or any other refusal. */
+function failureOf(response: Response): GitHubFailure {
+  const limited = response.status === 429 || (response.status === 403 && response.headers.get("x-ratelimit-remaining") === "0");
+  const code = limited ? "github_rate_limited" : response.status >= 500 ? "github_unavailable" : "github_failed";
+  return new GitHubFailure(code, `GitHub GraphQL answered ${response.status}`);
+}
 
 async function ask(refs: PrId[], week: ReviewWeek | null, env: Env, cache?: GitHubCache): Promise<StatesAnswer | "refused"> {
   const { query, aliases } = statesQuery(refs);
   const response = await postGraphql(query, {}, env);
   if (!response.ok) {
-    throw new GitHubFailure(`HTTP ${response.status}`);
+    await response.body?.cancel();
+    throw failureOf(response);
   }
   let answer: GraphqlAnswer;
   try {
@@ -177,7 +193,7 @@ async function ask(refs: PrId[], week: ReviewWeek | null, env: Env, cache?: GitH
     return statesFrom(answer, aliases, await githubLogin(env), week, people);
   }
   if (answer.errors?.some((error) => error.type === "RATE_LIMITED")) {
-    throw new GitHubFailure("HTTP 200 RATE_LIMITED");
+    throw new GitHubFailure("github_rate_limited", "GitHub GraphQL answered 200 RATE_LIMITED");
   }
   return "refused";
 }
@@ -207,7 +223,9 @@ export async function readStates(
 }
 
 /** What the PR index answers for `POST /prs/states`: the states, or GitHub's refusal; and the GitHub calls it made (304s and GraphQL included). */
-export type StatesResult = ({ answer: StatesAnswer } | { failure: string }) & { githubCalls: number };
+export type StatesResult = ({ answer: StatesAnswer } | { failure: { code: string; message: string } }) & {
+  githubCalls: number;
+};
 
 /**
  * `week` is the review SLA's (`reviewWeek`), so a state's due time is the one the PRs tab's row has. The PR index reads
@@ -222,7 +240,9 @@ export async function statesRoute(
   }
   const result = await read(refs, week);
   const headers = { "Server-Timing": `github;desc="github calls";dur=${result.githubCalls}` };
-  console.log("states_read", { prs: refs.length, github_calls: result.githubCalls, failed: "failure" in result });
+  console.log("states_read", { prs: refs.length, github_calls: result.githubCalls,
+    code: "failure" in result ? result.failure.code : null });
+  // Agent Pager's envelope, `{error: {code, message}}`, so a caller counts failures by code; `reason` as before.
   return "answer" in result ? Response.json(result.answer, { headers })
-    : Response.json({ reason: result.failure }, { status: 502, headers });
+    : Response.json({ error: result.failure, reason: result.failure.message }, { status: 502, headers });
 }

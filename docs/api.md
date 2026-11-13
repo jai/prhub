@@ -232,7 +232,9 @@ asked, and when the SLA is unset.
 The PR index reads them, with its own cache of `.policy.yml` texts and team and org memberships, so a repeat from any
 isolate is a cache hit or a free `304`. Each answer's `Server-Timing: github;desc="github calls";dur=<n>` counts the
 GitHub calls it made (GraphQL and `304`s included). While the token's hour is below its reserve it answers `502`
-rather than spend the rest.
+rather than spend the rest. A `502` says why as `{"error": {"code", "message"}, "reason"}`, `code` being `github_rate_limited`,
+`github_unavailable` (GitHub's own 5xx), `github_failed` (any other refusal) or `signed_out`. An answer that arrives cut off
+is asked again one PR at a time.
 
 ## Configuration
 

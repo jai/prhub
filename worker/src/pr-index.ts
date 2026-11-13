@@ -498,7 +498,7 @@ export class PrIndex extends DurableObject<Env> {
   async states(refs: PrId[], week: ReviewWeek | null): Promise<StatesResult> {
     const env = await this.actingEnv();
     if (!env) {
-      return { failure: "signed out of GitHub", githubCalls: 0 };
+      return { failure: { code: "signed_out", message: "signed out of GitHub" }, githubCalls: 0 };
     }
     const rate = env.GITHUB_RATE ?? newRateLimitState();
     const counted = { ...env, GITHUB_RATE: rate };
@@ -506,7 +506,7 @@ export class PrIndex extends DurableObject<Env> {
       return { answer: await readStates(refs, week, counted, sqlCache(this.sql)), githubCalls: rate.calls };
     } catch (failure) {
       if (failure instanceof GitHubFailure) {
-        return { failure: failure.message, githubCalls: rate.calls };
+        return { failure: { code: failure.code, message: failure.message }, githubCalls: rate.calls };
       }
       throw failure;
     }
