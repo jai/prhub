@@ -26,6 +26,8 @@ export interface AskMessage {
   text: string;
   /** `path:line`, on a question about one line. */
   anchor: string | null;
+  /** That line's side, `LEFT` (old) or `RIGHT` (new), so a Retry asks about the same line. */
+  side?: "LEFT" | "RIGHT";
 }
 
 export interface AskChat {

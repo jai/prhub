@@ -132,6 +132,8 @@ async function visibleRepos(id: number, env: Env, now: number): Promise<RepoFull
 export interface AskGrant {
   token: string;
   repos: RepoFullName[] | null;
+  /** How the person's sight of the PR was checked: their token, or, with it rate limited, the repos it last listed. */
+  checkedBy?: "person" | "person_cached";
 }
 
 /**
@@ -146,21 +148,47 @@ export async function askGrant(
   if (!isSet(env.SIGNED_IN_USER_ID)) {
     return { token: await askRepoToken(repo, number, env, fetcher), repos: null };
   }
-  await personSeesPr(repo, number, env);
+  const sight = await personSeesPr(repo, number, env);
   const jwt = await appJwt({ id: env.GITHUB_APP_ID ?? "", key: env.GITHUB_APP_PRIVATE_KEY ?? "" });
   const id = await installationOf(repo, jwt, fetcher);
-  const visible = (await visibleRepos(id, env, now)) ?? [];
+  const kept = sight === "person" ? null : await keptRepos(id, env, now);
+  // Rate limited: the repos the person's own token listed in the last `VISIBLE_REPOS_MS` stand in for it, and only
+  // for a repo among them. Nothing else does: an installation token reaches repos the person may not see.
+  if (sight !== "person" && !kept?.some((one) => one.toLowerCase() === repo.toLowerCase())) {
+    throw sight;
+  }
+  const visible = kept ?? (await visibleRepos(id, env, now)) ?? [];
   const repos = [...new Set([repo, ...visible])].slice(0, MAX_TOKEN_REPOS);
-  return { token: await mint(id, repos.map((one) => repoParts(one).name), jwt, repo, fetcher), repos };
+  return {
+    token: await mint(id, repos.map((one) => repoParts(one).name), jwt, repo, fetcher), repos,
+    checkedBy: sight === "person" ? "person" : "person_cached",
+  };
 }
 
-async function personSeesPr(repo: RepoFullName, number: number, env: Env): Promise<void> {
+/** The repos of installation `id` the person's own token listed within `VISIBLE_REPOS_MS`; null when none are kept. */
+async function keptRepos(id: number, env: Env, now: number): Promise<RepoFullName[] | null> {
+  const kept = await (await env.DIFFS.get(scopedKey(env, `ask-reach/${id}.json`)))?.json<{ at: number; repos: RepoFullName[] }>();
+  return kept && now - kept.at < VISIBLE_REPOS_MS ? kept.repos : null;
+}
+
+/**
+ * "person" when their token reads the PR. Rate limited, the refusal to throw unless their own kept list stands in
+ * (`askGrant`); any other refusal is thrown here.
+ */
+async function personSeesPr(repo: RepoFullName, number: number, env: Env): Promise<"person" | InstallationTokenRefused> {
   const visible = await getFromGitHub(`/repos/${repo}/pulls/${number}`, env);
-  if (!visible.ok) {
+  if (visible.ok) {
     await visible.body?.cancel();
-    throw new InstallationTokenRefused(rateLimitWords(visible)
-      ?? `The AI can't read ${repo}: your GitHub account can't see this pull request.`, visible.status);
+    return "person";
   }
+  await visible.body?.cancel();
+  const limited = rateLimitWords(visible);
+  const refusal = new InstallationTokenRefused(limited
+    ?? `The AI can't read ${repo}: your GitHub account can't see this pull request.`, visible.status);
+  if (limited === null) {
+    throw refusal;
+  }
+  return refusal;
 }
 
 /**
@@ -172,7 +200,10 @@ export async function askRepoToken(
   repo: RepoFullName, number: number, env: Env, fetcher: typeof fetch = (input, init) => fetch(input, init),
 ): Promise<string> {
   if (isSet(env.SIGNED_IN_USER_ID)) {
-    await personSeesPr(repo, number, env);
+    const sight = await personSeesPr(repo, number, env);
+    if (sight !== "person") {
+      throw sight;
+    }
     return installationRepoToken(repo, { id: env.GITHUB_APP_ID ?? "", key: env.GITHUB_APP_PRIVATE_KEY ?? "" }, true,
       fetcher);
   }

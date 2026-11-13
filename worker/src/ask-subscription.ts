@@ -112,11 +112,16 @@ export async function askOnSubscription(
   const asked: AskMessage = {
     id: turn, role: "you", text: input.question,
     anchor: input.anchor ? `${input.anchor.path}:${input.anchor.line}` : null,
+    ...(input.anchor ? { side: input.anchor.side } : {}),
   };
   askEvent(resumed ? "resumed" : "handed_over", turn, { ...trace, model: choice.model, effort: choice.effort });
+  // A question after one that failed is its Retry, or its words edited: it takes the failed one's place.
+  const before = known?.messages ?? [];
+  const ended = known != null && (known.workingSince === null ? known.problem != null : now() - known.workingSince >= TURN_LOST_MS);
+  const failedLast = !resumed && ended && before.at(-1)?.role === "you";
   let record: SubscriptionRecord = {
     kind: "subscription", session: known?.session ?? null, head: input.head, choice,
-    messages: resumed ? known!.messages : [...(known?.messages ?? []), asked], workingSince: now(), problem: null,
+    messages: resumed ? before : [...(failedLast ? before.slice(0, -1) : before), asked], workingSince: now(), problem: null,
     costCents: known?.costCents ?? null, model: known?.model ?? null,
   };
   await env.DIFFS.put(key, JSON.stringify(record));
@@ -125,7 +130,8 @@ export async function askOnSubscription(
     const entries = record.session ? await (await env.DIFFS.get(transcriptKey(repo, number, env)))?.json<unknown[]>() : [];
     const grant = await grantWithRetry(services.grant);
     token = grant.token;
-    askEvent("grant", turn, { ...trace, ms: now() - started, read_only: services.readOnly, repos: grant.repos?.length ?? null });
+    askEvent("grant", turn, { ...trace, ms: now() - started, read_only: services.readOnly, repos: grant.repos?.length ?? null,
+      checked_by: grant.checkedBy ?? null });
     const answer = await askContainer<AskAnswer>("/ask", JSON.stringify({
       system: await services.system(), prompt: `${DIFF_NOTE}\n${askPrompt(input, null)}`, model: choice.model, effort: choice.effort,
       scope: env.SIGNED_IN_USER_ID ?? "self", repo, number,

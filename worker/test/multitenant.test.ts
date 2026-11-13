@@ -697,6 +697,29 @@ test("hosted, no token for a PR the person can't see, and a clear refusal where 
   });
 });
 
+test("hosted, with the person's GitHub limit used up, only the repos their own token listed lately stand in for it", async () => {
+  const real = globalThis.fetch;
+  globalThis.fetch = (async () => new Response("{}", {
+    status: 403, headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": "1794536340" },
+  })) as unknown as typeof fetch;
+  try {
+    const { fetcher } = appGitHub();
+    const person = hostedPerson();
+    await assert.rejects(askGrant(repo("acme/api"), 7, person, fetcher, 1_000), /rate limit for your account is used up/,
+      "with no list kept, the limit is the answer");
+    await person.DIFFS.put("users/1001/ask-reach/77.json", JSON.stringify({ at: 1_000, repos: ["acme/api"] }));
+    const grant = await askGrant(repo("acme/api"), 7, person, fetcher, 2_000);
+    assert.equal(grant.checkedBy, "person_cached");
+    assert.deepEqual(grant.repos, ["acme/api"]);
+    await assert.rejects(askGrant(repo("acme/secret"), 7, person, fetcher, 2_000), /rate limit/,
+      "a repo not on their list gets no token");
+    await assert.rejects(askGrant(repo("acme/api"), 7, person, fetcher, 1_000 + VISIBLE_REPOS_MS), /rate limit/,
+      "an old list stands in for nothing");
+  } finally {
+    globalThis.fetch = real;
+  }
+});
+
 test("with the API-key path off, a key is refused before Anthropic is asked, and removing one still works", async () => {
   const { world, alice } = await twoOrgs({ AI_ON_API_KEY: undefined });
   world.anthropic.valid.add(ALICE_KEY);

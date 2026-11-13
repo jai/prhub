@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AskInput } from "../src/ask-chat.ts";
 import { askGitHubReach, rateLimitWords } from "../src/app-token.ts";
+import { withQueued } from "../src/ask-queue.ts";
 import { AskFailure } from "../src/ask-trace.ts";
 import { askSubscriptionPrompt, PR_BODY_KEPT, type PrFacts } from "../src/ask-setup.ts";
 import { askOnSubscription, subscriptionChat, type SubscriptionRecord, TURN_LOST_MS } from "../src/ask-subscription.ts";
@@ -199,4 +200,35 @@ test("a replay of a turn already answered asks nothing, and no token reaches the
   const problem = w.record().problem ?? "";
   assert.match(problem, /^AI container: git fetch failed: auth \[redacted\] and \[redacted\] · turn turn-000$/);
   assert.equal(logged.some((line) => line.includes(FAKE_GITHUB_TOKEN) || line.includes("read-token")), false);
+});
+
+test("a question after a failed one takes its place: Retry, or the words edited, leave one bubble", async () => {
+  const w = world([{ error: "boom" }, { subtype: "success", text: "ok", session: "s1", entries: [], model: "m", costUsd: 0 }]);
+  const choice = { model: "claude-sonnet-5-5" as const, effort: "high" as const };
+  await askOnSubscription(REPO, 7, input("Why?"), choice, w.env, { ...w.services, turn: "turn-a" });
+  assert.match(w.record().problem ?? "", /AI container: boom/);
+  await askOnSubscription(REPO, 7, input("Why, exactly?"), choice, w.env, { ...w.services, turn: "turn-b" });
+  assert.deepEqual(w.record().messages.map(({ role, text }) => [role, text]), [["you", "Why, exactly?"], ["agent", "ok"]]);
+});
+
+test("Retry after a turn that was lost replaces it too, and a question keeps its line's side", async () => {
+  const w = world([{ subtype: "success", text: "ok", session: "s1", entries: [], model: "m", costUsd: 0 }]);
+  const choice = { model: "claude-sonnet-5-5" as const, effort: "high" as const };
+  const lost: SubscriptionRecord = {
+    kind: "subscription", session: null, head: HEAD, choice, problem: null, costCents: null, model: null,
+    messages: [{ id: "turn-lost", role: "you", text: "Why?", anchor: null }], workingSince: 1_000 - TURN_LOST_MS,
+  };
+  await w.r2.put(`ask/${REPO}/7.json`, JSON.stringify(lost));
+  const old = { question: "Why removed?", head: HEAD, anchor: { path: "a.ts", line: 3, side: "LEFT" as const } };
+  await askOnSubscription(REPO, 7, old, choice, w.env, { ...w.services, turn: "turn-new" });
+  assert.deepEqual(w.record().messages.map(({ role, text }) => [role, text]), [["you", "Why removed?"], ["agent", "ok"]]);
+  assert.equal(w.record().messages[0].side, "LEFT");
+});
+
+test("a queued question keeps its line's side, so its Retry asks about the same line", () => {
+  const anchor = { path: "a.ts", line: 3, side: "LEFT" as const };
+  const chat = withQueued(null, [{ id: "q1", repo: REPO, number: 7, input: { question: "Why?", head: HEAD, anchor },
+    choice: { model: "claude-sonnet-5-5", effort: "high" }, at: 0, error: "GitHub 403: x · turn q1" }], 1);
+  assert.equal(chat.messages[0].side, "LEFT");
+  assert.equal(chat.messages[0].anchor, "a.ts:3");
 });
