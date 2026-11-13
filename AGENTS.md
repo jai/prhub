@@ -24,9 +24,10 @@ pairing the phone, and troubleshooting.
 - **Push to `main`, then deploy. No pull requests.** GitHub enforces it: no new branches (except `ci/…` and
   release-please's), and `main` takes only signed, linear pushes, never a force push; `v*` tags never move. Commit (signed) on `main`, `git pull --rebase`, run the local
   checks below for what you touched, push, and deploy what changed in the same session:
-  - `worker/` or `agent/`: the hosted Worker ([docs/hosted-deploy.md](docs/hosted-deploy.md)), and Jai's other
-    deployments through a `deploy/prhub.ref` commit in jai/agent-pager (its CI deploys them; never by hand).
-  - `app/`, `PRKit/`: a PRHub release ("Releases" below) and, for apps that pin PRKit, a new tag.
+  - `worker/` or `agent/`: the hosted Worker ([docs/hosted-deploy.md](docs/hosted-deploy.md)).
+  - `PRKit/`: a new `v*` tag; `app/`: a PRHub release ("Releases" below).
+  Jai's Agent Pager follows on its own: within 10 minutes it moves to `main`'s head and to the newest `v*` tag, tests,
+  and deploys. Nothing to commit there, and never deploy its Worker by hand.
   CI runs on every push to `main`: the Linux jobs on Ubicloud (`scrub`, `worker`, `relay`; `design` when PRKit, the
   app or DESIGN.md change) and, when `app/`, `PRKit/` or `docs/fixtures/` change, Xcode Cloud's PRHub Tests
   (`PRHub | PRHub Tests | Test - iOS`): PRKit's `swift test`, then the PRHub scheme's unit and UI tests on an
