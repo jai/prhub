@@ -20,10 +20,23 @@ public struct SessionComposer: View {
     public var placeholder = "Reply"
     public let focused: FocusState<Bool>.Binding
     public let attachments: ComposerAttachments?
+    /// A second way to send, where the host has one: the send button's long-press (right-click on the Mac) offers it
+    /// under `label`; the tap still sends. Agent Pager's "Send now" for a thread at work, which would otherwise queue.
+    public let sendNow: SendNow?
+
+    public struct SendNow {
+        public let label: String
+        public let action: () -> Void
+
+        public init(label: String, action: @escaping () -> Void) {
+            self.label = label
+            self.action = action
+        }
+    }
 
     public init(
         draft: Binding<String>, isSending: Bool, send: @escaping () -> Void, placeholder: String = "Reply",
-        focused: FocusState<Bool>.Binding, attachments: ComposerAttachments? = nil
+        focused: FocusState<Bool>.Binding, attachments: ComposerAttachments? = nil, sendNow: SendNow? = nil
     ) {
         _draft = draft
         self.isSending = isSending
@@ -31,6 +44,7 @@ public struct SessionComposer: View {
         self.placeholder = placeholder
         self.focused = focused
         self.attachments = attachments
+        self.sendNow = sendNow
     }
 
     /// A key's send does what the button does: nothing for an empty box, or while the last one is still going.
@@ -112,6 +126,17 @@ public struct SessionComposer: View {
             .buttonStyle(.glassProminent)
             .buttonBorderShape(.circle)
             .disabled(!canSend)
+            .contextMenu {
+                if let sendNow {
+                    // As the tap: nothing for an empty box, or while the last one is still going.
+                    Button(sendNow.label) {
+                        if canSend {
+                            sendNow.action()
+                        }
+                    }
+                        .accessibilityIdentifier("sessionReplySendNow")
+                }
+            }
             .accessibilityLabel("Send reply")
             .accessibilityIdentifier("sessionReplySend")
         }
