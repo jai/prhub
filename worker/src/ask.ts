@@ -3,7 +3,7 @@ import { askPrompt, askRecordKey, chatOf, QUESTION } from "./ask-chat";
 import type { AskChat, AskInput } from "./ask-chat";
 import { type Env, isSet } from "./env";
 import { prId, type RepoFullName } from "./ids";
-import { askGitHubReach, askRepoToken, InstallationTokenRefused } from "./app-token";
+import { askGitHubReach, askGrant, askRepoToken, InstallationTokenRefused } from "./app-token";
 import { onApiKey, onSubscription } from "./agent-container";
 import { askSubscriptionPrompt } from "./ask-setup";
 import { askOnSubscription, isSubscriptionRecord, prDiff, prFacts, subscriptionChat } from "./ask-subscription";
@@ -130,7 +130,7 @@ export async function askChat(repo: RepoFullName, number: number, env: Env): Pro
  */
 export async function ask(repo: RepoFullName, number: number, input: AskInput, choice: ModelChoice, env: Env): Promise<void> {
   if (onSubscription(env)) {
-    const token = () => askRepoToken(repo, number, env).catch((error: unknown) => {
+    const token = () => askGrant(repo, number, env).then(({ token: granted }) => granted, (error: unknown) => {
       throw error instanceof InstallationTokenRefused ? new AskRefused(error.message) : error;
     });
     const reach = askGitHubReach(env);

@@ -2,9 +2,9 @@
  * Installation tokens of a GitHub App (docs/plans/github-app.md, "Tokens"): always read only, and on the hosted Worker
  * for one repo. Ask's checkout is their one use; an installation token never answers a person's own request.
  */
-import { type Env, isSet } from "./env.ts";
+import { type Env, isSet, scopedKey } from "./env.ts";
 import { getFromGitHub } from "./github.ts";
-import { type RepoFullName, repoParts } from "./ids.ts";
+import { parseRepoFullName, type RepoFullName, repoParts } from "./ids.ts";
 
 /** GitHub would not mint one: the App is not on the repo, or it refused. The message says which, for the person. */
 export class InstallationTokenRefused extends Error {}
@@ -31,27 +31,26 @@ export const ASK_PERMISSIONS = {
   metadata: "read",
 } as const;
 
-/**
- * Read access for an hour, minted for the installation that holds the repo. `isNarrowed` limits it to that one repo
- * (the hosted Worker always); Jai's Ask App's reaches every repo it is installed on.
- */
-export async function installationRepoToken(
-  repo: RepoFullName, app: { id: string; key: string }, isNarrowed: boolean, fetcher: typeof fetch,
-): Promise<string> {
-  const headers = {
-    Accept: "application/vnd.github+json", Authorization: `Bearer ${await appJwt(app)}`, "User-Agent": "pr-viewer",
-  };
-  const installation = await fetcher(`https://api.github.com/repos/${repo}/installation`, { headers });
+function appHeaders(jwt: string): Record<string, string> {
+  return { Accept: "application/vnd.github+json", Authorization: `Bearer ${jwt}`, "User-Agent": "pr-viewer" };
+}
+
+/** The id of the App's installation that holds `repo`. */
+async function installationOf(repo: RepoFullName, jwt: string, fetcher: typeof fetch): Promise<number> {
+  const installation = await fetcher(`https://api.github.com/repos/${repo}/installation`, { headers: appHeaders(jwt) });
   if (!installation.ok) {
     throw new InstallationTokenRefused(`The AI can't read ${repo}: the GitHub App isn't installed there.`);
   }
-  const { id } = await installation.json() as { id: number };
+  return (await installation.json() as { id: number }).id;
+}
+
+/** A read-only token of installation `id`, for `names` (repo names in its account) alone, or every repo with null. */
+async function mint(
+  id: number, names: string[] | null, jwt: string, repo: RepoFullName, fetcher: typeof fetch,
+): Promise<string> {
   const minted = await fetcher(`https://api.github.com/app/installations/${id}/access_tokens`, {
-    method: "POST", headers,
-    body: JSON.stringify({
-      ...(isNarrowed ? { repositories: [repoParts(repo).name] } : {}),
-      permissions: ASK_PERMISSIONS,
-    }),
+    method: "POST", headers: appHeaders(jwt),
+    body: JSON.stringify({ ...(names ? { repositories: names } : {}), permissions: ASK_PERMISSIONS }),
   });
   if (!minted.ok) {
     throw new InstallationTokenRefused(`GitHub wouldn't give the AI read access to ${repo} (${minted.status}).`);
@@ -59,6 +58,88 @@ export async function installationRepoToken(
   return (await minted.json() as { token: string }).token;
 }
 
+/**
+ * Read access for an hour, minted for the installation that holds the repo. `isNarrowed` limits it to that one repo
+ * (the hosted Worker always); Jai's Ask App's reaches every repo it is installed on.
+ */
+export async function installationRepoToken(
+  repo: RepoFullName, app: { id: string; key: string }, isNarrowed: boolean, fetcher: typeof fetch,
+): Promise<string> {
+  const jwt = await appJwt(app);
+  const id = await installationOf(repo, jwt, fetcher);
+  return mint(id, isNarrowed ? [repoParts(repo).name] : null, jwt, repo, fetcher);
+}
+
+/** The most repos one installation token can name. */
+const MAX_TOKEN_REPOS = 500;
+/** How long a person's list of an installation's repos is taken as current. */
+export const VISIBLE_REPOS_MS = 10 * 60_000;
+
+/**
+ * The repos of installation `id` the signed-in person can see, read with their own token
+ * (`GET /user/installations/{id}/repositories`) and kept under their prefix for `VISIBLE_REPOS_MS`. GitHub answers it
+ * as the intersection: repos the installation covers that the person's account can read. Null when GitHub won't say.
+ */
+async function visibleRepos(id: number, env: Env, now: number): Promise<RepoFullName[] | null> {
+  const key = scopedKey(env, `ask-reach/${id}.json`);
+  const kept = await (await env.DIFFS.get(key))?.json<{ at: number; repos: RepoFullName[] }>();
+  if (kept && now - kept.at < VISIBLE_REPOS_MS) {
+    return kept.repos;
+  }
+  const repos: RepoFullName[] = [];
+  for (let page = 1; page <= MAX_TOKEN_REPOS / 100; page++) {
+    const response = await getFromGitHub(`/user/installations/${id}/repositories?per_page=100&page=${page}`, env);
+    if (!response.ok) {
+      await response.body?.cancel();
+      return null;
+    }
+    const { repositories } = await response.json() as { repositories?: { full_name?: string }[] };
+    for (const { full_name: name } of repositories ?? []) {
+      const parsed = name ? parseRepoFullName(name) : null;
+      if (parsed) {
+        repos.push(parsed);
+      }
+    }
+    if ((repositories ?? []).length < 100) {
+      break;
+    }
+  }
+  await env.DIFFS.put(key, JSON.stringify({ at: now, repos }));
+  return repos;
+}
+
+/** What the subscription's agent reaches on GitHub: a read-only token, and the repos it names (null: not narrowed). */
+export interface AskGrant {
+  token: string;
+  repos: RepoFullName[] | null;
+}
+
+/**
+ * The token for a subscription question. Hosted: the PRHub App's, read only, for every repo of the PR's installation
+ * that the person's own token can see, so the agent can read a sibling repo the PR uses, and nothing the person
+ * can't. The person's token stays in the Worker. Elsewhere: `askRepoToken`'s, not narrowed.
+ */
+export async function askGrant(
+  repo: RepoFullName, number: number, env: Env, fetcher: typeof fetch = (input, init) => fetch(input, init),
+  now = Date.now(),
+): Promise<AskGrant> {
+  if (!isSet(env.SIGNED_IN_USER_ID)) {
+    return { token: await askRepoToken(repo, number, env, fetcher), repos: null };
+  }
+  await personSeesPr(repo, number, env);
+  const jwt = await appJwt({ id: env.GITHUB_APP_ID ?? "", key: env.GITHUB_APP_PRIVATE_KEY ?? "" });
+  const id = await installationOf(repo, jwt, fetcher);
+  const visible = (await visibleRepos(id, env, now)) ?? [];
+  const repos = [...new Set([repo, ...visible])].slice(0, MAX_TOKEN_REPOS);
+  return { token: await mint(id, repos.map((one) => repoParts(one).name), jwt, repo, fetcher), repos };
+}
+
+async function personSeesPr(repo: RepoFullName, number: number, env: Env): Promise<void> {
+  const visible = await getFromGitHub(`/repos/${repo}/pulls/${number}`, env);
+  if (!visible.ok) {
+    throw new InstallationTokenRefused(`The AI can't read ${repo}: your GitHub account can't see this pull request.`);
+  }
+}
 
 /**
  * The GitHub token Ask's agent gets for a PR. Hosted: the PRHub App's, for this repo alone, and only after the person's
@@ -69,10 +150,7 @@ export async function askRepoToken(
   repo: RepoFullName, number: number, env: Env, fetcher: typeof fetch = (input, init) => fetch(input, init),
 ): Promise<string> {
   if (isSet(env.SIGNED_IN_USER_ID)) {
-    const visible = await getFromGitHub(`/repos/${repo}/pulls/${number}`, env);
-    if (!visible.ok) {
-      throw new InstallationTokenRefused(`The AI can't read ${repo}: your GitHub account can't see this pull request.`);
-    }
+    await personSeesPr(repo, number, env);
     return installationRepoToken(repo, { id: env.GITHUB_APP_ID ?? "", key: env.GITHUB_APP_PRIVATE_KEY ?? "" }, true,
       fetcher);
   }
@@ -87,16 +165,16 @@ export async function askRepoToken(
 
 /**
  * What the subscription's agent may reach on GitHub with the token `askRepoToken` gives. Only a token read only by how
- * it was made reaches past the checkout: an App's installation token, minted with `ASK_PERMISSIONS` (hosted: this repo
- * alone, `repo`; Jai's Ask App: every repo it is installed on, `wide`), or `ASK_GITHUB_TOKEN`, set as a read-only PAT
- * (`wide`). `GITHUB_READ_TOKEN` and `GITHUB_TOKEN` can be classic PATs that write: with either, `none`, and the agent
+ * it was made reaches past the checkout: an App's installation token, minted with `ASK_PERMISSIONS` (hosted: the
+ * repos of the PR's installation the person can see, `installation`, from `askGrant`; Jai's Ask App: every repo it is
+ * installed on, `wide`), or `ASK_GITHUB_TOKEN`, set as a read-only PAT (`wide`). `GITHUB_READ_TOKEN` and `GITHUB_TOKEN` can be classic PATs that write: with either, `none`, and the agent
  * keeps to the checkout.
  */
 export function askGitHubReach(
   env: Pick<Env, "SIGNED_IN_USER_ID" | "ASK_GITHUB_APP_ID" | "ASK_GITHUB_APP_KEY" | "ASK_GITHUB_TOKEN">,
-): "none" | "repo" | "wide" {
+): "none" | "installation" | "wide" {
   if (isSet(env.SIGNED_IN_USER_ID)) {
-    return "repo";
+    return "installation";
   }
   return (isSet(env.ASK_GITHUB_APP_ID) && isSet(env.ASK_GITHUB_APP_KEY)) || isSet(env.ASK_GITHUB_TOKEN) ? "wide" : "none";
 }

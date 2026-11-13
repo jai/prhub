@@ -99,16 +99,17 @@ test("the prompt names the repo, the PR, its title, author, branches and link, a
   assert.match(long, /\[cut\]/);
 });
 
-test("without a read-only token the prompt says the agent keeps to the checkout; hosted, to this repo", () => {
+test("without a read-only token the prompt says the agent keeps to the checkout; hosted, to repos the reviewer can see", () => {
   const none = askSubscriptionPrompt({ reviewer: null, repo: REPO, number: 7, pr: null, reach: "none" });
   assert.ok(none.includes("acme/api#7"));
   assert.ok(!none.includes("github_api"));
   assert.match(none, /no read-only GitHub token/);
-  assert.match(askSubscriptionPrompt({ reviewer: null, repo: REPO, number: 7, pr: FACTS, reach: "repo" }), /reads acme\/api alone/);
+  assert.match(askSubscriptionPrompt({ reviewer: null, repo: REPO, number: 7, pr: FACTS, reach: "installation" }),
+    /repos of `acme` that the reviewer can see.*can't access it/s);
 });
 
 test("only an App's token or ASK_GITHUB_TOKEN reaches past the checkout", () => {
-  assert.equal(askGitHubReach({ SIGNED_IN_USER_ID: "u1" }), "repo");
+  assert.equal(askGitHubReach({ SIGNED_IN_USER_ID: "u1" }), "installation");
   assert.equal(askGitHubReach({ ASK_GITHUB_APP_ID: "1", ASK_GITHUB_APP_KEY: "k" }), "wide");
   assert.equal(askGitHubReach({ ASK_GITHUB_TOKEN: "t" }), "wide");
   assert.equal(askGitHubReach({}), "none", "GITHUB_TOKEN may write");

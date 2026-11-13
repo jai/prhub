@@ -136,6 +136,11 @@ function said(text, token) {
   return clean.length > KEPT ? `${clean.slice(0, KEPT)}\n[cut at ${KEPT} characters]` : clean;
 }
 
+/** What a repo the token can't reach answers: GitHub's 404 says nothing about whether it exists. */
+export function cantAccess(repo) {
+  return `You can't access ${repo}: the reviewer can't see it, or the GitHub App isn't installed on it. Say so; don't guess what it holds.`;
+}
+
 const reply = (text, token, isError = false) => ({ content: [{ type: "text", text: said(text, token) }], isError });
 
 /** Git with no config but the repo's own, no pager, no prompt, and none of this process's secrets. */
@@ -212,7 +217,7 @@ export function readTools({ prDir, prRepo, clones, token, locked }) {
         const specs = ["+HEAD:refs/remotes/origin/HEAD", "+refs/heads/*:refs/remotes/origin/*", "+refs/tags/*:refs/tags/*"];
         const fetched = await runGit(dir, ["fetch", "-q", "--filter=blob:none", "origin", ...specs], token, 300_000);
         if (!fetched.ok) {
-          return reply(`Could not clone ${repo}: ${fetched.text}`, token, true);
+          return reply(`Could not clone ${repo}: ${fetched.text}\n${cantAccess(repo)}`, token, true);
         }
         if (ref && /^[0-9a-f]{40}$/.test(ref)) {
           await runGit(dir, ["fetch", "-q", "--filter=blob:none", "origin", ref], token, 300_000);
@@ -248,7 +253,10 @@ export function readTools({ prDir, prRepo, clones, token, locked }) {
         });
         const where = response.headers.get("location");
         const body = where ? `Redirected to ${where}` : await response.text();
-        return reply(`HTTP ${response.status}\n${body}`, token, !response.ok);
+        const named = /^\/repos\/([^/?]+\/[^/?]+)/.exec(path)?.[1];
+        const denied = (response.status === 404 || response.status === 403) && named && named !== prRepo
+          ? `\n${cantAccess(named)}` : "";
+        return reply(`HTTP ${response.status}\n${body}${denied}`, token, !response.ok);
       } catch (error) {
         return reply(`GitHub could not be reached: ${error?.message ?? error}`, token, true);
       }

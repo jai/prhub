@@ -359,7 +359,11 @@ cost on the API; Ask's chat has `costCents` `null`, so the app shows no cost, an
   rides each git command's header and the API request, never the agent's view or disk, and is taken out of every
   tool's output and the answer, as is `CLAUDE_CODE_OAUTH_TOKEN`.
 - `clone_repo` and `github_api` exist only when the token is read only by how it was made: hosted, the PRHub App's
-  installation token, for the PR's repo alone (other private repos answer 404); on a Worker with the Ask App
+  installation token for the PR's installation, naming every repo of it the person can see (up to 500). The Worker
+  reads that list with the person's own token, `GET /user/installations/{id}/repositories`, keeps it under their
+  prefix at `ask-reach/<installation>.json` for ten minutes, and mints the token for those repos alone; the person's
+  token never reaches the container. A repo outside it, one they can't see or one the App isn't on, answers the agent
+  "You can't access …", and a PR they can't see, or in a repo the App isn't on, gets no token. On a Worker with the Ask App
   (`ASK_GITHUB_APP_ID`), its installation token across every repo it is installed on; else `ASK_GITHUB_TOKEN`. Each
   installation token asks `contents`, `pull_requests`, `issues`, `checks`, `actions` and `statuses` read and lasts an
   hour. With `GITHUB_READ_TOKEN` or `GITHUB_TOKEN`, which may write, the agent keeps to `git` on the checkout, and

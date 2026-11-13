@@ -101,3 +101,20 @@ test("the git tool runs a read in the checkout, refuses a write itself, and keep
     { args: ["show", "HEAD:a.txt"] }, {});
   assert.equal(show.content[0].text.trim(), "[redacted]");
 });
+
+test("a repo the token can't reach answers that the reviewer can't access it", async () => {
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url) => new Response('{"message":"Not Found"}', { status: String(url).includes("/secret") ? 404 : 200 });
+  try {
+    const server = readTools({ prDir: tmpdir(), prRepo: "acme/api", clones: tmpdir(), token: "fake-install-token", locked: (_, f) => f() });
+    const api = server.instance._registeredTools.github_api;
+    const call = (path) => (api.handler ?? api.callback)({ path }, {});
+    const denied = await call("/repos/acme/secret/releases/latest");
+    assert.equal(denied.isError, true);
+    assert.match(denied.content[0].text, /can't access acme\/secret: the reviewer can't see it, or the GitHub App isn't installed/);
+    const fine = await call("/repos/acme/actions/releases/latest");
+    assert.equal(fine.isError, false);
+  } finally {
+    globalThis.fetch = real;
+  }
+});

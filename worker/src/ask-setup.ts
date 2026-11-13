@@ -39,7 +39,7 @@ export const PR_BODY_KEPT = 6_000;
  */
 export function askSubscriptionPrompt(
   { reviewer, repo, number, pr, reach }: {
-    reviewer: string | null; repo: string; number: number; pr: PrFacts | null; reach: "none" | "repo" | "wide";
+    reviewer: string | null; repo: string; number: number; pr: PrFacts | null; reach: "none" | "installation" | "wide";
   },
 ): string {
   const whose = reviewer ? ` The reviewer you help is \`${reviewer}\`.` : "";
@@ -51,8 +51,8 @@ export function askSubscriptionPrompt(
     : [`The PR is ${repo}#${number}: https://github.com/${repo}/pull/${number}. GitHub did not give its title or description.${whose}`];
   const tools = reach !== "none"
     ? `- \`clone_repo\`: clone another GitHub repo to read it, such as a shared actions or library repo the PR uses, at a branch, tag or commit. Then read it with Read, Grep and Glob at the directory it names, or with \`git\` and \`repo\`.
-- \`github_api\`: GET a path on GitHub's REST API: this PR's reviews, comments and review comments, other PRs and issues, releases and tags, commits and compare, check runs and workflow runs.${reach === "repo"
-      ? `\nYour GitHub token reads ${repo} alone, beside public repos: another private repo answers 404, which says nothing about whether it exists.`
+- \`github_api\`: GET a path on GitHub's REST API: this PR's reviews, comments and review comments, other PRs and issues, releases and tags, commits and compare, check runs and workflow runs.${reach === "installation"
+      ? `\nYour GitHub token reads the repos of \`${repo.split("/")[0]}\` that the reviewer can see and PRHub's GitHub App is installed on, and public repos. Any other repo answers 404 or fails to clone: say you can't access it, because the reviewer can't see it or the App isn't installed there.`
       : ""}`
     : "This Worker gives you no read-only GitHub token, so you can't clone other repos or read GitHub's API: say so when the question needs them.";
   const body = pr?.body.trim()
