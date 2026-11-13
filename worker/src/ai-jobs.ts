@@ -9,7 +9,7 @@ import { actingEnvFor } from "./hosted";
 import { parseAiJob } from "./boundary";
 import { prId } from "./ids";
 import { makesAnswers } from "./agent-container";
-import { askEvent, errorWords, failedLine, sideOf } from "./ask-trace";
+import { askEvent, errorWords, failedLine, scrubbed, sideOf } from "./ask-trace";
 import { type Env, prIndex } from "./env";
 import { type AiJob, aiKey } from "./models";
 import { type CarriedAskState, readCarriedAskState, writeCarriedAskState } from "./carry";
@@ -118,7 +118,7 @@ export class AiJobs extends DurableObject<Env> {
       if (error instanceof AskRefused) {
         return error.message;
       }
-      console.error("ask failed", errorWords(error), error);
+      console.error("ask failed", errorWords(error), scrubbed(error instanceof Error ? error.stack ?? "" : ""));
       askEvent("failed", question.id, { pr: `${question.repo}#${question.number}`, side: sideOf(error),
         reason: errorWords(error) });
       return failedLine(error, question.id);

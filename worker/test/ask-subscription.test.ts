@@ -172,3 +172,28 @@ test("GitHub's rate limit is named as such, with when it resets; another refusal
   assert.equal(rateLimitWords(new Response("", { status: 403, headers: { "x-ratelimit-remaining": "41" } })), null);
   assert.equal(rateLimitWords(new Response("", { status: 404 })), null);
 });
+
+test("a replay of a turn already answered asks nothing, and no token reaches the chat or the log", async () => {
+  const w = world([
+    { subtype: "success", text: "ok", session: "s1", entries: [], model: "claude-sonnet-5-5", costUsd: 0 },
+    { error: "git fetch failed: auth ghs_ABCDEFGHIJKLMNOPQRSTUVWX and read-token" },
+  ]);
+  const once = { ...w.services, turn: "turn-0002-abcd" };
+  await askOnSubscription(REPO, 7, input("Why?"), { model: "claude-sonnet-5-5", effort: "high" }, w.env, once);
+  await askOnSubscription(REPO, 7, input("Why?"), { model: "claude-sonnet-5-5", effort: "high" }, w.env, once);
+  assert.equal(w.sent.length, 1, "the model is asked once");
+  assert.deepEqual(w.record().messages.map(({ role }) => role), ["you", "agent"]);
+  const logged: string[] = [];
+  const [log, error] = [console.log, console.error];
+  console.log = (...args: unknown[]) => void logged.push(JSON.stringify(args));
+  console.error = (...args: unknown[]) => void logged.push(JSON.stringify(args));
+  try {
+    await askOnSubscription(REPO, 7, input("And now?"), { model: "claude-sonnet-5-5", effort: "high" }, w.env,
+      { ...w.services, turn: "turn-0003-abcd" });
+  } finally {
+    [console.log, console.error] = [log, error];
+  }
+  const problem = w.record().problem ?? "";
+  assert.match(problem, /^AI container: git fetch failed: auth \[redacted\] and \[redacted\] · turn turn-000$/);
+  assert.equal(logged.some((line) => line.includes("ghs_ABCD") || line.includes("read-token")), false);
+});

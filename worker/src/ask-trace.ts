@@ -24,13 +24,22 @@ export class AskFailure extends Error {
   }
 }
 
-/** The error's own words with its kind, which a bare `console.error(error)` loses in Workers Logs. */
-export function errorWords(error: unknown): string {
+/** Anything shaped like a GitHub or Anthropic credential, wherever it turns up in an error. */
+const CREDENTIALS = /\b(gh[pousr]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{16,}|sk-ant-[A-Za-z0-9_-]{16,})/g;
+
+/** `text` with every credential in it, and each of `known`, replaced: errors pass through the chat and the logs. */
+export function scrubbed(text: string, known: readonly (string | null | undefined)[] = []): string {
+  return known.reduce<string>((clean, secret) => (secret && secret.length >= 8 ? clean.split(secret).join("[redacted]") : clean),
+    text.replace(CREDENTIALS, "[redacted]"));
+}
+
+/** The error's own words with its kind, which a bare `console.error(error)` loses in Workers Logs; no credential in it. */
+export function errorWords(error: unknown, known: readonly (string | null | undefined)[] = []): string {
   if (error instanceof Error) {
     const words = error.message.trim() || "(no message)";
-    return error.name && error.name !== "Error" ? `${error.name}: ${words}` : words;
+    return scrubbed(error.name && error.name !== "Error" ? `${error.name}: ${words}` : words, known);
   }
-  return String(error);
+  return scrubbed(String(error), known);
 }
 
 /** The side of a failure: told by an `AskFailure`, else this Worker's own. */
@@ -39,9 +48,9 @@ export function sideOf(error: unknown): AskSide {
 }
 
 /** The chat's line for a failed turn: what failed, technically, and the turn's id to look it up by. */
-export function failedLine(error: unknown, turn: string): string {
+export function failedLine(error: unknown, turn: string, known: readonly (string | null | undefined)[] = []): string {
   const status = error instanceof AskFailure && error.status !== null ? ` ${error.status}` : "";
-  return `${sideName[sideOf(error)]}${status}: ${errorWords(error)} · turn ${turn.slice(0, 8)}`;
+  return `${sideName[sideOf(error)]}${status}: ${errorWords(error, known)} · turn ${turn.slice(0, 8)}`;
 }
 
 const sideName: Record<AskSide, string> = {

@@ -1,7 +1,7 @@
 // Ask on a subscription (docs/api.md, "AI on a subscription"): each question is one Agent SDK turn in the container, on a
 // checkout of the PR at its head. The chat the phone reads and the session's transcript live in R2, so any container can
 // take the next question.
-import { AskFailure, askEvent, errorWords, failedLine, sideOf } from "./ask-trace.ts";
+import { AskFailure, askEvent, errorWords, failedLine, scrubbed, sideOf } from "./ask-trace.ts";
 import { type AgentAnswer, askContainer } from "./agent-container.ts";
 import { type AskChat, type AskInput, type AskMessage, askPrompt, askRecordKey } from "./ask-chat.ts";
 import type { AskGrant } from "./app-token.ts";
@@ -101,8 +101,14 @@ export async function askOnSubscription(
   const key = askRecordKey(repo, number, env);
   const stored = await (await env.DIFFS.get(key))?.json<unknown>();
   const known = isSubscriptionRecord(stored) && sameChoice(stored.choice ?? BUILT_IN_DEFAULTS.ask, choice) ? stored : null;
-  // A turn a deploy cut short runs again from the queue: its question is already in the chat, so it is not added twice.
-  const resumed = known?.messages.some((message) => message.id === turn) ?? false;
+  // A turn a deploy cut short runs again from the queue: its question is already in the chat, so it is not added twice,
+  // and a turn whose answer is already there is done: the model is not asked again.
+  const at = known?.messages.findIndex((message) => message.id === turn) ?? -1;
+  const resumed = at >= 0;
+  if (resumed && known!.messages.slice(at + 1).some((message) => message.role === "agent")) {
+    askEvent("resumed", turn, { pr: `${repo}#${number}`, user_id: env.SIGNED_IN_USER_ID ?? null, already_answered: true });
+    return;
+  }
   const asked: AskMessage = {
     id: turn, role: "you", text: input.question,
     anchor: input.anchor ? `${input.anchor.path}:${input.anchor.line}` : null,
@@ -114,9 +120,11 @@ export async function askOnSubscription(
     costCents: known?.costCents ?? null, model: known?.model ?? null,
   };
   await env.DIFFS.put(key, JSON.stringify(record));
+  let token: string | null = null;
   try {
     const entries = record.session ? await (await env.DIFFS.get(transcriptKey(repo, number, env)))?.json<unknown[]>() : [];
     const grant = await grantWithRetry(services.grant);
+    token = grant.token;
     askEvent("grant", turn, { ...trace, ms: now() - started, read_only: services.readOnly, repos: grant.repos?.length ?? null });
     const answer = await askContainer<AskAnswer>("/ask", JSON.stringify({
       system: await services.system(), prompt: `${DIFF_NOTE}\n${askPrompt(input, null)}`, model: choice.model, effort: choice.effort,
@@ -147,10 +155,12 @@ export async function askOnSubscription(
     });
     askEvent("answered", turn, { ...trace, ms: now() - started, model: record.model, cost_cents: spent });
   } catch (error) {
-    record = { ...record, workingSince: null, problem: failedLine(error, turn) };
-    askEvent("failed", turn, { ...trace, ms: now() - started, side: sideOf(error), reason: errorWords(error),
+    const known = [token];
+    record = { ...record, workingSince: null, problem: failedLine(error, turn, known) };
+    askEvent("failed", turn, { ...trace, ms: now() - started, side: sideOf(error), reason: errorWords(error, known),
       status: error instanceof AskFailure ? error.status : null });
-    console.error("ask on subscription failed", errorWords(error), error);
+    console.error("ask on subscription failed", errorWords(error, known),
+      scrubbed(error instanceof Error ? error.stack ?? "" : "", known));
   }
   await env.DIFFS.put(key, JSON.stringify(record));
 }
