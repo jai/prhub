@@ -347,12 +347,19 @@ cost on the API; Ask's chat has `costCents` `null`, so the app shows no cost, an
     symlinks followed.
   - `git`: one subcommand of `log`, `show`, `rev-list`, `shortlog`, `diff`, `grep`, `blame`, `describe`,
     `rev-parse`, `merge-base`, `name-rev`, `ls-files`, `ls-tree`, `cat-file` and `for-each-ref`, each with its own
-    allow-list of options (`GIT_READS` in `agent/read-tools.mjs`). An option not on it, and any abbreviation, is
-    refused; none on it names a file or a program, so blame's `-S`, `--contents` and `--ignore-revs-file`, grep's `-f`
-    and `-O`, `--output`, `--no-index`, `--ext-diff` and cat-file's `--batch` are all refused. Git runs without a
-    shell, with an empty stdin and no global or system config, in the repo's real path inside the person's directory;
-    a path argument that is absolute, starts with `~`, climbs with `..`, or resolves out of the repo through a
-    symlink is refused.
+    options (`GIT_READS` in `agent/read-tools.mjs`). An option not listed, and any abbreviation, is refused. An option
+    whose value git takes as optional (`--pretty`, `--abbrev`, `-U`) takes it attached (`--abbrev=8`, `-U5`) or not at
+    all, never from the next argument; one whose value git requires may take the next argument, if that does not start
+    with `-` and is no path out of the repo. Whatever the lists say, an argument starting with `--output`, `-o`,
+    `--ext-diff`, `--textconv`, `--open-files-in-pager`, `-O`, `--exec`, `--upload-pack`, `--config`, `-c`,
+    `--git-dir`, `--work-tree` or `--namespace` is refused. Git runs without a shell, with an empty stdin, no global
+    or system config, and `-c` overrides of the repo's own (`core.fsmonitor=false`, `core.hooksPath=/dev/null`,
+    `core.pager=cat`, `core.editor=false`, `core.sshCommand=false`, https the only protocol); `log`, `show` and `diff`
+    get `--no-ext-diff --no-textconv`, `blame` and `grep` `--no-textconv`. A checkout's or clone's `.git/config` is
+    made read only once set up. Git runs in the repo's real path inside the person's directory, and a path argument
+    that is absolute, starts with `~`, climbs with `..`, or resolves out of the repo through a symlink is refused.
+  - The container's code, `/app`, is root's and read only to the agent's user; checkouts and clones live under its
+    home.
   - `clone_repo` (`owner/name`, optional branch, tag or commit): a blobless clone with branches and tags into the
     person's clones; again, it updates.
   - `github_api`: one `GET` of a path on `https://api.github.com`, redirects not followed. No other method is offered.

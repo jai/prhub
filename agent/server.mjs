@@ -5,7 +5,9 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { promisify } from "node:util";
 import { InMemorySessionStore, query } from "@anthropic-ai/claude-agent-sdk";
-import { authArgs, readOnlyHooks, readToolNames, readTools, SERVER, vetRepo } from "./read-tools.mjs";
+import {
+  authArgs, gitEnv, lockConfig, readOnlyHooks, readToolNames, readTools, SAFE_GIT, SERVER, vetRepo,
+} from "./read-tools.mjs";
 
 const exec = promisify(execFile);
 
@@ -52,7 +54,7 @@ const WORK = "/home/agent/work";
 /** Git's own words on a failure, never the command line: that carries the token's header. */
 async function git(step, args, options = {}) {
   try {
-    return await exec("git", args, options);
+    return await exec("git", [...SAFE_GIT, ...args], { env: gitEnv(), ...options });
   } catch (error) {
     const said = String(error?.stderr ?? "").trim().split("\n").pop() || `exit ${error?.code ?? "?"}`;
     throw new Error(`git ${step} failed: ${said}`);
@@ -77,6 +79,7 @@ async function checkout(dir, repo, head, token) {
   }
   await git("fetch", ["-C", dir, ...auth, "fetch", "-q", "--depth=50", "origin", head], { timeout: 300_000 });
   await git("checkout", ["-C", dir, "checkout", "-q", "--force", "--detach", head]);
+  lockConfig(dir);
   return dir;
 }
 

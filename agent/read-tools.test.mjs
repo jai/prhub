@@ -1,7 +1,7 @@
 // Ask's read tools: the hook lets reads through and denies writes, pushes, other methods and paths outside.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import { readOnlyHooks, readTools, runGit, vetApiPath, vetGit, vetRepo, vetRef } from "./read-tools.mjs";
@@ -10,7 +10,8 @@ test("git reads pass", () => {
   for (const args of [
     ["log", "--oneline", "-20"], ["show", "HEAD:src/a.ts"], ["diff", "main..HEAD", "--", "src"], ["grep", "-n", "retry"],
     ["blame", "-L", "10,20", "src/a.ts"], ["for-each-ref", "--contains", "abc123", "refs/tags"], ["describe", "--tags"],
-    ["grep", "-c", "x"], ["grep", "-n", "-e", "retry", "--", "src"], ["log", "-S", "retry", "-5"], ["log", "--format=%H %s"],
+    ["grep", "--count", "x"], ["grep", "-n", "-e", "retry", "--", "src"], ["log", "--pretty", "-1"], ["log", "--pretty=%H"],
+    ["diff", "--abbrev", "--stat"], ["diff", "-U5"], ["log", "-n", "5"], ["ls-tree", "--abbrev=8", "HEAD"], ["log", "-S", "retry", "-5"], ["log", "--format=%H %s"],
     ["blame", "-L", "1,5", "--", "a.txt"], ["for-each-ref", "--contains", "HEAD", "--format=%(refname)"],
   ]) {
     assert.equal(vetGit(args), null, args.join(" "));
@@ -209,4 +210,60 @@ test("tool output never carries the subscription token either", async () => {
       process.env.CLAUDE_CODE_OAUTH_TOKEN = saved;
     }
   }
+});
+
+/** The re-review's exploits: an optional-value option took the next argument, `--output`, as its value. */
+const WRITERS = [
+  ["log", "--pretty", "--output=.git/config", "-1", '--format=[core]%n fsmonitor = "touch pwned"'],
+  ["diff", "--abbrev", "--output=x"], ["diff", "-U", "--output=x"], ["log", "--abbrev", "--output", "x"],
+  ["show", "--decorate", "--output=x"], ["log", "-n", "--output=x"], ["grep", "-e", "--output=x", "a"],
+  ["for-each-ref", "--contains", "--output=x"], ["log", "-o", "x"], ["log", "--outp=x"], ["log", "-c", "core.pager=sh"],
+  ["log", "--git-dir=x"], ["log", "--work-tree=x"], ["log", "--namespace=x"], ["log", "--exec=x"], ["log", "--config=x"],
+  ["log", "--upload-pack=x"], ["diff", "--ext-diff"], ["diff", "--textconv"], ["grep", "-O", "x"], ["grep", "-Ox", "y"],
+  ["grep", "--open-files-in-pager", "x"], ["diff", "-U"], ["log", "--pretty", "-1", "--", "--output=x"],
+];
+
+test("no spelling of a writer or runner passes, wherever it appears", () => {
+  for (const args of WRITERS) {
+    assert.notEqual(vetGit(args), null, JSON.stringify(args));
+  }
+});
+
+test("the exploits change no .git/config, and no allowed command does", async () => {
+  const { cwd, call } = scopeWithLink();
+  const config = `${cwd}/.git/config`;
+  const before = readFileSync(config, "utf8");
+  for (const args of WRITERS) {
+    const answer = await call(args);
+    assert.equal(answer.isError, true, JSON.stringify(args));
+  }
+  const allowed = [
+    ["log", "--pretty", "-1"], ["log", "--oneline", "-n", "5", "--stat"], ["show", "--abbrev", "HEAD"], ["diff", "-U5"],
+    ["diff", "--abbrev", "--stat"], ["grep", "-n", "one"], ["blame", "--", "a.txt"], ["shortlog", "-s", "HEAD"],
+    ["describe", "--always", "--abbrev=8"], ["rev-parse", "--short", "HEAD"], ["rev-list", "--count", "HEAD"],
+    ["ls-files", "--stage"], ["ls-tree", "-r", "--abbrev", "HEAD"], ["cat-file", "-p", "HEAD"],
+    ["for-each-ref", "--format=%(refname)"], ["name-rev", "HEAD"], ["merge-base", "--all", "HEAD", "HEAD"],
+  ];
+  for (const args of allowed) {
+    const answer = await call(args);
+    assert.equal(answer.isError, false, `${JSON.stringify(args)}: ${answer.content[0].text}`);
+    assert.equal(readFileSync(config, "utf8"), before, JSON.stringify(args));
+  }
+});
+
+test("a repo config that names a program runs nothing: every git call overrides it", async () => {
+  const { cwd, call } = scopeWithLink();
+  const marker = `${cwd}/../ran`;
+  writeFileSync(`${cwd}/.git/config`, `${readFileSync(`${cwd}/.git/config`, "utf8")}
+[core]
+\tfsmonitor = "touch ${marker}"
+\tpager = "touch ${marker}"
+[diff]
+\texternal = "touch ${marker}"
+`);
+  writeFileSync(`${cwd}/a.txt`, "changed\n");
+  for (const args of [["diff"], ["log", "-p", "-1"], ["show"], ["grep", "x"]]) {
+    await call(args);
+  }
+  assert.throws(() => statSync(marker), "no program from the repo's config ran");
 });

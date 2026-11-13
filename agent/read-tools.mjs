@@ -3,7 +3,7 @@
 // subcommand and its arguments, or an API path, and the token stays here. The vetting below gates each call twice, in
 // the PreToolUse hook and again in the tool itself.
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, realpathSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
@@ -13,52 +13,78 @@ export const SERVER = "prhub";
 
 const words = (text) => text.trim().split(/\s+/);
 
-/** What a diff can show: no option here names a file or a program. */
-const DIFF_FLAGS = words(`-p --patch --no-patch -s --stat --shortstat --numstat --name-only --name-status --summary --raw
-  -w -b --ignore-all-space --ignore-space-change --no-renames -M -R --patience --histogram --minimal --no-color
-  --word-diff --full-index --binary`);
-const DIFF_VALUES = words("-U --unified --diff-filter --stat-width --abbrev");
+/**
+ * Each subcommand's options, in three lists:
+ * - `flags`: taken alone. An option whose value is optional in git (`--pretty`, `--abbrev`, `--stat`, `--decorate`,
+ *   `-M`) is here when bare: git never takes the next argument as its value, so neither may the vetting.
+ * - `attached`: taken only with the value in the same argument, `--name=value` or `-xvalue`.
+ * - `separate`: options whose value git requires, which may also take the next argument as it. That argument is
+ *   vetted: it must not start with `-` and must not be a path out of the repo.
+ * No option on any list names a file to read or write, or a program to run.
+ */
+const DIFF = {
+  flags: words(`-p --patch --no-patch -s --stat --shortstat --numstat --name-only --name-status --summary --raw -w -b
+    --ignore-all-space --ignore-space-change --no-renames -M -R --patience --histogram --minimal --no-color --word-diff
+    --full-index --binary --abbrev`),
+  attached: words("-U --unified --diff-filter --stat-width --abbrev"),
+  separate: words("--diff-filter"),
+};
 
-/** What a history can show. `-S` and `-G` here search the history for a string: they name no file. */
-const LOG_FLAGS = [...DIFF_FLAGS, ...words(`--oneline --graph --decorate --no-decorate --all --branches --tags --remotes
-  --merges --no-merges --first-parent --reverse --date-order --topo-order --author-date-order --abbrev-commit
-  --no-abbrev-commit --full-history --simplify-merges --ancestry-path --left-right --cherry-pick --cherry-mark
-  --boundary --follow -i --regexp-ignore-case --all-match --invert-grep -E --extended-regexp -F --fixed-strings -m
-  --cc --full-diff --source --use-mailmap --parents --children --no-walk --count --notes --no-notes`)];
-const LOG_VALUES = [...DIFF_VALUES, ...words(`-n --max-count --skip --since --until --after --before --author
-  --committer --grep -S -G -L --format --pretty --date --min-parents --max-parents --decorate-refs`)];
+/** A history. `-S` and `-G` search it for a string, and `-L` names a range of a file in the repo's history. */
+const LOG = {
+  flags: [...DIFF.flags, ...words(`--oneline --graph --decorate --no-decorate --all --branches --tags --remotes --merges
+    --no-merges --first-parent --reverse --date-order --topo-order --author-date-order --abbrev-commit
+    --no-abbrev-commit --full-history --simplify-merges --ancestry-path --left-right --cherry-pick --cherry-mark
+    --boundary --follow -i --regexp-ignore-case --all-match --invert-grep -E --extended-regexp -F --fixed-strings -m
+    --cc --full-diff --source --use-mailmap --parents --children --no-walk --count --notes --no-notes --pretty`)],
+  attached: [...DIFF.attached, ...words(`-n --max-count --skip --since --until --after --before --author --committer
+    --grep -S -G -L --format --pretty --date --min-parents --max-parents --decorate-refs`)],
+  separate: [...DIFF.separate, ...words(`-n --max-count --skip --since --until --after --before --author --committer
+    --grep -S -G -L --date --min-parents --max-parents`)],
+  counts: true,
+};
+
+const none = { flags: [], attached: [], separate: [] };
 
 /**
  * Git subcommands that only read, each with the only options it takes. An option not listed is refused, and so is
- * every abbreviation: `--ignore-revs-f` is not `--ignore-revs-file`, it is unknown. None listed names a file to read
- * or write, or a program to run (blame's `-S`, `--contents` and `--ignore-revs-file`, grep's `-f` and `-O`, `--output`,
- * `--no-index`, `--ext-diff`, `--textconv`, cat-file's `--batch`).
+ * every abbreviation: `--ignore-revs-f` is not `--ignore-revs-file`, it is unknown.
  */
 export const GIT_READS = new Map(Object.entries({
-  log: { flags: LOG_FLAGS, values: LOG_VALUES, counts: true },
-  show: { flags: LOG_FLAGS, values: LOG_VALUES, counts: true },
-  "rev-list": { flags: LOG_FLAGS, values: LOG_VALUES, counts: true },
+  log: LOG,
+  show: LOG,
+  "rev-list": LOG,
   shortlog: { flags: words("-s --summary -n --numbered -e --email --all --merges --no-merges"),
-    values: words("--since --until --after --before --author -n --max-count --format"), counts: true },
-  diff: { flags: [...DIFF_FLAGS, "--cached", "--staged", "--merge-base"], values: DIFF_VALUES },
+    attached: words("--since --until --after --before --author --max-count --format"),
+    separate: words("--since --until --after --before --author --max-count"), counts: true },
+  diff: { ...DIFF, flags: [...DIFF.flags, "--cached", "--staged", "--merge-base"] },
   grep: { flags: words(`-n --line-number -i --ignore-case -w --word-regexp -v --invert-match -l --files-with-matches
-    -L --files-without-match -c --count -h -H --full-name -E --extended-regexp -F --fixed-strings -G --basic-regexp
-    -P --perl-regexp -I --heading --break --cached --all-match --and --or --not -o --only-matching --column -p
+    -L --files-without-match --count -h -H --full-name -E --extended-regexp -F --fixed-strings -G --basic-regexp
+    -P --perl-regexp -I --heading --break --cached --all-match --and --or --not --only-matching --column -p
     --show-function -W --function-context -a --text`),
-    values: words("-e -A -B -C --context --after-context --before-context --max-depth -m --max-count") },
+    attached: words("-e -A -B -C --context --after-context --before-context --max-depth -m --max-count"),
+    separate: words("-e -A -B -C --context --after-context --before-context --max-depth -m --max-count") },
   blame: { flags: words("-l -s -e --show-email -w -M -C --porcelain --line-porcelain -t --root --show-name --show-number -f -n"),
-    values: words("-L") },
-  describe: { flags: words("--tags --all --always --long --contains --exact-match --first-parent"),
-    values: words("--abbrev --match --exclude --candidates") },
-  "rev-parse": { flags: words("--short --abbrev-ref --verify -q --quiet --symbolic-full-name --is-shallow-repository"),
-    values: [] },
-  "merge-base": { flags: words("--is-ancestor --all --octopus --independent"), values: [] },
-  "name-rev": { flags: words("--tags --name-only --always"), values: [] },
-  "ls-files": { flags: words("--cached --stage -s --full-name --error-unmatch --deleted --modified"), values: [] },
-  "ls-tree": { flags: words("-r -t -d --name-only --name-status -l --long --full-name --full-tree"), values: words("--abbrev") },
-  "cat-file": { flags: words("-t -s -p -e"), values: [] },
-  "for-each-ref": { flags: [], values: words("--contains --no-contains --merged --no-merged --points-at --sort --format --count") },
+    attached: words("-L"), separate: words("-L") },
+  describe: { flags: words("--tags --all --always --long --contains --exact-match --first-parent --abbrev"),
+    attached: words("--abbrev --match --exclude --candidates"), separate: words("--match --exclude --candidates") },
+  "rev-parse": { ...none, flags: words("--short --abbrev-ref --verify -q --quiet --symbolic-full-name --is-shallow-repository") },
+  "merge-base": { ...none, flags: words("--is-ancestor --all --octopus --independent") },
+  "name-rev": { ...none, flags: words("--tags --name-only --always") },
+  "ls-files": { ...none, flags: words("--cached --stage -s --full-name --error-unmatch --deleted --modified") },
+  "ls-tree": { flags: words("-r -t -d --name-only --name-status -l --long --full-name --full-tree --abbrev"),
+    attached: words("--abbrev"), separate: [] },
+  "cat-file": { ...none, flags: words("-t -s -p -e") },
+  "for-each-ref": { flags: [],
+    attached: words("--contains --no-contains --merged --no-merged --points-at --sort --format --count"),
+    separate: words("--contains --no-contains --merged --no-merged --points-at --sort --format --count") },
 }));
+
+/**
+ * Writers and runners, refused wherever they appear, whatever the lists above say: a last guard if a list is ever
+ * wrong. `-c` and `-o` here also take every option that starts with them, so grep counts with `--count`.
+ */
+const NEVER = /^(?:--output|-o|--ext-diff|--textconv|--open-files-in-pager|-O|--exec|--upload-pack|--config|-c|--git-dir|--work-tree|--namespace)/;
 
 /** A path argument as given: none absolute, from home, or climbing. */
 function outsidePath(arg) {
@@ -67,8 +93,7 @@ function outsidePath(arg) {
 
 /**
  * Why a git call is refused, or null when it only reads. `args` start with the subcommand. Every option must be on the
- * subcommand's list, whole; a listed value option takes `--name=value`, `--name value`, `-x value` or `-xvalue`.
- * Everything else is a revision or a path, and a path stays inside the repo.
+ * subcommand's lists, whole (`GIT_READS`). Everything else is a revision or a path, and a path stays inside the repo.
  */
 export function vetGit(args) {
   if (!Array.isArray(args) || args.length === 0 || args.some((arg) => typeof arg !== "string")) {
@@ -79,6 +104,11 @@ export function vetGit(args) {
   if (!allowed) {
     return `git ${command} is not allowed. Allowed: ${[...GIT_READS.keys()].join(", ")}.`;
   }
+  const writer = rest.find((arg) => NEVER.test(arg));
+  if (writer !== undefined) {
+    return `${writer.split("=")[0]} is never allowed: it writes a file, runs a program or changes git's config.`;
+  }
+  const refusal = `git ${command} takes only: ${[...allowed.flags, ...allowed.attached.map((name) => `${name}=…`)].join(" ")}.`;
   let paths = false;
   for (let at = 0; at < rest.length; at++) {
     const arg = rest[at];
@@ -95,28 +125,29 @@ export function vetGit(args) {
       paths = true;
       continue;
     }
-    if (allowed.counts && /^-\d+$/.test(arg)) {
-      continue;
-    }
-    if (allowed.flags.includes(arg)) {
+    if ((allowed.counts && /^-\d+$/.test(arg)) || allowed.flags.includes(arg)) {
       continue;
     }
     const long = /^(--[a-z][a-z-]*)=/.exec(arg);
-    if (long && allowed.values.includes(long[1])) {
-      continue;
+    if (long) {
+      if (allowed.attached.includes(long[1])) {
+        continue;
+      }
+      return refusal;
     }
-    if (allowed.values.includes(arg)) {
-      if (at + 1 >= rest.length) {
-        return `${arg} needs a value.`;
+    if (allowed.separate.includes(arg)) {
+      const value = rest[at + 1];
+      if (value === undefined || value.startsWith("-") || outsidePath(value)) {
+        return `${arg} takes a value in the next argument, which can't be an option or a path out of the repo.`;
       }
       at++;
       continue;
     }
     const short = /^(-[A-Za-z])./.exec(arg);
-    if (short && !arg.startsWith("--") && allowed.values.includes(short[1])) {
+    if (short && !arg.startsWith("--") && allowed.attached.includes(short[1])) {
       continue;
     }
-    return `git ${command} ${arg.split("=")[0]} is not allowed. Its options: ${[...allowed.flags, ...allowed.values].join(" ")}.`;
+    return refusal;
   }
   return null;
 }
@@ -247,8 +278,28 @@ export function cantAccess(repo) {
 
 const reply = (text, token, isError = false) => ({ content: [{ type: "text", text: said(text, token) }], isError });
 
+/**
+ * Set on every git command, over anything a repo's config says: no fsmonitor or hook program, no pager or editor, no
+ * ssh, and https the one protocol (a blobless clone fetches what it lacks over it).
+ */
+export const SAFE_GIT = ["core.fsmonitor=false", "core.hooksPath=/dev/null", "core.pager=cat", "core.editor=false",
+  "core.sshCommand=false", "protocol.allow=never", "protocol.https.allow=always"].flatMap((setting) => ["-c", setting]);
+
+/** Put after a read subcommand: no external diff or textconv program, whatever the repo's config names. */
+const NO_PROGRAMS = {
+  log: ["--no-ext-diff", "--no-textconv"], show: ["--no-ext-diff", "--no-textconv"], diff: ["--no-ext-diff", "--no-textconv"],
+  blame: ["--no-textconv"], grep: ["--no-textconv"],
+};
+
+/** A repo's config, read only once git has set it up: a defence beside `SAFE_GIT`, as no read tool writes it. */
+export function lockConfig(dir) {
+  try {
+    chmodSync(`${dir}/.git/config`, 0o444);
+  } catch {}
+}
+
 /** Git with no config but the repo's own, no pager, no prompt, and none of this process's secrets. */
-function gitEnv() {
+export function gitEnv() {
   return {
     PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: "/nonexistent", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null",
     GIT_TERMINAL_PROMPT: "0", GIT_PAGER: "cat", PAGER: "cat", GIT_OPTIONAL_LOCKS: "0",
@@ -269,7 +320,7 @@ const GIT_OUTPUT_MAX = 8 * 1024 * 1024;
  */
 export function runGit(dir, args, token, timeout = 120_000) {
   return new Promise((done) => {
-    const child = spawn("git", ["-C", dir, ...authArgs(token), ...args], {
+    const child = spawn("git", ["-C", dir, ...SAFE_GIT, ...authArgs(token), ...args], {
       env: gitEnv(), stdio: ["ignore", "pipe", "pipe"], timeout,
     });
     const out = [];
@@ -321,7 +372,8 @@ export function readTools({ prDir, prRepo, clones, scope, token, locked, reachab
       if (real.refused) {
         return reply(real.refused, token, true);
       }
-      const { ok, text } = await runGit(real.dir, args, token);
+      const [command, ...rest] = args;
+      const { ok, text } = await runGit(real.dir, [command, ...(NO_PROGRAMS[command] ?? []), ...rest], token);
       return reply(text || "(no output)", token, !ok);
     },
   );
@@ -359,6 +411,7 @@ export function readTools({ prDir, prRepo, clones, scope, token, locked, reachab
         for (const target of wanted) {
           const moved = await runGit(dir, ["checkout", "-q", "--force", "--detach", target], token, 300_000);
           if (moved.ok) {
+            lockConfig(dir);
             const head = await runGit(dir, ["rev-parse", "HEAD"], null);
             return reply(`${repo} is at ${head.text.trim()} (${ref ?? "default branch"}), in ${dir}.`, token);
           }
