@@ -22,7 +22,8 @@ import UIKit
 ///   PR whose one file is longer than the screen, for the diff's bars; with `-PRHubOpen <link>` it opens that PR as a
 ///   link would (`…/pull/N/files` on its diff); with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View;
 ///   with `-PRHubRefuseFirstReview` the first review sent is refused, so its toast shows Retry, and each review takes
-///   3 seconds to answer.
+///   3 seconds to answer. With `-PRHubNewerBuild <n>` it checks for updates, and the config's `app_latest` names this
+///   build's version with a build number `n` higher (0: this build); `-PRHubForgetLater` forgets an earlier Later.
 ///
 /// Every one starts at the default diff font, whatever an earlier run chose in Settings; `-prkit.diffFont face:size`
 /// sets one for the run. `-PRHubAppearance dark` (or `light`) sets the run's appearance whatever the Simulator's is: on
@@ -76,11 +77,12 @@ enum PRHubScreenshots {
             // Long enough for a loaded test Mac, and a recording, to see each step.
             samples.reviewDelay = .seconds(3)
         }
+        let newer = newerBuild(arguments)
         let environment = PRHubEnvironment.offline(
-            config: DeviceConfig(features: features, login: PRSampleSet.prHubLogin),
+            config: DeviceConfig(features: features, login: PRSampleSet.prHubLogin, appLatest: Self.appLatest(newer)),
             samples: samples,
             worker: URL(string: "https://pr-review.octocat.workers.dev")!, defaultsSuite: "screenshots-paired",
-            isSample: false, usage: .live()
+            isSample: false, usage: .live(), checksUpdates: newer != nil
         )
         if arguments.contains("-PRHubSettings") {
             environment.navigation.selectedTab = .settings
@@ -89,6 +91,24 @@ enum PRHubScreenshots {
             environment.prs.open(text: arguments[index + 1])
         }
         return environment
+    }
+
+    /// `-PRHubNewerBuild <n>`'s `n`, nil without it; `-PRHubForgetLater` forgets an earlier Later first.
+    private static func newerBuild(_ arguments: [String]) -> Int? {
+        if arguments.contains("-PRHubForgetLater") {
+            UserDefaults(suiteName: "screenshots-paired")?.removeObject(forKey: PRHubUpdate.laterKey)
+        }
+        return UserDefaults.standard.string(forKey: "PRHubNewerBuild").flatMap { Int($0) }
+    }
+
+    /// `-PRHubNewerBuild <n>`'s: this build's version, its build number plus `n`, for both groups.
+    private static func appLatest(_ newer: Int?) -> DeviceConfig.AppLatest? {
+        guard let newer else {
+            return nil
+        }
+        let running = AppBuild.running
+        let build = AppBuild(version: running.version, build: String((Int(running.build) ?? 0) + newer))
+        return DeviceConfig.AppLatest(internal: build, public: build)
     }
 
     /// `-PRHubCompactWidth`: the PRs tab as a narrow Split View or Slide Over has it, on any screen.

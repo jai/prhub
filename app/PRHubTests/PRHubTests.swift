@@ -71,6 +71,8 @@ struct PRHubTests {
         let config = try JSONDecoder().decode(DeviceConfig.self, from: Fixture.data("device-config.json"))
         #expect(config.features == [.keyLines, .rewrite, .push])
         #expect(config.login == "alex" && config.orgs == ["acme"])
+        #expect(config.appLatest?.build(for: .internal) == AppBuild(version: "1.0", build: "212"))
+        #expect(config.appLatest?.build(for: .public) == AppBuild(version: "1.0", build: "198"))
     }
 
     @Test func aWorkerThatCouldNotAskGitHubHasNoLoginAndNoOrgs() throws {

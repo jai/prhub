@@ -27,6 +27,11 @@ export interface Env extends LimitVars {
    */
   GITHUB_ORGS?: string;
   /**
+   * Optional: where the newest TestFlight builds of the app are published (`app-latest.ts`), for `GET /device/config`'s
+   * `app_latest`. Unset: PRHub's own. `off`: none.
+   */
+  APP_LATEST_URL?: string;
+  /**
    * Visible alerts (`alerts.ts`): `review_requested`, `approved`, `changes_requested`, comma-separated, or `off`.
    * Unset: review requests.
    */

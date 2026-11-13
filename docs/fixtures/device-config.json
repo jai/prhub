@@ -98,5 +98,15 @@
     "indexed_pull_requests_max": null,
     "indexed_repos_max": 3000,
     "closed_pull_request_retention_days": null
+  },
+  "app_latest": {
+    "internal": {
+      "version": "1.0",
+      "build": "212"
+    },
+    "public": {
+      "version": "1.0",
+      "build": "198"
+    }
   }
 }

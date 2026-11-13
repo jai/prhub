@@ -1,4 +1,5 @@
 import { pushMode } from "./apns.ts";
+import type { AppLatest } from "./app-latest.ts";
 import { makesAnswers, onApiKey, onSubscription } from "./agent-container.ts";
 import { type Env, isSet } from "./env.ts";
 import { type LimitName, limitsConfig, limitsOf } from "./limits.ts";
@@ -22,6 +23,8 @@ export interface DeviceConfig {
   ai?: { features: Partial<Record<AiFeature, FeatureModels>> };
   /** Each limit in force in this Worker's mode, in its unit; null is off (docs/api.md, "Limits"). */
   limits: Partial<Record<LimitName, number | null>>;
+  /** The newest build each TestFlight group can install (`app-latest.ts`). Absent when it could not be read. */
+  app_latest?: AppLatest;
 }
 
 let parsed: { key: string; config: AiConfig } | null = null;
@@ -48,7 +51,7 @@ export function featureKitConfigured(env: Env): boolean {
 
 
 /** Each feature is on when what serves it is configured; nothing is a separate switch. */
-export function deviceConfig(env: Env, login: string | null): DeviceConfig {
+export function deviceConfig(env: Env, login: string | null, latest?: AppLatest): DeviceConfig {
   const model = makesAnswers(env);
   const orgs = (env.GITHUB_ORGS ?? "").split(",").map((org) => org.trim()).filter(Boolean);
   const ask = askConfigured(env);
@@ -68,5 +71,6 @@ export function deviceConfig(env: Env, login: string | null): DeviceConfig {
     ...(orgs.length > 0 ? { orgs } : {}),
     ...(on.length > 0 ? { ai: { features: Object.fromEntries(on.map((feature) => [feature, featureModels(ai, feature)])) } } : {}),
     limits: limitsConfig(limitsOf(env)),
+    ...(latest ? { app_latest: latest } : {}),
   };
 }

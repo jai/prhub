@@ -1,5 +1,7 @@
 # Internal TestFlight builds of main, at most every 15 minutes and only when the app changed: release/cadence.mjs
 # starts Xcode Cloud's Internal - TestFlight workflow, never while a build of it is pending or running.
+# And the newest build each TestFlight group can install, for the app's "Update available": release/app-latest.mjs
+# writes it to app-latest.json on the branch ci/app-latest, which the Workers' GET /device/config reads.
 name: internal-testflight
 
 on:
@@ -7,7 +9,7 @@ on:
     - cron: "*/15 * * * *"
   push:
     branches: [main]
-    paths: [release/cadence*.mjs, .github/workflows/internal-testflight.yml]
+    paths: [release/cadence*.mjs, release/app-latest*.mjs, .github/workflows/internal-testflight.yml]
   workflow_dispatch:
 
 permissions:
@@ -26,7 +28,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - run: node --test release/cadence.test.mjs
+      - run: node --test release/cadence.test.mjs release/app-latest.test.mjs
 
   cadence:
     if: github.event_name != 'push'
@@ -45,3 +47,22 @@ jobs:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+
+  app-latest:
+    if: github.event_name != 'push'
+    needs: test
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: node release/app-latest.mjs
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          GITHUB_TOKEN: ${{ github.token }}

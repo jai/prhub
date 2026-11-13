@@ -2,6 +2,7 @@
 // Contract: docs/api.md.
 import { statesRoute } from "./pr-states";
 import { AiJobs, type AiJob } from "./ai-jobs";
+import { appLatest } from "./app-latest";
 import { askChat } from "./ask";
 import { acceptAsk, askPr, withQueued } from "./ask-queue";
 import { bodyOf, parseAskInput, parseKeyLineMark } from "./boundary";
@@ -120,8 +121,8 @@ function choiceOf(
 async function configRoute(env: Env, context: ExecutionContext, extra: object = {}): Promise<Response> {
   aiConfig(env, context);
   reportedLimitsOf(env, (promise) => context.waitUntil(promise));
-  const login = await githubLogin(env).catch(() => null);
-  return Response.json({ ...deviceConfig(env, login), ...extra }, { headers: { "Cache-Control": "no-store" } });
+  const [login, latest] = await Promise.all([githubLogin(env).catch(() => null), appLatest(env)]);
+  return Response.json({ ...deviceConfig(env, login, latest), ...extra }, { headers: { "Cache-Control": "no-store" } });
 }
 
 function notConfigured(what: string): Response {

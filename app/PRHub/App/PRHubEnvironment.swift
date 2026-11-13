@@ -26,6 +26,8 @@ final class PRHubEnvironment {
     private(set) var sample: PRHubEnvironment?
     /// Review alerts: whether they may show, and the one offer to turn them on.
     let alertPermission: PRHubAlertPermission
+    /// Update available, when TestFlight has a newer build than this one.
+    let update: PRHubUpdate
     /// Set as the notification center's delegate at launch (`AppDelegate`), which holds it weakly.
     @ObservationIgnored private(set) lazy var notificationDelegate = PRHubNotificationDelegate(
         open: { [weak self] ref, row in self?.openAlert(ref, row: row) },
@@ -43,6 +45,7 @@ final class PRHubEnvironment {
         authenticate: @escaping Authenticate = WebSignIn.live, usage: UsageAnalytics = .disabled()
     ) {
         self.alertPermission = alertPermission
+        update = PRHubUpdate(defaults: defaults)
         self.usage = usage
         let refusals = SessionRefusals()
         let host = PRHubPRHost(
@@ -70,9 +73,10 @@ final class PRHubEnvironment {
     init(
         connection: WorkerConnection, access: PRViewerAccess = .offline, samples: PRSampleSet? = nil,
         isSample: Bool = false, alertPermission: PRHubAlertPermission = PRHubAlertPermission(),
-        usage: UsageAnalytics = .disabled(), outbox: (any PRKitOutbox)? = nil
+        usage: UsageAnalytics = .disabled(), outbox: (any PRKitOutbox)? = nil, update: PRHubUpdate? = nil
     ) {
         self.alertPermission = alertPermission
+        self.update = update ?? PRHubUpdate()
         self.usage = usage
         let host = PRHubPRHost(access: access, samples: samples, usage: usage)
         host.outbox = outbox
@@ -198,6 +202,7 @@ final class PRHubEnvironment {
         guard !connection.needsSignInAgain else {
             return
         }
+        update.check(connection.config)
         sendPrefetchReports()
         // The sync sends this launch's push token too, when the Worker pushes.
         await prs.refresh(.foreground)

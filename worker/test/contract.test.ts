@@ -101,7 +101,9 @@ test("GET /device/config", () => {
     GITHUB_TOKEN: "t", AI_ON_API_KEY: "on", ANTHROPIC_API_KEY: "k", PUSH_RELAY_URL: "https://relay", PUSH_RELAY_KEY: "rks_x",
     GITHUB_ORGS: "acme",
   } as Env;
-  matchesFixture("device-config.json", deviceConfig(env, "alex"));
+  matchesFixture("device-config.json", deviceConfig(env, "alex", {
+    internal: { version: "1.0", build: "212" }, public: { version: "1.0", build: "198" },
+  }));
 });
 
 test("GET /device/config on the hosted Worker: the hosted limits, the account and its installations", async () => {

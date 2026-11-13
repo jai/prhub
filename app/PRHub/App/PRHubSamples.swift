@@ -17,7 +17,8 @@ extension PRHubEnvironment {
     /// pairing. The samples' environment, and the screenshots' `-PRHubPaired`.
     static func offline(
         config: DeviceConfig, access: PRViewerAccess = .offline, samples: PRSampleSet? = nil, worker: URL,
-        defaultsSuite: String, isSample: Bool, usage: UsageAnalytics = .disabled(), outbox: (any PRKitOutbox)? = nil
+        defaultsSuite: String, isSample: Bool, usage: UsageAnalytics = .disabled(), outbox: (any PRKitOutbox)? = nil,
+        checksUpdates: Bool = false
     ) -> PRHubEnvironment {
         let defaults = UserDefaults(suiteName: defaultsSuite) ?? .standard
         defaults.set(try? JSONEncoder().encode(config), forKey: WorkerConnection.configKey)
@@ -27,7 +28,8 @@ extension PRHubEnvironment {
             fetchConfig: { _ in config }, forgetSecret: {}, defaults: defaults
         )
         return PRHubEnvironment(
-            connection: connection, access: access, samples: samples, isSample: isSample, usage: usage, outbox: outbox
+            connection: connection, access: access, samples: samples, isSample: isSample, usage: usage, outbox: outbox,
+            update: PRHubUpdate(defaults: defaults, isEnabled: checksUpdates)
         )
     }
 }

@@ -137,6 +137,7 @@ private struct PRHubTabs: View {
         .readableContentWidth()
         .prKitEnvironment(environment.prs)
         .alertsOffer(environment.alertPermission)
+        .updateOffer(environment.update)
         .environment(\.loadsAuthorAvatars, !environment.isSample)
         .recordsScreen(navigation.selectedTab.analyticsScreen, environment.usage)
     }
@@ -160,6 +161,11 @@ extension View {
         #endif
     }
 
+    /// Update available: a newer build on TestFlight. Update opens TestFlight on PRHub; Later skips that build.
+    fileprivate func updateOffer(_ update: PRHubUpdate) -> some View {
+        modifier(UpdateOffer(update: update))
+    }
+
     /// The one offer to turn on review alerts, over the PRs, before the system asks.
     fileprivate func alertsOffer(_ permission: PRHubAlertPermission) -> some View {
         @Bindable var permission = permission
@@ -170,6 +176,28 @@ extension View {
         } message: {
             Text("PRHub tells you when someone asks for your review, and a tap opens the PR. You can change this in "
                  + "Settings.")
+        }
+    }
+}
+
+private struct UpdateOffer: ViewModifier {
+    let update: PRHubUpdate
+    @Environment(\.openURL) private var openURL
+
+    func body(content: Content) -> some View {
+        let offered = update.offered
+        content.alert(
+            "Update available: PRHub \(offered?.version ?? "") (\(offered?.build ?? ""))",
+            isPresented: Binding(get: { update.offered != nil }, set: { if !$0 { update.later() } })
+        ) {
+            Button("Later", role: .cancel) { update.later() }
+            Button("Update") {
+                update.update()
+                openURL(PRHubUpdate.testFlightURL)
+            }
+            .keyboardShortcut(.defaultAction)
+        } message: {
+            Text("TestFlight has a newer build of PRHub.")
         }
     }
 }

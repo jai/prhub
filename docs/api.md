@@ -143,12 +143,30 @@ Auth: a paired secret or `APP_TOKEN`. `Cache-Control: no-store`. The app reads i
 | `orgs` | `GITHUB_ORGS`, comma-separated; absent when unset | The PR filter's default selection |
 | `ai.features.<feature>` | one entry per AI feature that is on (`key_lines`, `rewrite`, `ask`); `ai` is absent when none is | The model picker: `default` is what runs when the app sends no choice; `allowed` is every model and effort it may send ([AI model choice](#ai-model-choice)) |
 | `limits` | always: each limit in force on this Worker, by name, in the unit its name ends with; `null` is off ([Limits](#limits)) | Explains a `429 limit_reached` |
+| `app_latest` | the newest PRHub build each TestFlight group can install, `{internal?, public?}`, each `{version, build}`; absent when it could not be read ([App updates](#app-updates)) | Update available, when its group's build is newer than the running one |
 
 The example leaves out `limits`; [`device-config.json`](fixtures/device-config.json) and
 [`device-config-hosted.json`](fixtures/device-config-hosted.json) show it for each mode. In the example, `rewrite`
 and `ask` are shortened: each lists the same `allowed` entries as `key_lines`. A key the app
 does not know is ignored; a feature the Worker does not send is off. Routes for a feature that is off
 answer `404 {"error": "<feature> is not set up on this Worker."}`. Answers: `200` · `401`.
+
+## App updates
+
+`app_latest` comes from `app-latest.json` on this repo's branch `ci/app-latest`
+(`https://raw.githubusercontent.com/jai/prhub/ci/app-latest/app-latest.json`). Every 15 minutes
+`.github/workflows/internal-testflight.yml` runs `release/app-latest.mjs`, which asks App Store Connect for PRHub's
+processed, unexpired builds and writes the file when it changed: `internal` is the newest build internal testers can
+install, `public` the newest the Public group can (after Beta App Review). Never edit it by hand.
+
+- The Worker keeps it 10 minutes per isolate and waits at most 1.5 s for it (`worker/src/app-latest.ts`). A failed
+  read answers the last one, or leaves `app_latest` out. `APP_LATEST_URL` reads another file (a fork's app); `off` leaves
+  it out.
+- The app (`PRHubUpdate`) compares its group's build with its own `CFBundleShortVersionString` and `CFBundleVersion`:
+  an Internal - TestFlight build (`PRHUB_INTERNAL_TESTFLIGHT`, set by `app/ci_scripts/ci_post_clone.sh`) with
+  `internal`, any other with `public`. A newer one shows "Update available: PRHub <version> (<build>)": **Update** opens
+  TestFlight on PRHub, **Later** skips that build. Checked at launch and on return to the front, at most hourly; never
+  in a Debug build.
 
 ## Feedback
 
@@ -248,6 +266,7 @@ var reads as unset.
 | `GITHUB_LOGIN` | var | Their login; unset reads it from the token. The searches name it, not `@me`, so they stay this person's with `GITHUB_READ_TOKEN` set. Set it beside that token: unset, each isolate spends a `GITHUB_TOKEN` call reading it |
 | `GITHUB_READ_TOKEN` | secret | A second account's PAT that makes the reads (searches, PR reads, diffs, files, `.policy.yml` and team checks), so they cost that account's rate limit. Writes, and the reads that ask about the viewer (viewed files, draft reviews, what they may resolve, the repo list), stay on `GITHUB_TOKEN`. The account needs read access to every repo the Worker lists. Ignored when `HOSTED=on` |
 | `GITHUB_ORGS` | var | Default filter for the app, and the owners `GET /repos` lists |
+| `APP_LATEST_URL` | var | Where `app_latest` is read ([App updates](#app-updates)); unset: PRHub's own, `off`: none |
 | `PR_ALERTS` | var | Visible alerts: `review_requested`, `approved`, `changes_requested`, comma-separated, or `off`. Unset: `review_requested` |
 | `PUSH_RELAY_URL` | var | Jai's relay base URL |
 | `PUSH_RELAY_KEY` | secret | This Worker's relay key, `rks_…` |
