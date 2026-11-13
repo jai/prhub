@@ -25,8 +25,8 @@
     // for SUBSCRIPTION_LOGINS only. Defaults from docs/plans/ai-model-eval.md.
     "SUBSCRIPTION_LOGINS": "jai,poom",
     "AI_DEFAULTS": "key_lines=claude-opus-5-5:high,ask=claude-haiku-5-5:high",
-    // Feedback goes to the FeedbackKit Worker (docs/featurekit.md) as PRHub; FEEDBACKKIT_TOKEN is a secret.
-    "FEEDBACKKIT_URL": "__FEEDBACKKIT_URL__",
+    // Feedback goes to the FeedbackKit Worker (docs/featurekit.md) as PRHub, through the FEEDBACKKIT binding below;
+    // FEEDBACKKIT_TOKEN is a secret.
     "FEEDBACKKIT_APP": "prhub"
     // Limits (docs/api.md, "Limits") take their hosted defaults; set a LIMIT_* var here to change one.
   },

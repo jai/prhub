@@ -59,8 +59,9 @@ bodies carry the item's `app` and `login`; a claim answers them back with `repo`
 
 ## An app Worker
 
-`FEEDBACKKIT_URL`, `FEEDBACKKIT_APP` (vars) and `FEEDBACKKIT_TOKEN` (secret, the FeedbackKit Worker's
-`CALLER_TOKEN`). With all three, `/feedback` goes to the FeedbackKit Worker and `features.feedback` is on.
-A Worker on the FeedbackKit Worker's own Cloudflare account must also bind it as `FEEDBACKKIT` (a service binding):
-Cloudflare refuses a fetch from one of an account's Workers to another's `workers.dev` URL. An answer that is not
-JSON (such a refusal) reaches the app as `502`, never as a `404`.
+`FEEDBACKKIT_APP` (a var), `FEEDBACKKIT_TOKEN` (a secret, the FeedbackKit Worker's `CALLER_TOKEN`), and the way
+there: a `FEEDBACKKIT` service binding for a Worker on FeedbackKit's own Cloudflare account (Cloudflare refuses its
+fetch of a same-account `workers.dev` URL), else `FEEDBACKKIT_URL`. With them, `/feedback` goes to the FeedbackKit
+Worker and `features.feedback` is on; a `FEEDBACKKIT_URL` that is not an `https` URL (an unfilled placeholder) counts as
+unset. An answer that is not JSON reaches the app as `502`, never as a `404`. FeedbackKit links issue screenshots to its
+`PUBLIC_URL`, since a request through a binding names no public host.

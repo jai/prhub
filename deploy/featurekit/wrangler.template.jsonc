@@ -10,6 +10,8 @@
   "workers_dev": true,
   "observability": { "enabled": true },
   "vars": {
+    // Where screenshots are served (issue links): this Worker's own workers.dev URL.
+    "PUBLIC_URL": "__PUBLIC_URL__",
     // Per app: its repo, who ships (owners), who opens PRs (builders), and whether everyone else files an issue.
     "APPS": "{\"prhub\":{\"repo\":\"jai/prhub\",\"owners\":[\"jai\"],\"builders\":[\"poom\"],\"issues\":true},\"agent-pager\":{\"repo\":\"jai/agent-pager\",\"owners\":[\"jai\"]}}"
   },

@@ -150,3 +150,12 @@ test("a push to Agent Pager carries the message as it is, and its answer reads a
     globalThis.fetch = realFetch;
   }
 });
+
+test("Feedback is on through a FeedbackKit binding with no URL, and an unfilled URL placeholder is no URL", () => {
+  const kit = { FEEDBACKKIT_TOKEN: "t", FEEDBACKKIT_APP: "prhub" };
+  const feedback = (vars: Partial<Env>) => deviceConfig(env({ ...kit, ...vars }), null).features.feedback;
+  assert.equal(feedback({ FEEDBACKKIT: {} as Fetcher }), true);
+  assert.equal(feedback({ FEEDBACKKIT_URL: "https://kit.example" }), true);
+  assert.equal(feedback({ FEEDBACKKIT_URL: "__FEEDBACKKIT_URL__" }), false);
+  assert.equal(feedback({}), false);
+});

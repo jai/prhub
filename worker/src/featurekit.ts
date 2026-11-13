@@ -22,6 +22,8 @@ export interface FeatureKitEnv {
   CALLER_TOKEN: string;
   /** The runner's bearer. */
   RUNNER_TOKEN: string;
+  /** Where the screenshots are served, for issue links: a request through a service binding names no public host. */
+  PUBLIC_URL?: string;
   /** Opens the public issues: a token that can open issues on each app's repo. */
   ISSUES_TOKEN?: string;
 }
@@ -155,7 +157,7 @@ async function feedbackRoute(
     },
     issues: gitHubIssues(config.repo, env.ISSUES_TOKEN),
     login,
-    origin: new URL(request.url).origin,
+    origin: env.PUBLIC_URL?.replace(/\/$/, "") || new URL(request.url).origin,
     imagePath: "/images/",
     repo: config.repo,
     now: Date.now,

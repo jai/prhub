@@ -23,7 +23,6 @@ Vars, filled into `deploy/hosted/wrangler.template.jsonc` (the rest of its vars 
 | `__GITHUB_APP_ID__` | The App's App ID |
 | `__GITHUB_APP_CLIENT_ID__` | The App's client ID (`Iv…`) |
 | `__APNS_KEY_ID__` | The ID of Jai's APNs key |
-| `__FEEDBACKKIT_URL__` | The FeedbackKit Worker's URL ([featurekit.md](featurekit.md)) |
 
 Secrets, each with `wrangler secret put`, from the password manager:
 
@@ -53,7 +52,6 @@ From the repo root:
 npx wrangler@4 r2 bucket create prhub-hosted          # once
 sed -e "s/__CLOUDFLARE_ACCOUNT_ID__/$ACCOUNT_ID/" -e "s/__GITHUB_APP_ID__/$APP_ID/" \
     -e "s/__GITHUB_APP_CLIENT_ID__/$CLIENT_ID/" -e "s/__APNS_KEY_ID__/$APNS_KEY_ID/" \
-    -e "s#__FEEDBACKKIT_URL__#$FEEDBACKKIT_URL#" \
     deploy/hosted/wrangler.template.jsonc > deploy/hosted/wrangler.jsonc
 cd worker
 npx wrangler@4 deploy --config ../deploy/hosted/wrangler.jsonc

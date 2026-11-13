@@ -306,7 +306,8 @@ const FEEDBACK_PATH = /^\/feedback(?:\/([^/]+))?$/;
 async function featureKitRoute(pathname: string, request: Request, env: Env): Promise<Response> {
   try {
     // The public URL even through the binding: FeedbackKit links issue screenshots to the origin it was asked at.
-    const base = (env.FEEDBACKKIT_URL ?? "").replace(/\/$/, "");
+    // Through the binding the host is only a name; FeedbackKit links screenshots to its own PUBLIC_URL.
+    const base = env.FEEDBACKKIT ? "https://featurekit" : (env.FEEDBACKKIT_URL ?? "").replace(/\/$/, "");
     const send = env.FEEDBACKKIT ? env.FEEDBACKKIT.fetch.bind(env.FEEDBACKKIT) : fetch;
     const answer = await send(`${base}${pathname}`, {
       method: request.method,

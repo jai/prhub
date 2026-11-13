@@ -42,7 +42,13 @@ export function askConfigured(env: Env): boolean {
 
 /** Feedback goes to the FeedbackKit Worker, which keeps every app's. */
 export function featureKitConfigured(env: Env): boolean {
-  return isSet(env.FEEDBACKKIT_URL) && isSet(env.FEEDBACKKIT_TOKEN) && isSet(env.FEEDBACKKIT_APP);
+  return (env.FEEDBACKKIT !== undefined || isUrl(env.FEEDBACKKIT_URL)) && isSet(env.FEEDBACKKIT_TOKEN)
+    && isSet(env.FEEDBACKKIT_APP);
+}
+
+/** A real https URL: an unfilled template placeholder is not one. */
+function isUrl(value: string | undefined): boolean {
+  return isSet(value) && /^https:\/\/[^_\s]+$/.test(value!.trim());
 }
 
 
