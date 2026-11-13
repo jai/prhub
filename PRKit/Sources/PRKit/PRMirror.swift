@@ -223,16 +223,21 @@ actor PRMirror {
 
     /// The diff and the description, side by side; then key lines, which a PR does without.
     private func download(_ row: PullRequestRow, generation: Int) async -> Bool {
+        let route = "prs/\(row.repo)/\(row.number)"
         async let diff = row.hasDiff && !fileExists(row.diffFileName)
-            ? file(row.diffFileName, check: { !$0.isEmpty }, read: { try await self.client.diff(row) }) : .landed
-        async let detail = !fileExists(row.detailFileName)
-            ? file(row.detailFileName, check: { (try? PullRequestDetail.decode($0)) != nil }, read: {
-                try await self.client.detail(row)
+            ? file(row.diffFileName, check: readable("\(route)/diff") { !$0.isEmpty }, read: {
+                try await self.client.diff(row)
             }) : .landed
+        async let detail = !fileExists(row.detailFileName)
+            ? file(
+                row.detailFileName, check: readable("\(route)/detail") { (try? PullRequestDetail.decode($0)) != nil },
+                read: { try await self.client.detail(row) }
+            ) : .landed
         let whole = await (diff, detail) == (.landed, .landed)
         if whole, let name = row.keyLinesFileName, let context = row.keyLines, !fileExists(name) {
             _ = await file(
-                name, check: { (try? JSONDecoder().decode(PRKeyLines.self, from: $0)) != nil },
+                name,
+                check: readable("\(route)/key-lines") { (try? JSONDecoder().decode(PRKeyLines.self, from: $0)) != nil },
                 read: { try await self.client.keyLines(row, context: context) }
             )
         }
@@ -240,6 +245,19 @@ actor PRMirror {
             await rowLanded(generation: generation) // its failure, for the row to say so
         }
         return whole
+    }
+
+    /// `check`, with a file it refuses reported as an unreadable answer of `route`.
+    private nonisolated func readable(
+        _ route: String, _ check: @escaping @Sendable (Data) -> Bool
+    ) -> @Sendable (Data) -> Bool {
+        { [client] data in
+            let isReadable = check(data)
+            if !isReadable {
+                client.reportFailure(path: route, .unreadable)
+            }
+            return isReadable
+        }
     }
 
     private func rowLanded(generation: Int) async {

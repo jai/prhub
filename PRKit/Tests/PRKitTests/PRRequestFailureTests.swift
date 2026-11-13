@@ -80,6 +80,17 @@ struct PRRequestFailureTests {
         #expect(reports.seen.withLock { $0 } == ["prs offline", "ask unreadable"])
     }
 
+    /// An AI answer or a mirrored file decoded outside the client reports under its own route.
+    @Test func anAnswerDecodedOutsideTheClientIsReportedUnreadableUnderItsRoute() {
+        let reports = Reports()
+        let worker = client(reports) { Self.status(200, for: $0) }
+        #expect(throws: (any Error).self) {
+            try worker.decode([String: Int].self, from: Data("{\"lines\": ".utf8), path: "prs/acme/api/7/key-lines")
+        }
+        worker.reportFailure(path: "prs/acme/api/7/detail", .unreadable)
+        #expect(reports.seen.withLock { $0 } == ["key_lines unreadable", "detail unreadable"])
+    }
+
     @Test func aRepeatOfTheSameFailureIsReportedAgainAfterAMinute() {
         let clock = Mutex(Date(timeIntervalSince1970: 0))
         let reports = Reports()

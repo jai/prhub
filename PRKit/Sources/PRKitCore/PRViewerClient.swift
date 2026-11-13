@@ -337,8 +337,9 @@ public struct PRViewerClient: Sendable {
         }
     }
 
-    /// An answer this app can't read is a failure of its own kind.
-    private func decode<Answer: Decodable>(_ type: Answer.Type, from data: Data, path: String) throws -> Answer {
+    /// An answer this app can't read is a failure of its own kind: for one decoded outside the client too (an AI
+    /// answer, a mirrored file), so it is reported as `unreadable` under its route.
+    public func decode<Answer: Decodable>(_ type: Answer.Type, from data: Data, path: String) throws -> Answer {
         do {
             return try JSONDecoder().decode(type, from: data)
         } catch {
