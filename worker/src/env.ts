@@ -143,8 +143,12 @@ export interface Env extends LimitVars {
 }
 
 /** A name set to something. An empty var reads as unset, so a template's blanks turn a feature off. */
+/**
+ * Whether a var has a value. An unfilled template placeholder (`__NAME__`) has none: a deploy that missed one leaves
+ * its feature off instead of breaking it.
+ */
 export function isSet(value: string | undefined): value is string {
-  return typeof value === "string" && value.trim() !== "";
+  return typeof value === "string" && value.trim() !== "" && !/^__[A-Z0-9_]+__$/.test(value.trim());
 }
 
 /**
