@@ -45,17 +45,35 @@ final class PRHubScreenshotTests: XCTestCase {
             let checkout = app.staticTexts["Show a retry button when checkout fails"]
             XCTAssertTrue(checkout.waitForExistence(timeout: 10))
             try picture("2-list-banner", look)
-            // From the line itself, which takes no tap, slowly, and held past the pull's length before letting go: the
-            // first try dragged a row fast and nothing refreshed.
+            // No synthesized pull has refreshed the list yet (two tries, 2026-11-14), so three kinds are tried and each
+            // pictured, with whether a spinner showed: from the line, slow and held; the list's own swipe; a long
+            // drag from a section's title.
             let line = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Not up to date'")).firstMatch
             XCTAssertTrue(line.waitForExistence(timeout: 5))
-            let from = line.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            from.press(
-                forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: 0, dy: 320)), withVelocity: .slow,
-                thenHoldForDuration: 0.8
-            )
-            RunLoop.current.run(until: Date.now.addingTimeInterval(1))
-            try picture("2-list-refreshing", look)
+            let title = app.staticTexts["Review Pending"]
+            let pulls: [(String, () -> Void)] = [
+                ("held", {
+                    let from = line.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                    from.press(
+                        forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: 0, dy: 320)), withVelocity: .slow,
+                        thenHoldForDuration: 0.8
+                    )
+                }),
+                ("swipe", { self.app.scrollViews.containing(.staticText, identifier: "Review Pending").firstMatch.swipeDown() }),
+                ("drag", {
+                    let from = title.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                    from.press(forDuration: 0, thenDragTo: from.withOffset(CGVector(dx: 0, dy: 500)))
+                }),
+            ]
+            for (name, pull) in pulls {
+                pull()
+                RunLoop.current.run(until: Date.now.addingTimeInterval(0.7))
+                let spins = app.activityIndicators.firstMatch.exists
+                try picture("2-list-refreshing-\(name)-\(spins ? "spinner" : "none")", look)
+                if spins {
+                    break
+                }
+            }
         }
     }
 
