@@ -62,7 +62,7 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
             )
             openPR("Give the deploy team access to staging")
             let diff = app.buttons["pr-files-changed"]
-            XCTAssertTrue(diff.waitForExistence(timeout: 5))
+            XCTAssertTrue(app.reveal(diff), "Files changed, under the PR's summary")
             diff.tap()
             XCTAssertTrue(app.buttons["file-header-0"].waitForExistence(timeout: 5))
             try picture("diff-sideways-long-path-\(name)")
@@ -108,7 +108,7 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
         XCTAssertTrue(app.tab(.settings).waitForExistence(timeout: 10))
         // On a wide screen, in the list's own column: the PR's page is beside it.
         let list = app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.7))
-        for _ in 0..<15 where !row.exists || (!isWide && !row.isHittable) {
+        for _ in 0..<25 where !row.exists || (!isWide && !row.isHittable) {
             if isWide {
                 list.press(forDuration: 0.05, thenDragTo: list.withOffset(CGVector(dx: 0, dy: -300)), withVelocity: .slow,
                            thenHoldForDuration: 0.1)
@@ -128,7 +128,7 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
         )
         openPR("Show a retry button when checkout fails")
         let review = app.buttons["pr-review-changes"]
-        XCTAssertTrue(review.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.reveal(review), "Review changes, under the PR's summary")
         review.tap()
         XCTAssertTrue(app.buttons["key-lines-context-100"].waitForExistence(timeout: 5))
         app.closePanelOverDiff()

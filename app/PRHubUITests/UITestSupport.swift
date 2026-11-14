@@ -75,12 +75,18 @@ extension XCUIApplication {
         return isClearOfBars(element)
     }
 
-    /// Scrolls the page back towards its top until `element` is out from under the bars, then waits for it to stop.
-    /// Xcode Cloud, 2026-11-14, iPhone in the largest text: the swipe that reached the checks left Review changes under
-    /// the nav bar, the bar took the tap, and the diff never opened.
-    @MainActor func scrollDown(to element: XCUIElement) -> Bool {
-        for _ in 0..<5 where !isClearOfBars(element) {
-            swipeDown(velocity: .slow)
+    /// Scrolls the page whichever way `element` lies until it is out from under the bars, then waits for it to stop.
+    /// Down the page while it is not drawn yet or sits below the bars; back up while it is above them. A PR's page puts
+    /// its summary over Review changes (2026-11-14): in the largest text the button is several screens down, and the
+    /// lazy page has not made it yet.
+    @MainActor func reveal(_ element: XCUIElement) -> Bool {
+        for _ in 0..<15 where !isClearOfBars(element) {
+            let top = navigationBars.firstMatch.exists ? navigationBars.firstMatch.frame.maxY : 0
+            if element.exists, element.frame.maxY > 0, element.frame.minY < top {
+                swipeDown(velocity: .slow)
+            } else {
+                swipeUp(velocity: .slow)
+            }
         }
         waitForStill(element)
         return isClearOfBars(element)
