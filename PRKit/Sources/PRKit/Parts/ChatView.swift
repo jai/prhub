@@ -127,8 +127,9 @@ public struct ChatView<Extras: View, Header: View, Footer: View, Composer: View>
         .safeAreaBar(edge: .bottom) { composer() }
     }
 
-    /// The agent's newest words, when nothing of Jai's came after them: where "Wait, what?" goes.
-    private static func waitWhatID(in messages: [ChatMessage]) -> String? {
+    /// The agent's newest words, when nothing of Jai's came after them: where "Wait, what?" goes. A tool call says
+    /// nothing to rewrite, so it is passed over; a message of his, on its way or delivered, is newer, so it goes nowhere.
+    static func waitWhatID(in messages: [ChatMessage]) -> String? {
         let newest = messages.last { message in
             if case .tool = message.role {
                 return false
