@@ -1,0 +1,38 @@
+{
+  "configurations": [
+    {
+      "id": "6C1E3F2A-0000-4000-8000-000000000001",
+      "name": "Tests",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "maximumTestRepetitions": 2,
+    "testRepetitionMode": "retryOnFailure"
+  },
+  "testTargets": [
+    {
+      "selectedTests": [
+        "PRHubAskE2ETests/testAskGoesSendingThinkingAnsweredWithNoError()",
+        "PRHubDiffFontUITests/testTheViewedMarkTakesItsTapWithoutMovingTheHeader()",
+        "PRHubDiffSidewaysUITests/testASwipeRightAtTheLeftEdgeMovesNothing()",
+        "PRHubHostedUITests/testASetupLinkSaysSelfHostingIsOff()",
+        "PRHubNavigationUITests/testOnAWideScreenInLandscape()",
+        "PRHubNavigationUITests/testSwipingARowRightOffersReviewChanges()",
+        "PRHubPRPageUITests/testADescriptionDrawsGitHubsMarkdown()",
+        "PRHubPRPageUITests/testALongAnswerTakesTheChatsWidth()",
+        "PRHubPRPageUITests/testALongPressOnOpenInGitHubOffersThePRsLink()",
+        "PRHubPRPageUITests/testTheChecksGroupMatrixLegsAndNameTheirWorkflow()",
+        "PRHubPRPageUITests/testThePageShowsThePRAtAGlanceAndABugOpensItsLine()",
+        "PRHubScreenshotTests/testEveryScreenInDark()",
+        "PRHubScreenshotTests/testWideListSeparationInEveryLook()"
+      ],
+      "target": {
+        "containerPath": "container:PRHub.xcodeproj",
+        "identifier": "ECC363D5E63C730E3779F386",
+        "name": "PRHubUITests"
+      }
+    }
+  ],
+  "version": 1
+}

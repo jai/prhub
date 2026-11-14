@@ -46,7 +46,9 @@ if [[ ${CI_WORKFLOW_ID:-} == "$internal_workflow" || ${CI_WORKFLOW_ID:-} == "$in
     print 'SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) PRHUB_INTERNAL_TESTFLIGHT' >> "$app/Config/PRHub.xcconfig"
     echo "internal: built for the Internal TestFlight group"
 fi
-if [[ ${CI_WORKFLOW_ID:-} == "$tests_workflow" || ( -z ${CI_WORKFLOW_ID:-} && -z $release_build ) ]]; then
+# Once a run: the workflow's Test actions each clone, so only the one on ui-1, the plan with the unit tests, runs it.
+if [[ ( ${CI_WORKFLOW_ID:-} == "$tests_workflow" || ( -z ${CI_WORKFLOW_ID:-} && -z $release_build ) )
+    && ${CI_TEST_PLAN:-ui-1} == ui-1 ]]; then
     (cd "$CI_PRIMARY_REPOSITORY_PATH" && swift test)
 fi
 HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install --quiet xcodegen

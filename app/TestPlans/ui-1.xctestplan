@@ -1,0 +1,53 @@
+{
+  "configurations": [
+    {
+      "id": "6C1E3F2A-0000-4000-8000-000000000001",
+      "name": "Tests",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "maximumTestRepetitions": 2,
+    "testRepetitionMode": "retryOnFailure"
+  },
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:PRHub.xcodeproj",
+        "identifier": "FDE14B3D00FCA91A6857FCF5",
+        "name": "PRHubTests"
+      }
+    },
+    {
+      "target": {
+        "containerPath": "container:..",
+        "identifier": "PRKitTests",
+        "name": "PRKitTests"
+      }
+    },
+    {
+      "selectedTests": [
+        "PRHubDiffFontUITests/testTheDiffInEveryFontAndSize()",
+        "PRHubHostedUITests/testANewInstallShowsWhenTheAppComesBackFromGitHub()",
+        "PRHubHostedUITests/testARefusedSignInSaysWhyUnderItsButton()",
+        "PRHubHostedUITests/testAnEmptyListSaysTheAppIsOnNoAccount()",
+        "PRHubHostedUITests/testKeyLinesWithNoKeyLeadToSettingsAndShowOnceTheKeyIsSet()",
+        "PRHubNavigationUITests/testALinkToAPRsFilesOpensItsDiffWithThePRUnderIt()",
+        "PRHubNavigationUITests/testANarrowSplitViewKeepsThePhonesStack()",
+        "PRHubNavigationUITests/testReviewChangesPushesTheDiffWithKeyLinesOpenAndBackReturnsToThePR()",
+        "PRHubNavigationUITests/testTheDiffHasTheReviewBarAndSendsAReview()",
+        "PRHubNavigationUITests/testTheRowsReviewButtonLandsOnTheDiffWithKeyLinesOpenAndBackGoesToThePR()",
+        "PRHubPRPageUITests/testAReviewGoesInTheBackgroundWithAToast()",
+        "PRHubPRPageUITests/testAskShowsDeliveredWhileTheAgentIsThinking()",
+        "PRHubSamplesUITests/testTheSamplesWorkWithNoWorker()",
+        "PRHubUpdateUITests/testTheSameBuildOffersNothing()"
+      ],
+      "target": {
+        "containerPath": "container:PRHub.xcodeproj",
+        "identifier": "ECC363D5E63C730E3779F386",
+        "name": "PRHubUITests"
+      }
+    }
+  ],
+  "version": 1
+}

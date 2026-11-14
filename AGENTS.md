@@ -32,14 +32,18 @@ pairing the phone, and troubleshooting.
   - `PRKit/`: a new `v*` tag; `app/`: a PRHub release ("Releases" below).
   Jai's Agent Pager follows on its own: within 10 minutes it moves to `main`'s head and to the newest `v*` tag, tests,
   and deploys. Nothing to commit there, and never deploy its Worker by hand.
-  CI runs on every push to `main`: the Linux jobs on GitHub's own runners (`scrub`, `worker`, `relay`; `design` when PRKit, the
-  app or DESIGN.md change) and, on the same changes, the tests on GitHub's Macs (`.github/workflows/ios.yml`, the
-  `xcode-27` image): `prkit` is PRKit's `swift test`, and `test (iPhone 17)` and `test (iPad Pro 13-inch (M5))` are
-  the PRHub scheme's unit and UI tests. A red run on `main` is fixed next, by whoever pushed it. Each test job keeps
-  its result bundle as an artifact for a week: `gh run download <run> -n 'xcresult-iPhone 17'`, then
-  `xcrun xcresulttool export attachments` for a failed test's pictures and UI tree.
-  Xcode Cloud makes the builds only. Its PRHub Tests workflow ran the tests until 14 November 2026 and is turned off,
-  not deleted. The scripts in `app/ci_scripts` know each workflow by its id (`workflows.sh`), never its name.
+  CI runs on every push to `main`: the Linux jobs on GitHub's own runners (`scrub`, `worker`, `relay`; `design` when
+  PRKit, the app or DESIGN.md change), and the tests in Xcode Cloud's **PRHub Tests** on the same changes: PRKit's
+  `swift test` (app/ci_scripts/ci_post_clone.sh) and the PRHub scheme's unit and UI tests in four test plans side by
+  side (`app/TestPlans/ui-1` to `ui-4`), each on the iPhone 17 and the 13-inch iPad Pro, about 12 minutes; a newer
+  push cancels the older run. The slices come from `scripts/ui-test-slices.py`, by each test's seconds in
+  `app/PRHubUITests/times.txt`: after adding or removing a UI test, run `scripts/ui-test-slices.py plans` and commit
+  the plans (`design` fails until you do). A failed test runs once more. A red run on `main` is fixed next, by whoever
+  pushed it: App Store Connect → PRHub → Xcode Cloud shows each test, its log and pictures. For one test on GitHub's
+  Macs with its result bundle: `gh workflow run ios.yml -f only=PRHubUITests/<Class>/<test>`, then
+  `gh run download <run> -n 'xcresult-iPhone 17'` and `xcrun xcresulttool export attachments`. A UI test's
+  `waitForExistence` looks at once and every 0.1 s (`app/PRHubUITests/FastWaits.swift`), so use it freely.
+  The scripts in `app/ci_scripts` know each workflow by its id (`workflows.sh`), never its name.
 - Tests: `npm test` and `npm run typecheck` in `worker/` and `relay/`. The worker's contract test compares what the
   real builders send with `docs/fixtures/*.json`; after a deliberate change run `UPDATE_FIXTURES=1 npm test` and
   commit the fixtures with the code.

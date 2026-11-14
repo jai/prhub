@@ -17,10 +17,18 @@ final class PRHubScreenshotTests: XCTestCase {
         continueAfterFailure = false
     }
 
-    func testEveryScreenInEveryLook() throws {
-        for look in Look.allCases {
-            try pictures(look)
-        }
+    // A look a test: together they are the suite's longest walk (10 minutes on CI's iPhone, 19 on its iPad), and as
+    // three tests CI runs them on three Macs at once (scripts/ui-test-slices.py).
+    func testEveryScreenInLight() throws {
+        try pictures(.light)
+    }
+
+    func testEveryScreenInDark() throws {
+        try pictures(.dark)
+    }
+
+    func testEveryScreenInLargeText() throws {
+        try pictures(.largeText)
     }
 
     func testWideListSeparationInEveryLook() throws {

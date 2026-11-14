@@ -1,7 +1,7 @@
-# PRKit and the PRHub app, on GitHub's own runners (free for a public repo): the design checks on Linux, and the tests
-# on Macs with Xcode 27.2 (the `xcode-27` image): PRKit's `swift test`, then the PRHub scheme's unit and UI tests on an
-# iPhone and on a 13-inch iPad Pro, each device a job of its own. Each test job keeps its result bundle (pictures, UI
-# trees, logs) as an artifact for a week. Xcode Cloud ran these until 14 November 2026; it still makes the builds.
+# PRKit and the PRHub app's design checks, on GitHub's own runners (free for a public repo). The tests run in Xcode
+# Cloud's PRHub Tests: PRKit's swift test, and the app's unit and UI tests in four test plans side by side, each on
+# the iPhone 17 and the 13-inch iPad Pro (app/TestPlans, scripts/ui-test-slices.py). About 12 minutes a run there,
+# where GitHub's Macs took 43 on the iPhone and 70 on the iPad (runs 43550577545 and Xcode Cloud 274, 2026-11-14).
 name: ios
 
 on:
@@ -10,7 +10,7 @@ on:
   push:
     branches: [main]
     paths: [Package.swift, PRKit/**, app/**, DESIGN.md, docs/fixtures/**, scripts/design-lint*, .github/workflows/ios.yml]
-  # By hand, `only` runs one test class or test on both devices in a run of its own, for a quick look at a screen:
+  # By hand, `only` runs one test class or test on both devices on GitHub's Macs, for a quick look at a screen:
   #   gh workflow run ios.yml -f only=PRHubUITests/PRHubScreenshotTests
   workflow_dispatch:
     inputs:
@@ -39,22 +39,17 @@ jobs:
         run: make -C app design-check
       - name: No literal fonts, colours, paddings, corners or animations in views
         run: scripts/design-lint.sh
+      - name: Xcode Cloud's test plans hold every UI test, in the slices of app/PRHubUITests/times.txt
+        run: scripts/ui-test-slices.py plans --check
 
-  prkit:
-    if: ${{ !inputs.only }}
-    runs-on: xcode-27
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v5
-      - name: Xcode 27.2
-        run: sudo xcode-select -s /Applications/Xcode_27.2.app
-      - name: PRKit's own tests, on the Mac
-        run: swift test
 
-  test:
-    name: test (${{ matrix.device }})
+  # By hand only, with `only`: one test on both devices on GitHub's Macs, for a quick look at a screen and its
+  # pictures (the result bundle is kept a week). Every other test run is Xcode Cloud's.
+  one:
+    if: ${{ inputs.only != '' }}
+    name: one (${{ matrix.device }})
     runs-on: xcode-27
-    timeout-minutes: 90
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -70,7 +65,7 @@ jobs:
           xcodegen generate --spec project.yml --quiet
           mkdir -p PRHub.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
           cp Package.resolved PRHub.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
-      - name: The PRHub scheme's unit and UI tests
+      - name: The test
         working-directory: app
         env:
           ONLY: ${{ inputs.only }}
@@ -78,11 +73,11 @@ jobs:
           set -o pipefail
           xcodebuild test -project PRHub.xcodeproj -scheme PRHub \
             -destination 'platform=iOS Simulator,name=${{ matrix.device }},OS=27.2' \
-            -derivedDataPath build/DerivedData -resultBundlePath build/PRHub.xcresult \
-            -skipPackagePluginValidation -skipMacroValidation ${ONLY:+"-only-testing:$ONLY"} \
-            | grep -E --line-buffered "^Test (Suite|Case|session)|^\s+(Executed|✔|✘)|error:|\*\* TEST|Testing (failed|started)|: (error|failed)" || true
+            -derivedDataPath build/DerivedData -resultBundlePath build/PRHub.xcresult -enableCodeCoverage NO \
+            -skipPackagePluginValidation -skipMacroValidation "-only-testing:$ONLY" \
+            | grep -E --line-buffered "^Test (Suite|Case|session)|^\s+(Executed|✔|✘)|error:|\*\* TEST|: (error|failed)" || true
           xcrun xcresulttool get test-results summary --path build/PRHub.xcresult --compact > build/summary.json
-          jq -r '"\(.result): \(.passedTests) passed, \(.failedTests) failed, \(.skippedTests) skipped", (.testFailures[]? | "FAILED \(.testIdentifierString): \(.failureText)")' build/summary.json | tee -a "$GITHUB_STEP_SUMMARY"
+          jq -r '"\(.result): \(.passedTests) passed, \(.failedTests) failed", (.testFailures[]? | "FAILED \(.testIdentifierString): \(.failureText)")' build/summary.json | tee -a "$GITHUB_STEP_SUMMARY"
           jq -e '.failedTests == 0 and .passedTests > 0' build/summary.json > /dev/null
       - name: Zip the result bundle
         if: always()
