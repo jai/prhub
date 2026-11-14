@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { githubClient } from "./cadence.mjs";
-import { bumpOf, newestTag, notesFor, planVersion, publishVersion } from "./version.mjs";
+import { bumpOf, newestTag, notesFor, planVersion, publishVersion, withoutSignature } from "./version.mjs";
 
 const HEAD = "h".repeat(40);
 const c = (subject, body = "") => ({ subject, body });
@@ -103,6 +103,19 @@ test("a reused tag gets a Release only if it has none; a kept version calls noth
   const kept = stubGitHub();
   await publishVersion(kept.github, { action: "keep", tag: "v0.17.4", version: "0.17.4" }, HEAD);
   assert.deepEqual(kept.calls, []);
+});
+
+// v0.17.5 was signed by hand: `git tag --format=%(contents)` gives its notes with the signature under them, and both
+// TestFlight's What to Test and its GitHub Release showed the signature (2026-11-14).
+test("a signed tag's notes stop before its signature", async () => {
+  const signed = "PRKit 0.17.5 — the Key lines tab opens with the PR's summary\n"
+    + "-----BEGIN SSH SIGNATURE-----\nU1NIU0lHAAAAAQ\njhdkgtSZyay2LaH3g98gM=\n-----END SSH SIGNATURE-----\n";
+  assert.equal(withoutSignature(signed), "PRKit 0.17.5 — the Key lines tab opens with the PR's summary");
+  assert.equal(withoutSignature("- fix: one\n- fix: two\n\n-----BEGIN PGP SIGNATURE-----\n\nabc\n"), "- fix: one\n- fix: two");
+  assert.equal(withoutSignature("- fix: one\n- fix: two\n"), "- fix: one\n- fix: two");
+  const missing = stubGitHub();
+  await publishVersion(missing.github, { action: "reuse", tag: "v0.17.5", version: "0.17.5" }, HEAD, () => signed);
+  assert.equal(missing.calls.at(-1).body.body, "PRKit 0.17.5 — the Key lines tab opens with the PR's summary");
 });
 
 test("a failed GitHub call throws with its status", async () => {

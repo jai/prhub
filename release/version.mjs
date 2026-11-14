@@ -75,6 +75,14 @@ export function planVersion({ tags, headTags, commitsSince }) {
   return { action: "tag", tag: `v${version}`, version, notes: notesFor(commits) };
 }
 
+/**
+ * A tag's message without the signature git keeps at its end when the tag was signed by hand (`git tag -s`): SSH or
+ * PGP. Notes are for people; `app/ci_scripts/ci_post_xcodebuild.sh` cuts it the same way for What to Test.
+ */
+export function withoutSignature(message) {
+  return message.replace(/(^|\n)-----BEGIN [A-Z ]*SIGNATURE-----\n[\s\S]*$/, "").trimEnd();
+}
+
 /** Makes `tag`'s GitHub Release with `notes` unless it has one. Returns "exists" or "created". */
 export async function ensureRelease(github, tag, notes) {
   if (await github("GET", `releases/tags/${encodeURIComponent(tag)}`)) return "exists";
@@ -90,7 +98,7 @@ export async function ensureRelease(github, tag, notes) {
 export async function publishVersion(github, plan, head, tagMessage) {
   if (plan.action === "keep") return `version ${plan.version} (no feat or fix since ${plan.tag ?? "the start"})`;
   if (plan.action === "reuse") {
-    const release = await ensureRelease(github, plan.tag, tagMessage(plan.tag));
+    const release = await ensureRelease(github, plan.tag, withoutSignature(tagMessage(plan.tag)));
     return `version ${plan.version} (${plan.tag} on the head; release ${release})`;
   }
   const object = await github("POST", "git/tags", { tag: plan.tag, message: plan.notes, object: head, type: "commit" });
