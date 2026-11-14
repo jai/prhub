@@ -81,9 +81,10 @@ final class PRHubHostedUITests: XCTestCase {
         let signIn = app.buttons["onboardingSignIn"]
         XCTAssertTrue(signIn.waitForExistence(timeout: 10))
         signIn.tap()
-        let status = app.descendants(matching: .any)["onboardingStatus"]
-        XCTAssertTrue(status.waitForExistence(timeout: 5))
-        XCTAssertTrue(status.label.contains("didn't authorize"), status.label)
+        // The line first says "Signing in with GitHub…": wait for the refusal's words, not for the line.
+        let status = app.descendants(matching: .any).matching(identifier: "onboardingStatus")
+            .matching(NSPredicate(format: "label CONTAINS %@", "didn't authorize")).firstMatch
+        XCTAssertTrue(status.waitForExistence(timeout: 10), app.descendants(matching: .any)["onboardingStatus"].label)
     }
 
     func testSignedOutByGitHubSignsInAgain() {

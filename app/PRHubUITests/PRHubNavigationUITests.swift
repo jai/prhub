@@ -237,9 +237,16 @@ final class PRHubNavigationUITests: XCTestCase {
     }
 
     /// On screen, in the window's left half: the list's column.
+    /// Read from one snapshot, retried for up to 5 s: the list draws its rows again as the PR opens, and a row read
+    /// with `exists` then `frame` can go between the two, which fails the test outright (Xcode Cloud's iPad, 2026-11-14).
     private func isBeside(_ row: XCUIElement) -> Bool {
         let window = app.windows.firstMatch.frame
-        return row.exists && row.frame.minX >= window.minX && row.frame.maxX < window.midX
+        return waitFor {
+            guard let frame = try? row.snapshot().frame else {
+                return false
+            }
+            return frame.minX >= window.minX && frame.maxX < window.midX
+        }
     }
 
     private func waitForHittable(_ element: XCUIElement) -> Bool {
