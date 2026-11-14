@@ -54,6 +54,19 @@ final class PRHubPRPageUITests: XCTestCase {
         XCTAssertLessThanOrEqual(send.frame.maxY, keyboard.frame.minY, "the send button is under the keyboard")
     }
 
+    /// A long press on Open in GitHub offers the PR's link, to copy or to share.
+    func testALongPressOnOpenInGitHubOffersThePRsLink() throws {
+        launch([])
+        openCheckout()
+        let open = app.descendants(matching: .any)["open-in-github"].firstMatch
+        XCTAssertTrue(open.waitForExistence(timeout: 5))
+        open.press(forDuration: 1.2)
+        XCTAssertTrue(app.buttons["pr-link-copy"].waitForExistence(timeout: 5))
+        try picture("open-in-github-menu")
+        app.buttons["pr-link-copy"].tap()
+        XCTAssertTrue(app.buttons["pr-review-changes"].waitForExistence(timeout: 5), "still on the PR, not in a browser")
+    }
+
     func testAskShowsSentWhileTheAgentIsThinking() throws {
         launch(["-PRHubAskWorking"])
         openCheckout()

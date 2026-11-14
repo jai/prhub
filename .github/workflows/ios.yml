@@ -11,7 +11,7 @@ on:
     branches: [main]
     paths: [Package.swift, PRKit/**, app/**, DESIGN.md, docs/fixtures/**, scripts/design-lint*, .github/workflows/ios.yml]
   # By hand, `only` runs one test class or test on both devices in a run of its own, for a quick look at a screen:
-  #   gh workflow run ios.yml -f only=PRHubUITests/PRHubScreenshotTests/testListRefreshingUnderItsBannerInEveryLook
+  #   gh workflow run ios.yml -f only=PRHubUITests/PRHubScreenshotTests
   workflow_dispatch:
     inputs:
       only:

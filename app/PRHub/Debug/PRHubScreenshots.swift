@@ -73,10 +73,9 @@ enum PRHubScreenshots {
             // Long enough for a loaded test Mac, and a recording, to see each step.
             samples.reviewDelay = .seconds(3)
         }
-        // The list under its "Not up to date" line, with a pull to refresh slow enough to picture.
-        if arguments.contains("-PRHubSlowRefresh") {
+        // The list under its "Not up to date" line.
+        if arguments.contains("-PRHubNotUpToDate") {
             samples.notUpToDate = "1 of 125 PRs could not be downloaded and show their last copy. Refresh to try again."
-            samples.refreshDelay = .seconds(6)
         }
         let newer = newerBuild(arguments)
         let environment = PRHubEnvironment.offline(

@@ -39,8 +39,6 @@ public struct PRSampleSet: Sendable {
     public var refusesFirstReview: String?
     /// Set, the list opens with these words in its "Not up to date" line: a UI test's way to picture that line.
     public var notUpToDate: String?
-    /// How long a pull to refresh takes. Samples answer at once; a UI test sets it to picture the list refreshing.
-    public var refreshDelay = Duration.zero
 
     public init(
         samples: [Sample], mergedReviewed: [PullRequestRow], mergedMine: [PullRequestRow], answersOnPhone: Bool
