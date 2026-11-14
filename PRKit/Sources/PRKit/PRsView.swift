@@ -482,12 +482,16 @@ struct PRFilterPanel: View {
     ) -> some View {
         Button(action: action) {
             HStack(spacing: Space.sm) {
-                // The row's selected trait says it: left to itself the tick reads "Selected" even when it is clear.
-                Image(systemName: "checkmark")
-                    .font(.appCaption.weight(.semibold))
-                    .opacity(isOn ? 1 : 0)
-                    .frame(width: 16)
-                    .accessibilityHidden(true)
+                // Drawn only on a picked row: a clear tick was still read out as "Selected" (hiding it from
+                // accessibility did not take it out of a UI test's tree). The row's selected trait says it.
+                ZStack {
+                    if isOn {
+                        Image(systemName: "checkmark")
+                            .font(.appCaption.weight(.semibold))
+                    }
+                }
+                .frame(width: 16)
+                .accessibilityHidden(true)
                 Text(title)
                     .font(.appFootnote)
                     .lineLimit(1)
