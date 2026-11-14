@@ -365,26 +365,36 @@ struct PRKeyLineNote: View {
                 .opacity(reviewed ? PRStyle.doneOpacity : 1)
                 .textSelection(.enabled)
                 .accessibilityIdentifier("key-line-note")
-            HStack(spacing: Space.sm) {
-                if let explain = actions.explain {
-                    Button("Explain", systemImage: AppIcon.askAI.symbol) { explain(item) }
-                        .buttonStyle(PRButtonStyle(.secondary))
-                        .accessibilityIdentifier("key-line-note-explain")
-                }
-                Spacer(minLength: 0)
-                Button(
-                    reviewed ? "Reviewed" : "Mark reviewed",
-                    systemImage: (reviewed ? AppIcon.taskDone : AppIcon.taskOpen).symbol
-                ) { actions.setReviewed(item, !reviewed) }
-                    .buttonStyle(PRButtonStyle(.secondary))
-                    .contentTransition(.symbolEffect(.replace))
-                    .accessibilityLabel("Reviewed")
-                    .accessibilityValue(reviewed ? "checked" : "not checked")
-                    .accessibilityIdentifier("key-line-note-reviewed")
+            // Their words while both fit; in the largest text their icons alone, words as their labels: there the words
+            // broke a few letters to a line ("Ex- plai n", CI's picture, 2026-11-14), and one over the other ran the
+            // note down under the stepper.
+            ViewThatFits(in: .horizontal) {
+                buttons(reviewed, iconOnly: false)
+                buttons(reviewed, iconOnly: true)
             }
         }
         .padding([.leading, .bottom, .trailing], PRStyle.inset)
         .padding(.top, Space.xs)
         .prCard()
+    }
+
+    private func buttons(_ reviewed: Bool, iconOnly: Bool) -> some View {
+        HStack(spacing: Space.sm) {
+            if let explain = actions.explain {
+                Button("Explain", systemImage: AppIcon.askAI.symbol) { explain(item) }
+                    .buttonStyle(PRButtonStyle(.secondary, iconOnly: iconOnly))
+                    .accessibilityIdentifier("key-line-note-explain")
+            }
+            Spacer(minLength: 0)
+            Button(
+                reviewed ? "Reviewed" : "Mark reviewed",
+                systemImage: (reviewed ? AppIcon.taskDone : AppIcon.taskOpen).symbol
+            ) { actions.setReviewed(item, !reviewed) }
+                .buttonStyle(PRButtonStyle(.secondary, iconOnly: iconOnly))
+                .contentTransition(.symbolEffect(.replace))
+                .accessibilityLabel("Reviewed")
+                .accessibilityValue(reviewed ? "checked" : "not checked")
+                .accessibilityIdentifier("key-line-note-reviewed")
+        }
     }
 }

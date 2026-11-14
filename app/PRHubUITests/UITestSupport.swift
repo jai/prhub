@@ -80,16 +80,16 @@ extension XCUIApplication {
     /// its summary over Review changes (2026-11-14): in the largest text the button is several screens down, and the
     /// lazy page has not made it yet.
     @MainActor func reveal(_ element: XCUIElement) -> Bool {
-        for _ in 0..<15 where !isClearOfBars(element) {
+        for _ in 0..<15 where !isTappable(element) {
             let top = navigationBars.firstMatch.exists ? navigationBars.firstMatch.frame.maxY : 0
-            if element.exists, element.frame.maxY > 0, element.frame.minY < top {
+            if element.exists, element.frame.maxY > 0, element.frame.midY < top {
                 swipeDown(velocity: .slow)
             } else {
                 swipeUp(velocity: .slow)
             }
         }
         waitForStill(element)
-        return isClearOfBars(element)
+        return isTappable(element)
     }
 
     @MainActor private func waitForStill(_ element: XCUIElement) {
@@ -101,6 +101,17 @@ extension XCUIApplication {
             }
             frame = element.frame
         }
+    }
+
+    /// Its middle, where a tap lands, on screen and out from under the bars: a row taller than a swipe's step (Files
+    /// changed in the largest text) is never whole between them, and `reveal` went back and forth past it.
+    @MainActor private func isTappable(_ element: XCUIElement) -> Bool {
+        guard element.exists, element.isHittable else {
+            return false
+        }
+        let top = navigationBars.firstMatch.exists ? navigationBars.firstMatch.frame.maxY : 0
+        let bottom = tabBars.firstMatch.exists ? tabBars.firstMatch.frame.minY : frame.maxY
+        return element.frame.midY > top && element.frame.midY < bottom
     }
 
     /// On screen and out from under the nav bar and the tab bar, which take a tap meant for what scrolls under them.
