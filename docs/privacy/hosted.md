@@ -22,6 +22,7 @@ through the PRHub GitHub App. The service stores these items:
 - **Your installations.** The service records which PRHub App installations you belong to and which of their repos
   you can see. It uses this record to send each GitHub notification only to the people who can see that repo.
 - **Your Anthropic API key, if you give one.** It is encrypted as the tokens are, and never sent back to your phone.
+- **Your Linear API key and ticket details, if you connect Linear.** The key is encrypted and never returned to your phone. Ticket titles, links and statuses are cached for your PRs.
 - **AI answers.** Key lines, rewrites and the record of your Ask conversations, when you use them.
 - **Your feedback.** What you send from the Feedback tab, and the link to the issue it opened, so that you can
   follow the chat in the app.
@@ -51,7 +52,7 @@ through the PRHub GitHub App. The service stores these items:
 The app, not the hosted service, tells Jai which screens and features people use, so that he can make PRHub better.
 
 - **What is sent.** Which screen shows, such as the PR list or Settings, and actions such as signing in, opening a PR,
-  a sync, setting or removing your Anthropic and Linear keys, and a change to the diff font. Opening a PR also sends how it was
+  a sync, setting or removing your Anthropic key, and a change to the diff font. Opening a PR also sends how it was
   opened (an alert, the list or a link), whether the phone already had it, and how many milliseconds it took; an alert
   sends whether the phone fetched its PR before you tapped it, and how long that took. Failures send only a short error
   code, such as `github_unavailable`; a request to the service that fails sends what it was for (such as the PR list or

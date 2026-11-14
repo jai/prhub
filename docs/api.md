@@ -827,6 +827,22 @@ could not be asked, `401` as on every route. Giving a key again replaces the key
 `DELETE /account/anthropic-key`: `204`; AI is off for the person again. Signing out of the last phone, being signed out
 by GitHub, and Delete Account drop the key too.
 
+### Personal Linear connection (hosted)
+
+Settings connects Linear with `PUT /account/linear-key`, the signed-in session bearer and `{"key":"…"}`.
+PRHub validates the key with Linear before storing it, encrypted with the account's user ID and a separate field
+as associated data. It never returns the key. The response is `{"linear_key":true}`; `/device/config` adds
+`account.linear_key` (a boolean, false when absent on older Workers). The person's PR rows and rewrites use only
+that person's Linear key, never an operator's key or another account's.
+
+`DELETE /account/linear-key` disconnects it and answers `{"linear_key":false}`. Connecting, replacing or removing a
+key clears that account's ticket cache and queues its open PRs for refresh. Last-device sign-out, GitHub revocation
+and account deletion also erase the key. Keys rotate with `TOKEN_ENCRYPTION_KEY`.
+
+Errors: `400 linear_key_malformed`, `422 linear_key_invalid`, `503 linear_unavailable`, or `401 signed_out`.
+A rejected or unavailable key leaves the previous connection intact. A key with Read access to the desired Linear
+teams is sufficient; PRHub does not write to Linear.
+
 ### `DELETE /account`
 
 Auth: the session secret, signed in or not. App Review guideline 5.1.1(v). The Worker revokes PRHub's authorization on
@@ -843,7 +859,7 @@ request with the secret answers `401 unauthorized`.
   `v1.<key id>.<iv>.<ciphertext>` (base64url). No token goes to the phone, R2, a log or `/events`.
 - `TOKEN_ENCRYPTION_KEY` is `<key id>:<base64 of 32 random bytes>`, comma-separated: the first key seals, every key
   opens. To rotate, put a new key first and keep the old one after it. Each signed-in account's poll seals its
-  tokens and Anthropic key again with the new key, and records `token_keys` in the person's `/events` (`current`,
+  tokens and Anthropic and Linear keys again with the new key, and records `token_keys` in the person's `/events` (`current`,
   `resealed`, and `stale`: values still on a key that is gone). The runbook is in
   [hosted-deploy.md](hosted-deploy.md#rotating-the-token-key).
 - The access token (8 hours) is refreshed 5 minutes before it expires, and when GitHub answers `401` to it. One refresh
@@ -950,19 +966,3 @@ Bindings: `DIFFS`, `PR_INDEX`, `AI_JOBS` as above, plus `USER_ACCOUNTS` (class `
 (`new_sqlite_classes`). `HOSTED=on` without the client ID, client secret, token key or any of the four bindings answers
 `503 not_configured` on every route but `/`, rather than act as a self-hosted Worker. The
 template is `deploy/hosted/wrangler.template.jsonc`.
-
-### Personal Linear connection (hosted)
-
-Settings connects Linear with `PUT /account/linear-key`, the signed-in session bearer and `{"key":"…"}`.
-PRHub validates the key with Linear before storing it, encrypted with the account's user ID and a separate field
-as associated data. It never returns the key. The response is `{"linear_key":true}`; `/device/config` adds
-`account.linear_key` (a boolean, false when absent on older Workers). The person's PR rows and rewrites use only
-that person's Linear key, never an operator's key or another account's.
-
-`DELETE /account/linear-key` disconnects it and answers `{"linear_key":false}`. Connecting, replacing or removing a
-key clears that account's ticket cache and queues its open PRs for refresh. Last-device sign-out, GitHub revocation
-and account deletion also erase the key. Keys rotate with `TOKEN_ENCRYPTION_KEY`.
-
-Errors: `400 linear_key_malformed`, `422 linear_key_invalid`, `503 linear_unavailable`, or `401 signed_out`.
-A rejected or unavailable key leaves the previous connection intact. A key with Read access to the desired Linear
-teams is sufficient; PRHub does not write to Linear.

@@ -97,7 +97,7 @@ container at once. Before 14 November 2026 no container slept at all, and a repl
 
 ## Rotating the token key
 
-`TOKEN_ENCRYPTION_KEY` seals each person's GitHub tokens and Anthropic key. Rotate it when it may have leaked, and
+`TOKEN_ENCRYPTION_KEY` seals each person's GitHub tokens, Anthropic key and Linear key. Rotate it when it may have leaked, and
 otherwise once a year.
 
 1. Make a new key and store it in the password manager item `PRHub GitHub App` beside the old one. Give it the next
