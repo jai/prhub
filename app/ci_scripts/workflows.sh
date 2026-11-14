@@ -2,7 +2,6 @@
 # Sourced by the scripts here, and read by release/xcode-cloud.swift and release/cadence.mjs: PRHub's Xcode Cloud workflows, by id. A rename
 # leaves an id alone; a workflow made again gets a new one, which goes here (App Store Connect → PRHub →
 # Xcode Cloud).
-tests_workflow=8b5614fa-1899-4691-b9bd-e3a5fdfb20b0
 release_workflow=2dee7663-233c-4612-8784-ef852b1cec1a
 internal_workflow=A8C2D1A5-1530-49DD-A51F-4FABC66C6EC6
 # The Mac's archive for the Internal group. A workflow of its own: Xcode Cloud's API cannot add an action to a workflow

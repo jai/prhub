@@ -11,10 +11,6 @@
 # makes them from conventional commits; nobody edits MARKETING_VERSION). The clone can be shallow and without tags.
 # In the Internal - TestFlight workflow, and the Mac's, it marks the build as the Internal group's
 # (PRHUB_INTERNAL_TESTFLIGHT).
-# In the PRHub Tests workflow it runs PRKit's `swift test` here, on the one Mac with the sources: the test Macs get only
-# the built products, so the PRHub scheme's PRKitTests skip what reads docs/fixtures/, and the Mac's code runs only here.
-# That workflow is known by its id, which a rename leaves alone; where Xcode Cloud gives no id, every run that is not a
-# release runs the tests.
 set -euo pipefail
 source "${0:A:h}/release.sh"
 app=$CI_PRIMARY_REPOSITORY_PATH/app
@@ -45,9 +41,6 @@ echo "workflow: ${CI_WORKFLOW_ID:-no id} (${CI_WORKFLOW:-no name})"
 if [[ ${CI_WORKFLOW_ID:-} == "$internal_workflow" || ${CI_WORKFLOW_ID:-} == "$internal_mac_workflow" ]]; then
     print 'SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) PRHUB_INTERNAL_TESTFLIGHT' >> "$app/Config/PRHub.xcconfig"
     echo "internal: built for the Internal TestFlight group"
-fi
-if [[ ${CI_WORKFLOW_ID:-} == "$tests_workflow" || ( -z ${CI_WORKFLOW_ID:-} && -z $release_build ) ]]; then
-    (cd "$CI_PRIMARY_REPOSITORY_PATH" && swift test)
 fi
 HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install --quiet xcodegen
 cd "$app"

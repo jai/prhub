@@ -44,8 +44,8 @@ pairing the phone, and troubleshooting.
   its result bundle a week: `gh run download <run> -n 'xcresult-iPhone 17-1'` (device, then slice), then
   `xcrun xcresulttool export attachments`. Every test by hand: `gh workflow run ios.yml`. One test by hand: `gh workflow run ios.yml -f only=PRHubUITests/<Class>/<test>`.
   A UI test's `waitForExistence` looks at once and every 0.1 s (`app/PRHubUITests/FastWaits.swift`), so use it freely.
-  Xcode Cloud makes the builds only, when the hourly release starts them; its PRHub Tests workflow is turned off (out
-  of hours, 14 November 2026).
+  Xcode Cloud makes the builds only, when the hourly release starts them. It has three workflows: Internal -
+  TestFlight, Internal - TestFlight (Mac) and PRHub Release.
   The scripts in `app/ci_scripts` know each workflow by its id (`workflows.sh`), never its name.
 - Tests: `npm test` and `npm run typecheck` in `worker/` and `relay/`. The worker's contract test compares what the
   real builders send with `docs/fixtures/*.json`; after a deliberate change run `UPDATE_FIXTURES=1 npm test` and
@@ -119,7 +119,8 @@ new event that breaks a rule below is a privacy policy change, not a code change
   says what it would do.
   The Mac app goes to the same group from a workflow of its own, **Internal - TestFlight (Mac)**, which the hourly release
   starts with the phone's build on the same commit. Its build has its own number, and `release/app-latest.mjs` counts
-  only the phone's builds. The Internal group has every build, so the Mac's needs no TestFlight post-action. The
+  only the phone's builds. The Internal group's "all builds" does not take a Mac build: the Mac workflow's TestFlight
+  post-action (Internal group, set in App Store Connect; the API cannot) does. Without it, Macs install the iPad build. The
   Mac's icon sizes come from `swift app/Tools/icon/mac-icon.swift`; run it when `PRHubIcon.png` changes. The Public
   group has no Mac build yet.
 - **PRHub for the Public group**: a release is one commit on `main` that sets `CURRENT_PROJECT_VERSION` in `app/project.yml` to N, with
