@@ -151,8 +151,11 @@ jobs:
               tests+=(-only-testing:PRHubTests -only-testing:PRKitTests)
             fi
           fi
+          # A failing test runs once more: GitHub's Macs time out reading the screen or fail to quit the app now and
+          # then ("Timed out while evaluating UI query", "Failed to terminate"), and one of those failed a whole
+          # hourly release (2026-11-14). A real failure fails both times.
           xcodebuild test-without-building -xctestrun build/Products/*.xctestrun \
-            -destination "id=$SIMULATOR" \
+            -destination "id=$SIMULATOR" -retry-tests-on-failure -test-iterations 2 \
             -resultBundlePath build/PRHub.xcresult "${tests[@]}" \
             | grep -E --line-buffered "^Test (Suite|Case|session)|^\s+(Executed|✔|✘)|error:|\*\* TEST|Testing (failed|started)|: (error|failed)" || true
           xcrun xcresulttool get test-results summary --path build/PRHub.xcresult --compact > build/summary.json
