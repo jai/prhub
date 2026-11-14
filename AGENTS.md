@@ -29,7 +29,7 @@ pairing the phone, and troubleshooting.
   - `PRKit/`: a new `v*` tag; `app/`: a PRHub release ("Releases" below).
   Jai's Agent Pager follows on its own: within 10 minutes it moves to `main`'s head and to the newest `v*` tag, tests,
   and deploys. Nothing to commit there, and never deploy its Worker by hand.
-  CI runs on every push to `main`: the Linux jobs on Ubicloud (`scrub`, `worker`, `relay`; `design` when PRKit, the
+  CI runs on every push to `main`: the Linux jobs on GitHub's own runners (`scrub`, `worker`, `relay`; `design` when PRKit, the
   app or DESIGN.md change) and, when `app/`, `PRKit/` or `docs/fixtures/` change, Xcode Cloud's PRHub Tests
   (`PRHub | PRHub Tests | Test - iOS`): PRKit's `swift test`, then the PRHub scheme's unit and UI tests on an
   iPhone and a 13-inch iPad Pro. A red run on `main` is fixed next, by whoever pushed it. A change only to

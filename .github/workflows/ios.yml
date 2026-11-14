@@ -1,4 +1,4 @@
-# The design checks for PRKit and the PRHub app, on Ubicloud. The tests run in Xcode Cloud's "PRHub Tests" workflow
+# The design checks for PRKit and the PRHub app, on GitHub's own Linux runners (free for a public repo). The tests run in Xcode Cloud's "PRHub Tests" workflow
 # (app/ci_scripts): PRKit's `swift test` on its build Mac, then the PRHub scheme's unit and UI tests on an iPhone and on
 # a 13-inch iPad Pro.
 name: ios
@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   design:
-    runs-on: ubicloud-standard-2
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5

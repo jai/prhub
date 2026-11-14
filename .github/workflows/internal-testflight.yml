@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubicloud-standard-2
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
@@ -34,7 +34,7 @@ jobs:
   cadence:
     if: github.event_name != 'push'
     needs: test
-    runs-on: ubicloud-standard-2
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: write
@@ -55,7 +55,7 @@ jobs:
   app-latest:
     if: github.event_name != 'push'
     needs: test
-    runs-on: ubicloud-standard-2
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: write
