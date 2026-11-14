@@ -3,6 +3,9 @@
 This repo is the source of PRHub: an iPhone app for reviewing GitHub pull requests, PRKit (the Swift package with its
 PR screens), the Cloudflare Worker that each person deploys to their own account, and the push relay.
 
+**CI rules:** before you add or change a workflow, or build, test, run a simulator or drive a desktop on one of
+Jai's Macs, read [RULES.md in jai/ci](https://github.com/jai/ci/blob/main/RULES.md).
+
 ## If you were asked to deploy PRHub
 
 Follow [deploy/AGENTS.md](deploy/AGENTS.md). It is the whole deployment guide: prerequisites, each step with a check,
