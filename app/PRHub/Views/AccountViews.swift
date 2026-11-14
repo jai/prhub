@@ -1,49 +1,63 @@
 import SwiftUI
 
-/// Settings' AI block on the hosted Worker: the person's own Anthropic key (`PUT` and `DELETE /account/anthropic-key`).
-/// The key is pasted or typed into a secure field, sent once, and never shown again: the Worker answers only whether
-/// one is set (`account.anthropic_key`). Which AI features it turns on is the config's to say.
-struct AnthropicKeySection: View {
+enum AccountKeyProvider: String {
+    case anthropic
+    case linear
+
+    var title: String { self == .linear ? "Linear" : "Anthropic" }
+}
+
+struct AccountKeySection: View {
+    let provider: AccountKeyProvider
     let connection: WorkerConnection
     @State private var key = ""
     @State private var isWorking = false
     @State private var failure: AccountActionError?
     @FocusState private var isFocused: Bool
 
-    private var hasKey: Bool { connection.config?.account?.anthropicKey == true }
+    private var hasKey: Bool {
+        provider == .linear ? connection.config?.account?.linearKey == true
+            : connection.config?.account?.anthropicKey == true
+    }
+
+    private var note: String {
+        if provider == .linear {
+            return hasKey ? "Ticket titles and statuses come from your Linear account. Disconnect to stop looking them up."
+                : "Show ticket titles and statuses under your PRs. Create a personal API key in Linear Settings → "
+                    + "Security & access, with Read permission for your teams. PRHub keeps it encrypted."
+        }
+        return "Key lines, Rewrite and Ask AI run on your own Anthropic key, billed to your Anthropic account. "
+            + "Make one at console.anthropic.com. PRHub keeps it encrypted and never shows it again."
+    }
 
     var body: some View {
-        PRPageBlock(
-            "AI",
-            note: hasKey
-                ? "Key lines, Rewrite and Ask AI run on your key, billed to your Anthropic account. PRHub never "
-                    + "shows the key again."
-                : "Key lines, Rewrite and Ask AI run on your own Anthropic key, billed to your Anthropic account. "
-                    + "Make one at console.anthropic.com. PRHub keeps it encrypted and never shows it again."
-        ) {
+        PRPageBlock(provider == .linear ? "Linear" : "AI", note: note) {
             if hasKey {
-                PRValueLine("Anthropic key") {
-                    Label("Key set", systemImage: AppIcon.ok.symbol)
+                PRValueLine(provider == .linear ? "Linear" : "Anthropic key") {
+                    Label(provider == .linear ? "Connected" : "Key set", systemImage: AppIcon.ok.symbol)
                         .labelStyle(.iconText)
                         .foregroundStyle(Color.toneGood)
                 }
-                .accessibilityIdentifier("prhub-anthropic-key-set")
+                .accessibilityIdentifier("prhub-\(provider.rawValue)-key-set")
                 .transition(.fold)
-                if let config = connection.config {
+                if provider == .anthropic, let config = connection.config {
                     PRValueLine("AI", value: PRHubSettingsView.aiWords(config))
                         .accessibilityIdentifier("prhub-ai-features")
                         .transition(.fold)
                 }
-                Button("Remove key", systemImage: AppIcon.delete.symbol, role: .destructive) {
-                    run { try await connection.removeAnthropicKey() }
+                Button(provider == .linear ? "Disconnect Linear" : "Remove key", systemImage: AppIcon.delete.symbol, role: .destructive) {
+                    run {
+                        if provider == .linear { try await connection.removeLinearKey() }
+                        else { try await connection.removeAnthropicKey() }
+                    }
                 }
                 .buttonStyle(PRButtonStyle(.secondary))
                 .tint(Color.toneBad)
                 .disabled(isWorking)
-                .accessibilityIdentifier("prhub-anthropic-key-remove")
+                .accessibilityIdentifier("prhub-\(provider.rawValue)-key-remove")
                 .transition(.fold)
             } else {
-                SecureField("Paste your Anthropic API key", text: $key)
+                SecureField("Paste your \(provider.title) API key", text: $key)
                     .font(.appFootnote.monospaced())
                     #if os(iOS)
                     .textInputAutocapitalization(.never)
@@ -53,7 +67,7 @@ struct AnthropicKeySection: View {
                     .onSubmit(save)
                     .focused($isFocused)
                     .prField(isFocused: isFocused)
-                    .accessibilityIdentifier("prhub-anthropic-key-field")
+                    .accessibilityIdentifier("prhub-\(provider.rawValue)-key-field")
                     .transition(.fold)
                 HStack(spacing: Space.sm) {
                     PasteButton(payloadType: String.self) { strings in
@@ -68,7 +82,7 @@ struct AnthropicKeySection: View {
                     Spacer()
                     Button(action: save) {
                         ZStack {
-                            Text("Save key").opacity(isWorking ? 0 : 1)
+                            Text(provider == .linear ? "Connect Linear" : "Save key").opacity(isWorking ? 0 : 1)
                             if isWorking {
                                 ProgressView().tint(Color.onAccent)
                             }
@@ -76,13 +90,13 @@ struct AnthropicKeySection: View {
                     }
                     .buttonStyle(PRButtonStyle(.primary))
                     .disabled(isWorking || key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityIdentifier("prhub-anthropic-key-save")
+                    .accessibilityIdentifier("prhub-\(provider.rawValue)-key-save")
                 }
                 .transition(.fold)
             }
             if let failure {
                 ProblemLine(message: failure.message)
-                    .accessibilityIdentifier("prhub-anthropic-key-error")
+                    .accessibilityIdentifier("prhub-\(provider.rawValue)-key-error")
                     .transition(.fold)
             }
         }
@@ -98,7 +112,8 @@ struct AnthropicKeySection: View {
             return
         }
         run {
-            try await connection.setAnthropicKey(typed)
+            if provider == .linear { try await connection.setLinearKey(typed) }
+            else { try await connection.setAnthropicKey(typed) }
             key = ""
         }
     }
@@ -192,7 +207,7 @@ struct DeleteAccountSheet: View {
     private static let deleted = [
         "Your sign-in and GitHub tokens",
         "Your PR list, diffs and AI answers",
-        "Your Anthropic key",
+        "Your Anthropic and Linear keys",
         "Alerts to your phones",
     ]
 

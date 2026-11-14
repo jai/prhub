@@ -78,17 +78,19 @@ struct DeviceConfig: Codable, Equatable, Sendable {
         var login: String?
         var userId: String?
         /// Whether the person gave their own Anthropic key. The key itself is never answered.
+        var linearKey: Bool = false
         var anthropicKey: Bool
         /// A signed-out account's why: `revoked`, `refresh_expired` or `signed_out`.
         var reason: String?
 
         init(
             state: State, login: String? = nil, userId: String? = nil, anthropicKey: Bool = false,
-            reason: String? = nil
+            reason: String? = nil, linearKey: Bool = false
         ) {
             self.state = state
             self.login = login
             self.userId = userId
+            self.linearKey = linearKey
             self.anthropicKey = anthropicKey
             self.reason = reason
         }
@@ -96,6 +98,7 @@ struct DeviceConfig: Codable, Equatable, Sendable {
         private enum CodingKeys: String, CodingKey {
             case state, login, reason
             case userId = "user_id"
+            case linearKey = "linear_key"
             case anthropicKey = "anthropic_key"
         }
 
@@ -106,6 +109,7 @@ struct DeviceConfig: Codable, Equatable, Sendable {
             login = try? container.decodeIfPresent(String.self, forKey: .login)
             userId = try? container.decodeIfPresent(String.self, forKey: .userId)
             anthropicKey = (try? container.decodeIfPresent(Bool.self, forKey: .anthropicKey)) == true
+            linearKey = (try? container.decodeIfPresent(Bool.self, forKey: .linearKey)) == true
             reason = try? container.decodeIfPresent(String.self, forKey: .reason)
         }
     }

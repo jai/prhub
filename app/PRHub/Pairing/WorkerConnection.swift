@@ -35,6 +35,8 @@ final class WorkerConnection {
         var deleteAccount: @Sendable () async throws -> Void
         var setAnthropicKey: @Sendable (String) async throws -> Void
         var removeAnthropicKey: @Sendable () async throws -> Void
+        var setLinearKey: @Sendable (String) async throws -> Void = { _ in throw AccountClient.Failure.notConnected }
+        var removeLinearKey: @Sendable () async throws -> Void = { throw AccountClient.Failure.notConnected }
     }
 
     /// The paired Worker's host; `nil` until a setup link has paired it.
@@ -338,9 +340,17 @@ final class WorkerConnection {
         try await accountAction(.anthropicKeyRemoved) { try await $0.removeAnthropicKey() }
     }
 
+    func setLinearKey(_ key: String) async throws(AccountActionError) {
+        try await accountAction(nil) { try await $0.setLinearKey(key) }
+    }
+
+    func removeLinearKey() async throws(AccountActionError) {
+        try await accountAction(nil) { try await $0.removeLinearKey() }
+    }
+
     /// `done` is recorded once the Worker has taken the change.
     private func accountAction(
-        _ done: AnalyticsEvent, _ action: (Hosted) async throws -> Void
+        _ done: AnalyticsEvent?, _ action: (Hosted) async throws -> Void
     ) async throws(AccountActionError) {
         guard let hosted else {
             return
@@ -352,7 +362,7 @@ final class WorkerConnection {
             await readConfig()
             throw error
         }
-        usage.record(done)
+        if let done { usage.record(done) }
         await readConfig()
     }
 

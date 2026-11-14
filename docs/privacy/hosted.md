@@ -51,14 +51,14 @@ through the PRHub GitHub App. The service stores these items:
 The app, not the hosted service, tells Jai which screens and features people use, so that he can make PRHub better.
 
 - **What is sent.** Which screen shows, such as the PR list or Settings, and actions such as signing in, opening a PR,
-  a sync, setting or removing your Anthropic key, and a change to the diff font. Opening a PR also sends how it was
+  a sync, setting or removing your Anthropic and Linear keys, and a change to the diff font. Opening a PR also sends how it was
   opened (an alert, the list or a link), whether the phone already had it, and how many milliseconds it took; an alert
   sends whether the phone fetched its PR before you tapped it, and how long that took. Failures send only a short error
   code, such as `github_unavailable`; a request to the service that fails sends what it was for (such as the PR list or
   Feedback) and its HTTP status, or that the phone was offline. Each event also carries the app version, the iOS version, the device model, the
   screen size, and the phone's language and time zone.
 - **What is never sent.** Your GitHub user ID, username or email, repo and organization names, PR titles, file paths,
-  code, comments, your Anthropic key, your push token, and anything that you type. The app cannot attach these: each
+  code, comments, your Anthropic and Linear keys, your push token, and anything that you type. The app cannot attach these: each
   event can carry only values from a fixed list.
 - **It is anonymous.** The app makes a random ID on your phone. It is not linked to your GitHub account or to your
   account on the hosted service. PostHog makes no profile of you and does not find your location from your IP
@@ -81,7 +81,7 @@ below.
 | Sign-in attempt counts | The one-minute window ends |
 | Anonymous usage data, at PostHog | One year after it is sent |
 
-When you sign out of your last phone, the service drops your tokens, your Anthropic key and your push tokens. It keeps
+When you sign out of your last phone, the service drops your tokens, your Anthropic and Linear keys and your push tokens. It keeps
 your copies of pull requests, so that they are there when you sign in again. To remove them, delete your account.
 
 ## Deleting your account
@@ -89,7 +89,7 @@ your copies of pull requests, so that they are there when you sign in again. To 
 In PRHub, open **Settings** and tap **Delete Account**. The service then does these things:
 
 1. It asks GitHub to revoke PRHub's authorization and every token GitHub issued to PRHub for you.
-2. It deletes your account, your tokens, your Anthropic key, your sessions and your push tokens.
+2. It deletes your account, your tokens, your Anthropic and Linear keys, your sessions and your push tokens.
 3. It deletes your copies of pull requests, AI answers, activity records and queued AI work.
 4. It removes you from every installation, so no later GitHub notification reaches you.
 
@@ -99,3 +99,11 @@ organization stay there. Delete them in the Anthropic Console.
 ## Contact
 
 For questions about this policy, open an issue on [jai/prhub](https://github.com/jai/prhub/issues/new).
+
+### Optional Linear connection
+
+When you connect Linear in Settings, PRHub validates and stores your personal API key encrypted, separately for
+your GitHub account. It uses the key to read ticket titles, links and statuses for your PRs and ticket text for
+rewrites. PRHub does not write to Linear. The key is never returned to the app. Disconnecting removes it and clears
+the ticket cache; signing out of your last device, revoking GitHub access or deleting your account also removes it.
+Linear's terms cover these requests.

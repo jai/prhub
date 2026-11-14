@@ -1,3 +1,4 @@
+import { linearKeyRoute } from "./linear-key.ts";
 /**
  * Hosted mode (docs/api.md, "Hosted sign-in"; docs/plans/github-app.md): one Worker serves everyone through the PRHub
  * GitHub App. A person signs in with GitHub, and every read and write for them goes with their own user access token.
@@ -73,9 +74,9 @@ export function canMintInstallationTokens(env: Env): boolean {
  * AI runs on the person's own Anthropic key: key lines and rewrites once they gave it, Ask once Ask's resources
  * exist in their org and the Worker can mint installation tokens. Key lines and rewrites run on the Worker's
  * subscription only for `SUBSCRIPTION_LOGINS`. Never on the Worker's own key, and Feedback, the
- * relay and Linear, which serve only Jai, stay off.
+ * relay stay off; Linear uses only the person’s own key.
  */
-export function userEnv(env: Env, user: { userId: string; login: string; token: string; ai?: UserAi }): Env {
+export function userEnv(env: Env, user: { userId: string; login: string; token: string; ai?: UserAi; linearKey?: string | null }): Env {
   const ai = user.ai ?? NO_AI;
   const ask = ai.anthropicKey !== null && canMintInstallationTokens(env) ? ai.ask : null;
   return {
@@ -99,7 +100,7 @@ export function userEnv(env: Env, user: { userId: string; login: string; token: 
     ASK_GITHUB_APP_KEY: undefined,
     ASK_GITHUB_TOKEN: undefined,
     AGENT_PAGER_URL: undefined,
-    LINEAR_API_KEY: undefined,
+    LINEAR_API_KEY: user.linearKey ?? undefined,
     GITHUB_RATE: undefined,
   };
 }
@@ -138,7 +139,7 @@ export interface AnthropicApi {
 
 export type AccountApi = Pick<AccountCore,
   "signIn" | "finish" | "session" | "accessToken" | "tokenAfterUnauthorized" | "signOutEverywhere" | "signOut"
-  | "deleteAccount" | "setAnthropicKey" | "installationIds" | "claimInstallationSync" | "setInstallations"
+  | "deleteAccount" | "setAnthropicKey" | "setLinearKey" | "installationIds" | "claimInstallationSync" | "setInstallations"
   | "installationAccounts" | "installationSyncedAt">;
 
 /** The part of a person's `PrIndex` the hosted routes and installations touch. */
@@ -152,6 +153,7 @@ export interface UserIndexApi {
   forgetPushRegistrationsOf(fingerprint: Fingerprint): unknown;
   prunePushRegistrationsOnce(live: string[]): unknown;
   deleteEverything(): unknown;
+  linearChanged(): unknown;
   dropRepos(repos: string[]): unknown;
   record(kind: string, detail: Record<string, unknown>): unknown;
 }
@@ -635,6 +637,9 @@ function openRoute(
   if (pathname === "/github/webhook" && method === "POST") {
     return hostedWebhook(request, env, services, waitUntil);
   }
+  if (pathname === "/account/linear-key" && (method === "PUT" || method === "DELETE")) {
+    return linearKeyRoute(request, services);
+  }
   if (pathname === "/account/anthropic-key" && (method === "PUT" || method === "DELETE")) {
     return anthropicKeyRoute(request, env, services);
   }
@@ -711,6 +716,7 @@ export function hostedAccountConfig(session: SessionInfo, installations: Install
     hosted: true,
     account: {
       state: session.state, login: session.login, user_id: session.userId, anthropic_key: session.hasAnthropicKey,
+      linear_key: session.hasLinearKey === true,
       ...(session.state === "signed_out" ? { reason: session.reason } : {}),
     },
     ...(session.state === "signed_in" && installations ? { installations } : {}),

@@ -1,3 +1,5 @@
+import { z } from "zod";
+import type { Fetch } from "./oauth.ts";
 import { type Env, isSet } from "./env.ts";
 
 const LINEAR = "https://api.linear.app/graphql";
@@ -78,6 +80,27 @@ interface Issue {
 export interface LinearAnswer<Data> {
   data?: Data | null;
   errors?: { message?: string; path?: unknown[] }[];
+}
+
+export async function checkLinearKey(key: string, send: Fetch): Promise<"ok" | "invalid" | "unavailable"> {
+  try {
+    const response = await send(LINEAR, {
+      method: "POST", headers: { Authorization: key, "Content-Type": "application/json" },
+      body: JSON.stringify({ query: "query PRHubConnection { viewer { id } }" }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (response.status === 401 || response.status === 403) {
+      return "invalid";
+    }
+    if (!response.ok) {
+      return "unavailable";
+    }
+    const answer = z.object({ data: z.object({ viewer: z.object({ id: z.string().min(1) }) }),
+      errors: z.array(z.unknown()).optional() }).safeParse(await response.json());
+    return answer.success && !answer.data.errors?.length ? "ok" : "invalid";
+  } catch {
+    return "unavailable";
+  }
 }
 
 /**

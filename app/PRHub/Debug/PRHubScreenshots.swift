@@ -190,7 +190,9 @@ enum PRHubScreenshots {
                 try await Task.sleep(for: .milliseconds(600))
                 state.setKey(true)
             },
-            removeAnthropicKey: { state.setKey(false) }
+            removeAnthropicKey: { state.setKey(false) },
+            setLinearKey: { _ in state.setLinearKey(true) },
+            removeLinearKey: { state.setLinearKey(false) }
         )
         let connection = WorkerConnection(
             endpoint: endpoint,
@@ -223,6 +225,7 @@ private final class FakeAccount: Sendable {
 
     private struct State {
         var signedOut: Bool
+        var linearKey = false
         var anthropicKey: Bool
         var installations: Installations
         var hasLeft = false
@@ -273,7 +276,7 @@ private final class FakeAccount: Sendable {
             features: ai.union([.push, .webhooks]), login: PRSampleSet.prHubLogin, hosted: true,
             account: DeviceConfig.Account(
                 state: now.signedOut ? .signedOut : .signedIn, login: PRSampleSet.prHubLogin, userId: "4242",
-                anthropicKey: now.anthropicKey, reason: now.signedOut ? "revoked" : nil
+                anthropicKey: now.anthropicKey, reason: now.signedOut ? "revoked" : nil, linearKey: now.linearKey
             ),
             installations: now.signedOut ? nil : Self.installations(now)
         )
@@ -281,6 +284,10 @@ private final class FakeAccount: Sendable {
 
     func signIn() {
         state.withLock { $0.signedOut = false }
+    }
+
+    func setLinearKey(_ isSet: Bool) {
+        state.withLock { $0.linearKey = isSet }
     }
 
     func setKey(_ isSet: Bool) {

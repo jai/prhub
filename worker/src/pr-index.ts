@@ -30,7 +30,7 @@ import {
 } from "./marks";
 import type { PeopleDecision } from "./policy-people";
 import { parseRowStatus, parseStoredTicket, parseStoredTickets } from "./boundary";
-import { cachedTickets, createTicketsTable, refreshTickets } from "./ticket-cache";
+import { cachedTickets, createTicketsTable, refreshTickets, resetTickets } from "./ticket-cache";
 import { allKeys, lookUpTickets, type Ticket } from "./tickets";
 import {
   type CodeHash, type DeviceToken, type Fingerprint, parseRepoFullName, parseSha, prId, type PrId, type RepoFullName,
@@ -189,6 +189,17 @@ export class PrIndex extends DurableObject<Env> {
       return;
     }
     await this.markThrottled([{ id, repo, number }], "full");
+  }
+
+  async linearChanged(): Promise<void> {
+    const rows = resetTickets(this.sql);
+    for (const row of rows) {
+      const ref = refOf(row);
+      if (ref) {
+        this.markDirty(ref.id, ref.repo, ref.number);
+      }
+    }
+    await this.ensureAlarm(0);
   }
 
   /** A check suite or a status on a commit: only the checks of each held PR at that head are read again. */

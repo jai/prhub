@@ -185,6 +185,21 @@ struct AccountClientTests {
         }
     }
 
+    @Test func linearKeysGoOnlyInTheAuthenticatedBodyAndDisconnectUsesDelete() async throws {
+        let stub = StubWorker([.reply(status: 200, body: #"{"linear_key":true}"#),
+                               .reply(status: 200, body: #"{"linear_key":false}"#)])
+        let client = Self.client(stub)
+        try await client.setLinearKey("lin_api_synthetic01234567890")
+        try await client.removeLinearKey()
+        let requests = stub.requests.with { $0 }
+        #expect(requests.map(\.httpMethod) == ["PUT", "DELETE"])
+        #expect(requests.allSatisfy { $0.url?.path() == "/account/linear-key" })
+        #expect(requests.allSatisfy { $0.value(forHTTPHeaderField: "Authorization") == "Bearer 4242.session" })
+        let body = try JSONDecoder().decode([String: String].self, from: #require(requests[0].httpBody))
+        #expect(body == ["key": "lin_api_synthetic01234567890"])
+        #expect(requests[1].httpBody == nil)
+    }
+
     @Test func aFreshConfigAsksTheWorkerToReadTheInstallationsFirst() async throws {
         let body = #"{"features":{},"hosted":true}"#
         let stub = StubWorker([.reply(status: 200, body: body), .reply(status: 200, body: body)])
@@ -215,6 +230,15 @@ struct HostedConfigTests {
             state: .signedIn, login: "octocat", userId: "4242", anthropicKey: true
         ))
         #expect(try JSONDecoder().decode(DeviceConfig.self, from: JSONEncoder().encode(config)) == config)
+    }
+
+    @Test func linearConnectionDecodesAndOlderWorkersDefaultToDisconnected() throws {
+        let body = #"{"features":{},"hosted":true,"account":{"state":"signed_in","linear_key":true}}"#
+        let config = try JSONDecoder().decode(DeviceConfig.self, from: Data(body.utf8))
+        #expect(config.account?.linearKey == true)
+        #expect(try JSONDecoder().decode(DeviceConfig.self, from: JSONEncoder().encode(config)) == config)
+        let old = #"{"features":{},"hosted":true,"account":{"state":"signed_in"}}"#
+        #expect(try JSONDecoder().decode(DeviceConfig.self, from: Data(old.utf8)).account?.linearKey == false)
     }
 
     @Test func aSignedOutOrUnknownStateReadsAsSignedOut() throws {

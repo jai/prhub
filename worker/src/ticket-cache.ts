@@ -93,3 +93,10 @@ export async function refreshTickets(
     FROM pull_requests p, json_each(p.ticket_keys) k WHERE k.value IN (SELECT value FROM json_each(?))`,
   JSON.stringify(changed)).toArray();
 }
+
+export function resetTickets(sql: LimitSql): { id: string; repo: string; number: number }[] {
+  sql.exec("DELETE FROM tickets");
+  sql.exec("UPDATE pull_requests SET ticket = NULL, tickets = '[]'");
+  return sql.exec<{ id: string; repo: string; number: number }>(
+    "SELECT id, repo, number FROM pull_requests WHERE list <> 'merged'").toArray();
+}

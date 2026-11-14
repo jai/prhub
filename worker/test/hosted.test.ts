@@ -191,14 +191,14 @@ test("a token near its 8 hours is refreshed first, once for every request at the
   const world = hostedWorld();
   await signIn(world);
   const account = world.services.account("4242");
-  assert.deepEqual(await account.accessToken(), { kind: "ok", token: "ghu_1", login: "octocat", userId: "4242", ai: NO_AI });
+  assert.deepEqual(await account.accessToken(), { kind: "ok", token: "ghu_1", login: "octocat", userId: "4242", ai: NO_AI, linearKey: null });
   assert.equal(world.github.refreshCalls(), 0);
   world.clock.now += 8 * HOUR - REFRESH_MARGIN_MS + 1;
   const answers = await Promise.all([account.accessToken(), account.accessToken(), account.accessToken()]);
   assert.equal(world.github.refreshCalls(), 1, "two refreshes at once would sign the person out");
   assert.ok(answers.every((answer) => answer.kind === "ok" && answer.token === "ghu_2"));
   assert.equal(world.github.calls.at(-1)?.form?.get("refresh_token"), "ghr_1");
-  assert.deepEqual(await account.accessToken(), { kind: "ok", token: "ghu_2", login: "octocat", userId: "4242", ai: NO_AI });
+  assert.deepEqual(await account.accessToken(), { kind: "ok", token: "ghu_2", login: "octocat", userId: "4242", ai: NO_AI, linearKey: null });
 });
 
 test("a 401 refreshes once; a token another request already replaced is just handed over", async () => {
@@ -208,7 +208,7 @@ test("a 401 refreshes once; a token another request already replaced is just han
   assert.equal((await account.tokenAfterUnauthorized("ghu_1")).kind, "ok");
   assert.equal(world.github.refreshCalls(), 1);
   const again = await account.tokenAfterUnauthorized("ghu_1");
-  assert.deepEqual(again, { kind: "ok", token: "ghu_2", login: "octocat", userId: "4242", ai: NO_AI });
+  assert.deepEqual(again, { kind: "ok", token: "ghu_2", login: "octocat", userId: "4242", ai: NO_AI, linearKey: null });
   assert.equal(world.github.refreshCalls(), 1);
 });
 
@@ -227,7 +227,7 @@ test("a refused refresh signs the person out everywhere and asks the phones to s
   assert.ok(auth.session);
   assert.deepEqual(hostedAccountConfig(auth.session), {
     hosted: true,
-    account: { state: "signed_out", login: "octocat", user_id: "4242", anthropic_key: false, reason: "revoked" },
+    account: { state: "signed_out", login: "octocat", user_id: "4242", anthropic_key: false, linear_key: false, reason: "revoked" },
   });
   assert.equal(JSON.stringify([...world.stores.get("4242")?.map.values() ?? []]).includes("v1.k1"), false,
     "the sealed tokens are gone");

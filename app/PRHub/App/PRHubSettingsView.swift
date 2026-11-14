@@ -127,7 +127,8 @@ struct PRHubSettingsView: View {
             }
             .environment(\.openURL, leavingForGitHub)
         }
-        AnthropicKeySection(connection: connection)
+        AccountKeySection(provider: .anthropic, connection: connection)
+        AccountKeySection(provider: .linear, connection: connection)
         PRPageBlock(
             "Account",
             note: "Sign out forgets your PRs on this \(AppIdentity.deviceName). Delete account also deletes everything "

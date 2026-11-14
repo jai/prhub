@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cachedTickets, createTicketsTable, refreshTickets, TICKET_FRESH_MS } from "../src/ticket-cache.ts";
+import { cachedTickets, createTicketsTable, refreshTickets, resetTickets, TICKET_FRESH_MS } from "../src/ticket-cache.ts";
 import { type Ticket, unresolved } from "../src/tickets.ts";
 import { memorySql } from "./memory-sql.ts";
 
@@ -67,4 +67,21 @@ test("each hour the held PRs' keys are asked again, a PR whose ticket moved is r
   assert.deepEqual(sql.exec<{ key: string }>("SELECT key FROM tickets").toArray(), [{ key: "ENG-1" }]);
   assert.deepEqual(await refreshTickets(sql, 2 * TICKET_FRESH_MS + 2, linear((key) => issue(key, "Done")).ask), [],
     "the same answer reads nothing again");
+});
+
+test("changing a Linear connection clears cached tickets and schedules every open row for a fresh read", async () => {
+  const sql = index();
+  sql.exec("ALTER TABLE pull_requests ADD COLUMN ticket TEXT");
+  sql.exec("ALTER TABLE pull_requests ADD COLUMN tickets TEXT");
+  sql.exec("ALTER TABLE pull_requests ADD COLUMN list TEXT");
+  const ticket = JSON.stringify(issue("ENG-1"));
+  for (const [id, number, list] of [["acme/app#1", 1, "review"], ["acme/app#2", 2, "merged"]]) {
+    sql.exec("INSERT INTO pull_requests (id, repo, number, list, ticket_keys, ticket, tickets) VALUES (?, 'acme/app', ?, ?, '[\"ENG-1\"]', ?, ?)",
+      id, number, list, ticket, `[${ticket}]`);
+  }
+  await cachedTickets(sql, ["ENG-1"], 100, async () => new Map([["ENG-1", issue("ENG-1")]]));
+  assert.deepEqual(resetTickets(sql), [{ id: "acme/app#1", repo: "acme/app", number: 1 }]);
+  assert.deepEqual(sql.exec("SELECT key FROM tickets").toArray(), []);
+  assert.deepEqual(sql.exec("SELECT ticket, tickets FROM pull_requests").toArray(),
+    [{ ticket: null, tickets: "[]" }, { ticket: null, tickets: "[]" }]);
 });

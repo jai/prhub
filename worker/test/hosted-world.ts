@@ -173,6 +173,7 @@ export class MapStore implements KeyValueStore, ListStore {
 }
 
 export class FakeIndex implements UserIndexApi {
+  linearChanged() {}
   calls: string[] = [];
   bindUser(userId: number) { this.calls.push(`bind:${userId}`); }
   tick() { this.calls.push("tick"); }

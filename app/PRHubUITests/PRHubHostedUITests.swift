@@ -12,6 +12,27 @@ final class PRHubHostedUITests: XCTestCase {
         XCUIDevice.shared.appearance = .light
     }
 
+    func testLinearConnectsAndDisconnectsInSettingsWithoutShowingTheKey() {
+        app.launchArguments = ["-PRHubHosted"]
+        app.launch()
+        app.go(to: .settings)
+        let field = app.secureTextFields["prhub-linear-key-field"]
+        XCTAssertTrue(app.scrollSettings(to: field))
+        field.tap()
+        field.typeText("lin_api_synthetic01234567890")
+        let connect = app.buttons["prhub-linear-key-save"]
+        XCTAssertTrue(app.scrollSettings(to: connect))
+        connect.tap()
+        let connected = app.descendants(matching: .any)["prhub-linear-key-set"]
+        XCTAssertTrue(connected.waitForExistence(timeout: 5))
+        XCTAssertFalse(field.exists)
+        XCTAssertFalse(app.staticTexts["lin_api_synthetic01234567890"].exists)
+        let disconnect = app.buttons["prhub-linear-key-remove"]
+        XCTAssertTrue(app.scrollSettings(to: disconnect))
+        disconnect.tap()
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+    }
+
     func testSignInSetAKeyThenDeleteTheAccount() {
         app.launchArguments = ["-PRHubFirstRun"]
         app.launch()

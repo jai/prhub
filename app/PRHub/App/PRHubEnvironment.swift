@@ -264,7 +264,9 @@ extension WorkerConnection.Hosted {
             signOut: { try await account.signOut() },
             deleteAccount: { _ = try await account.deleteAccount() },
             setAnthropicKey: { _ = try await account.setAnthropicKey($0) },
-            removeAnthropicKey: { try await account.removeAnthropicKey() }
+            removeAnthropicKey: { try await account.removeAnthropicKey() },
+            setLinearKey: { try await account.setLinearKey($0) },
+            removeLinearKey: { try await account.removeLinearKey() }
         )
     }
 }

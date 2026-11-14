@@ -102,7 +102,7 @@ export const NO_AI: UserAi = { anthropicKey: null, ask: null };
 
 /** A token to act with, or why there is none: signed out (sign in again) or GitHub could not be asked (try later). */
 export type TokenAnswer =
-  | { kind: "ok"; token: string; login: string; userId: string; ai: UserAi }
+  | { kind: "ok"; token: string; login: string; userId: string; ai: UserAi; linearKey?: string | null }
   | { kind: "signed_out" }
   | { kind: "unavailable" };
 
@@ -113,6 +113,7 @@ export interface SessionInfo {
   reason: SignedOutReason | null;
   /** Whether the person gave their own Anthropic key. The key itself never leaves the account. */
   hasAnthropicKey: boolean;
+  hasLinearKey?: boolean;
   /** When this phone's session was made: its sign-in. */
   createdAt: number;
 }
@@ -206,7 +207,8 @@ export class AccountCore {
     }
     return {
       userId: String(record.user_id), login: record.login, state: record.state, reason: record.signed_out_reason,
-      hasAnthropicKey: (await this.#readAi()) !== null, createdAt: live.created_at,
+      hasAnthropicKey: (await this.#readAi()) !== null,
+      hasLinearKey: typeof await this.#deps.store.get("linear") === "string", createdAt: live.created_at,
     };
   }
 
@@ -246,6 +248,7 @@ export class AccountCore {
     const ai = await this.#readAi();
     const sealed: [SealedField, string | null | undefined][] = [
       ["access", record?.tokens?.access], ["refresh", record?.tokens?.refresh], ["anthropic", ai?.anthropic_key],
+      ["linear", await this.#deps.store.get<string>("linear")],
     ];
     return sealed.flatMap(([field, value]) => value && keyIdOf(value) !== current ? [field] : []);
   }
@@ -291,6 +294,7 @@ export class AccountCore {
     }
     await this.#write(signedOut(record, reason));
     await this.#deps.store.put(AI, null);
+    await this.#deps.store.put("linear", null);
     await this.#deps.onSignedOut(reason)
       .catch((error: unknown) => console.error("sign-in-again push failed", error));
   }
@@ -309,6 +313,7 @@ export class AccountCore {
     await this.#write(isLast ? signedOut(record, "signed_out") : record);
     if (isLast) {
       await this.#deps.store.put(AI, null);
+      await this.#deps.store.put("linear", null);
     }
     return isLast;
   }
@@ -344,6 +349,33 @@ export class AccountCore {
     await this.#deps.store.put(AI, key !== null && keyring
       ? { anthropic_key: await sealToken(keyring, key, associatedData(record.user_id, "anthropic")), ask } : null);
     return true;
+  }
+
+  async setLinearKey(key: string | null): Promise<boolean> {
+    const record = await this.#read();
+    if (!record || record.state !== "signed_in") {
+      return false;
+    }
+    const keyring = await this.#deps.keyring();
+    if (key !== null && !keyring) {
+      throw new Error("LINEAR_KEY_ENCRYPTION_UNAVAILABLE: token keyring is missing");
+    }
+    await this.#deps.store.put("linear", key !== null && keyring
+      ? await sealToken(keyring, key, associatedData(record.user_id, "linear")) : null);
+    return true;
+  }
+
+  async #linearKey(record: AccountRecord, keyring: Keyring): Promise<string | null> {
+    const sealed = await this.#deps.store.get<string | null>("linear");
+    if (!sealed) {
+      return null;
+    }
+    const opened = await openToken(keyring, sealed, associatedData(record.user_id, "linear"));
+    if (opened?.isStale) {
+      await this.#deps.store.put("linear", await sealToken(keyring, opened.plaintext,
+        associatedData(record.user_id, "linear")));
+    }
+    return opened?.plaintext ?? null;
   }
 
   async installationIds(): Promise<string[]> {
@@ -447,6 +479,7 @@ export class AccountCore {
     return {
       kind: "ok", token: outcome.grant.access_token, login: record.login, userId: String(record.user_id),
       ai: keyring ? await this.#ai(record, keyring) : NO_AI,
+      linearKey: keyring ? await this.#linearKey(record, keyring) : null,
     };
   }
 
@@ -467,6 +500,7 @@ export class AccountCore {
     return {
       kind: "ok", token: access.plaintext, login: record.login, userId: String(record.user_id),
       ai: await this.#ai(record, keyring),
+      linearKey: await this.#linearKey(record, keyring),
     };
   }
 
@@ -530,7 +564,7 @@ export class AccountCore {
   }
 }
 
-export type SealedField = "access" | "refresh" | "anthropic";
+export type SealedField = "access" | "refresh" | "anthropic" | "linear";
 
 /** Whose secret and which: a sealed value moved to another person or field fails to open. */
 export function associatedData(userId: number, kind: SealedField): string {

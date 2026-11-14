@@ -231,7 +231,7 @@ checked on every run: [`row.json`](fixtures/row.json), [`merged-row.json`](fixtu
   when Linear does not answer, `found` is null and only the title's keys show.
 - A `GET /prs` row's `tickets` are every ticket its title names that Linear has (`found: true`), in the title's order;
   with none from the title, the first its branch or description names that Linear has; in the same shape. Its
-  `ticket` is the first of them, for an app older than `tickets`. Empty and null without `LINEAR_API_KEY` (so always on the hosted Worker) or while Linear does not answer. The index
+  `ticket` is the first of them, for an app older than `tickets`. Empty and null without a Linear connection or while Linear does not answer. Hosted accounts use their own key only. The index
   keeps Linear's answer for each key and asks again after an hour; each minute's tick asks again about the held rows'
   keys that are older (50 at most), and a PR whose ticket changed is read again. Merged rows have no `ticket` or `tickets`.
 
@@ -950,3 +950,19 @@ Bindings: `DIFFS`, `PR_INDEX`, `AI_JOBS` as above, plus `USER_ACCOUNTS` (class `
 (`new_sqlite_classes`). `HOSTED=on` without the client ID, client secret, token key or any of the four bindings answers
 `503 not_configured` on every route but `/`, rather than act as a self-hosted Worker. The
 template is `deploy/hosted/wrangler.template.jsonc`.
+
+### Personal Linear connection (hosted)
+
+Settings connects Linear with `PUT /account/linear-key`, the signed-in session bearer and `{"key":"…"}`.
+PRHub validates the key with Linear before storing it, encrypted with the account's user ID and a separate field
+as associated data. It never returns the key. The response is `{"linear_key":true}`; `/device/config` adds
+`account.linear_key` (a boolean, false when absent on older Workers). The person's PR rows and rewrites use only
+that person's Linear key, never an operator's key or another account's.
+
+`DELETE /account/linear-key` disconnects it and answers `{"linear_key":false}`. Connecting, replacing or removing a
+key clears that account's ticket cache and queues its open PRs for refresh. Last-device sign-out, GitHub revocation
+and account deletion also erase the key. Keys rotate with `TOKEN_ENCRYPTION_KEY`.
+
+Errors: `400 linear_key_malformed`, `422 linear_key_invalid`, `503 linear_unavailable`, or `401 signed_out`.
+A rejected or unavailable key leaves the previous connection intact. A key with Read access to the desired Linear
+teams is sufficient; PRHub does not write to Linear.

@@ -83,6 +83,14 @@ struct AccountClient: Sendable {
         _ = try await send("DELETE", "account/anthropic-key")
     }
 
+    func setLinearKey(_ key: String) async throws(Failure) {
+        _ = try await send("PUT", "account/linear-key", body: encode(["key": key]))
+    }
+
+    func removeLinearKey() async throws(Failure) {
+        _ = try await send("DELETE", "account/linear-key")
+    }
+
     private func send(
         _ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil, authorized: Bool = true
     ) async throws(Failure) -> Data {
@@ -148,6 +156,9 @@ enum AccountActionError: Error, Equatable, Sendable {
     /// `422 anthropic_key_invalid`.
     case keyRefused
     /// `503 anthropic_unavailable`.
+    case linearKeyMalformed
+    case linearKeyRefused
+    case linearUnavailable
     case anthropicUnavailable
     /// `401`: the session is over; the app shows Sign in again.
     case signedOut
@@ -158,6 +169,9 @@ enum AccountActionError: Error, Equatable, Sendable {
 
     init(_ failure: AccountClient.Failure) {
         switch failure {
+        case .server("linear_key_malformed", _): self = .linearKeyMalformed
+        case .server("linear_key_invalid", _): self = .linearKeyRefused
+        case .server("linear_unavailable", _): self = .linearUnavailable
         case .server("validation_error", 400): self = .keyMalformed
         case .server("anthropic_key_invalid", _): self = .keyRefused
         case .server("anthropic_unavailable", _): self = .anthropicUnavailable
@@ -170,6 +184,9 @@ enum AccountActionError: Error, Equatable, Sendable {
 
     var message: String {
         switch self {
+        case .linearKeyMalformed: "Paste the whole Linear API key from Linear Settings → Security & access."
+        case .linearKeyRefused: "Linear didn’t accept that key. Check its permissions and that it’s active, then try again."
+        case .linearUnavailable: "Linear couldn’t be reached. Try again in a minute."
         case .keyMalformed: "That isn't an Anthropic API key. Copy the whole key from console.anthropic.com."
         case .keyRefused: "Anthropic didn't accept that key. Check that it's active, then paste it again."
         case .anthropicUnavailable: "Anthropic couldn't be reached to check the key. Try again in a minute."
