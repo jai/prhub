@@ -2,9 +2,10 @@
 # on Macs with Xcode 27.2 (the `xcode-27` image). `build` builds the app and its tests once and runs PRKit's swift
 # test; then the unit and UI tests run from that build in five slices side by side, two on the iPhone and three on the
 # iPad (scripts/ui-test-slices.py, by each test's seconds in app/PRHubUITests/times.txt): GitHub runs five Mac jobs at
-# a time for the account. Only main's newest commit is tested: a push cancels the run before it, so two runs never
-# queue for the same five Macs. Xcode Cloud ran the tests until 14 November 2026 and ran out of hours; it makes the
-# builds. Each test job keeps its result bundle (pictures, UI trees, logs) as an artifact for a week.
+# a time for the account. A push or a pull request runs only the fast checks, `design` and `build` (a newer push cancels
+# the older run); the five slices run once an hour from hourly-release.yml, on the commit it is about to release, and
+# by hand. Xcode Cloud ran the tests until 14 November 2026 and ran out of hours; it makes the builds. Each test job
+# keeps its result bundle (pictures, UI trees, logs) as an artifact for a week.
 name: ios
 
 on:
@@ -21,12 +22,20 @@ on:
         description: "One test to run, as xcodebuild's -only-testing takes it (target/class/test). Empty: every test."
         required: false
         default: ""
+  # The hourly release's full test run, on the commit it releases.
+  workflow_call:
+    inputs:
+      ref:
+        description: "The commit to test."
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: ios-${{ github.ref }}-${{ inputs.only || 'all' }}
+  # The caller's name in a hourly run, so a push to main never cancels the release's tests.
+  group: ios-${{ github.workflow }}-${{ github.ref }}-${{ inputs.only || 'all' }}
   cancel-in-progress: true
 
 jobs:
@@ -35,6 +44,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -50,6 +61,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - name: Xcode 27.2
         run: sudo xcode-select -s /Applications/Xcode_27.2.app
       - name: Generate the project
@@ -76,14 +89,17 @@ jobs:
         if: ${{ !inputs.only }}
         run: swift test
       - uses: actions/upload-artifact@v5
+        if: github.event_name != 'push' && github.event_name != 'pull_request'
         with:
           name: products
           path: ${{ runner.temp }}/products.tgz
           retention-days: 1
 
+  # Not on a push or a pull request: the hourly release runs them before it releases, and anyone can by hand.
   test:
     name: test (${{ matrix.device }}, ${{ matrix.slice }} of ${{ matrix.of }})
     needs: build
+    if: github.event_name != 'push' && github.event_name != 'pull_request'
     runs-on: xcode-27
     timeout-minutes: 45
     strategy:
@@ -108,6 +124,8 @@ jobs:
           xcrun simctl boot "$udid"
           echo "SIMULATOR=$udid" >> "$GITHUB_ENV"
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - uses: actions/download-artifact@v5
         with:
           name: products

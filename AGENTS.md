@@ -32,17 +32,20 @@ pairing the phone, and troubleshooting.
   - `PRKit/`: a new `v*` tag; `app/`: a PRHub release ("Releases" below).
   Jai's Agent Pager follows on its own: within 10 minutes it moves to `main`'s head and to the newest `v*` tag, tests,
   and deploys. Nothing to commit there, and never deploy its Worker by hand.
-  CI runs on every push to `main`: the Linux jobs on GitHub's own runners (`scrub`, `worker`, `relay`; `design` when
-  PRKit, the app or DESIGN.md change) and, on the same changes, the tests on GitHub's Macs (`.github/workflows/ios.yml`,
-  the `xcode-27` image): `build` builds the app and its tests once and runs PRKit's `swift test`, then five `test (…)`
-  jobs run the unit and UI tests from that build, two slices on the iPhone 17 and three on the 13-inch iPad Pro
+  Merging is not releasing. Every push to `main` runs only the fast checks on GitHub's own runners: `scrub`, `worker`,
+  `relay`, and, when PRKit, the app or DESIGN.md change, `design` and `build` on a Mac (`.github/workflows/ios.yml`,
+  the `xcode-27` image: the app and its tests build once, and PRKit's `swift test` runs). No Xcode Cloud workflow
+  starts on a push or a pull request. Once an hour, when `main` changed the app, the hourly release ("Releases" below)
+  runs the full tests on `main`'s head, then releases it if they pass: five `test (…)` jobs run the unit and UI
+  tests from `build`, two slices on the iPhone 17 and three on the 13-inch iPad Pro
   (`scripts/ui-test-slices.py`, by each test's seconds in `app/PRHubUITests/times.txt`; a new test needs no entry).
-  Only main's newest commit is tested: a push cancels the run before it. A slice is no shorter than its longest test,
-  so keep a long walk as several tests. A red run on `main` is fixed next, by whoever pushed it. Each test job keeps
+  A slice is no shorter than its longest test, so keep a long walk as several tests. A red hourly run is fixed next,
+  by whoever pushed the commits it tested (GitHub → Actions → hourly-release). Each test job keeps
   its result bundle a week: `gh run download <run> -n 'xcresult-iPhone 17-1'` (device, then slice), then
-  `xcrun xcresulttool export attachments`. One test by hand: `gh workflow run ios.yml -f only=PRHubUITests/<Class>/<test>`.
+  `xcrun xcresulttool export attachments`. Every test by hand: `gh workflow run ios.yml`. One test by hand: `gh workflow run ios.yml -f only=PRHubUITests/<Class>/<test>`.
   A UI test's `waitForExistence` looks at once and every 0.1 s (`app/PRHubUITests/FastWaits.swift`), so use it freely.
-  Xcode Cloud makes the builds only; its PRHub Tests workflow is turned off (out of hours, 14 November 2026).
+  Xcode Cloud makes the builds only, when the hourly release starts them; its PRHub Tests workflow is turned off (out
+  of hours, 14 November 2026).
   The scripts in `app/ci_scripts` know each workflow by its id (`workflows.sh`), never its name.
 - Tests: `npm test` and `npm run typecheck` in `worker/` and `relay/`. The worker's contract test compares what the
   real builders send with `docs/fixtures/*.json`; after a deliberate change run `UPDATE_FIXTURES=1 npm test` and
@@ -98,18 +101,23 @@ new event that breaks a rule below is a privacy policy change, not a code change
 - **Versions are automatic.** Never tag `v*` or edit `MARKETING_VERSION` by hand. Before each Internal build,
   `release/cadence.mjs` (`release/version.mjs`) reads the conventional commits since the newest `vX.Y.Z` tag on
   `main`: below 1.0.0, a `feat` or breaking change bumps the minor, a `fix` or `perf` the patch; only other types keep
-  the version and make no tag. It tags `main`'s head (annotated; the message lists the feat/fix subjects) and makes a
-  GitHub Release with the same notes. Xcode Cloud (`app/ci_scripts/ci_post_clone.sh`) builds every workflow as the
+  the version and make no tag. It tags the released commit (annotated; the message lists the feat/fix subjects) and
+  makes a GitHub Release with the same notes, only after the commit's tests passed. Xcode Cloud (`app/ci_scripts/ci_post_clone.sh`) builds every workflow as the
   newest tag reachable from its commit. PRKit's tags are the same tags: apps pin it (`from: "0.1.0"`); Jai's Agent
   Pager is one of them.
-- **PRHub for the Internal group**: every 15 minutes, `.github/workflows/internal-testflight.yml` runs
-  `release/cadence.mjs`, which starts Xcode Cloud's **Internal - TestFlight** workflow on `main` only when `app/`,
-  `PRKit/`, `Package.swift` or `DESIGN.md` changed since its last build, and never while a build of it is running.
-  The build goes to the Internal TestFlight group with its version's notes as What to Test (the commit's subject when
+- **The hourly release** (`.github/workflows/hourly-release.yml`, at minute 7) is the only thing that starts an Xcode
+  Cloud workflow. `release/cadence.mjs decide` picks `main`'s head only when `app/`, `PRKit/`, `Package.swift` or
+  `DESIGN.md` changed since the last Internal build, and never while a build of it is running or when a scheduled run
+  already failed on that commit. `ios.yml` runs the full tests on it. When they pass, `release/cadence.mjs release`
+  points the branch `ci/release` at the commit, makes its version, and starts Xcode Cloud's **Internal -
+  TestFlight** (and the Mac's, and **PRHub Release** when a release commit waits) on `ci/release`, so Xcode Cloud
+  builds the commit that was tested. Red tests release nothing. `gh workflow run hourly-release.yml` runs it now, and
+  tries a red commit again.
+- **PRHub for the Internal group**: the hourly release's Internal - TestFlight build. The build goes to the Internal TestFlight group with its version's notes as What to Test (the commit's subject when
   it made no new version). Xcode Cloud numbers the build itself; its **Next Build Number** (App Store Connect → PRHub
-  → Xcode Cloud → Settings) must stay above TestFlight's highest build, or the upload is refused. Nothing to run; `node release/cadence.mjs --dry-run` says
-  what it would do.
-  The Mac app goes to the same group from a workflow of its own, **Internal - TestFlight (Mac)**, which the cadence
+  → Xcode Cloud → Settings) must stay above TestFlight's highest build, or the upload is refused. Nothing to run; `node release/cadence.mjs decide --dry-run`
+  says what it would do.
+  The Mac app goes to the same group from a workflow of its own, **Internal - TestFlight (Mac)**, which the hourly release
   starts with the phone's build on the same commit. Its build has its own number, and `release/app-latest.mjs` counts
   only the phone's builds. The Internal group has every build, so the Mac's needs no TestFlight post-action. The
   Mac's icon sizes come from `swift app/Tools/icon/mac-icon.swift`; run it when `PRHubIcon.png` changes. The Public
@@ -117,12 +125,13 @@ new event that breaks a rule below is a privacy policy change, not a code change
 - **PRHub for the Public group**: a release is one commit on `main` that sets `CURRENT_PROJECT_VERSION` in `app/project.yml` to N, with
   the subject `chore(release): PRHub build N — <What to Test>`. Take N from `release/next-build.sh`, change nothing
   else in that commit, and change `CURRENT_PROJECT_VERSION` in no other commit.
-  1. Push the release commit to `main`. Xcode Cloud's **PRHub Release** workflow starts on any change to
-     `app/project.yml` on `main`. `app/ci_scripts` checks that the change is a release, sets the build number to
+  1. Push the release commit to `main`. The next hourly release starts Xcode Cloud's **PRHub Release** workflow once
+     the tests pass, when the newest change to `app/project.yml` is a release that no run of it has built.
+     `app/ci_scripts` checks that the change is a release, sets the build number to
      Xcode Cloud's (TestFlight shows that number), generates the project, archives and writes What to Test from the
      subject. The workflow's post-actions then give the build to the Internal and Public TestFlight groups.
   2. Run `release/ship.sh` with an App Store Connect API key in the environment (the script's header lists what it
-     needs). It follows Xcode Cloud's build until TestFlight has processed it. Then it adds the build to the Public
+     needs). It waits up to 110 minutes for the hourly release to start the build and follows it until TestFlight has processed it. Then it adds the build to the Public
      group and submits the build for Beta App Review, unless the build is already submitted or an earlier build is
      still in review. It prints `SHIPPED PRHub build <n>`. `--dry-run` does the checks and stops.
   - With no PRHub Release workflow, or with `--local`, `release/ship.sh` archives and uploads the release on a Mac
@@ -142,15 +151,15 @@ Connect API cannot make a product.
 2. **Product → Xcode Cloud → Create Workflow**, choose the PRHub app and grant access to `jai/prhub` when Xcode asks.
    Skip this step if App Store Connect → PRHub → Xcode Cloud already shows a product. Then check that GitHub sends
    pushes to Xcode Cloud: GitHub → **Settings → Applications → Xcode Cloud → Configure → Repository access** must
-   include `jai/prhub`. The repo is public, so Xcode Cloud can clone it and builds started by hand work without this
-   access, but a push starts no build.
+   include `jai/prhub`. The repo is public, so Xcode Cloud can clone it without this access, but it learns of the
+   branch `ci/release`, where the hourly release builds, only from GitHub's push events.
 3. Make the workflow. Either run `swift release/xcode-cloud.swift <key.p8> create-workflow` with `ASC_KEY_ID`,
    `ASC_ISSUER_ID` and `APP_BUNDLE_ID` set, or in Xcode's workflow editor set:
    - **General**: name `PRHub Release`, and select **Clean**. Put its id in `app/ci_scripts/workflows.sh`
      (`release_workflow`): `release.sh` and `release/xcode-cloud.swift` know it by that, so a rename breaks nothing.
    - **Environment**: Xcode version **Latest Release**.
-   - **Start Conditions**: one **Branch Changes** condition on the branch `main`. Set **Files and Folders** to
-     **Any File Matches**, with the file `app/project.yml`. Delete every other start condition.
+   - **Start Conditions**: one **Manual Start** condition on the branches `main` and `ci/release`. Delete every other
+     start condition: the hourly release starts it, never a push. Every PRHub workflow has only this condition.
    - **Actions**: one **Archive** action for iOS, scheme `PRHub`, deployment preparation **TestFlight and App Store**.
 4. Add the post-actions. The API cannot add them, so use Xcode for this step. In **Product → Xcode Cloud → Manage
    Workflows**, edit **PRHub Release**:

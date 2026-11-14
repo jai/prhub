@@ -5,7 +5,8 @@
 #   release/ship.sh [--local] [--dry-run] ["<What to Test>"]
 #
 # Xcode Cloud: when App Store Connect has an Xcode Cloud product for PRHub with an enabled PRHub Release workflow
-# (release/xcode-cloud.swift), that workflow builds the release (app/ci_scripts) and hands it to TestFlight with the
+# (release/xcode-cloud.swift), the next hourly release starts it once the tests pass (release/cadence.mjs), and it
+# builds the release (app/ci_scripts) and hands it to TestFlight with the
 # subject's What to Test, and ship.sh follows it: it finds Xcode Cloud's build of the release, waits for it and for
 # TestFlight to process it. TestFlight's number is Xcode Cloud's; it is N when next-build.sh chose N. A What to Test
 # argument is not used: the commit's subject is the What to Test.
@@ -137,7 +138,7 @@ else
     while true; do
         git fetch -q origin main
         run=
-        # Newest first; Xcode Cloud builds the head of the push, which is the release or a commit after it.
+        # Newest first; Xcode Cloud builds ci/release, which is the release or a commit after it.
         for line in "${(@f)$("${cloud[@]}")}"; do
             if [[ -n $line ]] && git merge-base --is-ancestor "$release" "${line%% *}" 2>/dev/null; then
                 run=$line
@@ -145,9 +146,10 @@ else
             fi
         done
         if [[ -z $run ]]; then
-            if (( SECONDS - started > 600 )); then
-                echo "SHIP FAILED: Xcode Cloud started no build of build $release_build in 10 minutes" \
-                    "(App Store Connect → PRHub → Xcode Cloud → PRHub Release)"
+            # The hourly release starts it after the tests: up to an hour to the next run, then the tests on GitHub's Macs.
+            if (( SECONDS - started > 6600 )); then
+                echo "SHIP FAILED: the hourly release started no build of build $release_build in 110 minutes" \
+                    "(GitHub → Actions → hourly-release; App Store Connect → PRHub → Xcode Cloud → PRHub Release)"
                 exit 1
             fi
         else
@@ -158,8 +160,8 @@ else
                 [[ $outcome == SUCCEEDED ]] || { echo "SHIP FAILED: Xcode Cloud build $build $outcome (App Store Connect → Xcode Cloud → Builds)"; exit 1; }
                 break
             fi
-            if (( SECONDS - started > 5400 )); then
-                echo "SHIP FAILED: Xcode Cloud build $build has not finished in 90 minutes"
+            if (( SECONDS - started > 9000 )); then
+                echo "SHIP FAILED: Xcode Cloud build $build has not finished in 150 minutes"
                 exit 1
             fi
         fi

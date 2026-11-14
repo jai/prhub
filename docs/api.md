@@ -154,8 +154,8 @@ answer `404 {"error": "<feature> is not set up on this Worker."}`. Answers: `200
 ## App updates
 
 `app_latest` comes from `app-latest.json` on this repo's branch `ci/app-latest`
-(`https://raw.githubusercontent.com/jai/prhub/ci/app-latest/app-latest.json`). Every 15 minutes
-`.github/workflows/internal-testflight.yml` runs `release/app-latest.mjs`, which asks App Store Connect for PRHub's
+(`https://raw.githubusercontent.com/jai/prhub/ci/app-latest/app-latest.json`). Every hour
+`.github/workflows/hourly-release.yml` runs `release/app-latest.mjs`, which asks App Store Connect for PRHub's
 processed, unexpired builds and writes the file when it changed: `internal` is the newest build internal testers can
 install, `public` the newest the Public group can (after Beta App Review). Never edit it by hand.
 

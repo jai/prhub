@@ -1,19 +1,22 @@
-// node --test release/cadence.test.mjs — the Internal TestFlight cadence's decision, on stubbed App Store Connect answers.
+// node --test release/cadence.test.mjs — the hourly release's decision and release, on stubbed App Store Connect answers.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { decide, run, touchesApp } from "./cadence.mjs";
+import { decide, publicReleaseDue, release, touchesApp } from "./cadence.mjs";
 
 const HEAD = "h".repeat(40);
 const LAST = "a".repeat(40);
-const WORKFLOW = "workflow-1";
+const WORKFLOWS = { internal: "wf-internal", mac: "wf-mac", release: "wf-release" };
 
-function stubAPI(runs) {
+// `runs` maps a workflow id to its recent runs.
+function stubAPI(runs = {}, { knowsBranch = true } = {}) {
   const calls = [];
   const request = async (method, path, body) => {
     calls.push({ method, path, body });
-    if (method === "GET" && path.startsWith(`ciWorkflows/${WORKFLOW}/buildRuns`)) {
+    const list = path.match(/^ciWorkflows\/([\w-]+)\/buildRuns/);
+    if (method === "GET" && list) {
       return {
-        data: runs.map((r) => ({
+        data: (runs[list[1]] ?? []).map((r) => ({
+          id: `run-${r.number}`,
           attributes: {
             number: r.number,
             sourceCommit: { commitSha: r.commit },
@@ -25,16 +28,13 @@ function stubAPI(runs) {
     }
     if (/^ciWorkflows\/[\w-]+\/repository/.test(path)) return { data: { id: "repo-1" } };
     if (path.startsWith("scmRepositories/repo-1/gitReferences")) {
-      return {
-        data: [
-          { id: "ref-dev", attributes: { canonicalName: "refs/heads/dev", isDeleted: false } },
-          { id: "ref-main", attributes: { canonicalName: "refs/heads/main", isDeleted: false } },
-        ],
-      };
+      const refs = [{ id: "ref-main", attributes: { canonicalName: "refs/heads/main", isDeleted: false } }];
+      if (knowsBranch) refs.push({ id: "ref-release", attributes: { canonicalName: "refs/heads/ci/release", isDeleted: false } });
+      return { data: refs };
     }
     if (method === "POST" && path === "ciBuildRuns") {
       const number = 9 + calls.filter((c) => c.method === "POST").length - 1;
-      return { data: { id: `run-${number}`, attributes: { number } } };
+      return { data: { id: `run-${number}`, attributes: { number, executionProgress: "PENDING" } } };
     }
     throw new Error(`unexpected ${method} ${path}`);
   };
@@ -43,6 +43,7 @@ function stubAPI(runs) {
 
 const succeeded = { number: 5, commit: LAST, progress: "COMPLETE", status: "SUCCEEDED" };
 const posts = (calls) => calls.filter((c) => c.method === "POST");
+const startedWorkflows = (calls) => posts(calls).map((post) => post.body.data.relationships.workflow.data.id);
 
 const PLAN = { action: "tag", tag: "v0.18.0", version: "0.18.0", notes: "- feat: x" };
 
@@ -55,95 +56,83 @@ function stubVersion() {
   };
 }
 
-async function check(runs, changed, version = stubVersion()) {
-  const { request, calls } = stubAPI(runs);
-  const lines = [];
-  const decision = await run({
-    request,
-    workflowID: WORKFLOW,
-    head: HEAD,
-    changedSince: () => changed,
-    version,
-    dryRun: false,
-    log: (line) => lines.push(line),
-  });
-  assert.equal(lines.length, 1);
-  return { decision, calls, line: lines[0] };
+function stubRepo(newest = null) {
+  const moved = [];
+  return { moved, moveReleaseBranch: async (sha) => moved.push(sha), newestRelease: () => newest, contains: () => true };
 }
 
-test("a pending or running build: nothing starts", async () => {
+async function releaseWith({ runs = {}, repo = stubRepo(), dryRun = false, knowsBranch = true } = {}) {
+  const { request, calls } = stubAPI(runs, { knowsBranch });
+  const lines = [];
+  const version = stubVersion();
+  const result = await release({
+    request, workflows: WORKFLOWS, sha: HEAD, version, repo, dryRun, sleep: async () => {}, log: (line) => lines.push(line),
+  });
+  return { result, calls, lines, version, repo };
+}
+
+test("a pending or running build: busy", () => {
   for (const progress of ["PENDING", "RUNNING"]) {
-    const { decision, calls } = await check(
-      [{ number: 6, commit: HEAD, progress, status: null }, succeeded],
-      ["app/x"],
-    );
-    assert.equal(decision.action, "busy");
-    assert.equal(posts(calls).length, 0);
+    const runs = [{ number: 6, commit: HEAD, progress, status: null }, succeeded];
+    assert.equal(decide({ runs, head: HEAD, changedSince: () => ["app/x"] }).action, "busy");
   }
 });
 
-test("main's head is the last successful build: no change", async () => {
-  const { decision, calls, line } = await check([{ ...succeeded, commit: HEAD }], []);
-  assert.equal(decision.action, "none");
-  assert.match(line, /^no change/);
-  assert.equal(posts(calls).length, 0);
+test("main's head is the last successful build, or nothing app-relevant changed: no change", () => {
+  assert.equal(decide({ runs: [{ ...succeeded, commit: HEAD }], head: HEAD, changedSince: () => [] }).action, "none");
+  const changed = ["worker/src/index.ts", "AGENTS.md", "docs/fixtures/a.json"];
+  assert.equal(decide({ runs: [succeeded], head: HEAD, changedSince: () => changed }).action, "none");
 });
 
-test("changes outside the app paths: no change", async () => {
-  const { decision, calls } = await check([succeeded], ["worker/src/index.ts", "AGENTS.md", "docs/fixtures/a.json"]);
-  assert.equal(decision.action, "none");
-  assert.equal(posts(calls).length, 0);
+test("an app change is due; not when the hourly run already failed on the head", () => {
+  const changedSince = () => ["worker/x", "PRKit/Sources/A.swift"];
+  assert.equal(decide({ runs: [succeeded], head: HEAD, changedSince }).action, "start");
+  const failed = decide({ runs: [succeeded], head: HEAD, failedBefore: true, changedSince });
+  assert.equal(failed.action, "none");
+  assert.match(failed.reason, /failed on hhhhhhh before/);
 });
 
-test("nothing to build: no version is made", async () => {
-  const version = stubVersion();
-  await check([succeeded], ["worker/x"], version);
-  assert.deepEqual(version.published, []);
-});
-
-test("a change inside the app paths makes the version, then starts the workflow on main", async () => {
-  const version = stubVersion();
-  const { decision, calls, line } = await check([succeeded], ["worker/x", "PRKit/Sources/A.swift"], version);
-  assert.equal(decision.action, "start");
-  assert.equal(decision.number, 9);
+test("a release: ci/release moves to the commit, the version is made, then the Internal builds start on ci/release", async () => {
+  const { result, calls, lines, version, repo } = await releaseWith();
+  assert.deepEqual(repo.moved, [HEAD]);
   assert.deepEqual(version.published, [PLAN]);
-  assert.match(line, /^started build 9 of hhhhhhh, version 0\.18\.0 \(tagged v0\.18\.0/);
-  const [post] = posts(calls);
-  assert.deepEqual(post.body.data.relationships, {
-    workflow: { data: { type: "ciWorkflows", id: WORKFLOW } },
-    sourceBranchOrTag: { data: { type: "scmGitReferences", id: "ref-main" } },
-  });
+  assert.deepEqual(startedWorkflows(calls), [WORKFLOWS.internal, WORKFLOWS.mac]);
+  for (const post of posts(calls)) {
+    assert.deepEqual(post.body.data.relationships.sourceBranchOrTag, { data: { type: "scmGitReferences", id: "ref-release" } });
+  }
+  assert.deepEqual([result.number, result.macNumber], [9, 10]);
+  assert.match(lines.at(-1), /^started Internal build 9 and the Mac's 10 of hhhhhhh, version 0\.18\.0/);
 });
 
-test("with a Mac workflow, its build starts on the same commit after the phone's", async () => {
-  const { request, calls } = stubAPI([succeeded]);
-  const lines = [];
-  const decision = await run({
-    request, workflowID: WORKFLOW, macWorkflowID: "workflow-mac", head: HEAD, changedSince: () => ["app/x"],
-    version: stubVersion(), dryRun: false, log: (line) => lines.push(line),
-  });
-  assert.deepEqual([decision.number, decision.macNumber], [9, 10]);
-  assert.match(lines[0], /^started build 9 and the Mac's 10 of hhhhhhh, /);
-  assert.deepEqual(posts(calls).map((post) => post.body.data.relationships.workflow.data.id), [WORKFLOW, "workflow-mac"]);
+test("a release commit not yet built: PRHub Release starts with the Internal builds", async () => {
+  const repo = stubRepo({ commit: HEAD, subject: "chore(release): PRHub build 300 — Things" });
+  const { calls, lines } = await releaseWith({ repo });
+  assert.deepEqual(startedWorkflows(calls), [WORKFLOWS.internal, WORKFLOWS.mac, WORKFLOWS.release]);
+  assert.match(lines.at(-1), /, and PRHub Release build 11 of hhhhhhh/);
 });
 
-test("--dry-run decides and plans the version but starts and tags nothing", async () => {
-  const { request, calls } = stubAPI([succeeded]);
+test("Xcode Cloud never learns ci/release: an error, and no build or tag", async () => {
   const version = stubVersion();
-  const lines = [];
-  const decision = await run({
-    request,
-    workflowID: WORKFLOW,
-    head: HEAD,
-    changedSince: () => ["app/x"],
-    version,
-    dryRun: true,
-    log: (l) => lines.push(l),
-  });
-  assert.equal(decision.action, "start");
-  assert.match(lines[0], /^would start a build of hhhhhhh as 0\.18\.0 \(tag v0\.18\.0\)/);
+  await assert.rejects(releaseWith({ knowsBranch: false }), /does not know refs\/heads\/ci\/release/);
   assert.deepEqual(version.published, []);
-  assert.equal(calls.length, 1);
+});
+
+test("--dry-run plans the version but starts, moves and tags nothing", async () => {
+  const { lines, version, repo, calls } = await releaseWith({ dryRun: true });
+  assert.match(lines[0], /^would release hhhhhhh as 0\.18\.0 \(tag v0\.18\.0\)/);
+  assert.deepEqual(version.published, []);
+  assert.deepEqual(repo.moved, []);
+  assert.equal(posts(calls).length, 0);
+});
+
+test("PRHub Release is due for a release commit no run has built", () => {
+  const newest = { commit: "r".repeat(40), subject: "chore(release): PRHub build 300 — Things" };
+  const built = [{ number: 3, commit: HEAD, progress: "COMPLETE", status: "SUCCEEDED" }];
+  assert.equal(publicReleaseDue({ release: newest, runs: [], contains: () => true }), true);
+  assert.equal(publicReleaseDue({ release: newest, runs: built, contains: () => true }), false);
+  assert.equal(publicReleaseDue({ release: newest, runs: built, contains: () => false }), true);
+  assert.equal(publicReleaseDue({ release: { ...newest, subject: "ci(app): x" }, runs: [], contains: () => true }), false);
+  assert.equal(publicReleaseDue({ release: null, runs: [], contains: () => true }), false);
 });
 
 test("the last built commit is the newest success, else the newest run", () => {

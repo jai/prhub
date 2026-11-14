@@ -1,8 +1,8 @@
 #!/bin/zsh
 # Sourced by ci_post_clone.sh and ci_post_xcodebuild.sh. Sets `release_build` and `release_notes` from the newest commit
 # that changed app/project.yml, which must be `chore(release): PRHub build N — <What to Test>` with N its
-# CURRENT_PROJECT_VERSION: the PRHub Release workflow starts only when app/project.yml changes on main, and a change
-# there that is not a release fails here instead of shipping. Other workflows skip the check and get empty values. The
+# CURRENT_PROJECT_VERSION: the hourly release (release/cadence.mjs) starts the PRHub Release workflow only for such a
+# commit, and a build of anything else fails here instead of shipping. Other workflows skip the check and get empty values. The
 # workflow is known by its id (workflows.sh), which a rename leaves alone.
 repo=${CI_PRIMARY_REPOSITORY_PATH:?not running in Xcode Cloud}
 # This file's own folder, wherever it is sourced from: %x is the file being read, where $0 can be the shell.

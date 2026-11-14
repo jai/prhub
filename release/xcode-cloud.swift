@@ -7,8 +7,8 @@
 //   swift release/xcode-cloud.swift <key.p8> latest
 //     the product's highest build number, any workflow, or 0. Every workflow of the product shares one sequence.
 //   swift release/xcode-cloud.swift <key.p8> create-workflow
-//     creates the PRHub Release workflow, turns it on when it is off, or says it exists: on a push to main that changes app/project.yml,
-//     archive the PRHub scheme for App Store Connect, clean, on the latest Xcode release. TestFlight post-actions
+//     creates the PRHub Release workflow, turns it on when it is off, or says it exists: started only by
+//     release/cadence.mjs's hourly release on ci/release (or by hand on main), never by a push; archive the PRHub scheme for App Store Connect, clean, on the latest Xcode release. TestFlight post-actions
 //     are not in the API: add them in Xcode (AGENTS.md, "Releases").
 // Exits 3, saying why on stderr, when the app has no Xcode Cloud product (`create-workflow`, `latest`) or no enabled
 // PRHub Release workflow (`runs`): then nothing will build a release, and ship.sh ships locally.
@@ -172,18 +172,15 @@ func createReleaseWorkflow(product: [String: Any]) async throws {
             "type": "ciWorkflows",
             "attributes": [
                 "name": workflowName,
-                "description": "A chore(release): PRHub build N commit on main: archive and hand to TestFlight.",
+                "description": "A chore(release): PRHub build N commit, started by the hourly release: archive and hand to TestFlight.",
                 "isEnabled": true,
                 "isLockedForEditing": false,
                 "clean": true,
                 "containerFilePath": containerFilePath,
-                "branchStartCondition": [
-                    "source": ["isAllMatch": false, "patterns": [["pattern": "main", "isPrefix": false]]],
-                    "filesAndFoldersRule": [
-                        "mode": "START_IF_ANY_FILE_MATCHES",
-                        "matchers": [["directory": "app", "fileName": "project.yml"]],
-                    ],
-                    "autoCancel": false,
+                "manualBranchStartCondition": [
+                    "source": ["isAllMatch": false, "patterns": [
+                        ["pattern": "main", "isPrefix": false], ["pattern": "ci/release", "isPrefix": false],
+                    ]],
                 ],
                 "actions": [[
                     "name": "Archive - iOS",

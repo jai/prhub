@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Publishes the newest PRHub build each TestFlight group can install, for the Workers' GET /device/config `app_latest`
-// (docs/api.md) and the app's "Update available". Run every 15 minutes by .github/workflows/internal-testflight.yml:
+// (docs/api.md) and the app's "Update available". Run every hour by .github/workflows/hourly-release.yml:
 //   node release/app-latest.mjs [--dry-run]
 // It asks App Store Connect for PRHub's processed, unexpired builds: `internal` is the newest internal testers can
 // install (every build, as release builds go to the Internal group too), `public` the newest external testers can
