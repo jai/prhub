@@ -76,6 +76,11 @@ public enum AppIcon: String {
 
     // A PR's page: asking AI, its checks, what people wrote.
     case askAI = "questionmark.bubble"
+    // A PR at a glance, above its key lines: its risk, the bugs found, what it does.
+    case risk = "exclamationmark.shield.fill"
+    case riskLow = "checkmark.shield.fill"
+    case bugsFound = "ladybug.fill"
+    case whatItDoes = "list.bullet"
     case keyLinesOff = "key"
     case required = "asterisk"
     case openExternally = "arrow.up.right"

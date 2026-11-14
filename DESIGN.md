@@ -578,6 +578,15 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
   line in the diff: the kind and Close on top, the why (selectable, to copy), then Explain on the left and Mark
   reviewed / Reviewed on the right, as `PRButtonStyle(.secondary)` buttons. The note stays on screen while the code
   scrolls sideways, as threads and file headers do.
+- **A PR at a glance:** `PRKeyLinesSummaryCard`, above the key lines on `groundFill`. Three parts, `Space.md` apart:
+  its risk and why, the bugs found (each a tap to its line), and what it does. Each part has a heading, an icon and
+  words through `IconText`'s line, `appSubheadline` semibold: the risk's `AppIcon.risk` in `toneBad` (high) or
+  `toneWaiting` (medium), `.riskLow` in `toneGood`; `.ok` in `toneGood` for "No bugs found", `.bugsFound` in `toneBad`
+  when there are some; `.whatItDoes`, quiet, over "What this does". Under a heading every line is `appFootnote` in the
+  words' column, and a bullet's dot sits in the icons' column, so a second line stays under the first. No emoji: a
+  heading's colour is its icon's tone.
+- **A PR's link:** a long press on a PR's row, and on Open in GitHub in a PR's bar (a click and hold on the Mac),
+  offers Copy link; the bar's also offers Share. A tap on Open in GitHub still opens it.
 - **A key line's tick:** `PRKeyLineCheck`, `AppIcon.taskOpen` or `.taskDone` in `toneGood`, last in its heading in
   Key lines, 44 pt square; in the note it is the Mark reviewed button. A ticked line's words fade to
   `PRStyle.doneOpacity` and its controls stay, and the list says how many are reviewed. Previous and Next pass over

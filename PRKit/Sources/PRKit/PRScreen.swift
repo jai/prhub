@@ -156,9 +156,20 @@ private extension View {
             }
             if let url = session.content.flatMap({ URL(string: $0.detail.url) }) {
                 ToolbarItem(placement: .primaryAction) {
-                    Button("Open in GitHub", systemImage: AppIcon.openInGitHub.symbol) { PRPlatform.openExternally(url) }
-                        .accessibilityIdentifier("open-in-github")
-                        .accessibilityValue(url.absoluteString)
+                    // A tap opens GitHub. A long press, or a click and hold on the Mac, offers the link itself.
+                    Menu {
+                        Button("Copy link", systemImage: AppIcon.copyLink.symbol) { Pasteboard.copy(url.absoluteString) }
+                            .accessibilityIdentifier("pr-link-copy")
+                        ShareLink(item: url)
+                            .accessibilityIdentifier("pr-link-share")
+                    } label: {
+                        Label("Open in GitHub", systemImage: AppIcon.openInGitHub.symbol)
+                    } primaryAction: {
+                        PRPlatform.openExternally(url)
+                    }
+                    .menuIndicator(.hidden)
+                    .accessibilityIdentifier("open-in-github")
+                    .accessibilityValue(url.absoluteString)
                 }
             }
         }

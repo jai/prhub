@@ -197,10 +197,22 @@ struct PRKeyLinesSummaryTests {
                      "bugs": [{"path": "db/m.sql", "line": 3, "side": "RIGHT", "why": "No backfill."}]}}
         """#
         let lines = try JSONDecoder().decode(PRKeyLines.self, from: Data(json.utf8))
-        #expect(lines.summary?.riskMark == "🔴")
+        #expect(lines.summary?.riskTitle == "High risk" && lines.summary?.bugsTitle == "1 bug found")
         #expect(lines.summary?.bugs.first?.asItem.kind == "risk")
         let older = try JSONDecoder().decode(PRKeyLines.self, from: Data(#"{"items": [], "context": 0, "leftOut": []}"#.utf8))
         #expect(older.summary == nil)
+    }
+
+    @Test func theSummarysHeadingsSayTheRiskAndCountTheBugs() throws {
+        func summary(risk: String, bugs: Int) throws -> PRKeyLines.Summary {
+            let bug = #"{"path": "a", "line": 1, "side": "RIGHT", "why": "w"}"#
+            let all = Array(repeating: bug, count: bugs).joined(separator: ",")
+            let json = #"{"risk": "\#(risk)", "riskWhy": "", "points": [], "bugs": [\#(all)]}"#
+            return try JSONDecoder().decode(PRKeyLines.Summary.self, from: Data(json.utf8))
+        }
+        #expect(try summary(risk: "low", bugs: 0).riskTitle == "Low risk")
+        #expect(try summary(risk: "medium", bugs: 0).bugsTitle == "No bugs found")
+        #expect(try summary(risk: "high", bugs: 3).bugsTitle == "3 bugs found")
     }
 
     @Test func oneKeyLineIsCountedAsOne() {
