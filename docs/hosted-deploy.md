@@ -33,8 +33,11 @@ Secrets, each with `wrangler secret put`, from the password manager:
 | `WEBHOOK_SECRET` | The App's webhook secret |
 | `TOKEN_ENCRYPTION_KEY` | `k1:` and `openssl rand -base64 32`; rotation in [api.md, "Tokens"](api.md#tokens) |
 | `APNS_KEY_P8` | Jai's APNs key (`.p8`) |
+| `FEEDBACKKIT_TOKEN` | The FeedbackKit Worker's `CALLER_TOKEN` ([jai/feedbackkit](https://github.com/jai/feedbackkit/blob/main/docs/worker.md)): Feedback goes there |
 
-No `GITHUB_TOKEN` and no `ANTHROPIC_API_KEY`: each person acts with their own token, and AI runs only on their own key.
+No `GITHUB_TOKEN` and no `ANTHROPIC_API_KEY`: each person acts with their own token, and AI runs on their own key.
+`CLAUDE_CODE_OAUTH_TOKEN` (a secret) runs key lines and rewrites on Jai's subscription, for `SUBSCRIPTION_LOGINS` only.
+The deploy builds the Agent SDK container from `agent/Dockerfile`, so it needs Docker.
 
 Limits take their hosted defaults ([api.md, "Limits"](api.md#limits)). To change one, add its `LIMIT_*` var to the
 rendered config's `vars` and deploy again. `GET /device/config` shows the limits in force, and a value the Worker
@@ -77,6 +80,20 @@ Then sign in from the app, open the App's Advanced settings on GitHub, and check
 Logs: `npx wrangler@4 tail prhub --config ../deploy/hosted/wrangler.jsonc --format pretty`.
 
 `deploy/hosted/wrangler.jsonc` is gitignored; never commit it or any value above.
+
+## Replacing the Claude token
+
+`CLAUDE_CODE_OAUTH_TOKEN` reaches a container when the container starts, and a running one keeps the token it started
+with. Setting the secret restarts nothing by itself:
+
+1. Set the secret, piped as above.
+2. Each container takes the new token at its next start, after it has been idle for two minutes and gone to sleep.
+   `agent_container_stopped` in the logs is that sleep.
+3. Check that the next run answers: an `ai_run` line with `auth: "subscription"`, and no `agent_container_failed`. A
+   failed key lines job is tried again 30 minutes after its last try, so allow that long.
+
+A container that is never idle for two minutes keeps the old token. A deploy that changes `agent/` replaces every
+container at once. Before 14 November 2026 no container slept at all, and a replaced token did nothing until a deploy.
 
 ## Rotating the token key
 

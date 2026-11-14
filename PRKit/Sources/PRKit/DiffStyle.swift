@@ -3,6 +3,8 @@ import PRKitDesign
 import SwiftUI
 #if os(iOS)
 import UIKit
+#else
+import AppKit
 #endif
 
 /// The diff's colours and fixed measures, the same on the phone's table and the Mac's (`Phone/`, `Mac/`). What follows
@@ -59,8 +61,19 @@ struct DiffMetrics {
         #endif
         fileHeaderHeight = viewedTarget
         columnWidth = ("M" as NSString).size(withAttributes: [.font: code]).width
-        viewedSymbolSize = (headerSize * 1.5).rounded()
+        viewedSymbolSize = (headerSize * 1.05).rounded()
         chevronSymbolSize = (headerSize * 0.8).rounded()
+    }
+
+    /// The file header's path for `text` in `width`: the header's size when it fits, else smaller, down to the code's
+    /// size (a heading is never smaller than what it heads). A path still too long is cut from the front.
+    func headerPath(fitting text: String, in width: CGFloat) -> PlatformFont {
+        var fitted = headerPath
+        while fitted.pointSize > code.pointSize,
+              (text as NSString).size(withAttributes: [.font: fitted]).width > width {
+            fitted = font.platformFont(points: max(fitted.pointSize - 1, code.pointSize), isBold: true)
+        }
+        return fitted
     }
 
     #if os(iOS)
@@ -75,7 +88,7 @@ struct DiffMetrics {
     }
     #else
     init(_ font: DiffFont) {
-        self.init(font, scale: MacTextSize.scale)
+        self.init(font, scale: MacTextSize.codeScale)
     }
     #endif
 }
@@ -106,6 +119,8 @@ struct DiffActions {
     /// The noted key line's tick, read by the note itself so a tick made in the panel shows under the line too.
     let isReviewed: (PRKeyLines.Item) -> Bool
     let setReviewed: (PRKeyLines.Item, Bool) -> Void
+    /// Ask AI about a key line; nil when Ask is off.
+    let explain: ((PRKeyLines.Item) -> Void)?
     /// The reader scrolled down the code (true) or back up. The phone's bars go and come with it.
     let setBarsHidden: (Bool) -> Void
     let setKeyboardUp: (Bool) -> Void

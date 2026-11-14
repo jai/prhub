@@ -19,37 +19,31 @@ struct PRAskSheet: View {
         let anchor = question.anchor.map { "\($0.path):\($0.line)" }
         return sent + [PRAskChat.Message(id: "pending", role: "you", text: question.question, anchor: anchor)]
     }
+    /// Whether Jai was reading the end of the chat when he last scrolled it: a new message then keeps him there.
+    @State private var readsEnd = true
+    /// How many questions the chat shows: one more is one he sent, and the sheet goes to the end with it.
+    private var asked: Int { messages.count(where: \.isJai) }
     /// The agent at work on a question it has. A question still on its way says so instead.
     private var isWorking: Bool { session.askSend == .idle && session.askChat?.isWorking == true }
 
     var body: some View {
         NavigationStack {
-            ScrollViewReader { proxy in
-                ChatScroll {
-                    LazyVStack(alignment: .leading, spacing: Space.sm) {
-                        if messages.isEmpty, !isWorking, session.askSend == .idle {
-                            Text("Ask about this PR. The AI reads the whole repo at this PR's head, and can't change anything.")
-                                .font(.appFootnote)
-                                .foregroundStyle(.secondary)
-                                .padding(PRStyle.inset)
-                        }
-                        ForEach(messages) { message($0).transition(.fold) }
-                        status.id(Self.end)
-                    }
-                    .padding(.horizontal, Space.md)
-                    .padding(.vertical, Space.sm)
-                    .animation(AppMotion.fold, value: messages)
-                    .animation(AppMotion.fold, value: isWorking)
-                    .animation(AppMotion.swap, value: session.askSend)
-                }
-                .dismissesKeyboard($isWriting)
-                .onChange(of: messages.count) {
-                    withAnimation(AppMotion.fold) { proxy.scrollTo(Self.end, anchor: .bottom) }
-                }
-                .onAppear { proxy.scrollTo(Self.end, anchor: .bottom) }
-            }
+            ChatView(
+                messages: chatMessages,
+                emptyText: !isWorking && session.askSend == .idle
+                    ? "Ask about this PR. The AI reads the whole repo at this PR's head, and can't change anything."
+                    : nil,
+                sent: asked, readsEnd: $readsEnd, focus: $isWriting,
+                extras: { chatMessage in reviewCard(for: chatMessage) },
+                header: { EmptyView() },
+                footer: {
+                    status
+                        .animation(AppMotion.fold, value: isWorking)
+                        .animation(AppMotion.swap, value: session.askSend)
+                },
+                composer: { composer }
+            )
             .background(Color.groundPage)
-            .safeAreaBar(edge: .bottom) { composer }
             .inlineNavigationTitle()
             .navigationTitle(Text(verbatim: "\(session.ref.repo.split(separator: "/").last ?? "")#\(session.ref.number)"))
             .toolbar {
@@ -62,16 +56,54 @@ struct PRAskSheet: View {
         .task(id: session.askChat?.isWorking == true || session.isSendingAsk || session.askSend.isOnItsWay) {
             await session.followAsk()
         }
+        .presentedScrollMargins()
         .askSheetSize()
         // Only when there is nothing yet: words from a line's box are already on their way.
         .onAppear { isWriting = messages.isEmpty && session.askDraft.isEmpty && session.askSend == .idle }
     }
 
-    private static let end = "end"
+    /// The chat as every chat draws it (`ChatView`); a question about a line names the line under it, and his
+    /// questions say how far each got. By place: the question drawn on its way becomes the chat's own message with
+    /// the same id, so it does not fade out and back in.
+    private var chatMessages: [ChatMessage] {
+        messages.enumerated().map { index, message in
+            ChatMessage(
+                id: "ask-\(index)", role: message.isJai ? .mine : .theirs, text: message.text,
+                footnote: message.anchor, ticks: ticks(at: index), hasExtras: message.draft?.reviewEvent != nil
+            )
+        }
+    }
 
-    /// A message as every chat draws it; a question about a line names the line under it.
-    private func message(_ message: PRAskChat.Message) -> some View {
-        SessionBubble(title: nil, text: message.text, date: nil, isMine: message.isJai, footnote: message.anchor)
+    /// How far his question at `index` got: one tick once the Worker has it, two once the agent has it, as working on
+    /// it or answering it shows. None while it is on its way, or when it could not reach the agent.
+    private func ticks(at index: Int) -> DeliveryTicks? {
+        let message = messages[index]
+        guard message.isJai, message.id != "pending" else {
+            return nil
+        }
+        if messages[(index + 1)...].contains(where: { !$0.isJai }) {
+            return .delivered
+        }
+        guard index == messages.count - 1, session.askSend == .idle, session.askChat?.unsentQuestion == nil else {
+            return nil
+        }
+        return isWorking ? .delivered : .sent
+    }
+
+    /// The review an answer drafted, under it: post it, or add it to his drafts to change first.
+    @ViewBuilder private func reviewCard(for chatMessage: ChatMessage) -> some View {
+        if let index = Int(chatMessage.id.dropFirst("ask-".count)), messages.indices.contains(index),
+           let draft = messages[index].draft, let event = draft.reviewEvent {
+            let message = messages[index]
+            PRAskReviewCard(
+                draft: draft, event: event, isUsed: session.isUsed(message),
+                isNewest: session.pendingAskReview?.id == message.id,
+                otherDrafts: session.drafts.count,
+                post: { session.postAskReview(message) },
+                addToDrafts: { session.addAskReviewToDrafts(message) }
+            )
+            .padding(.top, Space.sm)
+        }
     }
 
     @ViewBuilder private var status: some View {
@@ -92,6 +124,8 @@ struct PRAskSheet: View {
     /// Where a question on its way stands: grey, as the chat's own progress is. Nothing is wrong yet.
     private func quietMark(_ words: String, icon: AppIcon) -> some View {
         IconText(words, icon: icon)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(words)
             .font(.appCaption)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .trailing)
@@ -100,15 +134,23 @@ struct PRAskSheet: View {
     }
 
     /// Why a question didn't go, and the way to send it again.
+    /// The reason is the Worker's own, technical (side, status, words, turn id): selectable, to paste to an agent.
     private func failure(_ reason: String) -> some View {
         VStack(alignment: .trailing, spacing: Space.xs) {
             Text(reason)
                 .font(.appFootnote)
                 .foregroundStyle(Color.toneBad)
                 .multilineTextAlignment(.trailing)
-            Button("Try again", systemImage: AppIcon.refresh.symbol) { retry() }
-                .buttonStyle(PRButtonStyle(.secondary))
-                .accessibilityIdentifier("pr-ask-retry")
+                .textSelection(.enabled)
+                .accessibilityIdentifier("pr-ask-failed-reason")
+            HStack(spacing: Space.sm) {
+                Button("Edit", systemImage: AppIcon.compose.symbol) { editFailed() }
+                    .buttonStyle(PRButtonStyle(.secondary))
+                    .accessibilityIdentifier("pr-ask-edit")
+                Button("Retry", systemImage: AppIcon.refresh.symbol) { retry() }
+                    .buttonStyle(PRButtonStyle(.secondary))
+                    .accessibilityIdentifier("pr-ask-retry")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
         .padding(.horizontal, PRStyle.inset)
@@ -155,7 +197,7 @@ struct PRAskSheet: View {
                         .lineLimit(1)
                         .truncationMode(.head)
                     Spacer()
-                    Button("Ask about the whole PR", systemImage: AppIcon.close.symbol) { session.askAnchor = nil }
+                    Button("Ask about the whole PR", systemImage: AppIcon.close.symbol) { session.askAboutWholePR() }
                         .labelStyle(.iconOnly)
                         .font(.appCaption)
                         .foregroundStyle(.secondary)
@@ -184,6 +226,103 @@ struct PRAskSheet: View {
 
     private func retry() {
         Task { await session.retryAsk() }
+    }
+
+    /// The failed question's words back in the box, to change before they go again.
+    private func editFailed() {
+        if case let .failed(question, _) = session.askSend {
+            session.redraft(question.question, about: question.anchor)
+        } else {
+            session.editFailedAsk()
+        }
+        isWriting = true
+    }
+}
+
+/// A review Ask AI drafted: its verdict, its words and its line comments, not yet on GitHub. Posted, it is Jai's
+/// review from his account; added to his drafts, its comments wait in the diff and its words in the review's box.
+struct PRAskReviewCard: View {
+    let draft: PRAskDraft
+    let event: PRReviewEvent
+    let isUsed: Bool
+    /// The newest answer's: "go" posts it.
+    let isNewest: Bool
+    /// His own line comments already waiting: they go with it.
+    let otherDrafts: Int
+    let post: () -> Void
+    let addToDrafts: () -> Void
+
+    private var action: PRReviewAction {
+        switch event {
+        case .approve: .approve
+        case .requestChanges: .requestChanges
+        case .comment: .comment
+        }
+    }
+
+    private static let shownComments = 5
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            HStack {
+                IconText("Draft review: \(action.title)", icon: action.icon)
+                    .font(.appSubheadline.weight(.semibold))
+                    .foregroundStyle(action.tone ?? Color.primary)
+                Spacer()
+                StatusChip(text: isUsed ? "Used" : "Not posted", tint: Color.toneWaiting)
+            }
+            if !draft.body.isEmpty {
+                PRCommentText(draft.body)
+            }
+            if !draft.comments.isEmpty {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    ForEach(Array(draft.comments.prefix(Self.shownComments).enumerated()), id: \.offset) { _, comment in
+                        VStack(alignment: .leading, spacing: Space.xxs) {
+                            Text(verbatim: "\(comment.path):\(comment.line)")
+                                .font(.app(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.head)
+                            Text(comment.body)
+                                .font(.appFootnote)
+                                .lineLimit(3)
+                        }
+                    }
+                    if draft.comments.count > Self.shownComments {
+                        Text("and \(draft.comments.count - Self.shownComments) more line comments")
+                            .font(.appCaption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            if !isUsed {
+                HStack(spacing: Space.sm) {
+                    Button("Post review", systemImage: action.icon.symbol, action: post)
+                        .buttonStyle(PRButtonStyle(.primary))
+                        .accessibilityIdentifier("pr-ask-review-post")
+                    Button("Add to my drafts", systemImage: AppIcon.compose.symbol, action: addToDrafts)
+                        .buttonStyle(PRButtonStyle(.secondary))
+                        .accessibilityIdentifier("pr-ask-review-drafts")
+                }
+                Text(footnote)
+                    .font(.appCaption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(PRStyle.inset)
+        .prCard()
+        .accessibilityIdentifier("pr-ask-review")
+    }
+
+    private var footnote: String {
+        var words = "Posts as you."
+        if otherDrafts > 0 {
+            words += otherDrafts == 1 ? " Your 1 other draft comment goes with it." : " Your \(otherDrafts) other draft comments go with it."
+        }
+        if isNewest {
+            words += " Or say \"go\"."
+        }
+        return words
     }
 }
 

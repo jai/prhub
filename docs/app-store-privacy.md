@@ -37,7 +37,8 @@ if the developer keeps it. Answer these types too while the hosted service is on
 | Type | Purposes | Linked to identity | Tracking |
 |---|---|---|---|
 | Identifiers → User ID | App Functionality | Yes | No |
-| User Content → Other User Content (pull requests, comments) | App Functionality | Yes | No |
+| User Content → Other User Content (pull requests, comments, feedback) | App Functionality | Yes | No |
+| User Content → Photos or Videos (feedback screenshots) | App Functionality | Yes | No |
 
 ## Tracking
 

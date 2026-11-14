@@ -1,3 +1,4 @@
+import FeatureKit
 import Foundation
 import Observation
 
@@ -15,6 +16,8 @@ final class PRHubEnvironment {
     let connection: WorkerConnection
     let prs: PRKitController
     let navigation: PRHubNavigation
+    /// The Feedback tab's requests, over the PR screens' connection. Kept for the app's life, so drafts outlive the tab.
+    let feedback: FeatureRequestsModel
     /// Anonymous usage events, and Settings' switch for them.
     let usage: UsageAnalytics
     /// Runs on the bundled samples (`PRHubEnvironment.sample()`), with no Worker.
@@ -23,6 +26,8 @@ final class PRHubEnvironment {
     private(set) var sample: PRHubEnvironment?
     /// Review alerts: whether they may show, and the one offer to turn them on.
     let alertPermission: PRHubAlertPermission
+    /// Update available, when TestFlight has a newer build than this one.
+    let update: PRHubUpdate
     /// Set as the notification center's delegate at launch (`AppDelegate`), which holds it weakly.
     @ObservationIgnored private(set) lazy var notificationDelegate = PRHubNotificationDelegate(
         open: { [weak self] ref, row in self?.openAlert(ref, row: row) },
@@ -40,6 +45,7 @@ final class PRHubEnvironment {
         authenticate: @escaping Authenticate = WebSignIn.live, usage: UsageAnalytics = .disabled()
     ) {
         self.alertPermission = alertPermission
+        update = PRHubUpdate(defaults: defaults, usage: usage)
         self.usage = usage
         let refusals = SessionRefusals()
         let host = PRHubPRHost(
@@ -55,18 +61,22 @@ final class PRHubEnvironment {
         )
         refusals.connection = connection
         navigation = PRHubNavigation(pullRequests: prs)
+        feedback = FeatureRequestsModel(client: FeatureClient(viewer: prs.client))
         isSample = false
         let connection = connection
         host.config = { connection.config }
+        host.isCheckingInstallations = { connection.isCheckingInstallations }
+        host.leavesForGitHub = { connection.leavesForGitHub($0) }
     }
 
     /// Over `access` (none: nothing is sent) and, for "Try with sample PRs", `samples`.
     init(
         connection: WorkerConnection, access: PRViewerAccess = .offline, samples: PRSampleSet? = nil,
         isSample: Bool = false, alertPermission: PRHubAlertPermission = PRHubAlertPermission(),
-        usage: UsageAnalytics = .disabled(), outbox: (any PRKitOutbox)? = nil
+        usage: UsageAnalytics = .disabled(), outbox: (any PRKitOutbox)? = nil, update: PRHubUpdate? = nil
     ) {
         self.alertPermission = alertPermission
+        self.update = update ?? PRHubUpdate()
         self.usage = usage
         let host = PRHubPRHost(access: access, samples: samples, usage: usage)
         host.outbox = outbox
@@ -74,7 +84,10 @@ final class PRHubEnvironment {
         prs = PRKitController(host: host)
         self.isSample = isSample
         navigation = PRHubNavigation(pullRequests: prs)
+        feedback = FeatureRequestsModel(client: FeatureClient(viewer: prs.client))
         host.config = { connection.config }
+        host.isCheckingInstallations = { connection.isCheckingInstallations }
+        host.leavesForGitHub = { connection.leavesForGitHub($0) }
     }
 
     /// Pairing posts the code to the setup link's Worker once, and never retries: a code is single use. A pr-worker
@@ -95,7 +108,7 @@ final class PRHubEnvironment {
         let account = AccountClient(worker: { endpoint.url }, bearer: { try secrets.loadOrCreate() })
         return WorkerConnection(
             endpoint: endpoint, pairing: pairing,
-            fetchConfig: { try await account.deviceConfig() },
+            fetchConfig: { fresh in try await account.deviceConfig(fresh: fresh) },
             forgetSecret: { try secrets.delete() },
             unpair: unpair,
             defaults: defaults, build: build, usage: usage,
@@ -117,6 +130,21 @@ final class PRHubEnvironment {
         usage.record(.samplesLeft)
         sample = nil
         PRSampleSet.resetListSettings()
+    }
+
+    /// The samples' way out, from their Settings. Where the build signs in with GitHub this is the sign-in itself, in
+    /// one tap, with no stop at onboarding for a second "Sign in with GitHub". Signed in, the samples are over. A
+    /// sign-in that he cancels or that fails leaves him in the samples, with what he did to them; their Settings say
+    /// why it failed (`WorkerConnection.signInProblem`).
+    func leaveSample() async {
+        guard connection.build.signInWithGitHub, connection.hosted != nil else {
+            endSample()
+            return
+        }
+        await signIn()
+        if connection.isPaired {
+            endSample()
+        }
     }
 
     /// Settings' Disconnect: the Worker forgets this phone, the phone forgets the Worker and every PR it mirrored, so
@@ -175,7 +203,9 @@ final class PRHubEnvironment {
         guard !isSample, connection.isPaired, !connection.showsOnboarding else {
             return
         }
-        await alertPermission.offerIfDue(workerPushes: connection.config?.isOn(.push) == true)
+        await alertPermission.offerIfDue(
+            workerPushes: connection.config?.isOn(.push) == true && AppIdentity.receivesPushes
+        )
     }
 
     /// Launch, and every foreground: the Keychain again (a launch before the first unlock reads nothing), the
@@ -189,6 +219,7 @@ final class PRHubEnvironment {
         guard !connection.needsSignInAgain else {
             return
         }
+        update.check(connection.config)
         sendPrefetchReports()
         // The sync sends this launch's push token too, when the Worker pushes.
         await prs.refresh(.foreground)

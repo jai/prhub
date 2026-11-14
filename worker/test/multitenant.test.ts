@@ -4,11 +4,11 @@ import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import { test } from "node:test";
 import { aiStoreKey } from "../src/ai-run.ts";
-import { askRepoToken, installationRepoToken } from "../src/app-token.ts";
+import { askGrant, askRepoToken, installationRepoToken, VISIBLE_REPOS_MS } from "../src/app-token.ts";
 import { askRecordKey } from "../src/ask-chat.ts";
 import { deviceConfig } from "../src/config.ts";
 import { aiJobs, type Env, prIndex, scopedKey } from "../src/env.ts";
-import { authenticate, canSeeWith, hostedAccountConfig, userEnv } from "../src/hosted.ts";
+import { authenticate, canSeeWith, configInstallations, hostedAccountConfig, userEnv } from "../src/hosted.ts";
 import { parseRepoFullName, parseSha, type RepoFullName } from "../src/ids.ts";
 import { parseAppDelivery } from "../src/installations.ts";
 import { gitHubReserveOf, parseLimits, WorkerMode } from "../src/limits.ts";
@@ -296,6 +296,100 @@ test("a signed-out session's config, and one before the first sync, name no inst
   assert.equal("installations" in hostedAccountConfig(auth.session, []), false);
 });
 
+/** `GET /device/config` as the route answers it (`configInstallations`), with `query` on its URL. */
+async function liveConfigOf(world: World, secret: string, query = "") {
+  const request = new Request(`${ORIGIN}/device/config${query}`, bearer(secret));
+  const auth = await authenticate(request, world.workerEnv, world.services);
+  assert.ok("env" in auth);
+  const installations = await configInstallations(request, auth.session, world.services,
+    (promise) => world.waited.push(promise));
+  await Promise.all(world.waited.splice(0));
+  return (hostedAccountConfig(auth.session, installations) as { installations?: { account: string }[] }).installations
+    ?.map((entry) => entry.account);
+}
+
+const installationReads = (world: World) =>
+  world.github.calls.filter((call) => call.url.startsWith("https://api.github.com/user/installations?")).length;
+
+/** Signed in with the sign-in's own read of the installations still on its way, as the app's first config finds it. */
+async function signedInBeforeTheFirstRead(world: World, user: FakeUser): Promise<string> {
+  const secret = await signIn(world, user);
+  const store = world.stores.get(String(user.id));
+  await store?.put("installations", { ids: [], synced_at: world.clock.now - 1_000 });
+  await store?.delete(["installation_accounts"]);
+  return secret;
+}
+
+test("the first config after sign-in reads GitHub before it answers, so an App installed already shows at once", async () => {
+  const world = hostedWorld();
+  world.github.installations.set(11, { account: "acme", repos: ["acme/api"] });
+  world.github.grant(ALICE, ["acme/api"]);
+  const alice = await signedInBeforeTheFirstRead(world, ALICE);
+  const before = installationReads(world);
+  assert.deepEqual(await liveConfigOf(world, alice), ["acme"], "never the install hint for an App already installed");
+  assert.equal(installationReads(world), before + 1);
+  assert.deepEqual(await liveConfigOf(world, alice), ["acme"]);
+  assert.equal(installationReads(world), before + 1, "later opens wait for installation_sync_on_open_minutes");
+});
+
+test("an empty list is read again before the answer, spaced by installation_reads_now_per_minute", async () => {
+  const world = hostedWorld();
+  world.github.grant(ALICE, ["acme/api"]);
+  const alice = await signIn(world, ALICE);
+  world.clock.now += 10_000;
+  assert.deepEqual(await liveConfigOf(world, alice), []);
+  // Installed on acme with no webhook yet: the next open after the gap finds it.
+  world.github.installations.set(11, { account: "acme", repos: ["acme/api"] });
+  world.clock.now += 1_000;
+  assert.deepEqual(await liveConfigOf(world, alice), [], "within the gap: what the Worker holds");
+  world.clock.now += 9_000;
+  assert.deepEqual(await liveConfigOf(world, alice), ["acme"]);
+});
+
+test("?fresh=1, back from GitHub's install pages, reads GitHub before the answer; plain opens keep their ten minutes", async () => {
+  const world = hostedWorld();
+  world.github.installations.set(11, { account: "acme", repos: ["acme/api"] });
+  world.github.grant(ALICE, ["acme/api", "initech/shared"]);
+  const alice = await signIn(world, ALICE);
+  world.github.installations.set(33, { account: "initech", repos: ["initech/shared"] });
+  world.clock.now += 10_000;
+  assert.deepEqual(await liveConfigOf(world, alice), ["acme"], "a plain open answers first and reads later");
+  assert.deepEqual(await liveConfigOf(world, alice, "?fresh=1"), ["acme", "initech"]);
+  const reads = installationReads(world);
+  await liveConfigOf(world, alice, "?fresh=1");
+  assert.equal(installationReads(world), reads, "a second fresh read within the gap reads nothing");
+});
+
+test("installation_reads_now_per_minute set to off leaves no gap between fresh reads", async () => {
+  const world = hostedWorld({ LIMIT_INSTALLATION_READS_NOW_PER_MINUTE: "off" });
+  world.github.installations.set(11, { account: "acme", repos: ["acme/api"] });
+  world.github.grant(ALICE, ["acme/api"]);
+  const alice = await signIn(world, ALICE);
+  const reads = installationReads(world);
+  await liveConfigOf(world, alice, "?fresh=1");
+  await liveConfigOf(world, alice, "?fresh=1");
+  assert.equal(installationReads(world), reads + 2);
+});
+
+test("a read GitHub doesn't answer in time leaves the config as the Worker holds it", async (context) => {
+  const world = hostedWorld();
+  world.github.installations.set(11, { account: "acme", repos: ["acme/api"] });
+  world.github.grant(ALICE, ["acme/api"]);
+  const alice = await signIn(world, ALICE);
+  const fetch = world.services.fetch;
+  world.services.fetch = (input, init) => String(input).includes("/user/installations") ? new Promise(() => {})
+    : fetch(input, init);
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const request = new Request(`${ORIGIN}/device/config?fresh=1`, bearer(alice));
+  const auth = await authenticate(request, world.workerEnv, world.services);
+  assert.ok("env" in auth);
+  world.clock.now += 10_000;
+  const answer = configInstallations(request, auth.session, world.services, () => {});
+  await new Promise((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(8_000);
+  assert.deepEqual((await answer)?.map((entry) => entry.account), ["acme"]);
+});
+
 // --- Isolation of everything a person holds -------------------------------------------------------------------------
 
 test("each person's rows, details, diffs, AI answers, Ask chats and devices live under their own names", () => {
@@ -526,4 +620,124 @@ test("no Ask token is minted for a PR the person's own token cannot read", async
   } finally {
     globalThis.fetch = real;
   }
+});
+
+/** The person's own GitHub, as their token reads it: `prs` they can see, `visible` repos of installation 77. */
+async function withPersonGitHub<T>(
+  { prs, visible }: { prs: string[]; visible: string[] }, run: (asked: string[]) => Promise<T>,
+): Promise<T> {
+  const real = globalThis.fetch;
+  const asked: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    asked.push(`${url} ${new Headers(init?.headers).get("Authorization")}`);
+    if (url.includes("/user/installations/77/repositories")) {
+      return Response.json({ repositories: visible.map((full_name) => ({ full_name })) });
+    }
+    return prs.some((pr) => url.endsWith(`/repos/${pr}`)) ? Response.json({ number: 7 }) : new Response("{}", { status: 404 });
+  }) as typeof fetch;
+  try {
+    return await run(asked);
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+
+function memoryDiffs() {
+  const objects = new Map<string, string>();
+  return {
+    get: async (key: string) => (objects.has(key) ? { json: async () => JSON.parse(objects.get(key)!) } : null),
+    put: async (key: string, value: string) => void objects.set(key, value),
+  };
+}
+
+function hostedPerson() {
+  return userEnv({ GITHUB_APP_ID: "123", GITHUB_APP_PRIVATE_KEY: PEM, DIFFS: memoryDiffs() } as unknown as Env,
+    { userId: "1001", login: "alice", token: "ghu_alice" });
+}
+
+test("hosted, a subscription question's token names every repo of the installation the person can see, and no other", async () => {
+  const { calls, fetcher } = appGitHub();
+  const person = hostedPerson();
+  await withPersonGitHub({ prs: ["acme/api/pulls/7"], visible: ["acme/api", "acme/actions"] }, async (asked) => {
+    const grant = await askGrant(repo("acme/api"), 7, person, fetcher, 1_000);
+    assert.equal(grant.token, "installation-token");
+    assert.deepEqual(grant.repos, ["acme/api", "acme/actions"]);
+    const minted = calls[1].body as { repositories: string[]; permissions: Record<string, string> };
+    assert.deepEqual(minted.repositories, ["api", "actions"], "the sibling repo the person can see");
+    assert.ok(Object.values(minted.permissions).every((level) => level === "read"));
+    assert.ok(asked.every((call) => call.endsWith("Bearer ghu_alice")), "visibility is read with the person's token");
+    assert.ok(calls.every(({ auth }) => !auth.includes("ghu_alice")), "which never goes to the App's calls");
+    const listed = asked.filter((call) => call.includes("/user/installations/77/")).length;
+    await askGrant(repo("acme/api"), 7, person, fetcher, 1_000 + VISIBLE_REPOS_MS - 1);
+    assert.equal(asked.filter((call) => call.includes("/user/installations/77/")).length, listed, "kept a while");
+    await askGrant(repo("acme/api"), 7, person, fetcher, 1_000 + VISIBLE_REPOS_MS);
+    assert.equal(asked.filter((call) => call.includes("/user/installations/77/")).length, listed + 1, "then read again");
+  });
+});
+
+test("hosted, a repo the person can't see stays out of the token", async () => {
+  const { calls, fetcher } = appGitHub();
+  await withPersonGitHub({ prs: ["acme/api/pulls/7"], visible: ["acme/api"] }, async () => {
+    const grant = await askGrant(repo("acme/api"), 7, hostedPerson(), fetcher, 1_000);
+    assert.deepEqual(grant.repos, ["acme/api"]);
+    assert.deepEqual((calls[1].body as { repositories: string[] }).repositories, ["api"]);
+  });
+});
+
+test("hosted, no token for a PR the person can't see, and a clear refusal where the App isn't installed", async () => {
+  const { calls, fetcher } = appGitHub();
+  await withPersonGitHub({ prs: [], visible: [] }, async () => {
+    await assert.rejects(askGrant(repo("acme/secret"), 7, hostedPerson(), fetcher), /can't see this pull request/);
+    assert.equal(calls.length, 0, "the App was never asked");
+  });
+  const notInstalled = (async () => new Response("{}", { status: 404 })) as unknown as typeof fetch;
+  await withPersonGitHub({ prs: ["other/api/pulls/7"], visible: [] }, async () => {
+    await assert.rejects(askGrant(repo("other/api"), 7, hostedPerson(), notInstalled), /GitHub App isn't installed there/);
+  });
+});
+
+test("hosted, with the person's GitHub limit used up, only the repos their own token listed lately stand in for it", async () => {
+  const real = globalThis.fetch;
+  globalThis.fetch = (async () => new Response("{}", {
+    status: 403, headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": "1794536340" },
+  })) as unknown as typeof fetch;
+  try {
+    const { fetcher } = appGitHub();
+    const person = hostedPerson();
+    await assert.rejects(askGrant(repo("acme/api"), 7, person, fetcher, 1_000), /rate limit for your account is used up/,
+      "with no list kept, the limit is the answer");
+    await person.DIFFS.put("users/1001/ask-reach/77.json", JSON.stringify({ at: 1_000, repos: ["acme/api"] }));
+    const grant = await askGrant(repo("acme/api"), 7, person, fetcher, 2_000);
+    assert.equal(grant.checkedBy, "person_cached");
+    assert.deepEqual(grant.repos, ["acme/api"]);
+    await assert.rejects(askGrant(repo("acme/secret"), 7, person, fetcher, 2_000), /rate limit/,
+      "a repo not on their list gets no token");
+    await assert.rejects(askGrant(repo("acme/api"), 7, person, fetcher, 1_000 + VISIBLE_REPOS_MS), /rate limit/,
+      "an old list stands in for nothing");
+  } finally {
+    globalThis.fetch = real;
+  }
+});
+
+test("Jai's Worker: where his Ask App isn't installed, the Worker's token checks the PR out, not read only", async () => {
+  const notInstalled = (async () => new Response("{}", { status: 404 })) as unknown as typeof fetch;
+  const env = { ASK_GITHUB_APP_ID: "9", ASK_GITHUB_APP_KEY: PEM, GITHUB_TOKEN: "worker-token" } as unknown as Env;
+  const grant = await askGrant(repo("jai/prhub"), 48, env, notInstalled);
+  assert.deepEqual(grant, { token: "worker-token", repos: null, readOnly: false });
+  const refused = (async () => new Response("{}", { status: 403 })) as unknown as typeof fetch;
+  await assert.rejects(askGrant(repo("jai/prhub"), 48, env, refused), /GitHub App isn't installed|read access/,
+    "any other refusal still fails the turn");
+});
+
+test("with the API-key path off, a key is refused before Anthropic is asked, and removing one still works", async () => {
+  const { world, alice } = await twoOrgs({ AI_ON_API_KEY: undefined });
+  world.anthropic.valid.add(ALICE_KEY);
+  const put = await world.route("/account/anthropic-key", {
+    method: "PUT", body: JSON.stringify({ key: ALICE_KEY }), ...bearer(alice),
+  });
+  assert.equal(put.status, 409);
+  assert.equal(((await put.json()) as { error: { code: string } }).error.code, "api_key_off");
+  const removed = await world.route("/account/anthropic-key", { method: "DELETE", ...bearer(alice) });
+  assert.equal(removed.status, 204);
 });

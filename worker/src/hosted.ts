@@ -16,7 +16,7 @@ import {
 import type { LimitCheck, LimitDecision } from "./limit-counter.ts";
 import {
   durationOf, gitHubReserveOf, type GitHubReserve, LimitName, limitReachedAnswer, type Limits, limitsOf, rateWindowOf,
-  type RateLimitName,
+  type RateLimitName, readNowGapOf,
 } from "./limits.ts";
 import { authorizeUrl, exchangeCode, type Fetch, type OAuthApp, readUser } from "./oauth.ts";
 import { deviceSecretOf, fingerprintOf, sha256Hex } from "./pairing.ts";
@@ -26,6 +26,7 @@ import {
 } from "./token-crypto.ts";
 import { verifySignature } from "./webhook.ts";
 import { checkAnthropicKey, createAskResources } from "./ask-setup.ts";
+import { onApiKey } from "./agent-container.ts";
 import type { IpLimit } from "./account.ts";
 
 export type HostedMode = { kind: "off" } | { kind: "on"; app: OAuthApp } | { kind: "misconfigured"; missing: string[] };
@@ -69,8 +70,9 @@ export function canMintInstallationTokens(env: Env): boolean {
 
 /**
  * The Worker as it acts for one signed-in person: their token and login, their objects (`user:<id>`), their R2 prefix.
- * AI runs only on the person's own Anthropic key: key lines and rewrites once they gave it, Ask once Ask's resources
- * exist in their org and the Worker can mint installation tokens. Never on the Worker's own key, and Feedback, the
+ * AI runs on the person's own Anthropic key: key lines and rewrites once they gave it, Ask once Ask's resources
+ * exist in their org and the Worker can mint installation tokens. Key lines and rewrites run on the Worker's
+ * subscription only for `SUBSCRIPTION_LOGINS`. Never on the Worker's own key, and Feedback, the
  * relay and Linear, which serve only Jai, stay off.
  */
 export function userEnv(env: Env, user: { userId: string; login: string; token: string; ai?: UserAi }): Env {
@@ -79,6 +81,7 @@ export function userEnv(env: Env, user: { userId: string; login: string; token: 
   return {
     ...env,
     GITHUB_TOKEN: user.token,
+    GITHUB_READ_TOKEN: undefined,
     GITHUB_LOGIN: user.login,
     SIGNED_IN_USER_ID: user.userId,
     GITHUB_ORGS: undefined,
@@ -86,6 +89,7 @@ export function userEnv(env: Env, user: { userId: string; login: string; token: 
     HUB_TOKEN: undefined,
     WEBHOOK_SECRET: undefined,
     ANTHROPIC_API_KEY: ai.anthropicKey ?? undefined,
+    CLAUDE_CODE_OAUTH_TOKEN: subscriptionLogins(env).has(user.login.toLowerCase()) ? env.CLAUDE_CODE_OAUTH_TOKEN : undefined,
     ASK_ANTHROPIC_API_KEY: undefined,
     ASK_AGENT_ID: ask?.agent_id,
     ASK_ENVIRONMENT_ID: ask?.environment_id,
@@ -94,11 +98,15 @@ export function userEnv(env: Env, user: { userId: string; login: string; token: 
     ASK_GITHUB_APP_ID: undefined,
     ASK_GITHUB_APP_KEY: undefined,
     ASK_GITHUB_TOKEN: undefined,
-    FEEDBACK_REPO: undefined,
     AGENT_PAGER_URL: undefined,
     LINEAR_API_KEY: undefined,
     GITHUB_RATE: undefined,
   };
+}
+
+/** The logins whose AI runs on the Worker's subscription (`SUBSCRIPTION_LOGINS`), lowercased. */
+function subscriptionLogins(env: Env): Set<string> {
+  return new Set((env.SUBSCRIPTION_LOGINS ?? "").split(",").map((login) => login.trim().toLowerCase()).filter(Boolean));
 }
 
 /** What the routes reach: the Durable Objects, R2 and GitHub, so a test can stand in for each. */
@@ -131,7 +139,7 @@ export interface AnthropicApi {
 export type AccountApi = Pick<AccountCore,
   "signIn" | "finish" | "session" | "accessToken" | "tokenAfterUnauthorized" | "signOutEverywhere" | "signOut"
   | "deleteAccount" | "setAnthropicKey" | "installationIds" | "claimInstallationSync" | "setInstallations"
-  | "installationAccounts">;
+  | "installationAccounts" | "installationSyncedAt">;
 
 /** The part of a person's `PrIndex` the hosted routes and installations touch. */
 export interface UserIndexApi {
@@ -534,6 +542,9 @@ export async function anthropicKeyRoute(request: Request, env: Env, services: Ho
     await account.setAnthropicKey(null, null);
     return new Response(null, { status: 204 });
   }
+  if (!onApiKey(env)) {
+    return errorAnswer(409, "api_key_off", "AI runs on the subscription for now, so a key can't be added");
+  }
   const body = (await bodyOf(request))?.value as { key?: unknown } | undefined;
   const key = typeof body?.key === "string" ? body.key.trim() : null;
   if (!isAnthropicKeyShape(key)) {
@@ -654,6 +665,41 @@ export async function authenticate(
   return token.kind === "signed_out"
     ? { answer: errorAnswer(401, "signed_out", "sign in with GitHub again"), session }
     : { answer: errorAnswer(503, "github_unavailable", "GitHub could not be asked; try again"), session };
+}
+
+/** How long `GET /device/config` waits for a read of the installations before it answers with the ones it holds. */
+const READ_NOW_WAIT_MS = 8_000;
+
+/**
+ * The installations `GET /device/config` answers with (docs/api.md, "Hosted sign-in"). GitHub is read before the
+ * answer when the app would otherwise show a list that may be wrong: the first config of a new session, a list that is
+ * empty or not read yet, and `?fresh=1`, which the app sends back from GitHub's install pages. Those reads are spaced
+ * by `installation_reads_now_per_minute`, except a new session's first. Any other open reads GitHub after answering,
+ * once the last read is `installation_sync_on_open_minutes` old.
+ */
+export async function configInstallations(
+  request: Request, session: SessionInfo, services: HostedServices, waitUntil: (promise: Promise<unknown>) => void,
+): Promise<InstallationAccount[] | null> {
+  const account = services.account(session.userId);
+  const held = await account.installationAccounts();
+  const isNewSession = await account.installationSyncedAt() < session.createdAt;
+  const readsNow = isNewSession || !held?.length || new URL(request.url).searchParams.get("fresh") === "1";
+  const gapMs = isNewSession ? 0
+    : readsNow ? readNowGapOf(services.limits) : durationOf(services.limits, LimitName.InstallationSyncOnOpenMinutes);
+  const sync = syncInstallations(account, services.installation, services.fetch, services.now(), gapMs)
+    .catch((error: unknown) => console.error("installation sync failed", error));
+  waitUntil(sync);
+  if (!readsNow) {
+    return held;
+  }
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, READ_NOW_WAIT_MS);
+    void sync.finally(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+  return account.installationAccounts();
 }
 
 /**

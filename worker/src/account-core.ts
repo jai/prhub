@@ -113,6 +113,8 @@ export interface SessionInfo {
   reason: SignedOutReason | null;
   /** Whether the person gave their own Anthropic key. The key itself never leaves the account. */
   hasAnthropicKey: boolean;
+  /** When this phone's session was made: its sign-in. */
+  createdAt: number;
 }
 
 const ACCOUNT = "account";
@@ -197,13 +199,14 @@ export class AccountCore {
   async session(fingerprint: string): Promise<SessionInfo | null> {
     const record = await this.#read();
     const now = this.#deps.now();
-    if (!record || !record.sessions.some((session) => timingSafeEqual(session.fingerprint, fingerprint)
-      && this.#isLive(session, now))) {
+    const live = record?.sessions.find((session) => timingSafeEqual(session.fingerprint, fingerprint)
+      && this.#isLive(session, now));
+    if (!record || !live) {
       return null;
     }
     return {
       userId: String(record.user_id), login: record.login, state: record.state, reason: record.signed_out_reason,
-      hasAnthropicKey: (await this.#readAi()) !== null,
+      hasAnthropicKey: (await this.#readAi()) !== null, createdAt: live.created_at,
     };
   }
 
@@ -345,6 +348,11 @@ export class AccountCore {
 
   async installationIds(): Promise<string[]> {
     return (await this.#readInstallations()).ids;
+  }
+
+  /** When the last sync of the person's installations was claimed; 0 before the first. */
+  async installationSyncedAt(): Promise<number> {
+    return (await this.#readInstallations()).synced_at;
   }
 
   /** Whether a sync of the person's installations may run now: not within `gapMs` of the last. Claimed in one turn. */

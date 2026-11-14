@@ -17,10 +17,14 @@ import UIKit
 ///   Settings. The App is installed on `octocat`, on two of acme's repos and, suspended, on initech; with
 ///   `-PRHubInstallations none` on no account, and with `-PRHubInstallations onReturn` on `octocat` alone until the
 ///   app leaves the foreground (as for GitHub), and on acme too when it comes back.
-/// - `-PRHubPaired`: the PRs and Settings over the sample PRs as if paired, every AI feature on. With `-PRHubNoAI` the
+/// - `-PRHubPaired`: the PRs and Settings over the sample PRs as if paired, every AI feature on. With `-PRHubAskWorking`
+///   Ask has a question the agent is still on; with `-PRHubAskAnswered` the agent's long answer to it. With `-PRHubNoAI` the
 ///   Worker has no model key; with `-PRHubSettings` it opens on Settings; with `-PRHubLongDiff` For review starts with a
 ///   PR whose one file is longer than the screen, for the diff's bars; with `-PRHubOpen <link>` it opens that PR as a
-///   link would (`…/pull/N/files` on its diff); with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View.
+///   link would (`…/pull/N/files` on its diff); with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View;
+///   with `-PRHubRefuseFirstReview` the first review sent is refused, so its toast shows Retry, and each review takes
+///   3 seconds to answer. With `-PRHubNewerBuild <n>` it checks for updates, and the config's `app_latest` names this
+///   build's version with a build number `n` higher (0: this build); `-PRHubForgetLater` forgets an earlier Later.
 ///
 /// Every one starts at the default diff font, whatever an earlier run chose in Settings; `-prkit.diffFont face:size`
 /// sets one for the run. `-PRHubAppearance dark` (or `light`) sets the run's appearance whatever the Simulator's is: on
@@ -62,19 +66,77 @@ enum PRHubScreenshots {
         }
         let features: Set<DeviceFeature> = arguments.contains("-PRHubNoAI")
             ? [.push] : [.askAI, .keyLines, .rewrite, .push]
+        var samples: PRSampleSet = arguments.contains("-PRHubLongDiff") ? .prHubLongDiff : .prHub
+        samples.askChat = askChat(arguments)
+        if arguments.contains("-PRHubRefuseFirstReview") {
+            samples.refusesFirstReview = "GitHub didn't answer in time."
+            // Long enough for a loaded test Mac, and a recording, to see each step.
+            samples.reviewDelay = .seconds(3)
+        }
+        // The list under its "Not up to date" line.
+        if arguments.contains("-PRHubNotUpToDate") {
+            samples.notUpToDate = "1 of 125 PRs could not be downloaded and show their last copy. Refresh to try again."
+        }
+        let newer = newerBuild(arguments)
         let environment = PRHubEnvironment.offline(
-            config: DeviceConfig(features: features, login: PRSampleSet.prHubLogin),
-            samples: arguments.contains("-PRHubLongDiff") ? .prHubLongDiff : .prHub,
+            config: DeviceConfig(features: features, login: PRSampleSet.prHubLogin, appLatest: Self.appLatest(newer)),
+            samples: samples,
             worker: URL(string: "https://pr-review.octocat.workers.dev")!, defaultsSuite: "screenshots-paired",
-            isSample: false, usage: .live()
+            isSample: false, usage: .live(), checksUpdates: newer != nil
         )
         if arguments.contains("-PRHubSettings") {
             environment.navigation.selectedTab = .settings
+        }
+        // On the Mac this opens the Feedback window; the phone has the tab only where the Worker serves it.
+        if arguments.contains("-PRHubFeedback") {
+            environment.navigation.selectedTab = .feedback
         }
         if let index = arguments.firstIndex(of: "-PRHubOpen"), arguments.indices.contains(index + 1) {
             environment.prs.open(text: arguments[index + 1])
         }
         return environment
+    }
+
+    /// `-PRHubAskWorking`: a question the agent is on. `-PRHubAskAnswered`: its long answer, in Markdown with code.
+    static func askChat(_ arguments: [String]) -> PRAskChat? {
+        let question = PRAskChat.Message(id: "question-1", role: "you", text: "Is this change tested?", anchor: nil)
+        if arguments.contains("-PRHubAskWorking") {
+            return PRAskChat(messages: [question], isWorking: true, activity: nil, problem: nil, costCents: nil)
+        }
+        guard arguments.contains("-PRHubAskAnswered") else {
+            return nil
+        }
+        let answer = PRAskChat.Message(
+            id: "answer-1", role: "agent",
+            text: """
+                Partly. The retry path is covered, but two things are not:
+
+                - **Idempotency:** `retryPayment` sends the same payment key on every attempt, and \
+                `PaymentServiceTests.testRetryReusesTheKey` checks it whether or not the flag is set.
+                - **Reachability:** at this head, `recordOtpVerified` has no caller in `functions/src` outside tests, \
+                so the recovery screen can never reach it. Either call it from `verifyOtp` or drop it from this PR.
+                """,
+            anchor: nil
+        )
+        return PRAskChat(messages: [question, answer], isWorking: false, activity: nil, problem: nil, costCents: nil)
+    }
+
+    /// `-PRHubNewerBuild <n>`'s `n`, nil without it; `-PRHubForgetLater` forgets an earlier Later first.
+    private static func newerBuild(_ arguments: [String]) -> Int? {
+        if arguments.contains("-PRHubForgetLater") {
+            UserDefaults(suiteName: "screenshots-paired")?.removeObject(forKey: PRHubUpdate.laterKey)
+        }
+        return UserDefaults.standard.string(forKey: "PRHubNewerBuild").flatMap { Int($0) }
+    }
+
+    /// `-PRHubNewerBuild <n>`'s: this build's version, its build number plus `n`, for both groups.
+    private static func appLatest(_ newer: Int?) -> DeviceConfig.AppLatest? {
+        guard let newer else {
+            return nil
+        }
+        let running = AppBuild.running
+        let build = AppBuild(version: running.version, build: String((Int(running.build) ?? 0) + newer))
+        return DeviceConfig.AppLatest(internal: build, public: build)
     }
 
     /// `-PRHubCompactWidth`: the PRs tab as a narrow Split View or Slide Over has it, on any screen.
@@ -136,7 +198,7 @@ enum PRHubScreenshots {
                 pair: { _, _ in throw PairingClient.Failure.server("pairing_code_invalid", 401) },
                 save: { _ in }
             ),
-            fetchConfig: { state.config }, forgetSecret: {}, defaults: defaults, build: build, hosted: hosted
+            fetchConfig: { _ in state.config }, forgetSecret: {}, defaults: defaults, build: build, hosted: hosted
         )
         let samples: PRSampleSet = arguments.contains("-PRHubHostedEmpty")
             ? PRSampleSet(samples: [], mergedReviewed: [], mergedMine: [], answersOnPhone: true) : .prHub
@@ -227,9 +289,9 @@ private final class FakeAccount: Sendable {
 }
 
 extension PRSampleSet {
-    /// The samples, with one more PR first on For review: one file, longer than any phone's screen.
+    /// The samples, with two more PRs first on For review: one file longer than any phone's screen, and three such files.
     static let prHubLongDiff = PRSampleSet(
-        samples: [longDiff] + prHub.samples, mergedReviewed: [], mergedMine: [], answersOnPhone: true
+        samples: [longDiff, longFiles] + prHub.samples, mergedReviewed: [], mergedMine: [], answersOnPhone: true
     )
 
     private static let longDiffMembers = (1...30).map { "member_\($0)" }
@@ -239,14 +301,35 @@ extension PRSampleSet {
         author: "mona", checks: "passing", review: "required", merge: "clean",
         body: "Adds an access membership for each of the deploy team.",
         diff: """
-        diff --git a/zero-trust/access_memberships.tf b/zero-trust/access_memberships.tf
+        diff --git a/zero-trust/cloudflare/access/deploy_memberships.tf b/zero-trust/cloudflare/access/deploy_memberships.tf
         --- /dev/null
-        +++ b/zero-trust/access_memberships.tf
+        +++ b/zero-trust/cloudflare/access/deploy_memberships.tf
         @@ -0,0 +1,\(longDiffMembers.count * 5) @@
 
         """ + longDiffMembers.map { name in
             "+resource \"access_membership\" \"\(name)\" {\n+  group  = \"deploy\"\n+  member = \"\(name)\"\n+}\n+\n"
         }.joined(),
+        keyLines: #"{"items": [], "context": 100, "leftOut": []}"#, comment: nil
+    ).sample
+
+    private static func longFile(_ path: String) -> String {
+        """
+        diff --git a/\(path) b/\(path)
+        --- /dev/null
+        +++ b/\(path)
+        @@ -0,0 +1,\(longDiffMembers.count * 5) @@
+
+        """ + longDiffMembers.map { name in
+            "+resource \"access_membership\" \"\(name)\" {\n+  group  = \"deploy\"\n+  member = \"\(name)\"\n+}\n+\n"
+        }.joined()
+    }
+
+    /// Three files, each longer than the screen: folding one from its pinned header, read from inside it.
+    private static let longFiles = PRHubSample(
+        repo: "acme/infra", number: 32, title: "Give every team access to staging", list: "review",
+        author: "mona", checks: "passing", review: "required", merge: "clean",
+        body: "Adds an access membership for each of three teams.",
+        diff: ["deploy", "data", "support"].map { longFile("zero-trust/\($0)_memberships.tf") }.joined(),
         keyLines: #"{"items": [], "context": 100, "leftOut": []}"#, comment: nil
     ).sample
 }

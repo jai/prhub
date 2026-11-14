@@ -10,6 +10,8 @@ struct PRDescriptionView: View {
     let showDiff: () -> Void
     let reviewChanges: () -> Void
     @State private var action: PRReviewAction?
+    /// The open box's height, as last laid out: a change of it is the box growing or shrinking as its words do.
+    @State private var boxHeight: CGFloat = 0
     private static let descriptionEditor = "description-editor"
 
     private var folds: FoldSet { session.folds }
@@ -23,6 +25,11 @@ struct PRDescriptionView: View {
                     reveal(in: proxy)
                 }
                 .onChange(of: action) {
+                    Task { @MainActor in reveal(in: proxy) }
+                }
+                // A box grows downwards with each line typed, under the keyboard, Post and all (the bug bash's
+                // keyboard bug, 2026-11-10; 13 pt under on an iPhone in the test's picture). It is brought back whole.
+                .onChange(of: boxHeight) {
                     Task { @MainActor in reveal(in: proxy) }
                 }
                 #endif
@@ -44,6 +51,13 @@ struct PRDescriptionView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Space.md) {
                 header
+                if let summary = session.summary {
+                    // A bug's tap is its line in the diff, as in Key lines.
+                    PRKeyLinesSummaryCard(summary: summary, onPage: true) { bug in
+                        session.show(bug)
+                        showDiff()
+                    }
+                }
                 PRChangesCard(detail: detail, showDiff: showDiff, reviewChanges: reviewChanges)
                 PRStatusCard(session: session, detail: detail, folds: folds)
                 PRReviewActions(session: session, isAuthor: detail.isAuthor, action: $action)
@@ -65,7 +79,7 @@ struct PRDescriptionView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
             HStack(alignment: .top, spacing: Space.sm) {
-                Text(session.title)
+                Text(detail.title(session.title))
                     .font(.appTitle3.weight(.semibold))
                     .frame(maxWidth: .infinity, alignment: .leading)
                 PrStateIcon(state: detail.listState)
@@ -74,13 +88,25 @@ struct PRDescriptionView: View {
                 .font(.appCaption)
                 .foregroundStyle(.secondary)
             HStack(spacing: Space.xs) {
-                PRAvatar(author: detail.author)
-                Text("\(detail.author?.login ?? "ghost") wants \(detail.headBranch) in \(detail.base)")
+                PRAvatar(author: detail.bylineAvatar)
+                Text("\(detail.byline) wants \(detail.headBranch) in \(detail.base)")
                     .font(.appCaption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("pr-author")
+            tickets
             labels
+        }
+    }
+
+    /// The tickets the title and branch name, each opening Linear; the title above leaves their brackets out.
+    @ViewBuilder private var tickets: some View {
+        if let tickets = detail.tickets, !tickets.isEmpty {
+            ObjectReferenceLines(references: tickets.map(ObjectReference.init), awaitsLinear: false)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("pr-tickets")
         }
     }
 
@@ -101,6 +127,7 @@ struct PRDescriptionView: View {
             }
             .padding(PRStyle.inset)
             .prCard()
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { boxHeight = $0 }
             .id(action)
             .transition(.fold)
         }
@@ -115,6 +142,7 @@ struct PRDescriptionView: View {
                 ) { try await session.send($0, to: .description) } cancel: {
                     session.discardText(for: .description)
                 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { boxHeight = $0 }
                 .id(Self.descriptionEditor)
                 .transition(.fold)
             } else {

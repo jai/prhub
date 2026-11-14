@@ -138,6 +138,7 @@ test("a question about a line names it, and a chat with nothing yet starts empty
   const ask = question("a", "Why?");
   ask.input.anchor = { path: "src/retry.ts", line: 12, side: "RIGHT" };
   const chat = withQueued(null, [ask], 2_000);
-  assert.deepEqual(chat.messages, [{ id: "queued:a", role: "you", text: "Why?", anchor: "src/retry.ts:12" }]);
+  assert.deepEqual(chat.messages,
+    [{ id: "queued:a", role: "you", text: "Why?", anchor: "src/retry.ts:12", side: "RIGHT" }]);
   assert.equal(chat.isWorking, true);
 });

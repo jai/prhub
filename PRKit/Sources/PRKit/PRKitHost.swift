@@ -26,10 +26,14 @@ public protocol PRKitHost: AnyObject, Sendable {
     /// Where the PR mirror keeps its files (`PRMirrorLocation`): the app group's, so a Notification Service Extension
     /// can prefetch an alert's PR (`PRPushPrefetch`). Nil: the app's caches.
     var mirrorDirectory: URL? { get }
+    /// The empty list's link (`PREmptyHint.link`) is about to open outside the app: the host can read its config again
+    /// when the app comes back.
+    func opensEmptyHintLink(_ url: URL)
 }
 
 extension PRKitHost {
     public var mirrorDirectory: URL? { nil }
+    public func opensEmptyHintLink(_ url: URL) {}
 }
 
 /// The features the PR screens follow and the org filter's starting point. Agent Pager's is `everything`; PRHub's
@@ -47,12 +51,19 @@ public struct PRKitConfiguration: Equatable, Sendable {
     public var login: String?
     /// What the PR list says once the Worker has synced and has no PRs; nil says nothing.
     public var emptyHint: PREmptyHint?
+    /// What the panel's Key lines page says while key lines are off, and the link that turns them on; nil leaves the
+    /// panel on Files alone.
+    public var keyLinesHint: PREmptyHint?
 
-    public init(features: Set<Feature>, orgDefault: PROrgDefault, login: String? = nil, emptyHint: PREmptyHint? = nil) {
+    public init(
+        features: Set<Feature>, orgDefault: PROrgDefault, login: String? = nil, emptyHint: PREmptyHint? = nil,
+        keyLinesHint: PREmptyHint? = nil
+    ) {
         self.features = features
         self.orgDefault = orgDefault
         self.login = login
         self.emptyHint = emptyHint
+        self.keyLinesHint = keyLinesHint
     }
 
     /// Every feature, and every owner in the list until someone picks a filter.
@@ -65,19 +76,22 @@ public struct PRKitConfiguration: Equatable, Sendable {
     }
 }
 
-/// The host's words for an empty PR list, and a link that may fill it: PRHub's hosted service points at installing its
-/// GitHub App.
+/// The host's words for something PRKit can't show yet, and a link that may fix it: PRHub's hosted service points an
+/// empty list at installing its GitHub App, and key lines at the person's Anthropic key.
 public struct PREmptyHint: Equatable, Sendable {
     public var title: String
     public var message: String
     public var linkTitle: String
     public var link: URL
+    /// The host is asking whether the words still hold: a spinner shows in place of the link.
+    public var isChecking: Bool
 
-    public init(title: String, message: String, linkTitle: String, link: URL) {
+    public init(title: String, message: String, linkTitle: String, link: URL, isChecking: Bool = false) {
         self.title = title
         self.message = message
         self.linkTitle = linkTitle
         self.link = link
+        self.isChecking = isChecking
     }
 }
 
@@ -156,6 +170,9 @@ public enum PRKitEvent: Equatable, Sendable {
     case questionRefused(String)
     /// A PR's content is on screen: how it was opened, whether the phone had it, and how long it took.
     case contentShown(PROpenReport)
+    /// A request to the Worker failed: what it was for, and its status or why there was none. Each area's kind of
+    /// failure at most once a minute (`PRViewerClient.reporting`).
+    case requestFailed(PRRequestArea, PRRequestFailure)
 }
 
 /// One PR opened, from the tap to its content on screen (`PRKitEvent.contentShown`).

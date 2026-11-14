@@ -1,4 +1,6 @@
 import { pushMode } from "./apns.ts";
+import type { AppLatest } from "./app-latest.ts";
+import { makesAnswers, onApiKey, onSubscription } from "./agent-container.ts";
 import { type Env, isSet } from "./env.ts";
 import { type LimitName, limitsConfig, limitsOf } from "./limits.ts";
 import { type AiConfig, type AiFeature, type FeatureModels, featureModels, parseAiConfig } from "./models.ts";
@@ -21,6 +23,8 @@ export interface DeviceConfig {
   ai?: { features: Partial<Record<AiFeature, FeatureModels>> };
   /** Each limit in force in this Worker's mode, in its unit; null is off (docs/api.md, "Limits"). */
   limits: Partial<Record<LimitName, number | null>>;
+  /** The newest build each TestFlight group can install (`app-latest.ts`). Absent when it could not be read. */
+  app_latest?: AppLatest;
 }
 
 let parsed: { key: string; config: AiConfig } | null = null;
@@ -35,18 +39,20 @@ export function aiConfigOf(env: Pick<Env, "AI_MODELS_ALLOWED" | "AI_EFFORT_MAX" 
 }
 
 export function askConfigured(env: Env): boolean {
-  return [env.ASK_AGENT_ID, env.ASK_ENVIRONMENT_ID, env.ASK_VAULT_ID, env.ASK_CREDENTIAL_ID].every(isSet)
+  return onSubscription(env) || onApiKey(env) && [env.ASK_AGENT_ID, env.ASK_ENVIRONMENT_ID, env.ASK_VAULT_ID, env.ASK_CREDENTIAL_ID].every(isSet)
     && (isSet(env.ASK_ANTHROPIC_API_KEY) || isSet(env.ANTHROPIC_API_KEY));
 }
 
-/** Jai's alone: the runner on his Mac takes feedback to a coding agent. A self-hosted Worker never sets these. */
-export function feedbackConfigured(env: Env): boolean {
-  return isSet(env.FEEDBACK_REPO) && isSet(env.HUB_TOKEN);
+/** Feedback goes to the FeedbackKit Worker, which keeps every app's. */
+export function featureKitConfigured(env: Env): boolean {
+  return (env.FEEDBACKKIT !== undefined || isSet(env.FEEDBACKKIT_URL)) && isSet(env.FEEDBACKKIT_TOKEN)
+    && isSet(env.FEEDBACKKIT_APP);
 }
 
+
 /** Each feature is on when what serves it is configured; nothing is a separate switch. */
-export function deviceConfig(env: Env, login: string | null): DeviceConfig {
-  const model = isSet(env.ANTHROPIC_API_KEY);
+export function deviceConfig(env: Env, login: string | null, latest?: AppLatest): DeviceConfig {
+  const model = makesAnswers(env);
   const orgs = (env.GITHUB_ORGS ?? "").split(",").map((org) => org.trim()).filter(Boolean);
   const ask = askConfigured(env);
   const on = ([["key_lines", model], ["rewrite", model], ["ask", ask]] as [AiFeature, boolean][])
@@ -57,7 +63,7 @@ export function deviceConfig(env: Env, login: string | null): DeviceConfig {
       ask_ai: ask,
       key_lines: model,
       rewrite: model,
-      feedback: feedbackConfigured(env),
+      feedback: featureKitConfigured(env),
       push: pushMode(env) !== "none",
       webhooks: isSet(env.WEBHOOK_SECRET),
     },
@@ -65,5 +71,6 @@ export function deviceConfig(env: Env, login: string | null): DeviceConfig {
     ...(orgs.length > 0 ? { orgs } : {}),
     ...(on.length > 0 ? { ai: { features: Object.fromEntries(on.map((feature) => [feature, featureModels(ai, feature)])) } } : {}),
     limits: limitsConfig(limitsOf(env)),
+    ...(latest ? { app_latest: latest } : {}),
   };
 }

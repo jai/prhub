@@ -1,0 +1,30 @@
+#!/bin/zsh
+# What happened to one Ask turn, from Workers Logs: every `ask_event` line with its id (docs/api.md, "Tracing an Ask").
+#   scripts/ask-trace.sh <turn id, or its first 8 characters from the chat's failure line> [worker] [hours back]
+# worker: the Worker's name, `prhub` (hosted, the default) or `agent-pager`. Needs CLOUDFLARE_API_TOKEN (Workers
+# Observability read) and CLOUDFLARE_ACCOUNT_ID in the environment. Prints one line a stage: time, stage, milliseconds
+# since the turn began, then the fields.
+set -euo pipefail
+turn=${1:?usage: scripts/ask-trace.sh <turn id> [worker] [hours back]}
+worker=${2:-prhub}
+hours=${3:-24}
+token=${CLOUDFLARE_API_TOKEN:-}
+account=${CLOUDFLARE_ACCOUNT_ID:-}
+[[ -n $token && -n $account ]] || { echo "ask-trace: no Cloudflare token or account id" >&2; exit 2; }
+now=$(( $(date +%s) * 1000 ))
+query=$(jq -n --arg worker "$worker" --arg turn "$turn" --argjson from $(( now - hours * 3600000 )) --argjson to $now '{
+  queryId: "ask-trace", timeframe: {from: $from, to: $to}, view: "events", limit: 100,
+  parameters: {filters: [
+    {key: "$metadata.service", operation: "eq", type: "string", value: $worker},
+    {key: "$metadata.message", operation: "includes", type: "string", value: "ask_event"},
+    {key: "turn", operation: "includes", type: "string", value: $turn}]}}')
+answer=$(curl -sS -X POST "https://api.cloudflare.com/client/v4/accounts/$account/workers/observability/telemetry/query" \
+    -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "$query")
+# Cloudflare's own refusal (a bad token, no access) is not an empty trace: say it and fail.
+if [[ $(jq -r '.success // false' <<< "$answer" 2>/dev/null) != true ]]; then
+    echo "ask-trace: Cloudflare refused the query: $(jq -c '.errors // .' <<< "$answer" 2>/dev/null || print -r -- "$answer")" >&2
+    exit 1
+fi
+jq -r '.result.events.events // [] | sort_by(.timestamp) | if length == 0 then "no ask_event lines for that turn" else
+      .[] | [(.timestamp / 1000 | floor | strftime("%Y-%m-%d %H:%M:%SZ")), .source.stage, ((.source.ms // "") | tostring),
+        (.source | del(.message, .stage, .ms) | tostring)] | @tsv end' <<< "$answer"

@@ -14,10 +14,16 @@ public struct PullRequestRow: Codable, Hashable, Identifiable, Sendable {
     public let status: Status?
     /// The context key lines are ready at for this head. Nil until they are.
     public var keyLines: Int?
+    /// The Linear ticket the row shows, as Linear has it. Absent without one, and from a Worker older than it.
+    public var ticket: PRListTicket?
+    /// Every ticket the row shows, `ticket` first: each its title names that Linear has. Absent from a Worker older
+    /// than it, and then the row shows `ticket` alone.
+    public var tickets: [PRListTicket]?
 
     public init(
-        repo: String, number: Int, title: String, head: String, revision: String, diff: DiffAvailability, detail: String,
-        status: Status?, keyLines: Int? = nil
+        repo: String, number: Int, title: String, head: String, revision: String, diff: DiffAvailability,
+        detail: String, status: Status?, keyLines: Int? = nil, ticket: PRListTicket? = nil,
+        tickets: [PRListTicket]? = nil
     ) {
         self.repo = repo
         self.number = number
@@ -28,6 +34,8 @@ public struct PullRequestRow: Codable, Hashable, Identifiable, Sendable {
         self.detail = detail
         self.status = status
         self.keyLines = keyLines
+        self.ticket = ticket
+        self.tickets = tickets
     }
 
     public struct Status: Codable, Hashable, Sendable {
@@ -39,6 +47,8 @@ public struct PullRequestRow: Codable, Hashable, Identifiable, Sendable {
         /// Absent in a list saved before the Worker sent them.
         public let jaiReview: String?
         public let jaiReviewedAt: String?
+        /// When review was last asked of Jai himself, on the review list only. Absent from a Worker older than it.
+        public var requestedAt: String?
         /// When Jai's review is due, on the review list only. Absent from a Worker older than the SLA.
         public var reviewDueAt: String?
         /// On a merged row only.
@@ -46,7 +56,7 @@ public struct PullRequestRow: Codable, Hashable, Identifiable, Sendable {
 
         public init(
             list: String?, author: String?, checks: String, review: String, merge: String, jaiReview: String?,
-            jaiReviewedAt: String?, reviewDueAt: String? = nil, mergedAt: String? = nil
+            jaiReviewedAt: String?, requestedAt: String? = nil, reviewDueAt: String? = nil, mergedAt: String? = nil
         ) {
             self.list = list
             self.author = author
@@ -55,8 +65,18 @@ public struct PullRequestRow: Codable, Hashable, Identifiable, Sendable {
             self.merge = merge
             self.jaiReview = jaiReview
             self.jaiReviewedAt = jaiReviewedAt
+            self.requestedAt = requestedAt
             self.reviewDueAt = reviewDueAt
             self.mergedAt = mergedAt
+        }
+
+        /// This status with what is given changed.
+        public func with(list: String? = nil, review: String? = nil, mergedAt: String? = nil) -> Status {
+            Status(
+                list: list ?? self.list, author: author, checks: checks, review: review ?? self.review, merge: merge,
+                jaiReview: jaiReview, jaiReviewedAt: jaiReviewedAt, requestedAt: requestedAt, reviewDueAt: reviewDueAt,
+                mergedAt: mergedAt ?? self.mergedAt
+            )
         }
     }
 
@@ -66,13 +86,33 @@ public struct PullRequestRow: Codable, Hashable, Identifiable, Sendable {
         case tooLarge = "too_large"
     }
 
+    /// This row with another status, and everything else as it was.
+    public func with(_ status: Status) -> PullRequestRow {
+        PullRequestRow(
+            repo: repo, number: number, title: title, head: head, revision: revision, diff: diff, detail: detail,
+            status: status, keyLines: keyLines, ticket: ticket, tickets: tickets
+        )
+    }
+
     public var id: String { "\(repo)#\(number)" }
     public var hasDiff: Bool { diff != .tooLarge }
     public var isReviewRequest: Bool { status?.list == "review" }
     /// Jai answered this review. The row stays on the review list, greyed as read, until the PR closes.
     public var isAnswered: Bool { status?.list == "reviewed" }
     public var isMerged: Bool { status?.list == "merged" }
-    public var reviewDue: Date? { isReviewRequest ? status?.reviewDueAt.flatMap { try? Date($0, strategy: .iso8601) } : nil }
+    public var reviewRequestedAt: Date? {
+        isReviewRequest ? status?.requestedAt.flatMap { try? Date($0, strategy: .iso8601) } : nil
+    }
+    /// The Worker's due time, else one day of the phone's own working week from the request (`ReviewWeek.local`).
+    public var reviewDue: Date? {
+        guard isReviewRequest else {
+            return nil
+        }
+        if let due = status?.reviewDueAt.flatMap({ try? Date($0, strategy: .iso8601) }) {
+            return due
+        }
+        return reviewRequestedAt.flatMap { ReviewWeek.local.dueAt(requestedAt: $0) }
+    }
     public func isPastSLA(now: Date) -> Bool { reviewDue.map { $0 <= now } ?? false }
     /// Asked to review again, with his own change request still holding the merge: the first thing on his list.
     public var isWaitingOnJaisChangeRequest: Bool { isReviewRequest && status?.jaiReview == "changes_requested" }

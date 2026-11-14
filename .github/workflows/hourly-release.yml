@@ -1,0 +1,107 @@
+# PRHub's hourly release, the only thing that starts an Xcode Cloud workflow: none starts there on a push or a pull
+# request. Once an hour, and only when main changed the app since the last release (release/cadence.mjs decide), it
+# runs the full tests on GitHub's Macs (ios.yml) on main's head, and when they pass releases that commit
+# (release/cadence.mjs release): ci/release points at it, the next version's tag and GitHub Release
+# (release/version.mjs), and Xcode Cloud's Internal - TestFlight, the Mac's, and PRHub Release when a release commit is
+# waiting, all on ci/release. Red tests release nothing, and the head is not tried again; the next push is.
+# And the newest build each TestFlight group can install, for the app's "Update available": release/app-latest.mjs
+# writes it to app-latest.json on the branch ci/app-latest, which the Workers' GET /device/config reads.
+name: hourly-release
+
+on:
+  schedule:
+    - cron: "7 * * * *"
+  push:
+    branches: [main]
+    paths: [release/cadence*.mjs, release/version*.mjs, release/app-latest*.mjs, .github/workflows/hourly-release.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hourly-release
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: node --test release/cadence.test.mjs release/version.test.mjs release/app-latest.test.mjs
+
+  decide:
+    if: github.event_name != 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha: ${{ steps.decide.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - id: decide
+        run: node release/cadence.mjs decide
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
+
+  ios:
+    needs: decide
+    if: needs.decide.outputs.sha != ''
+    uses: ./.github/workflows/ios.yml
+    with:
+      ref: ${{ needs.decide.outputs.sha }}
+
+  release:
+    needs: [decide, ios]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: node release/cadence.mjs release "$SHA"
+        env:
+          SHA: ${{ needs.decide.outputs.sha }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
+
+  app-latest:
+    if: github.event_name != 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: node release/app-latest.mjs
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          GITHUB_TOKEN: ${{ github.token }}

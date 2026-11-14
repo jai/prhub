@@ -5,8 +5,12 @@ import { backoffOf, heldBackoff, holdBackoff, observe, stops, waitAnswer } from 
 import {
   parseSha, prId, type PrId, repoOf, type RepoFullName, repoParts, type Revision, revisionOf, type Sha, shaOf,
 } from "./ids.ts";
-import { peopleOf } from "./policy-github.ts";
+import { type GitHubCache, peopleOf } from "./policy-github.ts";
 import { PEOPLE_FIELDS, type PeopleDecision, type PeopleNode } from "./policy-people.ts";
+import { botAuthorsOf, isBotAuthor, type RequestedBy, requestedByOf } from "./requester.ts";
+import {
+  allKeys, lookUpTickets, resolvedTickets, rowTickets, type Ticket, type TicketKeys, ticketKeysOf,
+} from "./tickets.ts";
 import type {
   CheckState, ChecksSummary, MergeState, OpenList, PolicyState, PullRequestState, ReviewState,
 } from "./vocab.ts";
@@ -95,8 +99,14 @@ export interface Detail {
   head: string;
   base: string;
   headBranch: string;
-  author: Author | null;
+  author: (Author & { __typename: string; name?: string | null }) | null;
   isAuthor: boolean;
+  /** The author is a bot (`isBotAuthor`): a GitHub App, a `[bot]` login, or an account `BOT_AUTHORS` names. */
+  authorIsBot: boolean;
+  /** The human a bot opened it for, where one is recorded (`requestedByOf`); null for a person's own PR. */
+  requestedBy: RequestedBy | null;
+  /** The Linear issues its title (in brackets), branch and description name, as Linear has them (`resolvedTickets`). */
+  tickets: Ticket[];
   body: string;
   additions: number;
   deletions: number;
@@ -132,6 +142,8 @@ interface CommonStatus {
   /** Jai's own latest review that counts (`jaiReview`), its state lowercased. */
   jaiReview: string | null;
   jaiReviewedAt: string | null;
+  /** A draft PR. Absent on a row stored before it was kept: read as not known. */
+  draft?: boolean;
 }
 
 /**
@@ -139,8 +151,11 @@ interface CommonStatus {
  * what is true of it alone: a due time on the review list, a merge time on a merged row.
  */
 export type RowStatus = CommonStatus & (
-  /** `reviewDueAt`: one working day from when Jai could first see the request (`reviewDueAt`); null without an SLA. */
-  | { list: "review"; reviewDueAt: string | null }
+  /**
+   * `requestedAt`: when review was last asked of Jai himself (null when only a team was asked). `reviewDueAt`: one
+   * working day from when he could first see it (`reviewDueAt`); null without an SLA.
+   */
+  | { list: "review"; requestedAt: string | null; reviewDueAt: string | null }
   | { list: "reviewed" }
   | { list: "mine" }
   | { list: "merged"; mergedAt: string | null }
@@ -162,8 +177,16 @@ export interface PullRequest {
   /** Null when it belongs on none of the lists, and then it has no status. */
   status: OpenRowStatus | null;
   detail: Detail;
+  /** The ticket keys its title, branch and description name, before Linear is asked (`readPullRequests` asks). */
+  ticketKeys: TicketKeys;
+  /** The tickets its row shows (`rowTickets`): empty until Linear has one of its keys. */
+  tickets: Ticket[];
+  /** The first of `tickets`, for an app older than them; null without one. */
+  ticket: Ticket | null;
   /** When review was last asked of the user, for alerts (`alerts.ts`). */
   requestedAt: string | null;
+  /** What `.policy.yml`'s people decided (`peopleOf`): with it, a checks-only read (`readChecks`) keeps the review. */
+  people: PeopleDecision | null;
 }
 
 /**
@@ -201,8 +224,11 @@ interface Node extends Pick<PeopleNode, "peopleComments" | "committers"> {
   mergeable: string;
   mergeStateStatus: string;
   viewerDidAuthor: boolean;
-  author: (Author & { __typename: string }) | null;
+  author: (Author & { __typename: string; name?: string | null }) | null;
   repository: { nameWithOwner: string; viewerDefaultMergeMethod: string | null };
+  assignees?: { nodes: { login: string; name?: string | null; avatarUrl?: string | null }[] };
+  /** The last commits' messages, for a co-author trailer naming who asked a bot for the PR. */
+  trailers?: { nodes: { commit: { message: string } }[] };
   reviewRequests: { nodes: { requestedReviewer: { login?: string; avatarUrl?: string; name?: string } | null }[] };
   requestEvents: { nodes: RequestEvent[] };
   files: { nodes: { path: string; viewerViewedState: string }[] } | null;
@@ -218,8 +244,11 @@ interface Node extends Pick<PeopleNode, "peopleComments" | "committers"> {
 
 const PAGE_SIZE = 50;
 const OPEN = "is:pr is:open archived:false draft:false sort:updated-desc";
-const SEARCHES = [`${OPEN} user-review-requested:@me`, `${OPEN} author:@me`];
-const REVIEWED_SEARCH = `${OPEN} reviewed-by:@me`;
+/**
+ * The searches name the owner (`githubLogin`), never `@me`: with `GITHUB_READ_TOKEN` set, `@me` is the read token's user.
+ */
+const searchesOf = (login: string) => [`${OPEN} user-review-requested:${login}`, `${OPEN} author:${login}`];
+const reviewedSearchOf = (login: string) => `${OPEN} reviewed-by:${login}`;
 const SEARCH_QUERY = `query($q: String!, $n: Int!, $after: String) {
   search(query: $q, type: ISSUE, first: $n, after: $after) {
     pageInfo { hasNextPage endCursor }
@@ -231,9 +260,11 @@ const AUTHOR = "author { login ... on Actor { avatarUrl(size: 80) } }";
 const COMMENT = `id ${AUTHOR} body createdAt`;
 const FIELDS = `fragment Fields on PullRequest {
   id number title body state isDraft url headRefOid headRefName baseRefName updatedAt additions deletions changedFiles
-  reviewDecision mergeable mergeStateStatus viewerDidAuthor
-  author { __typename login avatarUrl(size: 80) }
-  repository { nameWithOwner viewerDefaultMergeMethod }
+  reviewDecision mergeable mergeStateStatus
+  author { __typename login avatarUrl(size: 80) ... on User { name } }
+  repository { nameWithOwner }
+  assignees(first: 5) { nodes { login name avatarUrl(size: 80) } }
+  trailers: commits(last: 20) { nodes { commit { message } } }
   reviewRequests(first: 20) { nodes { requestedReviewer {
     ... on User { login avatarUrl(size: 80) }
     ... on Team { name }
@@ -242,18 +273,25 @@ const FIELDS = `fragment Fields on PullRequest {
   requestEvents: timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 20) { nodes {
     ... on ReviewRequestedEvent { createdAt requestedReviewer { ... on User { login } } }
   } }
-  files(first: 100) { nodes { path viewerViewedState } }
   labels(first: 20) { nodes { name color } }
   overall: commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
   comments(first: 100) { nodes { ${COMMENT} } }
   reviews(last: 50) { nodes { id ${AUTHOR} state body submittedAt } }
   reviewThreads(last: 100) {
     nodes {
-      id isResolved isOutdated viewerCanResolve viewerCanUnresolve path line diffSide
+      id isResolved isOutdated path line diffSide
       comments(first: 30) { nodes { ${COMMENT} } }
     }
   }
   ${PEOPLE_FIELDS}
+}`;
+
+/** What only the owner's own token can answer: these fields are about whoever the token is. */
+const VIEWER_FIELDS = `fragment Viewer on PullRequest {
+  viewerDidAuthor
+  repository { viewerDefaultMergeMethod }
+  files(first: 100) { nodes { path viewerViewedState } }
+  reviewThreads(last: 100) { nodes { id viewerCanResolve viewerCanUnresolve } }
 }`;
 
 /** A PR's checks. Inline, not in a fragment: only GitHub knows which are required, and it asks for the PR's number. */
@@ -267,6 +305,34 @@ export function contextsOf(number: number): string {
   } } } } } }`;
 }
 
+/** The second account's token reads go with (`GITHUB_READ_TOKEN`); null when there is none, and always on the hosted Worker. */
+export function readToken(env: Env): string | null {
+  return !isSet(env.SIGNED_IN_USER_ID) && isSet(env.GITHUB_READ_TOKEN) ? env.GITHUB_READ_TOKEN : null;
+}
+
+/**
+ * Org and team membership: GitHub hides private members and secret teams from an account outside the org, and answers
+ * it 404, which would read as "not a member". The owner's token, who is in the org, asks.
+ */
+const MEMBERSHIP_PATH = /^\/orgs\/[^/]+\/(?:members|teams\/[^/]+\/memberships)\//;
+
+/**
+ * Whether a call only reads, and asks nothing the read token's account may not see: a GET other than a membership
+ * check, or a GraphQL query with no mutation and no `viewer` field in it. Only such a call may go with the read token;
+ * everything else goes as the owner.
+ */
+export function readsAsAnyone(path: string, init: RequestInit): boolean {
+  const method = (init.method ?? "GET").toUpperCase();
+  if (method === "GET") {
+    return !MEMBERSHIP_PATH.test(path);
+  }
+  if (method !== "POST" || path !== "/graphql" || typeof init.body !== "string") {
+    return false;
+  }
+  const { query } = JSON.parse(init.body) as { query?: unknown };
+  return typeof query === "string" && !/\bmutation\b/.test(query) && !/\bviewer/.test(query);
+}
+
 /**
  * Every GitHub call. On the hosted Worker a 401 refreshes the person's token once (`renewAfterUnauthorized`) and the
  * call goes again with the new one; a self-hosted Worker's token is the operator's to replace. Each answer's rate-limit
@@ -274,7 +340,8 @@ export function contextsOf(number: number): string {
  * background run (`GITHUB_RATE` set) also stops when the token's hour runs low.
  */
 async function github(path: string, env: Env, accept: string, init: RequestInit = {}): Promise<Response> {
-  const key = isSet(env.SIGNED_IN_USER_ID) ? `user:${env.SIGNED_IN_USER_ID}` : "self";
+  const reader = readsAsAnyone(path, init) ? readToken(env) : null;
+  const key = isSet(env.SIGNED_IN_USER_ID) ? `user:${env.SIGNED_IN_USER_ID}` : reader ? "self:read" : "self";
   const started = Date.now();
   const held = heldBackoff(key, started);
   if (held && stops(held, started, env.GITHUB_RATE !== undefined)) {
@@ -283,8 +350,12 @@ async function github(path: string, env: Env, accept: string, init: RequestInit 
   const send = async (token: string) => {
     const response = await fetch(`https://api.github.com${path}`, {
       ...init,
-      headers: { Accept: accept, Authorization: `Bearer ${token}`, "User-Agent": "pr-viewer" },
+      headers: { ...init.headers as Record<string, string> | undefined, Accept: accept, Authorization: `Bearer ${token}`,
+        "User-Agent": "pr-viewer" },
     });
+    if (env.GITHUB_CALLS) {
+      env.GITHUB_CALLS.count += 1;
+    }
     const now = Date.now();
     const reserve = gitHubReserveOf(limitsOf(env));
     if (env.GITHUB_RATE) {
@@ -293,7 +364,7 @@ async function github(path: string, env: Env, accept: string, init: RequestInit 
     holdBackoff(key, backoffOf(response, now, reserve));
     return response;
   };
-  const response = await send(env.GITHUB_TOKEN);
+  const response = await send(reader ?? env.GITHUB_TOKEN);
   if (response.status !== 401 || !isSet(env.SIGNED_IN_USER_ID)) {
     return response;
   }
@@ -309,14 +380,19 @@ export function postToGitHub(path: string, body: object, env: Env): Promise<Resp
   return sendToGitHub("POST", path, body, env);
 }
 
-/** A file's text at a commit or branch; with an empty `ref`, on the default branch. */
-export function fetchFile(repo: string, path: string, ref: string, env: Env): Promise<Response> {
+/**
+ * A file's text at a commit or branch; with an empty `ref`, on the default branch. With `etag`, GitHub answers 304 when
+ * the file is unchanged, and a 304 costs nothing of the token's hour.
+ */
+export function fetchFile(repo: string, path: string, ref: string, env: Env, etag?: string): Promise<Response> {
   const encoded = path.split("/").map(encodeURIComponent).join("/");
-  return github(`/repos/${repo}/contents/${encoded}${ref ? `?ref=${ref}` : ""}`, env, "application/vnd.github.raw+json");
+  return github(`/repos/${repo}/contents/${encoded}${ref ? `?ref=${ref}` : ""}`, env, "application/vnd.github.raw+json",
+    etag ? { headers: { "If-None-Match": etag } } : {});
 }
 
-export function getFromGitHub(path: string, env: Env): Promise<Response> {
-  return github(path, env, "application/vnd.github+json");
+/** With `etag`, a conditional GET: 304 when nothing changed, free of the token's hour. */
+export function getFromGitHub(path: string, env: Env, etag?: string): Promise<Response> {
+  return github(path, env, "application/vnd.github+json", etag ? { headers: { "If-None-Match": etag } } : {});
 }
 
 /** A PR GitHub has no answer for is a null in the data and a NOT_FOUND here. Anything else fails the whole read. */
@@ -515,15 +591,15 @@ export function verdictOf(
   };
 }
 
-/** A row's status on one of the open lists; the due time is kept on the review list alone. */
+/** A row's status on one of the open lists; the request and due times are kept on the review list alone. */
 export function rowStatus(
   list: OpenList, author: string | null, checks: ChecksSummary, review: ReviewState, merge: MergeState,
-  mine?: LatestReview, reviewDueAt: string | null = null,
+  mine?: LatestReview, reviewDueAt: string | null = null, requestedAt: string | null = null,
 ): OpenRowStatus {
   const common = {
     author, checks, review, merge, jaiReview: mine?.state.toLowerCase() ?? null, jaiReviewedAt: mine?.submittedAt ?? null,
   };
-  return list === "review" ? { list, ...common, reviewDueAt } : { list, ...common };
+  return list === "review" ? { list, ...common, requestedAt, reviewDueAt } : { list, ...common };
 }
 
 export interface RequestEvent { createdAt?: string; requestedReviewer?: { login?: string } | null }
@@ -582,36 +658,81 @@ export function reviewDueAt(requestedAt: string | null, week: ReviewWeek | null)
   return new Date(due - offset).toISOString().replace(".000Z", "Z");
 }
 
+/** What a check run or a commit status can move on a PR: its checks, PolicyBot's status among them, its merge state. */
+export interface ChecksNode {
+  headRefOid: string;
+  updatedAt: string;
+  reviewDecision: string | null;
+  mergeable: string;
+  mergeStateStatus: string;
+  overall: Node["overall"];
+  commits: Node["commits"];
+}
+
+/** A PR's checks as its row and its detail say them, and the version they make (`PullRequest.version`). */
+export interface ChecksRead {
+  version: string;
+  checks: ChecksSummary;
+  review: ReviewState;
+  merge: MergeState;
+  detail: Pick<Detail, "reviewDecision" | "mergeState" | "merge" | "review" | "policy" | "checks">;
+}
+
+/** The one reading of a PR's checks, for a full read (`pullRequest`) and a checks-only one (`readChecks`) alike. */
+export function checksRead(node: ChecksNode, people: PeopleDecision | null): ChecksRead {
+  const { checks, review, decision, policy, overall, contexts } = verdictOf(node, people);
+  const merge = mergeOf(node.mergeable, node.mergeStateStatus);
+  return {
+    version: `${node.updatedAt}.${overall ?? "NONE"}`, checks, review, merge,
+    detail: {
+      reviewDecision: decision, mergeState: node.mergeStateStatus, merge, review, policy,
+      checks: latestChecks(contexts).filter((context) => !isPolicyBot(context)).map(checkOf),
+    },
+  };
+}
+
 /** A PR read from GitHub, as the index stores it and the phone shows it. Rows and the detail share one verdict. */
 export function pullRequest(
   node: Node, login: string, wasAsked: boolean, week: ReviewWeek | null, people: PeopleDecision | null,
+  bots: ReadonlySet<string> = new Set(),
 ): PullRequest {
-  const { checks, review, decision, policy, overall, contexts } = verdictOf(node, people);
-  const merge = mergeOf(node.mergeable, node.mergeStateStatus);
+  const { version, checks, review, merge, detail: verdict } = checksRead(node, people);
   const list = listOf(node, login, wasAsked);
   const requestedAt = reviewRequestedAt(node.requestEvents.nodes, login);
   const head = shaOf(node.headRefOid);
+  const ticketKeys = ticketKeysOf(node.title, node.headRefName, node.body);
+  const authorIsBot = isBotAuthor(node.author, bots);
   return {
     repo: repoOf(node.repository.nameWithOwner),
     number: node.number,
     title: node.title,
     head,
     revision: revisionOf(head, node.baseRefName),
-    version: `${node.updatedAt}.${overall ?? "NONE"}`,
+    version,
     updatedAt: node.updatedAt,
-    status: list && rowStatus(
-      list, node.author?.login ?? null, checks, review, merge, jaiReview(node, login), reviewDueAt(requestedAt, week),
-    ),
+    people,
+    status: list && {
+      ...rowStatus(
+        list, node.author?.login ?? null, checks, review, merge, jaiReview(node, login), reviewDueAt(requestedAt, week),
+        requestedAt,
+      ),
+      draft: node.isDraft,
+    },
     requestedAt,
+    ticketKeys,
+    tickets: [],
+    ticket: null,
     detail: {
       id: node.id, url: node.url, state: detailState(node), head: node.headRefOid, base: node.baseRefName,
       headBranch: node.headRefName,
-      author: node.author, isAuthor: node.viewerDidAuthor, body: node.body, additions: node.additions,
-      deletions: node.deletions, changedFiles: node.changedFiles, reviewDecision: decision,
-      mergeState: node.mergeStateStatus, merge, review, mergeMethod: node.repository.viewerDefaultMergeMethod, policy,
-      reviewers: reviewersOf(node),
+      author: node.author, isAuthor: node.viewerDidAuthor, authorIsBot,
+      requestedBy: authorIsBot ? requestedByOf(node, bots) : null, tickets: resolvedTickets(ticketKeys, new Map()),
+      body: node.body, additions: node.additions,
+      deletions: node.deletions, changedFiles: node.changedFiles, reviewDecision: verdict.reviewDecision,
+      mergeState: verdict.mergeState, merge, review, mergeMethod: node.repository.viewerDefaultMergeMethod,
+      policy: verdict.policy, reviewers: reviewersOf(node),
       viewedFiles: (node.files?.nodes ?? []).filter((file) => file.viewerViewedState === "VIEWED").map((file) => file.path),
-      labels: node.labels.nodes, checks: latestChecks(contexts).filter((context) => !isPolicyBot(context)).map(checkOf),
+      labels: node.labels.nodes, checks: verdict.checks,
       comments: node.comments, reviews: node.reviews, reviewThreads: node.reviewThreads,
     },
   };
@@ -649,9 +770,10 @@ async function search(q: string, env: Env): Promise<Listing[]> {
  * than his list holds, so what only that search found counts for the rows already held.
  */
 export async function searchListings(env: Env): Promise<Map<PrId, Listing>> {
+  const login = await githubLogin(env);
   const [listed, reviewed] = await Promise.all([
-    Promise.all(SEARCHES.map((q) => search(q, env))),
-    search(REVIEWED_SEARCH, env),
+    Promise.all(searchesOf(login).map((q) => search(q, env))),
+    search(reviewedSearchOf(login), env),
   ]);
   const found = new Map<PrId, Listing>();
   for (const listing of reviewed) {
@@ -708,40 +830,140 @@ export function mergedRow(node: MergedNode): MergedRow {
 }
 
 export const MERGED_SEARCHES = {
-  mine: "is:pr is:merged author:@me archived:false sort:updated-desc",
-  reviewed: "is:pr is:merged reviewed-by:@me -author:@me archived:false sort:updated-desc",
+  mine: (login: string) => `is:pr is:merged author:${login} archived:false sort:updated-desc`,
+  reviewed: (login: string) => `is:pr is:merged reviewed-by:${login} -author:${login} archived:false sort:updated-desc`,
 } as const;
 
 export async function mergedPullRequests(
   env: Env, kind: keyof typeof MERGED_SEARCHES = "mine",
 ): Promise<MergedRow[]> {
+  const q = MERGED_SEARCHES[kind](await githubLogin(env));
   const data = await graphql<{ search: { nodes: (MergedNode | Record<string, never>)[] } }>(MERGED_QUERY,
-    { q: MERGED_SEARCHES[kind], n: MERGED_LIMIT }, env);
+    { q, n: MERGED_LIMIT }, env);
   return data.search.nodes.filter((node): node is MergedNode => "number" in node).map(mergedRow)
     .sort((a, b) => (b.status.mergedAt ?? "").localeCompare(a.status.mergedAt ?? ""));
 }
 
+type Nodes = Record<string, { pullRequest: Node | null } | null>;
+type ViewerNode = Pick<Node, "viewerDidAuthor" | "files"> & {
+  repository: { viewerDefaultMergeMethod: string | null };
+  reviewThreads: { nodes: { id: string; viewerCanResolve: boolean; viewerCanUnresolve: boolean }[] };
+};
+
+function prQuery(refs: PullRequestRef[], fields: (ref: PullRequestRef) => string, fragments: string): string {
+  const parts = refs.map((ref, index) => {
+    const { owner, name } = repoParts(ref.repo);
+    return `p${index}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) {
+      pullRequest(number: ${ref.number}) { ${fields(ref)} } }`;
+  });
+  return `query { ${parts.join("\n")} } ${fragments}`;
+}
+
+/**
+ * The PRs' nodes in one query, as the owner. With a read token, everything but the viewer's fields is read with it, and
+ * those alone, a far cheaper query, as the owner.
+ */
+async function readNodes(refs: PullRequestRef[], env: Env): Promise<Nodes> {
+  const shared = (ref: PullRequestRef) => `...Fields ${contextsOf(ref.number)}`;
+  if (!readToken(env)) {
+    return graphql<Nodes>(prQuery(refs, (ref) => `${shared(ref)} ...Viewer`, `${FIELDS} ${VIEWER_FIELDS}`), {}, env);
+  }
+  const [data, viewer] = await Promise.all([
+    graphql<Nodes>(prQuery(refs, shared, FIELDS), {}, env),
+    graphql<Record<string, { pullRequest: ViewerNode | null } | null>>(prQuery(refs, () => "...Viewer", VIEWER_FIELDS),
+      {}, env),
+  ]);
+  return Object.fromEntries(Object.entries(data).map(([alias, answer]) => {
+    const node = answer?.pullRequest;
+    return [alias, node ? { pullRequest: withViewer(node, viewer[alias]?.pullRequest ?? null) } : answer];
+  }));
+}
+
+/** A node read with the read token, with the owner's own fields put in; none known reads as the owner seeing nothing. */
+export function withViewer(node: Node, viewer: ViewerNode | null): Node {
+  const threads = new Map((viewer?.reviewThreads.nodes ?? []).map((thread) => [thread.id, thread]));
+  return {
+    ...node,
+    viewerDidAuthor: viewer?.viewerDidAuthor ?? false,
+    repository: { ...node.repository, viewerDefaultMergeMethod: viewer?.repository.viewerDefaultMergeMethod ?? null },
+    files: viewer?.files ?? null,
+    reviewThreads: { nodes: node.reviewThreads.nodes.map((thread) => ({
+      ...thread,
+      viewerCanResolve: threads.get(thread.id)?.viewerCanResolve ?? false,
+      viewerCanUnresolve: threads.get(thread.id)?.viewerCanUnresolve ?? false,
+    })) },
+  };
+}
+
+/** `lookUp` asks Linear about ticket keys: the index passes its cache (`cachedTickets`). */
 export async function readPullRequests(
   refs: PullRequestRef[], env: Env, asked: ReadonlySet<string> = new Set(),
+  lookUp: (keys: string[]) => Promise<Map<string, Ticket>> = (keys) => lookUpTickets(keys, env),
+  cache?: GitHubCache,
 ): Promise<Map<PrId, PullRequest | null>> {
+  const [data, login] = await Promise.all([readNodes(refs, env), githubLogin(env)]);
+  const week = reviewWeek(env);
+  const bots = botAuthorsOf(env);
+  const people = await Promise.all(refs.map((ref, index) => {
+    const node = data[`p${index}`]?.pullRequest;
+    return node ? peopleOf(ref.repo, node, env, cache).catch(() => null) : null;
+  }));
+  const read = refs.map((ref, index) => {
+    const node = data[`p${index}`]?.pullRequest;
+    return node ? pullRequest(node, login, asked.has(ref.id), week, people[index] ?? null, bots) : null;
+  });
+  const keys = [...new Set(read.flatMap((pr) => pr ? allKeys(pr.ticketKeys) : []))];
+  const issues = keys.length > 0 ? await lookUp(keys) : new Map<string, Ticket>();
+  for (const pr of read) {
+    if (pr) {
+      pr.detail.tickets = resolvedTickets(pr.ticketKeys, issues);
+      pr.tickets = rowTickets(pr.ticketKeys, pr.detail.tickets);
+      pr.ticket = pr.tickets[0] ?? null;
+    }
+  }
+  return new Map(refs.map((ref, index) => [ref.id, read[index] ?? null]));
+}
+
+const CHECKS_FIELDS = `headRefOid updatedAt reviewDecision mergeable mergeStateStatus
+  overall: commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }`;
+
+/**
+ * Only the checks of the PRs named (`ChecksNode`), all in one query: what a check suite or a status can change. GitHub
+ * prices it at one point for dozens of PRs, where a full read (`readPullRequests`) costs a point per PR and the
+ * `.policy.yml` and membership REST calls besides. A PR GitHub has no answer for maps to null; one it refused (SAML,
+ * say) maps to `"error"`, and the rest are still read. Throws only when the whole query failed.
+ */
+export async function readChecks(refs: PullRequestRef[], env: Env):
+Promise<Map<PrId, ChecksNode | null | "error">> {
   const fields = refs.map((ref, index) => {
     const { owner, name } = repoParts(ref.repo);
     return `p${index}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) {
-      pullRequest(number: ${ref.number}) { ...Fields ${contextsOf(ref.number)} } }`;
+      pullRequest(number: ${ref.number}) { ${CHECKS_FIELDS} ${contextsOf(ref.number)} } }`;
   });
-  const [data, login] = await Promise.all([
-    graphql<Record<string, { pullRequest: Node | null } | null>>(`query { ${fields.join("\n")} } ${FIELDS}`, {}, env),
-    githubLogin(env),
-  ]);
-  const week = reviewWeek(env);
-  const people = await Promise.all(refs.map((ref, index) => {
-    const node = data[`p${index}`]?.pullRequest;
-    return node ? peopleOf(ref.repo, node, env).catch(() => null) : null;
-  }));
-  return new Map(refs.map((ref, index) => {
-    const node = data[`p${index}`]?.pullRequest;
-    return [ref.id, node ? pullRequest(node, login, asked.has(ref.id), week, people[index] ?? null) : null];
-  }));
+  const response = await postGraphql(`query { ${fields.join("\n")} }`, {}, env);
+  if (!response.ok) {
+    throw new Error(`GitHub GraphQL answered ${response.status}`);
+  }
+  const body = (await response.json()) as {
+    data?: Record<string, { pullRequest: ChecksNode | null } | null> | null;
+    errors?: { type?: string; path?: (string | number)[] }[];
+  };
+  const failed = new Set<string>();
+  for (const error of body.errors ?? []) {
+    const alias = error.path?.[0];
+    if (typeof alias !== "string") {
+      throw new Error(`GitHub GraphQL failed: ${error.type ?? "no path"}`);
+    }
+    if (error.type !== "NOT_FOUND") {
+      failed.add(alias);
+    }
+  }
+  if (!body.data) {
+    throw new Error("GitHub GraphQL failed: no data");
+  }
+  const data = body.data;
+  return new Map(refs.map((ref, index) => [ref.id,
+    failed.has(`p${index}`) ? "error" as const : data[`p${index}`]?.pullRequest ?? null]));
 }
 
 /** A picker row for any PR, open or not (`GET /prs/{owner}/{repo}/{n}/summary`). */

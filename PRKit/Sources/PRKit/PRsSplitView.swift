@@ -17,6 +17,7 @@ struct PRsSplitView: View {
                 // The app's readable width is the window's; this column is narrower than it.
                 .contentMargins(.horizontal, 0, for: .scrollContent)
                 .opensPullRequestLinks(on: .replacing($navigation.routes))
+                .sidebarSurface()
         } detail: {
             NavigationStack(path: $navigation.detailRoutes) {
                 Group {

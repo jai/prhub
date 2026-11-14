@@ -21,6 +21,26 @@ struct PRNavigationTests {
         #expect(kit.navigation.pending?.link == PRLink(ref: ref, showsDiff: true))
     }
 
+    #if os(macOS)
+    /// The Mac's stack binds `macPath`: Back takes screens off `routes`, and a tab coming back (path emptied, then set
+    /// again) brings them back.
+    @Test func theMacPathBacksOffAndComesBackAsTheRoutes() {
+        let navigation = PRNavigation()
+        let session = kit.model.session(for: ref, source: .link)
+        navigation.routes = PRRoute.opening(session, showsDiff: true)
+        #expect(navigation.macPath.count == 2)
+
+        navigation.macPath.removeLast()
+        #expect(navigation.routes == [.pullRequest(session)], "Back from the diff is the PR")
+
+        let leftOpen = navigation.macPath
+        navigation.macPath = NavigationPath()
+        #expect(navigation.routes.isEmpty)
+        navigation.macPath = leftOpen
+        #expect(navigation.routes == [.pullRequest(session)], "coming back to the tab shows the PR again")
+    }
+    #endif
+
     @Test func theReviewShortcutPushesThePRWithItsDiffOnTopAndKeyLinesOpen() {
         var routes: [PRRoute] = []
         let opener = PullRequestOpener(
@@ -127,7 +147,7 @@ struct PRNavigationTests {
         #expect(session.topFile == 2 && session.jump?.path == "c")
     }
 
-    @Test func viewedFromTheKeyboardMarksTheFileOnTop() async throws {
+    @Test(.enabled(if: RepoFixtures.areHere)) func viewedFromTheKeyboardMarksTheFileOnTop() async throws {
         let samples = PRSampleSet(samples: [], mergedReviewed: [], mergedMine: [], answersOnPhone: false)
         let kit = PRKitController(host: PRKitControllerTests.Host(samples: samples))
         let text = "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-x\n+y\n"

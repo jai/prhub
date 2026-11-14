@@ -52,6 +52,22 @@ typography:
   caption: { fontFamily: *family, fontSize: 12px, fontWeight: 400 }
   caption2: { fontFamily: *family, fontSize: 11px, fontWeight: 400 }
   code: { fontFamily: system-mono, fontSize: 12px, fontWeight: 400 }
+# The Mac's size for each style, at View → Actual Size (MacTextSize 1.0): the Mac has no Dynamic Type, and the
+# iPhone's sizes read a size too big there. Apple's macOS sizes, with nothing under 11 pt, so secondary lines stay
+# readable. Same family and weights as typography.
+x-mac-typography:
+  large-title: 28px
+  title: 22px
+  title2: 18px
+  title3: 16px
+  headline: 14px
+  subheadline: 13px
+  body: 14px
+  callout: 13px
+  footnote: 12px
+  caption: 11px
+  caption2: 11px
+  code: 12px
 rounded:
   # Inside a block (buttons, fields), a box of its own, and a chat bubble or the chat field.
   sm: 6px
@@ -115,13 +131,14 @@ run `make -C app design` if it is a token, then look at the screenshots (Checkin
 |---|---|---|
 | The font family | `fontFamily` in `large-title` above | every text style |
 | A text size | that style's `fontSize` above (`footnote: 13px`) | every view using `.appFootnote` |
+| A text size on the Mac | that style in `x-mac-typography` above (`footnote: 12px`) | every view using `.appFootnote` on the Mac |
 | Which size a part uses | the part's view (PRSectionTitle, PageHeader, PRButtonStyle) | every place the part is used |
 | The accent | `colors.primary` | buttons, tab selection, focus rings, your own chat bubbles |
 | A state's colour | `tone-good`, `tone-bad`, `tone-waiting`, `tone-merged` (and `-dark`) | state icons, signals, chips, review words |
 | The page or block colour | `Color.groundPage`, `Color.groundCard` in `PRKitDesign/AppColor.swift` | every page and block |
 | A spacing step | `spacing` above (`md: 12px`) | every gap and inset on that step |
 | A corner | `rounded` above: `sm` buttons and fields, `md` boxes, `lg` chat | every button, field, box or bubble |
-| A part's own measure | `PRKitDesign/Metrics.swift` (`PRStyle`, `ChatStyle`, `ChipStyle`, `MarkdownStyle`) | that part everywhere |
+| A part's own measure | `PRKitDesign/Metrics.swift` (`PRStyle`, `ChipStyle`); a chat's, jai/agentchatkit `ChatStyle.swift` (`ChatStyle`, `MarkdownStyle`) | that part everywhere |
 | How fast things move | `x-motion` above | every `AppMotion` animation |
 | The icon style | `x-icons.variant` above | every SF Symbol |
 | A meaning's icon | `PRKitDesign/AppIcon.swift` | every place showing that meaning |
@@ -143,8 +160,9 @@ all of them are in scope. A new screen adds a row here and a step in `PRHubScree
 | PR list | PRs | `PRsView`, `PRsList`, `PrListBlock`, `PRSectionTitle`, `PRSwipeRow` |
 | Review shortcut | PRs → a row's Review button, its swipe right, or its long-press menu | `PrListBlock`, `PRSwipeRow`, `PullRequestOpener` |
 | PR filter | PRs → Filter | `PRFilterPanel`, `PRSectionTitle` |
-| PR description | PRs → a PR | `PRScreen`, `PRDescriptionView`, `PRChangesCard`, `PRStatusCard`, `PRReviewActions`, `.prCard()`, `PRCommentText`, `PRThreadCard` |
-| Ask AI | PRs → a PR → the toolbar, or a line's comment box | `PRAskSheet`, `SessionBubble`, `SessionComposer` |
+| PR description | PRs → a PR: its title, who it is from, its tickets, then status, review and conversation | `PRScreen`, `PRDescriptionView`, `ObjectReferenceLines`, `PRChangesCard`, `PRStatusCard`, `PRReviewActions`, `.prCard()`, `PRCommentText`, `PRThreadCard` |
+| Review in the background | PRs → a PR → Approve, Request changes or Comment → send: the box closes, the toast follows the review | `PRReviewComposer`, `PRReviewToastView` |
+| Ask AI | PRs → a PR → the toolbar, a line's comment box, or a key line's Explain | `PRAskSheet`, `ChatView`, `SessionComposer` |
 | PR diff | PRs → a PR → Review changes, or Files changed | `PRDiffScreen`, `DiffTableView`, `PRDiffPage`, `PRNavigator`, `PRReviewActions` |
 | Settings | Settings; signed in: account, GitHub access, Anthropic key, Sign out, Delete account | `PRHubSettingsView`, `PRPageBlock`, `PRValueLine`, `AnthropicKeySection`, `DeleteAccountSheet` |
 | GitHub access | Settings, signed in: each account the PRHub App is installed on (its repositories, Suspended), each opening its settings on GitHub, then Add another account; read again on every foreground | `GitHubAccessBlock`, `GitHubInstallationLine`, `PRAvatar`, `StatusChip` |
@@ -192,7 +210,7 @@ Every colour is a role in `PRKitDesign/AppColor.swift`. Views use the role, neve
 | Accent | `.tint`, `Color.accentColor` | controls only: buttons, tab selection, a focused field's ring. Never a row's content |
 | Ground | `Color.groundPage`, `Color.groundCard` | the page, and a block or box on it. Both, always: `.background` is black on black in dark |
 | Fill | `Color.groundFill` | behind a field or a quiet button |
-| Line | `Color.line` | a box's hairline border |
+| Line | `Color.line` | a box's hairline border, or the edge between sidebar and detail |
 | Scrim | `Color.scrim` | the dim under a side panel |
 | Linear | `LinearMark`; a state's own colour from Linear's API | the mark and circle only, never words |
 
@@ -211,6 +229,11 @@ tokens. Each style follows Dynamic Type.
 The scale, at the default text size: caption2 11, caption 12, footnote 13, subheadline 15, callout 16, body 17,
 title3 20.
 
+**The Mac** has its own size for each style (`x-mac-typography`): caption2 11, caption 11, footnote 12, subheadline 13,
+callout 13, body 14, title3 16, code 12. View → Make Text Bigger and Make Text Smaller scale all of them together
+(`MacTextSize`); Actual Size is these sizes. What is sized with the text (an avatar, a mark, a row's padding) scales by
+`MacTextSize.layoutScale`, the Mac's body over the iPhone's times the chosen scale, so it keeps its size beside the text.
+
 | Style | Weight | Used for |
 |---|---|---|
 | `.appTitle3` | semibold | a screen's or a sheet's title (`PageHeader`) |
@@ -225,8 +248,13 @@ title3 20.
 **A heading is a step bigger.** A section's heading is one step bigger than the content under it, and it follows the
 content's size: when the content grows or shrinks, the heading moves with it. "Conversation" (subheadline) over comments
 (footnote) is one; the diff's file header is the other: `DiffFont`'s face, bold, 2 pt over the code, at any diff font
-and text size. Its viewed mark grows with it, in a tap target of 44 pt at least, the header row's height, that never
-moves the path or the counts.
+and text size. Its chevron is the same size folded or open, and its viewed mark is about the path's size and grows with
+it, in a tap target of 44 pt at least, the header row's height, that never
+moves the path or the counts. A path too long for its row shrinks first, down to the code's size and no smaller, then is
+cut from the front, so the file's name is what shows; the whole path is in the Files panel.
+
+**The diff stops at its sideways edges.** The code stops at its left and right edges, with no bounce, so the file header
+and the threads and notes, which stay where the screen is, are never pulled off it.
 
 **The diff font.** Code (a diff, a code block, a line quoted in the comment box) is `DiffFont`: one monospaced face and
 a size, chosen in Settings → Diff font and kept on the device. The default is the `code` token, the system's monospaced
@@ -245,13 +273,14 @@ text; an icon is centred in it, so a wide icon never moves the title), **text**,
 Text stays at the avatar's width plus 12, so a part that sits at the text column follows the avatar when the text
 grows.
 
-Division has three levels, one signal each. No other lines, boxes or shadows.
+Division follows these boundaries. Keep edges quiet and continuous.
 
 | Between | Signal |
 |---|---|
 | Sections | the section's title, on the page's grey |
 | Blocks | a band of the page's grey, 8 pt, across the whole width |
-| A PR and its ticket | the rail: a line from the first avatar, turning right to the ticket |
+| Sidebar and detail | a trailing `Color.line` hairline extending through the safe areas, with a soft `Color.scrim` shadow (`Space.sm` radius, `Space.xxs` offset) |
+| A PR and its tickets | the rail: a line from the first avatar, turning right to each ticket |
 
 Rows and blocks go to the screen's edges; their corners are square. A list with notes scrolls in a plain `VStack`: a
 note's block measures its own height, and a `LazyVStack` rebuilds it from nothing and never settles. The PRs tab has no
@@ -291,17 +320,21 @@ The shared parts. Use these; extend one rather than writing a near-copy. Each is
 |---|---|---|
 | `PrListBlock`, `PullRequestRow`, `TicketRow` | an item in a list: its PRs, note and ticket | PRKit `Lists/` |
 | `PullRequestLine`, `TicketLine` | a PR or ticket on one line, under something else | PRKit `Lists/ObjectLines.swift` |
+| `ObjectReferenceLines`, `ObjectReferenceLine` | the PRs or tickets something names, a line each, each opening its page: a PR's tickets, Agent Pager's thread accessory | PRKit `Lists/ObjectLines.swift` |
 | `PrStateIcon`, `PrStatusMarks`, `PrJaiMarkLabel` | a PR's state, its signals, what you did | PRKit `Lists/PrListParts.swift` |
 | `PRSectionTitle` | a section's title on the page's grey | PRKit `Parts/` |
 | `.prCard()` | a box on a PR's page | PRKit `PRParts.swift` |
 | `PRAuthorLine`, `PRAvatar` | who said it and when | PRKit `PRParts.swift` |
-| `PRCommentText`, `MarkdownText` | what people and agents write, in GitHub's Markdown: one renderer for descriptions, comments and chat | PRKit `Parts/Markdown*.swift` |
-| `PRButtonStyle` | every button on a row or screen | PRKit `PRParts.swift` |
+| `PRCommentText`, `MarkdownText` | what people and agents write, in GitHub's Markdown: one renderer for descriptions, comments and chat | AgentChatKit `MarkdownText.swift` (`PRCommentText`: PRKit) |
+| `PRButtonStyle` | every button on a row or screen, its icon and words included | PRKit `PRParts.swift` |
 | `PRReviewActions`, `PRReviewBar`, `PRReviewComposer` | a review: Approve, Request changes and Comment as one bar, and the box each opens, on a PR's page and under its diff | PRKit `PRReviewActions.swift` |
+| `PRReviewToastView` | a review on its way after its box closed: Submitting, then what landed, or why it didn't with Retry | PRKit `PRReviewToast.swift` |
 | `.prField(isFocused:)` | every field you type in | PRKit `PRParts.swift` |
 | `InlineComposer` | writing on a PR, in place | PRKit `PRParts.swift` |
 | `StatusChip` | state words outside lists | PRKit `Parts/` |
-| `SessionBubble`, `SessionComposer` | a message in a chat, and its field; with `ComposerAttachments`, screenshots on it (a paperclip whose menu offers Photos, Files and, while the clipboard holds a picture, Paste; a tray of thumbnails above the field, no room taken while empty) | PRKit `Parts/` |
+| `SessionBubble`, `SessionComposer` | a message in a chat, and its field; with `ComposerAttachments`, screenshots on it (a paperclip whose menu offers Photos, Files and, while the clipboard holds a picture, Paste; a tray of thumbnails above the field, no room taken while empty) | AgentChatKit |
+| `ChatView`, `ChatMessage` | the one chat screen: messages, ticks, tool lines, keeping the reader at the end, the field at the foot, and "Wait, what?" under the agent's newest words where the host turns it on (`waitWhat`; off in Ask AI and Feedback); a host's extras in its slots. Agent Pager's threads, Ask AI and Feedback are each one. A long press on a bubble is Copy, the whole message | AgentChatKit `ChatView.swift` |
+| `DeliveryTicksLine`, `.followsChatEnd` | under one of Jai's messages, how far it got (one tick: the Worker has it; two, the second half over the first: the agent has it); a chat that keeps its reader at its end as an answer grows it. Agent Pager's threads and Ask AI draw with the same ones | AgentChatKit |
 | `IconText`, `.labelStyle(.iconText)` | an icon and its words | PRKitDesign |
 | `sidePanel` | a panel from the right | PRKit `Parts/SidePanel.swift` |
 | `PRSwipeRow`, `PRSwipeAction` | the one swipe on a row: right for Review changes, left for Remove me | PRKit `Phone/`, `Parts/` |
@@ -370,7 +403,8 @@ antiPatterns:
 
 ```text
 name: TicketLine
-purpose: The ticket supporting a block's PRs, in Agent Pager's lists. Quiet. The whole line opens Linear, 44 pt tall at least.
+purpose: The ticket supporting a block's PRs, in Agent Pager's lists and on the PRs tab. Quiet. The whole line opens
+  Linear, 44 pt tall at least.
 parts:
   mark:   { column: text + 16, holds: LinearMark, size: 16 }
   key:    { after: mark, font: appCaption, never truncates }
@@ -380,6 +414,55 @@ parts:
 rules:
   - One to a block, always last, on the rail.
   - No accent, no semibold, no chip.
+```
+
+### PR header
+
+```text
+name: PRDescriptionView.header
+purpose: What the PR is, who it is from and what it is for, at the top of its page.
+parts:
+  title:   { holds: "the PR's title without the brackets of tickets shown below", font: appTitle3 semibold }
+  state:   { holds: PrStateIcon, column: state }
+  ref:     { holds: "repo#N", font: appCaption quiet }
+  byline:  { holds: "PRAvatar and '<who> wants <branch> in <base>'", font: appCaption quiet }
+  tickets: { holds: "ObjectReferenceLines of TicketLine, awaitsLinear false", optional: true }
+  labels:  { holds: StatusChip per label, scrolls sideways, optional: true }
+rules:
+  - Who: the author's profile name, else their login. A bot's PR says "(bot)" after the bot's login, and leads with
+    the person it was opened for when the Worker found one: "Mona Lisa via hubot (bot)". The face is that person's.
+  - Tickets are the title's (in brackets), then the branch's, then the description's, as the Worker sends them, with
+    Linear's state where it could ask. Without Linear a ticket is its key alone: no "Resolving…" that never resolves.
+antiPatterns:
+  - A ticket key both in the title and on a ticket line.
+  - A bot shown as if a person wrote the PR.
+```
+
+### Toast
+
+```text
+name: PRReviewToastView
+purpose: A review on its way after its box closed. It follows the review to GitHub's answer, over whatever is open.
+parts:
+  box:    { holds: "groundCard, Radius.md, hairline, ToastStyle's shadow, ToastStyle.maxWidth at most", place: "top, centred, Space.lg from the sides" }
+  mark:   { holds: "a spinner while sending; AppIcon.done toneGood, .offline toneWaiting, .problem toneBad" }
+  words:  { font: appFootnote semibold, lines: 3, holds: "Submitting review… (Posting comment…), Approved, Changes requested, Comment posted, Saved on this phone…, Review not sent. <why>" }
+  bar:    { holds: "ToastStyle.progressHeight along its foot: the tint easing to ToastStyle.progressWhileSending while it goes, toneGood and full once landed", only: "sending, done" }
+  retry:  { holds: PRButtonStyle(.secondary), only: failed }
+  close:  { holds: AppIcon.close, only: failed }
+states: [sending, waitingForNetwork, done, failed]
+rules:
+  - The box it came from closes at once, read-only while it goes. The review goes through the host's outbox, so it
+    survives the app leaving the foreground; a late answer or refusal still reaches the toast.
+  - It slides down from ToastStyle.travel above, past the top of the screen, and back up the same way, fading
+    (AppMotion.fold); its words, mark and bar change in place (AppMotion.swap). Done stays ToastStyle.dwell, then goes.
+    A line's Comment now and a reply go through it too, and it shows over a PR pushed on any tab. Failed stays until Retry or close, and gives the line comments back to the PR.
+  - Opaque, never glass: over the nav bar, glass let the title's words show through its own. One at a time; a new
+    review replaces it.
+  - Success and failure each have their .sensoryFeedback.
+antiPatterns:
+  - A notice under the review bar for a review the toast is following.
+  - Red for a review still going: offline is waiting, slow is still sending.
 ```
 
 ### Comment
@@ -405,9 +488,9 @@ parts:
   field:  { holds: ".prField(isFocused:)", font: appFootnote, lines: 3 to 10 }
   cancel: { holds: PRButtonStyle(.plain) }
   other:  { holds: PRButtonStyle(.secondary), optional: true }
-  send:   { holds: PRButtonStyle(.primary), last }
+  send:   { holds: PRButtonStyle(.primary) }
 rules:
-  - Buttons sit at the right, send last.
+  - Buttons sit at the right, send last. Approve stays at the left when its review box opens; Cancel stays at the right.
 antiPatterns:
   - A sheet.
 ```
@@ -455,8 +538,11 @@ antiPatterns:
 name: PRButtonStyle
 purpose: Every button on a row or screen.
 rules:
-  - Primary for the one action a place asks (Approve, Connect, Save), secondary for the rest, plain for Cancel.
+  - Primary for the one action a place asks (Connect, Save), secondary for the rest, plain for Cancel, chosen for a
+    standing choice (your review in PRReviewBar): the tint's words on the tint at PRStyle.toneGroundOpacity.
   - Corner Radius.sm, height PRStyle.controlHeight, words appFootnote semibold.
+  - The style lays out an icon and its words as `.iconText` does; a caller never sets a label style. Icon alone is
+    `PRButtonStyle(_, iconOnly: true)`.
 antiPatterns:
   - .bordered, .borderedProminent or .glassProminent on content. Glass only over the diff.
 ---
@@ -468,7 +554,10 @@ parts:
 rules:
   - One bar across the width of the content it sits in (the page's cards; the diff's column), each button the same width.
   - When one button's words don't fit its share, every button shows its icon instead, together.
-  - Approve is primary in toneGood, Request changes secondary in toneBad, Comment secondary. The author sees Comment alone.
+  - Each is secondary: Approve's words in toneGood, Request changes' in toneBad, Comment's in the accent. None is solid:
+    a solid one reads as already chosen. The author sees Comment alone.
+  - Your standing review (Approved, Changes requested) is chosen: its icon and what you did ("Approved"), with
+    `.isSelected`. It shows the moment you send it, ahead of the Worker. A tap opens its box again.
   - What a button opens (PRReviewComposer) opens in place: under the bar on the page, in the bar's place under the diff.
   - Under the diff it leaves with the bars as you read down, and returns with them.
 antiPatterns:
@@ -485,10 +574,28 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
   right closes it. In place: no sheet. A diff's Files and Key lines (`PRNavigator`) use it. It opens on Key lines when
   the PR offers them, else on Files. Where a regular width has room (`PanelStyle`), the diff's panel is a column beside
   the code instead, open until its button puts it away, and a pick in it keeps it open.
-- **A key line's tick:** `PRKeyLineCheck`, `AppIcon.taskOpen` or `.taskDone` in `toneGood`, at the end of its row in Key
-  lines and of its note under the line, 44 pt square. A ticked line's words fade to `PRStyle.doneOpacity` and stay, and
-  the list says how many are reviewed. Previous and Next pass over ticked lines until all are ticked. Ticks are the
-  Worker's, by head, so each device shows the same ones and a new commit starts again (docs/api.md, "Reviewed key lines").
+- **A key line:** in Key lines, a heading (its kind as a `StatusChip`: Risk in `toneBad`, Decision and Logic quiet;
+  its path and line, scrolling sideways, never cut; Explain, `AppIcon.askAI`, which asks Ask AI to explain that line;
+  its tick), then why it matters across the whole width, copied whole from its long-press menu. Its note under the
+  line in the diff: the kind and Close on top, the why (selectable, to copy), then Explain on the left and Mark
+  reviewed / Reviewed on the right, as `PRButtonStyle(.secondary)` buttons. The note stays on screen while the code
+  scrolls sideways, as threads and file headers do.
+- **A PR at a glance:** `PRKeyLinesSummaryCard`, above the key lines on `groundFill`, and on a PR's page under its
+  header as one of the page's cards (`prCard`), when the PR's key lines are already on the phone: the page never asks
+  for them. Three parts, `Space.md` apart:
+  its risk and why, the bugs found (each a tap to its line), and what it does. Each part has a heading, an icon and
+  words through `IconText`'s line, `appSubheadline` semibold: the risk's `AppIcon.risk` in `toneBad` (high) or
+  `toneWaiting` (medium), `.riskLow` in `toneGood`; `.ok` in `toneGood` for "No bugs found", `.bugsFound` in `toneBad`
+  when there are some; `.whatItDoes`, quiet, over "What this does". Under a heading every line is `appFootnote` in the
+  words' column, and a bullet's dot sits in the icons' column, so a second line stays under the first. No emoji: a
+  heading's colour is its icon's tone.
+- **A PR's link:** a long press on a PR's row, and on Open in GitHub in a PR's bar (a click and hold on the Mac),
+  offers Copy link; the bar's also offers Share. A tap on Open in GitHub still opens it.
+- **A key line's tick:** `PRKeyLineCheck`, `AppIcon.taskOpen` or `.taskDone` in `toneGood`, last in its heading in
+  Key lines, 44 pt square; in the note it is the Mark reviewed button. A ticked line's words fade to
+  `PRStyle.doneOpacity` and its controls stay, and the list says how many are reviewed. Previous and Next pass over
+  ticked lines until all are ticked. Ticks are the Worker's, by head, so each device shows the same ones and a new
+  commit starts again (docs/api.md, "Reviewed key lines").
 - **A PR's checks:** each check once, as the Worker sends them (a check run again is its latest run). A name two
   workflows share says its workflow after it, quieter: "detect-changes · Test Coverage". A job's matrix legs ("visual
   proof (web 1/8)") are one line under the job's name with their count and their worst state ("visual proof · 8
@@ -512,7 +619,7 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
 - **Don't** write a near-copy of a part. Extend the part.
 - **Don't** put a status anywhere but its part.
 - **Don't** use the accent for a link in a row. Position says it is a link.
-- **Don't** add a line, box or shadow to separate things. There are three divisions.
+- **Don't** add lines, boxes or shadows beyond the boundaries in Layout.
 - **Don't** use the system's colours (`.green`, `.orange`, `.red`) for a state. Use its tone.
 - **Don't** use `.bordered`, `.borderedProminent` or `.textFieldStyle(.roundedBorder)`. They read as stock.
 - **Don't** use a list's swipe for a row: rows sit in a plain stack. `PRSwipeRow` is the one swipe, and it pans only

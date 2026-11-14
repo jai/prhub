@@ -17,9 +17,44 @@ final class PRHubScreenshotTests: XCTestCase {
         continueAfterFailure = false
     }
 
-    func testEveryScreenInEveryLook() throws {
+    // A look a test: together they are the suite's longest walk (10 minutes on CI's iPhone, 19 on its iPad), and as
+    // three tests CI runs them on three Macs at once (scripts/ui-test-slices.py).
+    func testEveryScreenInLight() throws {
+        try pictures(.light)
+    }
+
+    func testEveryScreenInDark() throws {
+        try pictures(.dark)
+    }
+
+    func testEveryScreenInLargeText() throws {
+        try pictures(.largeText)
+    }
+
+    func testWideListSeparationInEveryLook() throws {
+        defer { XCUIDevice.shared.orientation = .portrait }
+        XCUIDevice.shared.orientation = .landscapeLeft
         for look in Look.allCases {
-            try pictures(look)
+            launch(look, ["-PRHubPaired"])
+            let checkout = app.staticTexts["Show a retry button when checkout fails"]
+            XCTAssertTrue(checkout.waitForExistence(timeout: 10))
+            try picture("2-list-wide", look)
+            checkout.tap()
+            XCTAssertTrue(app.buttons["pr-review-changes"].waitForExistence(timeout: 5))
+            try picture("3-pr-wide", look)
+        }
+    }
+
+    /// The list under its "Not up to date" line. Jai saw the pull-to-refresh spinner and the line's words on top of
+    /// each other (2026-11-14); no synthesized pull refreshes the list in a UI test (three kinds tried, on both
+    /// devices), so that state is not pictured here.
+    func testListUnderItsNotUpToDateLineInEveryLook() throws {
+        for look in Look.allCases {
+            launch(look, ["-PRHubPaired", "-PRHubNotUpToDate"])
+            XCTAssertTrue(app.staticTexts["Show a retry button when checkout fails"].waitForExistence(timeout: 10))
+            let line = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Not up to date'")).firstMatch
+            XCTAssertTrue(line.waitForExistence(timeout: 5))
+            try picture("2-list-banner", look)
         }
     }
 
@@ -52,14 +87,20 @@ final class PRHubScreenshotTests: XCTestCase {
         group.tap()
         XCTAssertTrue(app.buttons["web 1/4"].waitForExistence(timeout: 5))
         try picture("3-pr-checks", look)
-        app.buttons["pr-review-changes"].tap()
+        let review = app.buttons["pr-review-changes"]
+        XCTAssertTrue(app.scrollDown(to: review), "Review changes is out from under the bars")
+        review.tap()
         XCTAssertTrue(app.buttons["key-lines-context-100"].waitForExistence(timeout: 5))
         try picture("4-diff-panel", look)
         app.closePanelOverDiff()
         XCTAssertTrue(app.buttons["key-line-next"].waitForExistence(timeout: 5))
         app.buttons["key-line-next"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["key-line-note"].waitForExistence(timeout: 5))
+        let note = app.descendants(matching: .any)["key-line-note"]
+        XCTAssertTrue(note.waitForExistence(timeout: 5))
         try picture("4-diff-key-line", look)
+        // In the largest text the note ran down to the stepper (Xcode Cloud's picture, 2026-11-14): 2 pt apart.
+        let stepper = app.buttons["key-line-next"]
+        XCTAssertLessThanOrEqual(note.frame.maxY + 8, stepper.frame.minY, "the note is clear of the stepper")
 
         launch(look, ["-PRHubPaired", "-PRHubSettings"])
         XCTAssertTrue(app.staticTexts["prhub-worker-host"].waitForExistence(timeout: 10)

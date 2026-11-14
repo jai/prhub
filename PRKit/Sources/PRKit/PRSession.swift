@@ -118,7 +118,18 @@ final class PRSession: Hashable {
     var barsHidden = false
     /// Asking the PR's AI agent (`PRSession+Ask.swift`).
     var isShowingAsk = false
-    var askDraft = ""
+    /// The question being written. It belongs to what it is about, the PR or one line (`askAnchor`), so words
+    /// written about the PR never go as a question about a line; and the model holds it, so it is still here when the
+    /// PR opens again.
+    var askDraft: String {
+        get {
+            access(keyPath: \.askDraft)
+            return model.askDrafts[askDraftKey] ?? ""
+        }
+        set {
+            withMutation(keyPath: \.askDraft) { model.askDrafts[askDraftKey] = newValue.isEmpty ? nil : newValue }
+        }
+    }
     /// The last question between its send and the chat having it, shown as sent meanwhile (`PRAskSend`).
     var askSend = PRAskSend.idle
     var askAnchor: PRAskQuestion.Anchor?
@@ -126,6 +137,8 @@ final class PRSession: Hashable {
     var isSendingAsk = false
     /// Why the chat could not be read.
     var askError: PRAskReadProblem?
+    /// Drafted reviews used on this device so far: a change redraws their cards (`PRSession+Ask.swift`).
+    var askReviewsUsed = 0
     var isKeyboardUp = false
     /// The line under the PR's actions: a write saved for later, a refusal, or a sample's note.
     var notice: PRNotice?
@@ -145,6 +158,10 @@ final class PRSession: Hashable {
     private(set) var contextLines = UserDefaults.standard.object(forKey: PRSession.contextKey) as? Int
         ?? PRKeyLines.defaultContext
     private var keyLinesByContext: [Int: PRKeyLines] = [:]
+    /// Key lines held without asking, at the chosen context or else any: `summary` reads the PR at a glance from them.
+    var heldKeyLines: PRKeyLines? {
+        keyLinesByContext[contextLines] ?? keyLinesByContext.min { $0.key < $1.key }?.value
+    }
     /// Half-written comments, by `PRComposerTarget.key`. A key with no text is a box open and empty.
     private var writing: [String: String] = [:]
     private let rowTitle: String?
@@ -370,6 +387,42 @@ final class PRSession: Hashable {
         setDrafts(kept, detail: outcome.posted)
     }
 
+    /// Sends a review from its box, which closes at once (`PRsModel.submitReview`): its words and line comments go with
+    /// it, and the toast follows it to GitHub. A refusal puts both back, so the box opens on the words again.
+    func submitReview(_ text: String, to target: PRComposerTarget) throws {
+        guard let content else {
+            throw PRLocalRefusal.notLoaded
+        }
+        var goingOut: [PRDraftComment] = []
+        if case .review = target {
+            goingOut = drafts
+        }
+        let head = content.detail.head
+        let write = target.write(body: text, head: head, drafts: goingOut, description: content.detail.body)
+        discardText(for: target)
+        setDrafts(drafts.filter { !goingOut.contains($0) })
+        notice = nil
+        model.submitReview(write, to: ref, drafts: goingOut, head: head, answer: target.answer) { [weak self] phase, detail in
+            guard let self else {
+                return
+            }
+            switch phase {
+            case .done:
+                discardText(for: target)
+                setDrafts(drafts, detail: detail)
+                withAnimation(AppMotion.fold) { notice = model.writeNotice }
+            case .failed:
+                writing[target.key] = text
+                setDrafts(draftStore.load(ref))
+            case .sending:
+                discardText(for: target)
+                setDrafts(draftStore.load(ref))
+            case .waitingForNetwork:
+                break
+            }
+        }
+    }
+
     func setResolved(_ resolved: Bool, thread: PullRequestDetail.Thread) async throws {
         let write = PRWrite.resolve(thread: thread.id, resolved: resolved)
         let outcome = try await model.write(write, to: ref)
@@ -383,6 +436,11 @@ final class PRSession: Hashable {
         }
         discardText(for: target)
         setDrafts(drafts + [PRDraftComment(id: UUID(), path: path, line: line, side: side, body: text)])
+    }
+
+    /// Line comments from elsewhere (Ask AI's drafted review), after his own.
+    func addDrafts(_ more: [PRDraftComment]) {
+        setDrafts(drafts + more)
     }
 
     func removeDraft(_ draft: PRDraftComment) {
@@ -435,7 +493,7 @@ extension PRSession {
 
     /// From the phone if it has them, and otherwise from the Worker, which runs the model once for each commit and
     /// context. `retry` asks it to run again after a failure.
-    func loadKeyLines(retry: Bool = false) async {
+    func loadKeyLines(retry: Bool = false, afterMove: Bool = false) async {
         guard offersKeyLines, let head = content?.detail.head else {
             return
         }
@@ -457,11 +515,31 @@ extension PRSession {
             return
         } catch let error as URLError where error.code == .cancelled {
             return
+        } catch is PRAIHeadMoved where !afterMove {
+            // The PR has a newer commit: show it, then its key lines. Once, so a PR moving every second can't loop.
+            if await readNewestCommit() {
+                await loadKeyLines(afterMove: true)
+            } else if context == contextLines {
+                keyLines = .failed("This PR has moved on to a newer commit. Open it again to see that one.")
+            }
         } catch {
             if context == contextLines {
                 keyLines = .failed(error.localizedDescription)
             }
         }
+    }
+
+    /// The PR as GitHub has it now, over the copy on screen, and no key lines kept from the older commit.
+    private func readNewestCommit() async -> Bool {
+        guard let fetched = try? await model.fetch(ref, row: nil), case .ready = state else {
+            return false
+        }
+        let content = fetched.content
+            .replacing(drafts: drafts, changedLinesOnly: changedLinesOnly, note: selectedKeyLine)
+        viewedFiles = Set(content.detail.viewedFiles ?? [])
+        keyLinesByContext = [:]
+        withAnimation(AppMotion.swap) { state = .ready(content) }
+        return true
     }
 
     /// Opens the description's box with the model's words in it. Nothing reaches GitHub until Jai taps Save.

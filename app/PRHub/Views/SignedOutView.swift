@@ -34,7 +34,7 @@ struct SignedOutView: View {
                 }
 
                 PRPageBlock {
-                    Text("Signing out forgets your account and its PRs on this phone.")
+                    Text("Signing out forgets your account and its PRs on this \(AppIdentity.deviceName).")
                         .font(.appFootnote)
                         .foregroundStyle(Color.inkQuiet)
                     Button("Sign out") {

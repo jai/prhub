@@ -10,6 +10,7 @@ import type { RowStatus } from "./github.ts";
 import { type DeviceToken, parseRepoFullName, parseSha, type Sha } from "./ids.ts";
 import { type AiJob, EFFORTS, SUPPORTED_MODELS } from "./models.ts";
 import { MAX_KEY_LINE_ID } from "./reviewed-key-lines.ts";
+import type { Ticket } from "./tickets.ts";
 import { PULL_REQUEST_CHECKS, PULL_REQUEST_MERGE_STATES, PULL_REQUEST_REVIEWS } from "./vocab.ts";
 import type { Write } from "./write-input.ts";
 
@@ -133,14 +134,15 @@ const COMMON_STATUS = {
   merge: z.enum(PULL_REQUEST_MERGE_STATES),
   jaiReview: NULLABLE_TEXT,
   jaiReviewedAt: NULLABLE_TEXT,
+  draft: z.boolean().optional(),
 };
 
 /**
- * The status a row was stored with, in today's shape (`ROW_SHAPE`). A due time is kept on the review list alone; one a
+ * The status a row was stored with, in today's shape (`ROW_SHAPE`). A request and due time are kept on the review list alone; one a
  * row on another list was stored with, as all were before, is dropped.
  */
 const RowStatusSchema = z.discriminatedUnion("list", [
-  z.object({ list: z.literal("review"), ...COMMON_STATUS, reviewDueAt: NULLABLE_TEXT }),
+  z.object({ list: z.literal("review"), ...COMMON_STATUS, requestedAt: NULLABLE_TEXT, reviewDueAt: NULLABLE_TEXT }),
   z.object({ list: z.literal("reviewed"), ...COMMON_STATUS }),
   z.object({ list: z.literal("mine"), ...COMMON_STATUS }),
   z.object({ list: z.literal("merged"), ...COMMON_STATUS, mergedAt: NULLABLE_TEXT }),
@@ -158,6 +160,35 @@ export function parseRowStatus(stored: string | null): RowStatus | null {
     return parser<RowStatus>(RowStatusSchema)(JSON.parse(stored));
   } catch {
     return null;
+  }
+}
+
+const TicketSchema = z.object({
+  key: z.string(), url: NULLABLE_TEXT, title: NULLABLE_TEXT, state: NULLABLE_TEXT, state_type: NULLABLE_TEXT,
+  state_color: NULLABLE_TEXT, found: z.boolean().nullable(),
+});
+
+/** A Linear ticket the index stored (a row's `ticket`, `tickets.ticket`); null for none, or for one that won't parse. */
+export function parseStoredTicket(stored: string | null): Ticket | null {
+  if (stored === null) {
+    return null;
+  }
+  try {
+    return parser<Ticket>(TicketSchema)(JSON.parse(stored));
+  } catch {
+    return null;
+  }
+}
+
+/** The tickets the index stored for a row (`tickets`); empty for none, or for a list that won't parse. */
+export function parseStoredTickets(stored: string | null): Ticket[] {
+  if (stored === null) {
+    return [];
+  }
+  try {
+    return parser<Ticket[]>(z.array(TicketSchema))(JSON.parse(stored)) ?? [];
+  } catch {
+    return [];
   }
 }
 

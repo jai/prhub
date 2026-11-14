@@ -4,12 +4,28 @@
 # first checks the commit is a release (release.sh) and sets CURRENT_PROJECT_VERSION to Xcode Cloud's build number,
 # which is the number TestFlight shows. release/next-build.sh picks N so the two agree; when they do not, Xcode Cloud's
 # number wins and this says so.
-# No Package.resolved: Xcode Cloud resolves packages only from one, but PRKit is this repo's own package (project.yml,
-# `path: ..`) and Package.swift has no dependencies, so there is nothing to pin. A remote package needs one committed
-# and copied into the generated project here.
+# Xcode Cloud resolves packages only from a Package.resolved, and the generated project has none: app/Package.resolved
+# pins the remote ones (PostHog) and goes into the project here. Refresh it when project.yml's packages change:
+# `xcodebuild -resolvePackageDependencies` in app/, then copy the project's Package.resolved back to app/.
+# In every workflow it sets MARKETING_VERSION to the newest vX.Y.Z tag reachable from the commit (release/version.mjs
+# makes them from conventional commits; nobody edits MARKETING_VERSION). The clone can be shallow and without tags.
+# In the Internal - TestFlight workflow, and the Mac's, it marks the build as the Internal group's
+# (PRHUB_INTERNAL_TESTFLIGHT).
 set -euo pipefail
 source "${0:A:h}/release.sh"
 app=$CI_PRIMARY_REPOSITORY_PATH/app
+repo_git=(git -C "$CI_PRIMARY_REPOSITORY_PATH")
+if [[ $("${repo_git[@]}" rev-parse --is-shallow-repository) == true ]]; then
+    "${repo_git[@]}" fetch --quiet --unshallow --tags
+else
+    "${repo_git[@]}" fetch --quiet --tags
+fi
+version_tag=$("${repo_git[@]}" describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' HEAD)
+version=${version_tag#v}
+[[ $version =~ '^[0-9]+\.[0-9]+\.[0-9]+$' ]] || { echo "error: the newest v-tag, $version_tag, is not vX.Y.Z" >&2; exit 1; }
+sed -i '' -E "s/^([[:space:]]*MARKETING_VERSION:)[[:space:]]+.+$/\1 $version/" "$app/project.yml"
+grep -q "MARKETING_VERSION: $version\$" "$app/project.yml"
+echo "version: PRHub $version ($version_tag)"
 if [[ -n $release_build ]]; then
     number=${CI_BUILD_NUMBER:?}
     if [[ $number != "$release_build" ]]; then
@@ -19,6 +35,16 @@ if [[ -n $release_build ]]; then
     grep -q "CURRENT_PROJECT_VERSION: $number\$" "$app/project.yml"
     echo "release: PRHub build $number — $release_notes"
 fi
+echo "workflow: ${CI_WORKFLOW_ID:-no id} (${CI_WORKFLOW:-no name})"
+# An Internal - TestFlight build compares itself with the Internal group's newest build for Update available
+# (PRHubUpdate); every other build with the Public group's.
+if [[ ${CI_WORKFLOW_ID:-} == "$internal_workflow" || ${CI_WORKFLOW_ID:-} == "$internal_mac_workflow" ]]; then
+    print 'SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) PRHUB_INTERNAL_TESTFLIGHT' >> "$app/Config/PRHub.xcconfig"
+    echo "internal: built for the Internal TestFlight group"
+fi
 HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install --quiet xcodegen
 cd "$app"
 xcodegen generate --spec project.yml
+resolved=PRHub.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+mkdir -p "$resolved"
+cp Package.resolved "$resolved/Package.resolved"

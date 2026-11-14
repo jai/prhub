@@ -11,6 +11,10 @@ final class PRHubPRHost: PRKitHost {
     let usage: UsageAnalytics
     /// The connection's config, read through: a new config shows at once. `nil` before the first read.
     var config: @MainActor () -> DeviceConfig? = { nil }
+    /// Whether the connection is reading the installations again, back from GitHub (`WorkerConnection`).
+    var isCheckingInstallations: @MainActor () -> Bool = { false }
+    /// The empty list's link is opening on GitHub.
+    var leavesForGitHub: @MainActor (URL) -> Void = { _ in }
 
     init(access: PRViewerAccess, samples: PRSampleSet?, usage: UsageAnalytics) {
         self.access = access
@@ -21,12 +25,18 @@ final class PRHubPRHost: PRKitHost {
     func isInForeground() async -> Bool { appIsInForeground() }
 
     var configuration: PRKitConfiguration {
-        Self.configuration(config())
+        Self.configuration(config(), isCheckingInstallations: isCheckingInstallations())
+    }
+
+    func opensEmptyHintLink(_ url: URL) {
+        leavesForGitHub(url)
     }
 
     /// What the PR screens follow of a Worker's config: its features, its `orgs` as the filter's default (else every
-    /// owner), its login, and on the hosted Worker the empty list's pointer to where the GitHub App is missing.
-    static func configuration(_ config: DeviceConfig?) -> PRKitConfiguration {
+    /// owner), its login, and on the hosted Worker the empty list's pointer to where the GitHub App is missing (or
+    /// Checking GitHub while the installations are read again) and, with no Anthropic key, the Key lines page's pointer
+    /// to Settings.
+    static func configuration(_ config: DeviceConfig?, isCheckingInstallations: Bool = false) -> PRKitConfiguration {
         let all: [PRKitConfiguration.Feature: DeviceFeature] = [
             .askAI: .askAI, .keyLines: .keyLines, .rewrite: .rewrite, .push: .push,
         ]
@@ -34,9 +44,33 @@ final class PRHubPRHost: PRKitHost {
             features: Set(all.filter { config?.isOn($0.value) == true }.keys),
             orgDefault: .following(orgs: config?.orgs),
             login: config?.login,
-            emptyHint: config.flatMap { $0.hosted ? installHint($0) : nil }
+            emptyHint: config.flatMap { config in
+                guard config.hosted else {
+                    return nil
+                }
+                return isCheckingInstallations ? checkingHint : installHint(config)
+            },
+            keyLinesHint: config.flatMap { $0.hosted && !$0.isOn(.keyLines) ? anthropicKeyHint : nil }
         )
     }
+
+    /// Back from GitHub, while the hosted Worker reads where the App is installed: no link to GitHub yet.
+    static let checkingHint = PREmptyHint(
+        title: "Checking GitHub…",
+        message: "PRHub is reading where its GitHub App is installed.",
+        linkTitle: "Install PRHub App",
+        link: PRHubBuild.appInstallURL,
+        isChecking: true
+    )
+
+    /// The hosted Worker runs key lines on the person's own Anthropic key only.
+    static let anthropicKeyHint = PREmptyHint(
+        title: "Key lines need your Anthropic key",
+        message: "PRHub reads each change with your own Anthropic key, billed to your Anthropic account. Add it in "
+            + "Settings, under AI, and key lines show here.",
+        linkTitle: "Add your key in Settings",
+        link: PRHubBuild.settingsURL
+    )
 
     /// The hosted Worker sees only repos where the PRHub App is installed, so an empty list says where it is and
     /// where it is missing: on no account, suspended, or not on the person's own.
@@ -118,7 +152,8 @@ final class PRHubPRHost: PRKitHost {
     /// The mirror in the app group (`PRHubAppGroup` in Info.plist). The first launch with it moves the caches' mirror
     /// there, so nothing is downloaded again.
     nonisolated static func mirrorDirectory(bundle: Bundle = .main) -> URL {
-        let group = bundle.object(forInfoDictionaryKey: "PRHubAppGroup") as? String
+        // Empty on the Mac (PRHub.xcconfig), whose mirror stays in its own caches.
+        let group = (bundle.object(forInfoDictionaryKey: "PRHubAppGroup") as? String).flatMap { $0.isEmpty ? nil : $0 }
         let shared = PRMirrorLocation.directory(appGroup: group)
         let old = PRMirrorLocation.directory(appGroup: nil)
         let manager = FileManager.default

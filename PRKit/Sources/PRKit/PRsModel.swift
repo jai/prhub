@@ -39,23 +39,98 @@ enum PRListPage: String, CaseIterable, Identifiable {
         }
     }
 
-    func entries(_ rows: [PullRequestRow]) -> [Entry] {
+    /// `grouping` puts a header over each repo's or author's rows, in the order their first row comes. On the review
+    /// list the groups hold what Jai still has to review, and Recently Reviewed stays one section under them.
+    func entries(_ rows: [PullRequestRow], grouping: PRListGrouping = .none) -> [Entry] {
         let section = { (title: String, rows: [PullRequestRow]) -> [Entry] in
             rows.isEmpty ? [] : [.header(title)] + rows.map(Entry.row)
         }
-        guard self == .review, !rows.contains(where: \.isMerged) else {
-            return rows.map(Entry.row)
+        let grouped = { (rows: [PullRequestRow]) -> [Entry] in
+            guard let key = grouping.key else {
+                return rows.map(Entry.row)
+            }
+            var names: [String] = []
+            var groups: [String: [PullRequestRow]] = [:]
+            for row in rows {
+                let name = key(row)
+                if groups[name] == nil {
+                    names.append(name)
+                }
+                groups[name, default: []].append(row)
+            }
+            return names.flatMap { section($0, groups[$0] ?? []) }
         }
-        return section("Review Pending", rows.filter { !$0.isAnswered })
+        guard self == .review, !rows.contains(where: \.isMerged) else {
+            return grouped(rows)
+        }
+        let pending = rows.filter { !$0.isAnswered }
+        return (grouping == .none ? section("Review Pending", pending) : grouped(pending))
             + section("Recently Reviewed", rows.filter(\.isAnswered))
     }
 
-    /// Past the review SLA first, the longest overdue on top; then the rows waiting on Jai's own change request; then
-    /// the rest, each in the order it came.
-    static func ordered(_ rows: [PullRequestRow], now: Date = .now) -> [PullRequestRow] {
-        let late = rows.filter { $0.isPastSLA(now: now) }.sorted { ($0.reviewDue ?? now) < ($1.reviewDue ?? now) }
-        let rest = rows.filter { !$0.isPastSLA(now: now) }
-        return late + rest.filter(\.isWaitingOnJaisChangeRequest) + rest.filter { !$0.isWaitingOnJaisChangeRequest }
+    /// `.sla`: past the review SLA first, the longest overdue on top; then the rows waiting on Jai's own change
+    /// request; then the rest, the longest waiting first. `.oldest` and `.newest` go by when review was asked alone.
+    /// Rows with no request time (My PRs, Recently Reviewed) keep the order they came in, after the rest.
+    static func ordered(_ rows: [PullRequestRow], by order: PRListOrder = .sla, now: Date = .now) -> [PullRequestRow] {
+        switch order {
+        case .sla:
+            let late = rows.filter { $0.isPastSLA(now: now) }.sorted { ($0.reviewDue ?? now) < ($1.reviewDue ?? now) }
+            let rest = byAge(rows.filter { !$0.isPastSLA(now: now) }, newestFirst: false)
+            return late + rest.filter(\.isWaitingOnJaisChangeRequest) + rest.filter { !$0.isWaitingOnJaisChangeRequest }
+        case .oldest:
+            return byAge(rows, newestFirst: false)
+        case .newest:
+            return byAge(rows, newestFirst: true)
+        }
+    }
+
+    private static func byAge(_ rows: [PullRequestRow], newestFirst: Bool) -> [PullRequestRow] {
+        rows.enumerated().sorted { first, second in
+            switch (first.element.reviewRequestedAt, second.element.reviewRequestedAt) {
+            case let (one?, two?) where one != two: newestFirst ? one > two : one < two
+            case (.some, nil): true
+            case (nil, .some): false
+            default: first.offset < second.offset
+            }
+        }.map(\.element)
+    }
+}
+
+/// How a page of the PRs tab is ordered, saved on the phone.
+enum PRListOrder: String, CaseIterable, Identifiable {
+    case sla, oldest, newest
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .sla: "Past SLA, then oldest"
+        case .oldest: "Oldest request first"
+        case .newest: "Newest request first"
+        }
+    }
+}
+
+/// What a page of the PRs tab is grouped under, saved on the phone.
+enum PRListGrouping: String, CaseIterable, Identifiable {
+    case none, repo, author
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .none: "No groups"
+        case .repo: "Repo"
+        case .author: "Author"
+        }
+    }
+
+    var key: ((PullRequestRow) -> String)? {
+        switch self {
+        case .none: nil
+        case .repo: { $0.repo }
+        case .author: { $0.status?.author ?? "Unknown author" }
+        }
     }
 }
 
@@ -121,9 +196,14 @@ final class PRsModel {
     private(set) var rows: [PullRequestRow]
     /// Merged PRs by page: his own on My PRs, the ones he reviewed on For review. Read when a page shows them.
     private(set) var merged: [PRListPage: [PullRequestRow]] = [:]
+    /// The sample PRs merged on this phone, newest first, under the page that listed them.
+    private var sampleMerged: [PRListPage: [PullRequestRow]] = [:]
     private(set) var mergedError: [PRListPage: String] = [:]
     private(set) var errorMessage: String?
     private(set) var workerSyncedAt: Date?
+    /// Questions to a PR's AI not yet sent, by PR and by what each is about (`PRSession.askDraft`). Kept while the
+    /// app runs, so a visit to another PR does not lose one.
+    @ObservationIgnored var askDrafts: [String: String] = [:]
     /// Rows Jai swiped away. They stay hidden until the Worker's list drops them, so one can't flicker back.
     private(set) var removedRequests: Set<String> = []
     /// By row id. Saved, so a row stays read through a restart until the Worker's list catches up.
@@ -145,8 +225,14 @@ final class PRsModel {
     @ObservationIgnored var apnsEnvironment = ""
     /// Where `PRKitEvent`s go: the host.
     @ObservationIgnored var onEvent: (PRKitEvent) -> Void = { _ in }
+    /// Where the empty list's link goes before it opens: the host (`PRKitHost.opensEmptyHintLink`).
+    @ObservationIgnored var onEmptyHintLink: (URL) -> Void = { _ in }
     /// A queued job refused after Jai left its screen, in its own words, until he dismisses it.
     var lateRefusal: String?
+    /// The review on its way from a box that has closed (`PRReviewToast`).
+    var reviewToast: PRReviewToast?
+    /// A sample set's one refused review has been refused (`PRSampleSet.refusesFirstReview`).
+    var sampleReviewRefused = false
     /// Outbox answers by item id, until the screen that is waiting on one takes it.
     var outcomes: [String: Result<Data, PRWorkerError>] = [:]
     /// Ids a screen is waiting on. Answers to the rest arrive after Jai has moved on.
@@ -167,6 +253,14 @@ final class PRsModel {
     private(set) var notUpdated: Set<String> = []
     /// The last sync ended with PRs still on their way and none failed: they show as each one lands.
     private(set) var stillDownloading = false
+    /// How many PRs the newest list named: with `isSyncing`, how many are still on their way.
+    private(set) var listedCount = 0
+
+    /// A sync is running: on a first sign-in, the only sign the list is coming.
+    var isSyncing: Bool { running != nil }
+
+    /// PRs the running sync has listed and not yet shown.
+    var arrivingCount: Int { isSyncing ? max(0, listedCount - rows.count) : 0 }
 
     /// Where the mirror says a download or a write failed for good: the host's event log.
     func logFailures(to log: @escaping @Sendable (String) -> Void) {
@@ -190,8 +284,9 @@ final class PRsModel {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let saved = samples.map { $0.seed(in: directory) } ?? PRMirror.savedRows(in: directory)
         rows = saved
-        if samples != nil {
+        if let samples {
             localAnswers = [:]
+            errorMessage = samples.notUpToDate
         }
         mirror = PRMirror(directory: directory, client: client, shown: saved)
     }
@@ -211,7 +306,7 @@ final class PRsModel {
 
     func loadMerged(on page: PRListPage) async {
         if let samples {
-            merged[page] = samples.merged(reviewed: page == .review)
+            merged[page] = (sampleMerged[page] ?? []) + samples.merged(reviewed: page == .review)
             return
         }
         do {
@@ -220,6 +315,23 @@ final class PRsModel {
         } catch {
             mergedError[page] = error.localizedDescription
         }
+    }
+
+    /// A sample PR's row after a write that stayed on the phone, as the Worker's next list would have it
+    /// (`PRSampleSet.applying`). A merged PR leaves the open ones for its page's merged ones.
+    func sampleWritten(_ write: PRWrite, to row: PullRequestRow) {
+        guard let samples, let index = rows.firstIndex(of: row) else {
+            return
+        }
+        guard case .merge = write, let status = row.status else {
+            rows[index] = PRSampleSet.applying(write, to: row)
+            return
+        }
+        rows.remove(at: index)
+        let page = PRListPage.allCases.first { $0.holds(row) } ?? .mine
+        let mergedRow = row.with(status.with(list: "merged", mergedAt: Date.now.ISO8601Format()))
+        sampleMerged[page, default: []].insert(mergedRow, at: 0)
+        merged[page] = (sampleMerged[page] ?? []) + samples.merged(reviewed: page == .review)
     }
 
     /// A wake that finds a sync running waits for it, rather than reporting work it did not do. A pull waits for a
@@ -280,6 +392,7 @@ final class PRsModel {
         errorMessage = nil
         stillDownloading = false
         workerSyncedAt = nil
+        listedCount = 0
         removedRequests = []
         notUpdated = []
         lateRefusal = nil
@@ -381,13 +494,25 @@ final class PRsModel {
         let path = "prs/\(ref.repo)/\(ref.number)/\(kind)"
         var isFirst = true
         while !Task.isCancelled {
-            if let data = try await client.aiAnswer(path: path, head: head, context: context, retry: retry && isFirst) {
+            let data: Data?
+            // `retry` goes with the first request only: again, it would drop an answer the Worker has just made.
+            let asksAgain = retry && isFirst
+            isFirst = false
+            do {
+                data = try await client.aiAnswer(path: path, head: head, context: context, retry: asksAgain)
+            } catch where error.isPassingAIFailure {
+                try await Task.sleep(for: .seconds(5))
+                continue
+            }
+            if let data {
                 if let failure = try? JSONDecoder().decode(PRAIFailure.self, from: data) {
+                    if failure.moved == true {
+                        throw PRAIHeadMoved()
+                    }
                     throw PRWorkerError.refused(failure.error)
                 }
-                return try JSONDecoder().decode(Answer.self, from: data)
+                return try client.decode(Answer.self, from: data, path: path)
             }
-            isFirst = false
             try await Task.sleep(for: .seconds(3))
         }
         throw CancellationError()
@@ -403,6 +528,20 @@ final class PRsModel {
         }
         let document = read(row.diffFileName).map(DiffDocument.init)
         return row.hasDiff && document == nil ? nil : PRContent(detail: detail, document: document)
+    }
+
+    /// Your standing review on this PR: the newer of the one sent from this device and the Worker's.
+    func yourReview(on ref: PullRequestRef) -> PRJaiReview? {
+        guard let row = rows.first(where: {
+            $0.repo.caseInsensitiveCompare(ref.repo) == .orderedSame && $0.number == ref.number
+        }) else {
+            return nil
+        }
+        let worker = row.status?.jaiReview
+        let local = localAnswers[row.id]
+        let date = { (text: String?) in text.flatMap { try? Date($0, strategy: .iso8601) } ?? .distantPast }
+        let isLocalNewer = local.map { date($0.sentAt) > date(row.status?.jaiReviewedAt) } ?? false
+        return (isLocalNewer ? local?.review : worker).flatMap(PRJaiReview.init(rawValue:))
     }
 
     /// The row reads as answered from now, ahead of the Worker.
@@ -465,7 +604,14 @@ final class PRsModel {
         async let diff = readDiff(ref, row: row)
         let (detailData, diffData) = try await (detail, diff)
         let arrived = ContinuousClock.now
-        let content = PRContent(detail: try PullRequestDetail.decode(detailData), document: diffData.map(DiffDocument.init))
+        let decoded: PullRequestDetail
+        do {
+            decoded = try PullRequestDetail.decode(detailData)
+        } catch {
+            client.reportFailure(path: "prs/\(ref.repo)/\(ref.number)/detail", .unreadable)
+            throw error
+        }
+        let content = PRContent(detail: decoded, document: diffData.map(DiffDocument.init))
         return PRFetched(
             content: content, networkMilliseconds: (arrived - started).milliseconds,
             decodeMilliseconds: (ContinuousClock.now - arrived).milliseconds
@@ -502,6 +648,7 @@ extension PRsModel {
         do {
             let list = try await client.pullRequests()
             workerSyncedAt = Date(timeIntervalSince1970: list.synced_at / 1000)
+            listedCount = list.prs.count
             if let shown = await mirror.begin(list.prs, generation: generation, retry: retry),
                generation == self.generation {
                 rows = shown

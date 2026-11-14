@@ -34,6 +34,8 @@ final class DiffFileHeader: UITableViewHeaderFooterView {
     private let viewed = UIButton(type: .system)
     private var isViewed = false
     private var metrics: DiffMetrics?
+    /// The width the path's size was fitted to: fitted again only when it changes, not on every sideways scroll.
+    private var fittedWidth: CGFloat?
     var onTap: () -> Void = {}
     var onViewed: (Bool) -> Void = { _ in }
 
@@ -42,7 +44,8 @@ final class DiffFileHeader: UITableViewHeaderFooterView {
         contentView.backgroundColor = .clear
         bar.backgroundColor = .secondarySystemBackground
         chevron.tintColor = .secondaryLabel
-        chevron.contentMode = .scaleAspectFit
+        // Drawn at its symbol size, never scaled to its box: turned, the box would hand it the row's height.
+        chevron.contentMode = .center
         path.lineBreakMode = .byTruncatingHead
         change.textAlignment = .right
         viewed.addTarget(self, action: #selector(viewedTapped), for: .touchUpInside)
@@ -69,6 +72,7 @@ final class DiffFileHeader: UITableViewHeaderFooterView {
         path.font = metrics.headerPath
         change.font = metrics.headerChange
         path.text = file.path
+        fittedWidth = nil
         let text = NSMutableAttributedString(
             string: "+\(file.change.added)", attributes: [.foregroundColor: UIColor.systemGreen]
         )
@@ -114,13 +118,18 @@ final class DiffFileHeader: UITableViewHeaderFooterView {
         bar.frame = CGRect(x: offsetX, y: 0, width: width, height: height)
         change.sizeToFit()
         let changeWidth = change.bounds.width
-        chevron.frame = CGRect(x: Space.sm, y: 0, width: metrics.chevronSymbolSize + Space.xs, height: height)
+        // Bounds and center, not frame: the chevron is turned when folded, and a turned view's frame is undefined.
+        let chevronWidth = metrics.chevronSymbolSize + Space.xs
+        chevron.bounds = CGRect(x: 0, y: 0, width: chevronWidth, height: height)
+        chevron.center = CGPoint(x: Space.sm + chevronWidth / 2, y: height / 2)
         viewed.frame = CGRect(x: width - metrics.viewedTarget, y: 0, width: metrics.viewedTarget, height: height)
         change.frame = CGRect(x: viewed.frame.minX - changeWidth, y: 0, width: changeWidth, height: height)
-        path.frame = CGRect(
-            x: chevron.frame.maxX + Space.sm, y: 0, width: change.frame.minX - chevron.frame.maxX - Space.md,
-            height: height
-        )
+        let pathX = Space.sm + chevronWidth + Space.sm
+        path.frame = CGRect(x: pathX, y: 0, width: change.frame.minX - pathX - Space.md, height: height)
+        if fittedWidth != path.bounds.width {
+            fittedWidth = path.bounds.width
+            path.font = metrics.headerPath(fitting: path.text ?? "", in: path.bounds.width)
+        }
     }
 
     @objc private func tapped() {
@@ -129,6 +138,25 @@ final class DiffFileHeader: UITableViewHeaderFooterView {
 
     @objc private func viewedTapped() {
         onViewed(!isViewed)
+    }
+}
+
+/// A row SwiftUI draws (a thread, a draft, a key line's note), moved by the table's sideways scroll so it stays on
+/// screen. Kept here, not only set from outside: the cell lays its content view out again on its own, and a frame set
+/// under a transform is undefined, so the move comes off for the layout and goes back after it.
+final class DiffHostedCell: UITableViewCell {
+    var offsetX: CGFloat = 0 {
+        didSet {
+            if offsetX != oldValue {
+                setNeedsLayout()
+            }
+        }
+    }
+
+    override func layoutSubviews() {
+        contentView.transform = .identity
+        super.layoutSubviews()
+        contentView.transform = CGAffineTransform(translationX: offsetX, y: 0)
     }
 }
 

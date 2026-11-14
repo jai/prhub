@@ -2,23 +2,28 @@
 // Contract: docs/api.md.
 import { statesRoute } from "./pr-states";
 import { AiJobs, type AiJob } from "./ai-jobs";
+import { appLatest } from "./app-latest";
 import { askChat } from "./ask";
 import { acceptAsk, askPr, withQueued } from "./ask-queue";
 import { bodyOf, parseAskInput, parseKeyLineMark } from "./boundary";
 import { eventRoute, registerRoute, unpairRoute } from "./devices";
-import { aiConfigOf, askConfigured, deviceConfig, feedbackConfigured } from "./config";
-import { aiJobs, askQueue, type Env, githubLogin, isSet, prIndex, scopedKey } from "./env";
-import { aiStoreKey } from "./ai-run";
-import { detailVersionOf, fetchDiff, liveDiff, mergedPullRequests, pullRequestSummary, readPullRequests } from "./github";
-import { parseRepoFullName, parseSha, prId, type RepoFullName } from "./ids";
 import {
-  addFeedback, feedbackChat, feedbackList, isFeedbackId, parseAgentSide, parseFeedbackInput, r2Store, runnerAgent,
-  runnerClaim, runnerPoll, runnerResult,
-} from "./feedback";
+  aiConfigOf, askConfigured, deviceConfig, featureKitConfigured,
+} from "./config";
+import { makesAnswers } from "./agent-container";
+import { askEvent } from "./ask-trace";
+import { counted } from "./github-calls";
+import { AgentContainer } from "./agent-container-object";
+import { aiJobs, askQueue, type Env, githubLogin, isSet, prIndex, scopedKey } from "./env";
+import { aiStoreKey, isStaleFailure } from "./ai-run";
+import {
+  detailVersionOf, fetchDiff, liveDiff, mergedPullRequests, pullRequestSummary, readPullRequests, reviewWeek,
+} from "./github";
+import { parseRepoFullName, parseSha, prId, type RepoFullName } from "./ids";
 import { DEFAULT_CONTEXT } from "./key-lines";
 import { type AiConfig, type AiFeature, resolveChoice } from "./models";
 import { detailKey, diffKey, PrIndex } from "./pr-index";
-import { codeHashOf, deviceSecretOf, fingerprintOf, isPairedSecret, normalizePairingCode } from "./pairing";
+import { codeHashOf, deviceSecretOf, fingerprintOf, isPairedSecret, normalizePairingCode, sha256Hex } from "./pairing";
 import {
   fetchRepoIndex, isRepoIndex, rankRepos, type RepoIndex, REPOS_FORCED_GAP_MS, REPOS_KEY, REPOS_RETRY_GAP_MS,
   REPOS_STALE_MS,
@@ -32,13 +37,12 @@ import { busyAnswer, clientRefOf } from "./write-receipts";
 
 import { Installation, IpLimit, SignIn, UserAccount } from "./account";
 import {
-  authenticate, hostedAccountConfig, hostedMode, publicHostedRoute, servicesOf, userEnv,
+  authenticate, configInstallations, hostedAccountConfig, hostedMode, publicHostedRoute, servicesOf, userEnv,
 } from "./hosted";
-import { syncInstallations } from "./installations";
 import { pairingLimitAnswer, personLimitAnswer, reportedLimitsOf } from "./limit-enforcement";
-import { durationOf, LimitName } from "./limits";
+import { LimitName } from "./limits";
 
-export { AiJobs, Installation, IpLimit, PrIndex, SignIn, UserAccount };
+export { AgentContainer, AiJobs, Installation, IpLimit, PrIndex, SignIn, UserAccount };
 
 const PULL_REQUEST_PATH =
   /^\/prs\/([\w.-]+)\/([\w.-]+)\/(\d+)\/(diff|detail|summary|write|key-lines-reviewed|key-lines|rewrite|ask)$/;
@@ -117,8 +121,8 @@ function choiceOf(
 async function configRoute(env: Env, context: ExecutionContext, extra: object = {}): Promise<Response> {
   aiConfig(env, context);
   reportedLimitsOf(env, (promise) => context.waitUntil(promise));
-  const login = await githubLogin(env).catch(() => null);
-  return Response.json({ ...deviceConfig(env, login), ...extra }, { headers: { "Cache-Control": "no-store" } });
+  const [login, latest] = await Promise.all([githubLogin(env).catch(() => null), appLatest(env)]);
+  return Response.json({ ...deviceConfig(env, login, latest), ...extra }, { headers: { "Cache-Control": "no-store" } });
 }
 
 function notConfigured(what: string): Response {
@@ -186,7 +190,7 @@ async function write(repo: RepoFullName, number: number, request: Request, env: 
   if (failure) {
     return failure;
   }
-  await prIndex(env).mark(repo, number, true);
+  await prIndex(env).mark(repo, number, true, true);
   return (await liveDetail(repo, number, env)).response;
 }
 
@@ -198,7 +202,11 @@ async function aiAnswer(job: AiJob, isRetry: boolean, env: Env): Promise<Respons
   }
   const stored = await env.DIFFS.get(key);
   if (stored) {
-    return new Response(stored.body, { headers: { "Content-Type": "application/json" } });
+    const body = await stored.text();
+    if (!isStaleFailure(body, stored.uploaded, Date.now())) {
+      return new Response(body, { headers: { "Content-Type": "application/json" } });
+    }
+    await env.DIFFS.delete(key);
   }
   const limited = await personLimitAnswer(env, [LimitName.AiJobsPerHour], key);
   if (limited) {
@@ -285,93 +293,44 @@ async function askRoute(
     claim: (key) => prIndex(env).claimWrite(key, Date.now()),
     finish: (key, sent) => prIndex(env).finishWrite(key, sent, Date.now()),
     limited: (key) => personLimitAnswer(env, [LimitName.AskQuestionsPerHour, LimitName.AskQuestionsPerDay], key),
-    queue: (stored) => askQueue(env).queueAsk(stored, pr, userId),
+    queue: async (stored) => {
+      const view = await askQueue(env).queueAsk(stored, pr, userId);
+      askEvent(stored ? "queued" : "received", question.id, { pr, user_id: userId, repeat: stored === null });
+      return view;
+    },
     busy: busyAnswer,
   }, question, receipt);
 }
 
 const FEEDBACK_PATH = /^\/feedback(?:\/([^/]+))?$/;
-const RUNNER_PATH = /^\/feedback\/runner\/(poll|claim|result|agent)$/;
 
-/**
- * The list on a GET of /feedback and new feedback on a POST; one chat, and a reply to it, on /feedback/{id}. Each POST
- * only keeps the message for the runner (docs/api.md, "Feedback").
- */
-async function feedbackRoute(id: string | undefined, request: Request, env: Env): Promise<Response> {
-  if (id !== undefined && !isFeedbackId(id)) {
-    return new Response("not found\n", { status: 404 });
-  }
-  const store = r2Store(env.DIFFS);
-  let receipt: string | null = null;
+/** Feedback, to the FeedbackKit Worker: as this app and the person this Worker acts for, whom it has checked. */
+async function featureKitRoute(pathname: string, request: Request, env: Env): Promise<Response> {
   try {
-    if (request.method !== "POST") {
-      const answer = id ? await feedbackChat(store, id, Date.now()) : await feedbackList(store, Date.now());
-      return answer ? Response.json(answer) : Response.json({ error: "Not found." }, { status: 404 });
+    // The public URL even through the binding: FeedbackKit links issue screenshots to the origin it was asked at.
+    // Through the binding the host is only a name; FeedbackKit links screenshots to its own PUBLIC_URL.
+    const base = env.FEEDBACKKIT ? "https://featurekit" : (env.FEEDBACKKIT_URL ?? "").replace(/\/$/, "");
+    const send = env.FEEDBACKKIT ? env.FEEDBACKKIT.fetch.bind(env.FEEDBACKKIT) : fetch;
+    const answer = await send(`${base}${pathname}`, {
+      method: request.method,
+      headers: {
+        Authorization: `Bearer ${env.FEEDBACKKIT_TOKEN}`, "Content-Type": "application/json",
+        "X-FeedbackKit-App": env.FEEDBACKKIT_APP!, "X-FeedbackKit-Login": await githubLogin(env),
+      },
+      body: request.method === "POST" ? await request.text() : undefined,
+    });
+    if (!(answer.headers.get("Content-Type") ?? "").includes("json")) {
+      // Not FeedbackKit's answer (a Cloudflare error page): say so, never as the app's own 404.
+      console.error("featurekit answered", answer.status, (await answer.text()).slice(0, 200));
+      return Response.json({ error: "Feedback can't be reached. Try again." }, { status: 502 });
     }
-    const body = (await bodyOf(request))?.value;
-    const input = parseFeedbackInput(body);
-    if (!input) {
-      return Response.json({ error: "That feedback can't be sent." }, { status: 400 });
-    }
-    const ref = clientRefOf(body);
-    receipt = ref && `feedback:${id ?? "new"}:${ref}`;
-    const claim = receipt ? await prIndex(env).claimWrite(receipt, Date.now()) : "go";
-    if (claim === "busy") {
-      return busyAnswer();
-    }
-    let target: string | null | undefined = id;
-    if (claim === "go") {
-      target = await addFeedback(store, id ?? null, input, Date.now());
-      if (receipt) {
-        await prIndex(env).finishWrite(receipt, target !== null, Date.now());
-      }
-    } else if (!target) {
-      // A repeat of new feedback already kept: the newest chat is it.
-      target = (await feedbackList(store, Date.now())).threads[0]?.id;
-    }
-    const chat = target ? await feedbackChat(store, target, Date.now()) : null;
-    return chat ? Response.json(chat) : Response.json({ error: "Not found." }, { status: 404 });
+    return new Response(answer.body, { status: answer.status, headers: { "Content-Type": "application/json" } });
   } catch (error) {
-    console.error("feedback failed", error);
-    if (receipt) {
-      await prIndex(env).finishWrite(receipt, false, Date.now());
-    }
-    return Response.json({ error: "Your feedback couldn't be kept. Try again." }, { status: 502 });
+    console.error("featurekit unreachable", error);
+    return Response.json({ error: "Feedback can't be reached. Try again." }, { status: 502 });
   }
 }
 
-/** The runner on Jai's Mac (`HUB_TOKEN`): it polls, claims a message, says how its delivery went, and sends the agent's side. */
-async function runnerRoute(kind: string, request: Request, env: Env): Promise<Response> {
-  const store = r2Store(env.DIFFS);
-  const body = ((await bodyOf(request))?.value ?? null) as Record<string, unknown> | null;
-  const chat = typeof body?.chat === "string" ? body.chat : "";
-  const message = typeof body?.message === "string" ? body.message : "";
-  const now = Date.now();
-  if (kind === "poll") {
-    return Response.json({ work: await runnerPoll(store, body?.orca === true, now) });
-  }
-  if (kind === "claim") {
-    const claimed = await runnerClaim(store, chat, message, now);
-    return claimed.ok ? Response.json(claimed)
-      : Response.json({ error: claimed.status === 404 ? "no such message" : "not pending" }, { status: claimed.status });
-  }
-  if (kind === "result") {
-    const delivered = body?.status === "delivered";
-    const detail = typeof body?.detail === "string" ? body.detail.slice(0, 300) : null;
-    if (!delivered && body?.status !== "failed") {
-      return Response.json({ error: "status is delivered or failed" }, { status: 400 });
-    }
-    const status = await runnerResult(store, chat, message, delivered, detail);
-    return Response.json(status === 200 ? { ok: true } : { error: status === 404 ? "no such message" : "not delivering" },
-      { status });
-  }
-  const agent = parseAgentSide(body, now);
-  if (!agent) {
-    return Response.json({ error: "not an agent side" }, { status: 400 });
-  }
-  const status = await runnerAgent(store, chat, agent);
-  return Response.json(status === 200 ? { ok: true } : { error: "no such chat" }, { status });
-}
 
 /** `GET /prs/{owner}/{repo}/{n}/summary`: a picker row for any PR, read live, so a typed number shows what it opens. */
 async function summaryRoute(repo: RepoFullName, number: number, env: Env): Promise<Response> {
@@ -431,6 +390,16 @@ async function reposRoute(params: URLSearchParams, env: Env, context: ExecutionC
 function pullRequestRoute(
   match: RegExpExecArray, params: URLSearchParams, request: Request, env: Env, context: ExecutionContext,
 ): Promise<Response> {
+  const kind = match[4];
+  // What a PR's screen reads says what it cost GitHub, so the apps' share of the token's hour can be measured.
+  return ["detail", "diff", "key-lines", "rewrite"].includes(kind)
+    ? counted(env, (counting) => pullRequestRead(match, params, request, counting, context))
+    : pullRequestRead(match, params, request, env, context);
+}
+
+function pullRequestRead(
+  match: RegExpExecArray, params: URLSearchParams, request: Request, env: Env, context: ExecutionContext,
+): Promise<Response> {
   const [, owner, name, number, kind] = match;
   const repo = parseRepoFullName(`${owner}/${name}`);
   const pr = Number(number);
@@ -451,7 +420,7 @@ function pullRequestRoute(
     return reviewedRoute(repo, pr, params, request, env);
   }
   if (kind === "key-lines" || kind === "rewrite") {
-    if (!isSet(env.ANTHROPIC_API_KEY)) {
+    if (!makesAnswers(env)) {
       return Promise.resolve(notConfigured(kind === "rewrite" ? "Rewrite" : "Key lines"));
     }
     return aiRoute(kind === "rewrite" ? "rewrite" : "key_lines", repo, pr, params, env, context);
@@ -527,7 +496,7 @@ async function serveAuthorized(request: Request, env: Env, context: ExecutionCon
   }
   const feedback = FEEDBACK_PATH.exec(pathname);
   if (feedback) {
-    return feedbackConfigured(env) ? feedbackRoute(feedback[1], request, env) : notConfigured("Feedback");
+    return featureKitConfigured(env) ? featureKitRoute(pathname, request, env) : notConfigured("Feedback");
   }
   const pullRequest = PULL_REQUEST_PATH.exec(pathname);
   if (pullRequest) {
@@ -557,11 +526,8 @@ async function serveHosted(
       : auth.answer;
   }
   if (isConfig) {
-    // An app open: the person's installations are read again when the last read is ten minutes old.
-    context.waitUntil(syncInstallations(services.account(auth.session.userId), services.installation, services.fetch,
-      Date.now(), durationOf(services.limits, LimitName.InstallationSyncOnOpenMinutes))
-      .catch((error: unknown) => console.error("installation sync failed", error)));
-    const installations = await services.account(auth.session.userId).installationAccounts();
+    const installations = await configInstallations(request, auth.session, services,
+      (promise) => context.waitUntil(promise));
     return configRoute(auth.env, context, hostedAccountConfig(auth.session, installations));
   }
   return serveAuthorized(request, auth.env, context);
@@ -618,13 +584,8 @@ export async function serveOwner(
   if (pathname === "/github/callback") {
     return finishAppCreation(searchParams, env);
   }
-  const runner = RUNNER_PATH.exec(pathname);
-  if (runner && request.method === "POST") {
-    return hasToken(request, env.HUB_TOKEN) && feedbackConfigured(env) ? runnerRoute(runner[1], request, env)
-      : new Response("unauthorized\n", { status: 401 });
-  }
   if (pathname === "/prs/states" && request.method === "POST") {
-    return hasToken(request, env.HUB_TOKEN) ? statesRoute(request, env)
+    return hasToken(request, env.HUB_TOKEN) ? statesRoute(request, reviewWeek(env), (refs, week) => prIndex(env).states(refs, week))
       : new Response("unauthorized\n", { status: 401 });
   }
   if (!isHostAuthorized && !(await isAuthorized(request, env))) {

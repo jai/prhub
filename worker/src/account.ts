@@ -87,6 +87,10 @@ export class UserAccount extends DurableObject<Env> {
     return this.#core.installationIds();
   }
 
+  installationSyncedAt(): Promise<number> {
+    return this.#core.installationSyncedAt();
+  }
+
   claimInstallationSync(now: number, gapMs: number): Promise<boolean> {
     return this.#core.claimInstallationSync(now, gapMs);
   }

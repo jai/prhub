@@ -8,6 +8,8 @@ import {
 import { actingEnvFor } from "./hosted";
 import { parseAiJob } from "./boundary";
 import { prId } from "./ids";
+import { makesAnswers } from "./agent-container";
+import { askEvent, errorWords, failedLine, scrubbed, sideOf } from "./ask-trace";
 import { type Env, prIndex } from "./env";
 import { type AiJob, aiKey } from "./models";
 import { type CarriedAskState, readCarriedAskState, writeCarriedAskState } from "./carry";
@@ -110,14 +112,16 @@ export class AiJobs extends DurableObject<Env> {
       return "Sign in again to ask.";
     }
     try {
-      await ask(question.repo, question.number, question.input, question.choice, env);
+      await ask(question.repo, question.number, question.input, question.choice, env, question.id);
       return null;
     } catch (error) {
       if (error instanceof AskRefused) {
         return error.message;
       }
-      console.error("ask failed", error);
-      return "The AI couldn't be reached. Try again.";
+      console.error("ask failed", errorWords(error), scrubbed(error instanceof Error ? error.stack ?? "" : ""));
+      askEvent("failed", question.id, { pr: `${question.repo}#${question.number}`, side: sideOf(error),
+        reason: errorWords(error) });
+      return failedLine(error, question.id);
     }
   }
 
@@ -131,7 +135,7 @@ export class AiJobs extends DurableObject<Env> {
     const userId = await this.ctx.storage.get<string>("user_id");
     // A hosted person with no token or key now (signed out, or the key removed) runs nothing: never on anyone else's.
     const env = await this.actingEnv();
-    if (!env || !env.ANTHROPIC_API_KEY) {
+    if (!env || !makesAnswers(env)) {
       await this.env.DIFFS.put(aiStoreKey(job, { SIGNED_IN_USER_ID: userId }),
         JSON.stringify({ error: "Sign in and set your Anthropic key to use AI." }));
       return;

@@ -133,16 +133,17 @@ Auth: a paired secret or `APP_TOKEN`. `Cache-Control: no-store`. The app reads i
 
 | Field | True when | The app |
 |---|---|---|
-| `features.ask_ai` | `ASK_AGENT_ID`, `ASK_ENVIRONMENT_ID`, `ASK_VAULT_ID`, `ASK_CREDENTIAL_ID` and a key (`ASK_ANTHROPIC_API_KEY` or `ANTHROPIC_API_KEY`) | Shows Ask on a PR and a line |
-| `features.key_lines` | `ANTHROPIC_API_KEY` | Shows the Key lines panel and capsule |
-| `features.rewrite` | `ANTHROPIC_API_KEY` | Shows Rewrite on the description |
-| `features.feedback` | `FEEDBACK_REPO` and `HUB_TOKEN`: Jai's Worker only ([Feedback](#feedback)) | Shows Feedback |
+| `features.ask_ai` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ASK_AGENT_ID`, `ASK_ENVIRONMENT_ID`, `ASK_VAULT_ID`, `ASK_CREDENTIAL_ID` and a key (`ASK_ANTHROPIC_API_KEY` or `ANTHROPIC_API_KEY`) | Shows Ask on a PR and a line |
+| `features.key_lines` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ANTHROPIC_API_KEY` with `AI_ON_API_KEY=on` | Shows the Key lines panel and capsule |
+| `features.rewrite` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ANTHROPIC_API_KEY` with `AI_ON_API_KEY=on` | Shows Rewrite on the description |
+| `features.feedback` | `FEEDBACKKIT_URL`, `FEEDBACKKIT_APP` and `FEEDBACKKIT_TOKEN` ([Feedback](#feedback)) | Shows Feedback |
 | `features.push` | the relay (`PUSH_RELAY_URL`, `PUSH_RELAY_KEY`), or direct APNs (`APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8`, `APNS_BUNDLE_ID`) | Registers for push; off: syncs on open and foreground only |
-| `features.webhooks` | `WEBHOOK_SECRET` | Diagnostics only: updates in seconds rather than about a minute |
+| `features.webhooks` | `WEBHOOK_SECRET` | Diagnostics only: updates in seconds rather than about a minute ([Webhook reads](#webhook-reads)) |
 | `login` | the GitHub login the Worker acts as; `null` if GitHub could not be asked | "Your PRs", and whose review a row shows |
 | `orgs` | `GITHUB_ORGS`, comma-separated; absent when unset | The PR filter's default selection |
 | `ai.features.<feature>` | one entry per AI feature that is on (`key_lines`, `rewrite`, `ask`); `ai` is absent when none is | The model picker: `default` is what runs when the app sends no choice; `allowed` is every model and effort it may send ([AI model choice](#ai-model-choice)) |
 | `limits` | always: each limit in force on this Worker, by name, in the unit its name ends with; `null` is off ([Limits](#limits)) | Explains a `429 limit_reached` |
+| `app_latest` | the newest PRHub build each TestFlight group can install, `{internal?, public?}`, each `{version, build}`; absent when it could not be read ([App updates](#app-updates)) | Update available, when its group's build is newer than the running one |
 
 The example leaves out `limits`; [`device-config.json`](fixtures/device-config.json) and
 [`device-config-hosted.json`](fixtures/device-config-hosted.json) show it for each mode. In the example, `rewrite`
@@ -150,46 +151,51 @@ and `ask` are shortened: each lists the same `allowed` entries as `key_lines`. A
 does not know is ignored; a feature the Worker does not send is off. Routes for a feature that is off
 answer `404 {"error": "<feature> is not set up on this Worker."}`. Answers: `200` · `401`.
 
+## App updates
+
+`app_latest` comes from `app-latest.json` on this repo's branch `ci/app-latest`
+(`https://raw.githubusercontent.com/jai/prhub/ci/app-latest/app-latest.json`). Every hour
+`.github/workflows/hourly-release.yml` runs `release/app-latest.mjs`, which asks App Store Connect for PRHub's
+processed, unexpired builds and writes the file when it changed: `internal` is the newest build internal testers can
+install, `public` the newest the Public group can (after Beta App Review). Never edit it by hand.
+
+- The Worker keeps it 10 minutes per isolate and waits at most 1.5 s for it (`worker/src/app-latest.ts`). A failed
+  read answers the last one, or leaves `app_latest` out. `APP_LATEST_URL` reads another file (a fork's app); `off` leaves
+  it out.
+- The app (`PRHubUpdate`) compares its group's build with its own `CFBundleShortVersionString` and `CFBundleVersion`:
+  an Internal - TestFlight build (`PRHUB_INTERNAL_TESTFLIGHT`, set by `app/ci_scripts/ci_post_clone.sh`) with
+  `internal`, any other with `public`. A newer one shows "Update available: PRHub <version> (<build>)": **Update** opens
+  TestFlight on PRHub, **Later** skips that build. Checked at launch and on return to the front, at most hourly; never
+  in a Debug build.
+
 ## Feedback
 
-Requests for changes to the app, from the app (FeatureKit, [plan](plans/featurekit.md)). The Worker only keeps them:
-a runner on the owner's Mac polls for them, starts or tells a coding agent there, and sends the agent's words back.
-The Worker never calls a model or the runner. Jai's Worker only (`FEEDBACK_REPO`, `HUB_TOKEN`); elsewhere the app's routes
-answer `404` and the runner's `401`. Agent Pager's runner, its agent and its contract: [jai/agent-pager docs/api/feedback.md](https://github.com/jai/agent-pager/blob/main/docs/api/feedback.md).
+Requests for changes to the app, from the app (FeatureKit). The Worker keeps none: with `FEEDBACKKIT_URL`,
+`FEEDBACKKIT_APP` and `FEEDBACKKIT_TOKEN` it forwards `/feedback` to the FeedbackKit Worker as its app and the person
+it acts for. That Worker gives the person a coding chat or a public issue ([jai/feedbackkit `docs/worker.md`](https://github.com/jai/feedbackkit/blob/main/docs/worker.md)). Without
+the three, the routes answer `404`.
 
 App routes (app auth):
 
 | Route | Body | Answer |
 |---|---|---|
-| `GET /feedback` | | `{threads: [{id, title, createdAt}], builderOnline}`, newest first |
+| `GET /feedback` | | `{threads: [{id, title, createdAt}], builderOnline, notice?}`, newest first |
 | `POST /feedback` | `{text, build?, images?, client_ref?}` | the new chat |
 | `GET /feedback/{id}` | | the chat; `404` none |
 | `POST /feedback/{id}` | as above | the chat, with the message added |
 
-- A chat: `{id, messages: [{id, role: "you" \| "agent", text, anchor: null, images}], isWorking, activity, problem,
+- A chat: `{id, messages: [{id, role: "you" \| "agent", text, anchor: null, images, status?}], isWorking, activity, problem,
   costCents: null, model: null, effort: null, builderOnline, thread}`. `thread` is `{host, id}`, the agent's Agents
   thread, once the runner has found it.
+- A sender's message carries its persisted `status`: `pending`, `delivering`, `delivered` or `failed`. An agent's
+  message has none. A delivery stuck for 15 minutes can set the chat's `problem`, but its message remains
+  `delivering` until the runner reports what happened. A host uses confirmed `delivered` states before switching
+  Feedback to the coding thread's own conversation, so a queued legacy message never disappears on handoff.
 - `text` at most 8,000 characters; `images` up to four JPEG or PNG `{media_type, data}` of at most 1.5 MB decoded.
   Neither: `400`. A repeat `client_ref` keeps the message once.
 - `isWorking` from a send until the agent's turn ends; `problem` says why the last message was not passed on.
-  `builderOnline`: the runner polled in the last 90 seconds and said its Mac answers.
-
-Runner routes (`POST`, bearer `HUB_TOKEN`, JSON body):
-
-| Route | Body | Answer |
-|---|---|---|
-| `/feedback/runner/poll` | `{orca}`: whether the agents' Mac answers | `{work: [{chat, message, first, at}]}`, oldest first |
-| `/feedback/runner/claim` | `{chat, message}` | `{ok, text, build, first, title, images}`; `409` not pending; `404` |
-| `/feedback/runner/result` | `{chat, message, status: "delivered" \| "failed", detail?}` | `{ok}`; `409` not claimed |
-| `/feedback/runner/agent` | `{chat, messages: [{id, text, at}], isWorking, activity, thread}` | `{ok}`; `404` no chat |
-
-- A message is `pending` → `delivering` (claim) → `delivered` or `failed` (result). A claim is a compare-and-swap on
-  the message's R2 version, so it succeeds once. One left `delivering` for 15 minutes shows as failed and is never
-  offered again.
-- `agent` replaces the agent's side of the chat: all its messages so far (at most 500, 20,000 characters each).
-- Storage (R2 `DIFFS`): `feedback/chats.json`, `feedback/chats/<id>/m/<at>-<message>.json`, their screenshots under
-  `img/`, the agent's side in `agent.json`, the queue in `feedback/pending/`, the runner's last poll in
-  `feedback/runner.json`.
+  `builderOnline`: the runner polled in the last 90 seconds and said its Mac answers. `notice`, when sending opens a public issue, says so;
+  the app shows it above a new chat.
 
 ## Rows and details
 
@@ -200,8 +206,13 @@ checked on every run: [`row.json`](fixtures/row.json), [`merged-row.json`](fixtu
 [`alert.json`](fixtures/alert.json) (an alert's payload).
 
 - A row's `status.list` is `review`, `reviewed` or `mine` on `GET /prs`, and `merged` on `GET /prs/merged`.
-  `reviewDueAt` is on `review` rows alone, `mergedAt` on `merged` rows alone. A stored status that no longer parses is
+  `requestedAt` (when review was last asked of the user himself, null for a team's request) and `reviewDueAt` are on
+  `review` rows alone, `mergedAt` on `merged` rows alone. A stored status that no longer parses is
   served as `status: null`.
+- `GET …/detail`, `…/diff`, `…/key-lines` and `…/rewrite` answer with `Server-Timing: github;desc="github calls";dur=<n>`,
+  the GitHub calls that request made (`0` when R2 answered), so a client can measure its share of the token's hour.
+- An open row's `status.draft` says whether the PR is a draft. A row stored before it was kept has none: not known
+  until the PR is read again.
 - A detail's `merge` (`clean`, `behind`, `blocked`, `conflicting`, `unstable`, `unknown`) and `review` (`approved`,
   `changes_requested`, `required`, `none`) are worked out as the row's are, so the two never disagree: a conflict wins
   over a merge state that lags, and a draft is `blocked`. `mergeState` (GitHub's raw value) and `reviewDecision` stay
@@ -211,6 +222,41 @@ checked on every run: [`row.json`](fixtures/row.json), [`merged-row.json`](fixtu
   the same name in two workflows is two checks. Each has `name`, `state` (`success`, `failure`, `pending`, `skipped`),
   `url`, `required` and `workflow`: the Actions workflow that ran it, or `null` for a commit status or an app's check.
   The app tells same-named checks apart by `workflow` and groups a job's matrix legs (`name (leg)`) within one.
+- A detail's `tickets` are the Linear issues its title names in brackets (`[ENG-1686] [CORE-12]`, `[ENG-1, CORE-2]`),
+  then those its branch name names (`eng-1686-retry`, `alex/core-12`), then those its description links as Linear
+  does (a magic word such as `Fixes`, `Closes` or `Part of` before keys or issue URLs, or a `linear.app/…/issue/KEY`
+  URL), each once, in a list ticket's shape: `key`, `url`, `title`, `state`, `state_type`, `state_color`, `found`. With
+  `LINEAR_API_KEY` the Worker asks Linear when it reads the PR: a title's key Linear has no issue for is
+  `found: false`, and a key only the branch or description names shows only once Linear has it. Without the key, or
+  when Linear does not answer, `found` is null and only the title's keys show.
+- A `GET /prs` row's `tickets` are every ticket its title names that Linear has (`found: true`), in the title's order;
+  with none from the title, the first its branch or description names that Linear has; in the same shape. Its
+  `ticket` is the first of them, for an app older than `tickets`. Empty and null without `LINEAR_API_KEY` (so always on the hosted Worker) or while Linear does not answer. The index
+  keeps Linear's answer for each key and asks again after an hour; each minute's tick asks again about the held rows'
+  keys that are older (50 at most), and a PR whose ticket changed is read again. Merged rows have no `ticket` or `tickets`.
+
+- `author.name` is the name on a user's profile. `authorIsBot` is true for a GitHub App, a `[bot]` login or an account
+  `BOT_AUTHORS` names. On a bot's PR, `requestedBy` is the human it was opened for, first found: a `Co-authored-by`
+  trailer on its last 20 commits that is no coding agent, a "Requested by" line in its body (`@login` or a name), else
+  its first assignee that is no bot. It is `{login, name, avatarUrl, source}`, `source` being `co_author`, `body` or
+  `assignee`, and null on a person's own PR or when nothing is recorded.
+
+### `POST /prs/states`
+
+The threads hub's read of any PRs' state, with `HUB_TOKEN` as a bearer token: `{"refs": ["owner/repo#7", …]}`, 1 to
+20 refs. It answers `{"states": {"owner/repo#7": {…} | null}, "unanswered": […]}`: null for a PR GitHub has not got,
+and `unanswered` for one GitHub would not answer for. A state holds `title`, `state`, `checks`, `merge`, `review`,
+`author`, `author_name`, `created_at`, `jai_review`, `jai_reviewed_at`, `jai_review_requested` and `review_due_at`.
+`review_due_at` is when Jai's review is due by the SLA (`REVIEW_SLA_*`), ISO 8601 in UTC (`2026-11-09T03:00:00Z`), the
+same time as a review row's `reviewDueAt`. It is null unless `jai_review_requested` is true, when only a team was
+asked, and when the SLA is unset.
+
+The PR index reads them, with its own cache of `.policy.yml` texts and team and org memberships, so a repeat from any
+isolate is a cache hit or a free `304`. Each answer's `Server-Timing: github;desc="github calls";dur=<n>` counts the
+GitHub calls it made (GraphQL and `304`s included). While the token's hour is below its reserve it answers `502`
+rather than spend the rest. A `502` says why as `{"error": {"code", "message"}, "reason"}`, `code` being `github_rate_limited`,
+`github_unavailable` (GitHub's own 5xx), `github_failed` (any other refusal) or `signed_out`. An answer that arrives cut off
+is asked again one PR at a time.
 
 ## Configuration
 
@@ -221,25 +267,32 @@ var reads as unset.
 | Name | Kind | Value |
 |---|---|---|
 | `GITHUB_TOKEN` | secret | The person's PAT: classic with `repo`, or fine-grained (permissions in [deploy/AGENTS.md](../deploy/AGENTS.md)) |
-| `GITHUB_LOGIN` | var | Their login; unset reads it from the token |
+| `GITHUB_LOGIN` | var | Their login; unset reads it from the token. The searches name it, not `@me`, so they stay this person's with `GITHUB_READ_TOKEN` set. Set it beside that token: unset, each isolate spends a `GITHUB_TOKEN` call reading it |
+| `GITHUB_READ_TOKEN` | secret | A second account's PAT that makes the reads (searches, PR reads, diffs, files, `.policy.yml` and team checks), so they cost that account's rate limit. Writes, and the reads that ask about the viewer (viewed files, draft reviews, what they may resolve, the repo list), stay on `GITHUB_TOKEN`. The account needs read access to every repo the Worker lists. Ignored when `HOSTED=on` |
 | `GITHUB_ORGS` | var | Default filter for the app, and the owners `GET /repos` lists |
+| `APP_LATEST_URL` | var | Where `app_latest` is read ([App updates](#app-updates)); unset: PRHub's own, `off`: none |
 | `PR_ALERTS` | var | Visible alerts: `review_requested`, `approved`, `changes_requested`, comma-separated, or `off`. Unset: `review_requested` |
 | `PUSH_RELAY_URL` | var | Jai's relay base URL |
 | `PUSH_RELAY_KEY` | secret | This Worker's relay key, `rks_…` |
 | `ANTHROPIC_API_KEY` | secret | Key lines, rewrites; Ask's key when `ASK_ANTHROPIC_API_KEY` is unset |
+| `AI_ON_API_KEY` | var | `on`: key lines, rewrites and Ask may run on an API key (the Worker's or a hosted person's). Unset or anything else: on the subscription alone, and an API key turns no AI on |
+| `CLAUDE_CODE_OAUTH_TOKEN` | secret | A Claude subscription's token (`claude setup-token`). With `AGENT` bound, key lines and rewrites run on it ([AI on a subscription](#ai-on-a-subscription)) and win over `ANTHROPIC_API_KEY` |
+| `AGENT` | container binding | `AgentContainer`, the Agent SDK container built from `agent/Dockerfile` |
+| `SUBSCRIPTION_LOGINS` | var | Hosted only: the GitHub logins, comma-separated, whose AI runs on `CLAUDE_CODE_OAUTH_TOKEN`. Unset: nobody's |
 | `ASK_AGENT_ID`, `ASK_ENVIRONMENT_ID`, `ASK_VAULT_ID`, `ASK_CREDENTIAL_ID` | var | From `npm run ask-agent` |
-| `ASK_GITHUB_TOKEN` | secret | A read-only PAT for Ask's agent; unset, it gets `GITHUB_TOKEN` |
+| `ASK_GITHUB_TOKEN` | secret | A read-only PAT for Ask's agent; unset, it gets `GITHUB_READ_TOKEN`, else `GITHUB_TOKEN`. On a subscription, only it or the Ask App lets the agent clone other repos and read GitHub's API |
 | `ASK_GITHUB_APP_ID`, `ASK_GITHUB_APP_KEY` | secret | A GitHub App that mints a read-only token per question; wins over the PATs. The key is PKCS#8 (`BEGIN PRIVATE KEY`); GitHub's download is PKCS#1, so pipe it through `openssl pkcs8 -topk8 -nocrypt` |
 | `AI_MODELS_ALLOWED` | var | Models the app may pick, comma-separated, from `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`. Unset: all three |
 | `AI_EFFORT_MAX` | var | Highest effort offered: `low`, `medium` or `high`. Unset: `high`; nothing goes above it |
 | `AI_DEFAULTS` | var | Each feature's default, `key_lines=claude-sonnet-5-5:high,rewrite=…,ask=…`, or JSON. Unset: Sonnet 5.5 at `high` for key lines and rewrites, Opus 5.5 at `medium` for Ask |
 | `GUIDE_REPO`, `GUIDE_FILES` | var | The rewrite's writing guide: `owner/repo@ref` (no ref: default branch) and comma-separated paths. Unset: a built-in guide |
-| `REVIEW_SLA_UTC_OFFSET_HOURS`, `REVIEW_SLA_HOURS`, `REVIEW_SLA_WEEKDAYS` | var | The review SLA week, e.g. `7`, `9-18`, `1,2,3,4,5` (Sunday 0). Unset: no row has `reviewDueAt` |
+| `REVIEW_SLA_UTC_OFFSET_HOURS`, `REVIEW_SLA_HOURS`, `REVIEW_SLA_WEEKDAYS` | var | The review SLA week, e.g. `7`, `9-18`, `1,2,3,4,5` (Sunday 0). Unset: no row has `reviewDueAt`, and the app works one out from `requestedAt` on the phone's own working week (Monday to Friday, 09:00–18:00 local) |
 | `WEBHOOK_SECRET` | secret | Turns on `/github/webhook`; unset, it answers 404 |
 | `SETUP_STATE` | secret | Turns on `/github/setup` and `/github/callback` for making a webhook App |
 | `GITHUB_APP_OWNER`, `GITHUB_APP_NAME` | var | The org that owns the webhook App (unset: the person's account) and its name (unset: `<login>-pr-review`) |
 | `PR_INDEX_LOCATION` | var | Durable Object location hint for the index |
-| `APP_TOKEN`, `HUB_TOKEN`, `APNS_*`, `AGENT_PAGER_URL`, `AGENT_PAGER_PUSH_TOKEN`, `FEEDBACK_REPO`, `LINEAR_API_KEY` | | Jai's Worker; not set on a self-hosted one. With both `AGENT_PAGER_*` set, every push goes to that Worker's `POST /pr-push` instead of a device; unset, pager mode is off (`LINEAR_API_KEY` works for anyone with Linear) |
+| `BOT_AUTHORS` | var | Accounts GitHub calls users that open PRs for someone else, comma-separated logins. Their PRs say they are a bot's (`authorIsBot`) and name who asked (`requestedBy`). Unset: only GitHub Apps and `[bot]` logins |
+| `APP_TOKEN`, `HUB_TOKEN`, `APNS_*`, `AGENT_PAGER_URL`, `AGENT_PAGER_PUSH_TOKEN`, `LINEAR_API_KEY` | | Jai's Worker; not set on a self-hosted one. With both `AGENT_PAGER_*` set, every push goes to that Worker's `POST /pr-push` instead of a device; unset, pager mode is off (`LINEAR_API_KEY` works for anyone with Linear) |
 
 The webhook App's manifest points at the origin `/github/setup` was opened on, so it is right on any Worker. Its
 credentials stay in R2 at `setup/github-app.json` until read once (`POST /github/app-credentials`, or
@@ -285,10 +338,18 @@ one asked for), `effort`, `tokens` and `costCents` (list price, `null` for a mod
 model and effort has its own cached answer; the built-in default keeps the cache key from before the choice existed,
 so answers made then are still served. An answer made before then has no `model`, `effort` or `costCents`.
 
+A key lines answer also has `summary`: `risk` (`low`, `medium`, `high`), `riskWhy` (one sentence), `points` (3 to 5
+bullets: what the PR does) and `bugs` (`{path, line, side, why}`, each at a line the diff shows; empty when none was
+found). Answers are kept under `key-lines-v2-<context>`: one made before the summary is made again when next asked for.
+
+A failed key lines or rewrite answer is `{"error": "…"}`, with `"moved": true` when the PR had moved past the asked
+commit: the app then reads the PR at its newest commit and asks again, once. The app reads a passing failure (no
+network, a timeout, a `5xx` or `429`) again rather than showing it.
+
 **Ask sessions.** A Managed Agents session's model and effort are fixed when it starts; they can't change per message.
 So a question at another model or effort than the PR's current session starts a new session, and the chat the app
 shows is that new one; the earlier conversation is no longer shown. `GET …/ask` reports the session's `model` and
-`effort` beside `costCents`.
+`effort` beside `costCents` (`null` on a subscription, which is billed by plan).
 
 **Asking.** `POST …/ask` stores the question and answers `202` with the chat as `GET …/ask` last read it, the question
 at its end and `isWorking` true. It never waits on GitHub or the agent: the person's ask queue (an `AiJobs` object of
@@ -298,6 +359,101 @@ could not get stays there with `isWorking` false and the reason in `problem` (a 
 couldn't be reached. Try again."); one still waiting after 2 minutes says "The question didn't reach the AI. Try
 again." The next question to that PR replaces a failed one. A copy with the same `client_ref` answers the chat again
 and stores nothing.
+
+**Drafted reviews.** Asked to write a review, approve or request changes, the subscription's agent calls `draft_review`
+(`agent/read-tools.mjs`), which posts nothing. Its answer's message then carries `draft`: `{event: "APPROVE" |
+"REQUEST_CHANGES" | "COMMENT", body, comments: [{path, line, side: "LEFT" | "RIGHT", body}]}`, at most 30 comments.
+The app shows it under the answer; the reviewer adds it to their own drafts or posts it, as themselves, through
+`POST …/write` (`kind: "review"`). On Managed Agents no message has a draft.
+
+## AI on a subscription
+
+With `CLAUDE_CODE_OAUTH_TOKEN` set and `AGENT` bound, key lines, rewrites and Ask run in a container with the Claude
+Agent SDK (`agent/`), signed in to a Claude subscription, instead of on the Messages API and Managed Agents. The answer, the model and effort
+choice, and the stored shape are the same. A key lines or rewrite answer's `costCents` is what the run would have
+cost on the API; Ask's chat has `costCents` `null`, so the app shows no cost, and the API cost goes to `ai_run` alone.
+
+- Key lines are made ahead for each new head of every open PR on the person's lists: the review list five a pass;
+  reviewed and mine one a pass, and only while the GitHub token's hour is above its reserve, since each run reads every
+  changed file. An alert waits for those on the review list
+  ([Alerts](#alerts)). On an API key they are made only when the app asks.
+- Each run, on either path, logs one `ai_run` line: `feature`, `repo`, `number`, `auth` (`subscription` or
+  `api_key`), `user_id`, `model`, `effort`, `input_tokens`, `output_tokens`, `cost_cents`.
+- Ask: each question is one Agent SDK turn on a checkout of the PR at its head, fetched with the same token as on
+  Managed Agents, with the PR's diff beside it as `.prhub-pr.diff` (the first 400,000 characters). The system prompt
+  names the repo, the PR's number, title, author, head and base branches, state and link, and holds its description
+  (the first 6,000 characters) fenced in `<pr-description>` as data the agent must not take instructions from. The
+  chat is kept in R2 at `ask/<repo>/<n>.json` and the session's transcript at `ask-sessions/<repo>/<n>.json`, so the
+  next question resumes it in any container. A question at another model or effort starts a new chat.
+- Ask's agent reads, nothing else. It has no shell and no write or edit tool. Its tools, which the container runs
+  itself (`agent/read-tools.mjs`), are:
+  - Read, Grep and Glob, inside the PR's checkout and the person's cloned repos (`<scope>/.clones/<owner>/<name>`),
+    symlinks followed.
+  - `git`: one subcommand of `log`, `show`, `rev-list`, `shortlog`, `diff`, `grep`, `blame`, `describe`,
+    `rev-parse`, `merge-base`, `name-rev`, `ls-files`, `ls-tree`, `cat-file` and `for-each-ref`, each with its own
+    options (`GIT_READS` in `agent/read-tools.mjs`). An option not listed, and any abbreviation, is refused. An option
+    whose value git takes as optional (`--pretty`, `--abbrev`, `-U`) takes it attached (`--abbrev=8`, `-U5`) or not at
+    all, never from the next argument; one whose value git requires may take the next argument, if that does not start
+    with `-` and is no path out of the repo. Whatever the lists say, an argument starting with `--output`, `-o`,
+    `--ext-diff`, `--textconv`, `--open-files-in-pager`, `-O`, `--exec`, `--upload-pack`, `--config`, `-c`,
+    `--git-dir`, `--work-tree` or `--namespace` is refused. Git runs without a shell, with an empty stdin, no global
+    or system config, and `-c` overrides of the repo's own (`core.fsmonitor=false`, `core.hooksPath=/dev/null`,
+    `core.pager=cat`, `core.editor=false`, `core.sshCommand=false`, https the only protocol); `log`, `show` and `diff`
+    get `--no-ext-diff --no-textconv`, `blame` and `grep` `--no-textconv`. A checkout's or clone's `.git/config` is
+    made read only once set up. Git runs in the repo's real path inside the person's directory, and a path argument
+    that is absolute, starts with `~`, climbs with `..`, or resolves out of the repo through a symlink is refused.
+  - The container's code, `/app`, is root's and read only to the agent's user; checkouts and clones live under its
+    home.
+  - `clone_repo` (`owner/name`, optional branch, tag or commit): a blobless clone with branches and tags into the
+    person's clones; again, it updates.
+  - `github_api`: one `GET` of a path on `https://api.github.com`, redirects not followed. No other method is offered.
+
+  A PreToolUse hook checks each call against these rules and denies any other tool; each tool checks again. The token
+  rides each git command's header and the API request, never the agent's view or disk. It and
+  `CLAUDE_CODE_OAUTH_TOKEN` are taken out of every tool's output and of the answer.
+- Hosted, the container is told the repos this question's token names, and only those clones can be read, gitted or
+  made: a clone made while the person could see a repo is shut once they can't.
+- Each person's questions run in a container of their own (`ask:<user id>`; `ask:self` on a Worker of one's own), so
+  no person's agent shares a disk with another's checkouts. Key lines and rewrites share one (`ai`). Each sleeps after
+  two idle minutes, and the hosted Worker allows eight at once. A container keeps the `CLAUDE_CODE_OAUTH_TOKEN` it
+  started with: a replaced token is used from each container's next start
+  ([hosted-deploy.md, "Replacing the Claude token"](hosted-deploy.md#replacing-the-claude-token)).
+- `clone_repo` and `github_api` exist only when the token is read only by how it was made: hosted, the PRHub App's
+  installation token for the PR's installation, naming every repo of it the person can see (up to 500). The Worker
+  reads that list with the person's own token, `GET /user/installations/{id}/repositories`, keeps it under their
+  prefix at `ask-reach/<installation>.json` for ten minutes, and mints the token for those repos alone; the person's
+  token never reaches the container. A repo outside it, one they can't see or one the App isn't on, answers the agent
+  "You can't access …", and a PR they can't see, or in a repo the App isn't on, gets no token. On a Worker with the Ask App
+  (`ASK_GITHUB_APP_ID`), its installation token across every repo it is installed on; else `ASK_GITHUB_TOKEN`. Each
+  installation token asks `contents`, `pull_requests`, `issues`, `checks`, `actions` and `statuses` read and lasts an
+  hour. With `GITHUB_READ_TOKEN` or `GITHUB_TOKEN`, which may write, the agent keeps to `git` on the checkout, and
+  its prompt says so.
+- The container runs in the US (`constraints.regions`): nearest the request it can land where Anthropic's API refuses it.
+- The container sleeps after two idle minutes. The first run after that waits for it to start, about 20 seconds.
+- A container that is not ready, whose run was stopped, or that dropped the connection (a deploy replaces it) is
+  tried up to four times, five seconds apart.
+- A failed answer, on either path, is served for ten minutes; the next ask after that makes it again, so a run that
+  failed for want of credit or capacity heals without **Try again**.
+
+## Tracing an Ask
+
+Each Ask turn has one id, the question's own (its `client_ref`, else one the Worker makes). Every stage writes one
+`ask_event` log line with `turn`, `stage`, `pr` and `user_id`, and the fields of that stage:
+
+| `stage` | When | Fields |
+|---|---|---|
+| `queued` / `received` | `POST …/ask` stored the question, or found it already there (`repeat`) | |
+| `handed_over` / `resumed` | The queue gave it to the agent; `resumed` when a turn a deploy cut short runs again | `model`, `effort` |
+| `grant` | GitHub's read-only token for the turn is minted | `ms`, `read_only`, `repos` |
+| `container` | The Agent SDK container answered | `ms`, `subtype`, `tools` |
+| `answered` | The answer is in the chat | `ms`, `model`, `cost_cents` |
+| `failed` | The turn ended without an answer | `ms`, `side`, `reason`, `status` |
+
+`side` is where it failed: `app`, `worker`, `github`, `container` or `model`. The chat's problem for a failed turn is
+`<side>[ <status>]: <reason> · turn <first 8 characters of the id>`, for example `GitHub 403: GitHub's rate limit for
+your account is used up, resets 02:59 UTC · turn 3f2a9c1e`. A GitHub token that fails for a passing reason (no answer,
+a dropped connection) is asked for once more before the turn fails. `scripts/ask-trace.sh <id> [worker]` prints a
+turn's lines from Workers Logs.
 
 ## Reviewed key lines
 
@@ -357,6 +513,7 @@ A var the Worker cannot use does not stop anything. The default serves, and the 
 | `poll_interval_minutes` | `LIMIT_POLL_INTERVAL_MINUTES` | 10 | n/a | Each person's background poll and token refresh |
 | `installation_sync_hours` | `LIMIT_INSTALLATION_SYNC_HOURS` | 6 | n/a | How often the poll reads the person's installations again |
 | `installation_sync_on_open_minutes` | `LIMIT_INSTALLATION_SYNC_ON_OPEN_MINUTES` | 10 | n/a | The least time between installation reads on app open |
+| `installation_reads_now_per_minute` | `LIMIT_INSTALLATION_READS_NOW_PER_MINUTE` | 6 | n/a | Installation reads a config waits for: an empty list, or `?fresh=1` ([Hosted sign-in](#hosted-sign-in)). `off` allowed |
 | `session_lifetime_days` | `LIMIT_SESSION_LIFETIME_DAYS` | 180 | n/a | A phone's session; after it, the phone signs in again |
 | `sessions_max` | `LIMIT_SESSIONS_MAX` | 20 | n/a | Signed-in phones per person; the oldest session goes first |
 | `sign_in_minutes` | `LIMIT_SIGN_IN_MINUTES` | 10 | n/a | From `/auth/github/start` to GitHub's callback |
@@ -463,7 +620,7 @@ When one is sent:
   time alerts nothing.
 - Once per kind, PR and head commit: asked again at the same commit, the user hears nothing new. The keys are kept 30
   days.
-- Only once the PR's detail and diff, and its key lines when this Worker makes them (an Anthropic key, and the PR on
+- Only once the PR's detail and diff, and its key lines when this Worker makes them (on the subscription, and the PR on
   the review list), are stored at the head the alert is about, so the phone reads them from R2 and never waits on
   GitHub. An alert waits 30 seconds at most, then goes anyway; one whose PR's head moved on goes at once, and one whose
   PR left every list is not sent (`alert_dropped`). Each held alert is in `/events` as `push_delayed` with `{kind, pr,
@@ -624,8 +781,12 @@ A signed-in session's config also names the installations of the PRHub App that 
 
 The list is what the last [installation sync](#webhook-routing) read: at sign-in, on app open every
 `installation_sync_on_open_minutes`, every `installation_sync_hours`, and at once for the person who installed,
-uninstalled, suspended or changed the repos of an installation (its webhook). `installations` is absent before the
-first sync and for a signed-out session. Orgs the person belongs to that have no installation are not listed: a GitHub
+uninstalled, suspended or changed the repos of an installation (its webhook). The config reads GitHub before it
+answers, and answers with that read, when a list it held could be wrong: the first config of a new session, a list
+that is empty or not read yet, and `GET /device/config?fresh=1`, which the app sends when it comes back from GitHub's
+install or installation pages. Those reads are at most `installation_reads_now_per_minute`, spaced evenly, except a
+new session's first; one GitHub has not finished within 8 seconds goes on after the answer, which has the list as it
+was. `installations` is absent before the first sync and for a signed-out session. Orgs the person belongs to that have no installation are not listed: a GitHub
 App's user token lists only orgs where the App is installed (`GET /user/orgs`), and listing all of them would need a
 `read:org` OAuth scope the App does not ask for.
 
@@ -701,7 +862,7 @@ nothing. Each installation has an `Installation` object named `installation:<id>
 its repos each one can see. Who sees what comes only from each person's own token, never an installation token:
 
 - **Joining.** At sign-in, on app open (`GET /device/config`) when the last read is `installation_sync_on_open_minutes`
-  old, and every `installation_sync_hours` from the account's alarm, the Worker reads `GET /user/installations` and
+  old or the list needs reading before the answer (a new session, an empty list, `?fresh=1`), and every `installation_sync_hours` from the account's alarm, the Worker reads `GET /user/installations` and
   `GET /user/installations/{id}/repositories` with the person's token. They join each installation listed, with exactly the repos listed, and leave the ones no
   longer listed. A partial answer changes nothing.
 - **`installation`.** `created`, `new_permissions_accepted` and `unsuspend` record the repos it names. `suspend`
@@ -714,7 +875,8 @@ its repos each one can see. Who sees what comes only from each person's own toke
 - **`pull_request`, `pull_request_review`, `pull_request_review_comment`, `pull_request_review_thread`,
   `issue_comment` (on a PR).** Marked in the index of each member whose list has the repo, `involved` when they wrote
   the PR or are asked to review it. A PR an index does not hold, with the person not involved, costs nothing.
-- **`check_suite`, `status`.** The PRs each such member's index holds at that head are read again.
+- **`check_suite`, `status`.** Only the checks of the PRs each such member's index holds at that head are read again
+  ([Webhook reads](#webhook-reads)).
 - **In doubt.** A member is in doubt about a repo the installation gained, or a delivery named first, after their list
   was read. The delivery waits in the installation while their own token is asked (`GET /repos/{repo}`): yes delivers
   it and is kept; no drops it and is kept until the repo is added again; no answer (GitHub away, or rate limited) is
@@ -722,6 +884,30 @@ its repos each one can see. Who sees what comes only from each person's own toke
 
 The index reads GitHub only with the person's token, so even a mark that reached the wrong index could show nothing
 their token cannot read.
+
+### Webhook reads
+
+A delivery only marks a PR; the index's alarm reads it (`marks.ts`). This applies to the hosted Worker and to a
+self-hosted one with `WEBHOOK_SECRET` alike. A busy org sends many deliveries for the same PR or head (each check
+suite and status of a CI run, a bot's run of comments), so each read covers a burst:
+
+- **After quiet**, the first delivery is read 3 seconds later.
+- **PR events and comments** read the whole PR (detail, review, policy, tickets) at most once every 15 seconds. A
+  comment in the middle of a burst shows within 15 seconds.
+- **`check_suite` and `status`** read only the PR's checks, merge state and PolicyBot's status: one GraphQL query for
+  up to 25 PRs, with no REST call. They read at most once every 30 seconds per PR, so a check that finishes in the
+  middle of a CI run shows within 30 seconds. A PR is read in full instead (within its 15-second window) when its head
+  or `updatedAt` moved, or when its `.policy.yml` people decision is more than 10 minutes old or missing. That
+  decision outranks PolicyBot's live status. A PR GitHub refuses in that query (SAML, say) leaves the others' reads
+  alone. Merged rows are not read for checks.
+- **The one-minute poll** marks a PR whose search listing differs only in its checks rollup for a checks-only read too.
+- **More deliveries never delay a read that is waiting.** A delivery that arrives while its PR is being read is read
+  again when the window ends; your own write that arrives then is read at once.
+- **Your own write** (a review or a merge from the app) is read 3 seconds later, whatever came before it.
+
+`.policy.yml` texts (10 minutes) and team and org memberships (an hour) are kept in the person's index storage with
+their ETags. Past those times they are asked again with `If-None-Match`, and GitHub's `304` does not count against
+the person's hour.
 
 ### Rate limits
 
@@ -732,7 +918,8 @@ their token cannot read.
   gives no time), every call for that token answers `429` with `retry-after` until then, without reaching GitHub.
   Each backoff is in `/events` once as `rate_limited` (`kind` `low`, `primary` or `secondary`, `until`, `remaining`,
   `limit`). Each hosted poll records its cost as `polled` (`calls`, `remaining`, `limit`). The same applies to a
-  self-hosted Worker's token.
+  self-hosted Worker's token. With `GITHUB_READ_TOKEN` set, its calls are held apart from `GITHUB_TOKEN`'s, so a read
+  token that runs out stops the reads, not the writes; a background run waits when either runs low.
 - **Sign-in, per IP.** `/auth/github/start` and `/auth/github/finish` answer `429 limit_reached` past
   `sign_in_starts_per_ip_per_minute` and `sign_in_finishes_per_ip_per_minute` ([Limits](#limits)). Each IP is
   counted by its SHA-256 in an `IpLimit` object, which deletes itself when its last count expires.

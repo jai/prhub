@@ -18,3 +18,5 @@ PRHUB_ANALYTICS_HOST = eu.i.posthog.com
 // The app group the PR mirror lives in: the app and its Notification Service Extension (PRHubNotifications) share it,
 // so an alert's PR is on the phone before the tap. A fork names its own.
 PRHUB_APP_GROUP = group.com.jaigovindani.prreview
+// The Mac has no notification extension to share a mirror with, and no app group.
+PRHUB_APP_GROUP[sdk=macosx*] =

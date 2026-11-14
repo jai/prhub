@@ -3,6 +3,21 @@ import PRKitDesign
 import SwiftUI
 
 extension View {
+    package func sidebarSurface() -> some View {
+        background {
+            Color.groundPage
+                .ignoresSafeArea()
+                .shadow(color: Color.scrim, radius: Space.sm, x: Space.xxs)
+        }
+        .overlay(alignment: .trailing) {
+            Color.line
+                .frame(width: PRStyle.hairline)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+
     /// The box every comment and section sits in. It clips, so what opens inside it slides in from under the header.
     public func prCard() -> some View {
         frame(maxWidth: .infinity, alignment: .leading)
@@ -31,24 +46,35 @@ extension View {
 }
 
 /// A button on a PR's screens. The system's `.bordered` is a capsule on iOS 26, so these are drawn here. `.tint` colours
-/// primary and secondary.
+/// primary and secondary. An icon and words sit as `.iconText` draws them, so no caller sets a label style; the stock
+/// label leaves a wide gap between them on iOS 26.
 public struct PRButtonStyle: ButtonStyle {
     public enum Kind {
-        case primary, secondary, plain
+        /// `chosen` is a standing choice, as your review in `PRReviewBar`: the tint's words on its own ground.
+        case primary, secondary, chosen, plain
     }
 
     public let kind: Kind
     /// Words from the button's sides: `PRStyle.inset`, or `PRStyle.barButtonInset` in a bar of equal buttons.
     public let inset: CGFloat
+    /// The icon alone; its words stay the accessibility label.
+    public let iconOnly: Bool
     @Environment(\.isEnabled) private var isEnabled
 
-    public init(_ kind: Kind, inset: CGFloat = PRStyle.inset) {
+    public init(_ kind: Kind, inset: CGFloat = PRStyle.inset, iconOnly: Bool = false) {
         self.kind = kind
         self.inset = inset
+        self.iconOnly = iconOnly
     }
 
     public func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        Group {
+            if iconOnly {
+                configuration.label.labelStyle(.iconOnly)
+            } else {
+                configuration.label.labelStyle(.iconText)
+            }
+        }
             .font(.appFootnote.weight(.semibold))
             .foregroundStyle(foreground)
             .padding(.horizontal, inset)
@@ -62,7 +88,7 @@ public struct PRButtonStyle: ButtonStyle {
     private var foreground: AnyShapeStyle {
         switch kind {
         case .primary: AnyShapeStyle(Color.onAccent)
-        case .secondary: AnyShapeStyle(.tint)
+        case .secondary, .chosen: AnyShapeStyle(.tint)
         case .plain: AnyShapeStyle(.secondary)
         }
     }
@@ -71,6 +97,7 @@ public struct PRButtonStyle: ButtonStyle {
         switch kind {
         case .primary: AnyShapeStyle(.tint)
         case .secondary: AnyShapeStyle(Color.groundFill)
+        case .chosen: AnyShapeStyle(.tint.opacity(PRStyle.toneGroundOpacity))
         case .plain: AnyShapeStyle(.clear)
         }
     }
@@ -103,7 +130,7 @@ public struct PRAvatar: View {
     public let author: PullRequestDetail.Author?
     /// Grows with the text beside it, so its initial is never clipped at a large text size.
     #if os(macOS)
-    private var size: CGFloat { 20 * MacTextSize.scale }
+    private var size: CGFloat { 20 * MacTextSize.layoutScale }
     #else
     @ScaledMetric(relativeTo: .caption2) private var size: CGFloat = 20
     #endif
@@ -185,6 +212,7 @@ public struct InlineComposer: View {
     public let buttonTitle: String
     public var context: String?
     public var needsText = true
+    var sendAtLeading = false
     public var lines = 3...10
     public var alternate: Alternate?
     /// Takes the words to the PR's AI agent instead.
@@ -217,10 +245,12 @@ public struct InlineComposer: View {
                     .transition(.fold)
             }
             HStack(spacing: Space.sm) {
+                if sendAtLeading {
+                    sendButton
+                }
                 if let ask {
                     Button("Ask AI", systemImage: AppIcon.askAI.symbol) { ask(trimmed) }
-                        .labelStyle(.iconOnly)
-                        .buttonStyle(PRButtonStyle(.secondary))
+                        .buttonStyle(PRButtonStyle(.secondary, iconOnly: true))
                         .accessibilityLabel("Ask AI")
                         .accessibilityIdentifier("inline-composer-ask")
                 }
@@ -233,24 +263,30 @@ public struct InlineComposer: View {
                         .disabled(isSending || trimmed.isEmpty)
                         .accessibilityIdentifier("inline-composer-alternate")
                 }
-                Button {
-                    Task { await submit(through: send) }
-                } label: {
-                    if isSending {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(Color.onAccent)
-                    } else {
-                        Text(buttonTitle)
-                    }
+                if !sendAtLeading {
+                    sendButton
                 }
-                .buttonStyle(PRButtonStyle(.primary))
-                .disabled(isSending || (needsText && trimmed.isEmpty))
-                .accessibilityIdentifier("inline-composer-send")
             }
         }
         .sensoryFeedback(.success, trigger: posted)
         .onAppear { isFocused = text.isEmpty }
+    }
+
+    private var sendButton: some View {
+        Button {
+            Task { await submit(through: send) }
+        } label: {
+            if isSending {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(Color.onAccent)
+            } else {
+                Text(buttonTitle)
+            }
+        }
+        .buttonStyle(PRButtonStyle(.primary))
+        .disabled(isSending || (needsText && trimmed.isEmpty))
+        .accessibilityIdentifier("inline-composer-send")
     }
 
     private var trimmed: String {
@@ -261,11 +297,27 @@ public struct InlineComposer: View {
         isSending = true
         defer { isSending = false }
         do {
-            try await send(trimmed)
+            try await send(text.asPosted)
             posted += 1
         } catch {
             withAnimation(AppMotion.fold) { failure = error.localizedDescription }
         }
+    }
+}
+
+extension String {
+    /// The words as they are posted: without the empty lines before and after them, or the space at their end. The
+    /// first line keeps its indent, which is Markdown's: four spaces start a code block, as on GitHub.
+    var asPosted: String {
+        var lines = split(separator: "\n", omittingEmptySubsequences: false)[...]
+        while let first = lines.first, first.allSatisfy(\.isWhitespace) {
+            lines.removeFirst()
+        }
+        var words = lines.joined(separator: "\n")
+        while words.last?.isWhitespace == true {
+            words.removeLast()
+        }
+        return words
     }
 }
 

@@ -212,6 +212,20 @@ npx wrangler@4 secret delete SETUP_STATE --config $C
 
 Check: `/device/config` shows `"webhooks": true`, and a comment on a PR shows in the app within seconds.
 
+
+### Optional: reads on a second account
+
+A busy list can spend most of the human's GitHub hour on the one-minute poll. A second GitHub account with read access
+to every repo the Worker lists can make the reads instead: set its PAT as `GITHUB_READ_TOKEN`. Writes stay on
+`GITHUB_TOKEN`, and the lists stay the human's: the Worker reads whose they are from `GITHUB_TOKEN`, or `GITHUB_LOGIN`.
+
+```sh
+printf "%s" "$READ_TOKEN" | (cd worker && npx wrangler@4 secret put GITHUB_READ_TOKEN --config ../deploy/wrangler.jsonc)
+```
+
+Check: the PR list is unchanged, and `GET https://api.github.com/rate_limit` with `GITHUB_TOKEN` shows its hour falling
+far slower than before.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |

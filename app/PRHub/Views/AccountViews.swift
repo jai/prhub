@@ -37,7 +37,6 @@ struct AnthropicKeySection: View {
                 Button("Remove key", systemImage: AppIcon.delete.symbol, role: .destructive) {
                     run { try await connection.removeAnthropicKey() }
                 }
-                .labelStyle(.iconText)
                 .buttonStyle(PRButtonStyle(.secondary))
                 .tint(Color.toneBad)
                 .disabled(isWorking)
@@ -46,7 +45,9 @@ struct AnthropicKeySection: View {
             } else {
                 SecureField("Paste your Anthropic API key", text: $key)
                     .font(.appFootnote.monospaced())
+                    #if os(iOS)
                     .textInputAutocapitalization(.never)
+                    #endif
                     .autocorrectionDisabled()
                     .submitLabel(.done)
                     .onSubmit(save)
@@ -181,6 +182,7 @@ struct DeleteAccountSheet: View {
             .padding(Space.lg)
             .animation(AppMotion.fold, value: failure)
         }
+        .presentedScrollMargins()
         .background(Color.groundCard)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)

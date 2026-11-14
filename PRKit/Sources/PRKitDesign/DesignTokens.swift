@@ -35,6 +35,22 @@ public enum DesignTokens {
         .caption2: Style(size: 11, weight: .regular),
     ]
 
+    /// Each style on the Mac at Actual Size (`x-mac-typography`).
+    public static let macStyles: [Font.TextStyle: Style] = [
+        .largeTitle: Style(size: 28, weight: .regular),
+        .title: Style(size: 22, weight: .regular),
+        .title2: Style(size: 18, weight: .regular),
+        .title3: Style(size: 16, weight: .regular),
+        .headline: Style(size: 14, weight: .semibold),
+        .subheadline: Style(size: 13, weight: .regular),
+        .body: Style(size: 14, weight: .regular),
+        .callout: Style(size: 13, weight: .regular),
+        .footnote: Style(size: 12, weight: .regular),
+        .caption: Style(size: 11, weight: .regular),
+        .caption2: Style(size: 11, weight: .regular),
+    ]
+    public static let macCodeFontSize: CGFloat = 12
+
     /// Applied to every SF Symbol from the app's root.
     public static let iconVariant: SymbolVariants = .none
 }

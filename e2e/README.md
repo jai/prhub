@@ -42,3 +42,12 @@ PRHUB_E2E_SIMS=<simulator udid> npx e2e run --config e2e.bugbash.config.ts --tag
 
 Each repro launches its own mode (`tests/prhub.ts`), so one target runs them all. The repro tests fail until their
 bug is fixed. Then remove the test's `bugbash` tag and keep it as a regression test. `npm run test:e2e` leaves the tagged tests out.
+
+## State of the repro tests
+
+The first bug bash (2026-11-10) confirmed 16 repros. 15 have a fix on `main` (2026-11-14), each with a unit or UI
+test of its own in `PRKit/Tests` or `app/`. The repro tests keep their `bugbash` tag until someone runs them against
+that build on a Simulator and sees them pass. One has no fix yet:
+
+- `composer.e2e.ts`, "the Request changes button stays reachable with the keyboard up".
+

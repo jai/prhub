@@ -114,6 +114,51 @@ struct PRMirrorTests {
         #expect(rows[4].listPullRequest.pastSLA(now: now) == nil)
     }
 
+    @Test func aReviewNotYetLateComesInTheOrderItWasAskedAndCanBeSortedEitherWay() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let row = { (number: Int, repo: String, author: String, list: String, askedHoursAgo: Double?) in
+            PullRequestRow(
+                repo: repo, number: number, title: "PR", head: "h", revision: "r", diff: .ready, detail: "d",
+                status: .init(
+                    list: list, author: author, checks: "passing", review: "required", merge: "blocked",
+                    jaiReview: nil, jaiReviewedAt: nil,
+                    requestedAt: askedHoursAgo.map { now.addingTimeInterval(-$0 * 3_600).formatted(.iso8601) },
+                    reviewDueAt: now.addingTimeInterval(86_400).formatted(.iso8601)
+                )
+            )
+        }
+        let rows = [
+            row(1, "o/a", "mona", "review", 2), row(2, "o/b", "ada", "review", 9), row(3, "o/a", "ada", "reviewed", nil),
+            row(4, "o/b", "mona", "review", nil), row(5, "o/a", "ada", "review", 30),
+        ]
+
+        #expect(PRListPage.ordered(rows, now: now).map(\.number) == [5, 2, 1, 3, 4])
+        #expect(PRListPage.ordered(rows, by: .newest, now: now).map(\.number) == [1, 2, 5, 3, 4])
+
+        let sorted = PRListPage.ordered(rows, now: now)
+        #expect(PRListPage.review.entries(sorted, grouping: .repo).map(\.id) == [
+            "header:o/a", "o/a#5", "o/a#1", "header:o/b", "o/b#2", "o/b#4", "header:Recently Reviewed", "o/a#3",
+        ])
+        #expect(PRListPage.review.entries(sorted, grouping: .author).map(\.id) == [
+            "header:ada", "o/a#5", "o/b#2", "header:mona", "o/a#1", "o/b#4", "header:Recently Reviewed", "o/a#3",
+        ])
+    }
+
+    @Test func withNoSLAFromTheWorkerAReviewIsDueOneWorkingDayAfterItCouldBeSeen() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 7 * 3_600))
+        let week = ReviewWeek(calendar: calendar)
+        let date = { (text: String) in try Date(text, strategy: .iso8601) }
+        // Thursday 10:00 local: Friday 10:00. Friday 10:00: Monday 10:00.
+        #expect(week.dueAt(requestedAt: try date("2026-11-05T03:00:00Z")) == (try date("2026-11-06T03:00:00Z")))
+        #expect(week.dueAt(requestedAt: try date("2026-11-06T03:00:00Z")) == (try date("2026-11-09T03:00:00Z")))
+        // Thursday 20:00: the day starts Friday 09:00, so Monday 09:00. Saturday: Tuesday 09:00. Thursday 07:00:
+        // Friday 09:00.
+        #expect(week.dueAt(requestedAt: try date("2026-11-05T13:00:00Z")) == (try date("2026-11-09T02:00:00Z")))
+        #expect(week.dueAt(requestedAt: try date("2026-11-07T05:00:00Z")) == (try date("2026-11-10T02:00:00Z")))
+        #expect(week.dueAt(requestedAt: try date("2026-11-05T00:00:00Z")) == (try date("2026-11-06T02:00:00Z")))
+    }
+
     @Test func theOrgFilterStartsAtTheHostsOrgsAndSurvivesSaving() {
         var filter = PROrgFilter(selected: ["acme"])
         let work = PullRequestRow(

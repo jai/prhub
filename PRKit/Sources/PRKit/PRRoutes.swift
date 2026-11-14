@@ -105,6 +105,8 @@ struct PullRequestOpener {
 
 extension EnvironmentValues {
     @Entry var pullRequestOpener: PullRequestOpener?
+    /// The PRs tab draws the review toast over all of itself; a PR pushed on another tab's stack draws its own.
+    @Entry var showsReviewToastAbove = false
 }
 
 /// Goes on a `NavigationStack`, not inside it: pushed screens take their environment from the stack. A PR link in any of
@@ -131,6 +133,7 @@ struct PullRequestLinks: ViewModifier {
 struct PullRequestDestination: ViewModifier {
     /// Handed on by name: on the Mac a pushed screen doesn't get what is set on its stack.
     @Environment(\.pullRequestOpener) private var opener
+    @Environment(\.showsReviewToastAbove) private var toastAbove
 
     func body(content: Content) -> some View {
         content.navigationDestination(for: PRRoute.self) { route in
@@ -140,7 +143,13 @@ struct PullRequestDestination: ViewModifier {
                 case let .diff(session): PRDiffScreen(session: session)
                 }
             }
+            .overlay(alignment: .top) {
+                if !toastAbove {
+                    PRReviewToastView(model: route.session.model)
+                }
+            }
             .environment(\.pullRequestOpener, opener)
+            .environment(\.showsReviewToastAbove, toastAbove)
             .pushedOnMac()
         }
     }

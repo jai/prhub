@@ -41,6 +41,7 @@ extension DiffTableContainer {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .margins(.all, DiffStyle.threadInset)
+        pinToScreen(cell)
         return cell
     }
 
@@ -61,9 +62,7 @@ extension DiffTableContainer {
             return UITableViewCell()
         }
         return hostedCell(at: indexPath, id: note.id) {
-            PRKeyLineNote(item: note, isReviewed: actions.isReviewed, setReviewed: actions.setReviewed) { [actions] in
-                actions.closeNote()
-            }
+            PRKeyLineNote(item: note, actions: actions)
         }
     }
 }

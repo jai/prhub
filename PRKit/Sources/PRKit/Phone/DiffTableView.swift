@@ -43,6 +43,9 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
         super.init(frame: .zero)
         isDirectionalLockEnabled = true
         alwaysBounceVertical = false
+        // The code stops at its edges: a bounce would pull it off the screen's edge, with the header cut where the
+        // table ends and the threads pushed off the other side. The table still bounces up and down.
+        bounces = false
         showsHorizontalScrollIndicator = false
         // The status bar's tap scrolls one view to the top, and only when one alone asks: the table.
         scrollsToTop = false
@@ -56,7 +59,7 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
         table.isDirectionalLockEnabled = true
         table.keyboardDismissMode = .interactive
         table.register(DiffLineCell.self, forCellReuseIdentifier: DiffLineCell.identifier)
-        table.register(UITableViewCell.self, forCellReuseIdentifier: Self.hostedIdentifier)
+        table.register(DiffHostedCell.self, forCellReuseIdentifier: Self.hostedIdentifier)
         table.register(DiffFileHeader.self, forHeaderFooterViewReuseIdentifier: DiffFileHeader.identifier)
         // Set by hand, from `update(topInset:)`: the bars leaving must not move the code.
         contentInsetAdjustmentBehavior = .never
@@ -189,7 +192,12 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
         setContentOffset(CGPoint(x: 0, y: contentOffset.y), animated: false)
         if let row = rowToShow(jump, in: section) {
             highlightLines()
-            table.scrollToRow(at: IndexPath(row: row, section: section), at: .middle, animated: true)
+            // A key line's note is the row under its line, and the middle goes to the note: the line sits just above
+            // it, and the whole note above the floating controls. With the line in the middle, a tall note (the
+            // largest text) ran down to the stepper.
+            let under = rows.files[section].rows
+            let shown = row + 1 < under.count && under[row + 1] == .note ? row + 1 : row
+            table.scrollToRow(at: IndexPath(row: shown, section: section), at: .middle, animated: true)
             return
         }
         highlightLines()
@@ -252,6 +260,15 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
         for case let header as DiffFileHeader in table.subviews {
             header.pin(toVisibleWidth: bounds.width, offsetX: contentOffset.x)
         }
+        for cell in table.visibleCells where cell.reuseIdentifier == Self.hostedIdentifier {
+            pinToScreen(cell)
+        }
+    }
+
+    /// A thread or a key line's note is the screen's width: it stays on screen while the code scrolls sideways, as the
+    /// file headers do.
+    func pinToScreen(_ cell: UITableViewCell) {
+        (cell as? DiffHostedCell)?.offsetX = contentOffset.x
     }
 
     private var composingSection: Int? {
@@ -396,14 +413,22 @@ extension DiffTableContainer {
         refold(section) { actions.folds.toggle(rows.files[section].foldID) }
     }
 
-    /// `change` flips the file; this animates what that did.
+    /// `change` flips the file; this animates what that did. A file folded from its pinned header, read from inside,
+    /// folds in place: its header stays where it is on screen and the next file comes up under it, with nothing to fade
+    /// or scroll. A long file folds or opens at once too: fading thousands of rows, or the whole diff, flickers.
     private func refold(_ section: Int, change: () -> Void) {
         let wasCollapsed = isCollapsed(section)
         let paths = rows.files[section].rows.indices.map { IndexPath(row: $0, section: section) }
-        if paths.count > Self.animatedFoldLimit {
-            change()
-            UIView.transition(with: table, duration: 0.2, options: .transitionCrossDissolve) {
-                self.table.reloadData()
+        let headerTop = table.rectForHeader(inSection: section).minY
+        let isPinned = table.contentOffset.y + table.contentInset.top > headerTop
+        if isPinned || paths.count > Self.animatedFoldLimit {
+            UIView.performWithoutAnimation {
+                change()
+                table.reloadData()
+                table.layoutIfNeeded()
+                if isPinned {
+                    table.contentOffset.y = min(headerTop - table.contentInset.top, maxOffsetY)
+                }
             }
         } else {
             table.performBatchUpdates {
@@ -416,17 +441,16 @@ extension DiffTableContainer {
             }
         }
         (table.headerView(forSection: section) as? DiffFileHeader)?.setCollapsed(isCollapsed(section), animated: true)
-        keepHeaderInView(section)
         // A fold changes how much there is to scroll, maybe to nothing: the bars come back rather than wait for a scroll.
-        setBarsHidden(false)
+        // Not from a pinned header: the bars would push it down. If nothing is left to scroll, `settleBars` brings them.
+        if !isPinned {
+            setBarsHidden(false)
+        }
     }
 
-    /// Folding from deep inside a file would leave the reader somewhere else in the diff.
-    private func keepHeaderInView(_ section: Int) {
-        let top = table.rectForHeader(inSection: section).minY
-        if table.contentOffset.y > top {
-            table.setContentOffset(CGPoint(x: 0, y: top), animated: true)
-        }
+    /// As far down as the table scrolls: the last row above the floating controls.
+    private var maxOffsetY: CGFloat {
+        max(-table.contentInset.top, table.contentSize.height + table.contentInset.bottom - table.bounds.height)
     }
 
     /// Found by id: a thread's row moves when a comment box opens above it.

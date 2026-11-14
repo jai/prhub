@@ -1,4 +1,4 @@
-import { generateKeyLines, generateRewrite } from "./ai.ts";
+import { generateKeyLines, generateRewrite, HeadMoved } from "./ai.ts";
 import { aiConfigOf } from "./config.ts";
 import { type Env, scopedKey } from "./env.ts";
 import { DEFAULT_CONTEXT } from "./key-lines.ts";
@@ -21,7 +21,8 @@ export async function runAiJob(job: AiJob, env: Env, store: Pick<R2Bucket, "put"
     return job.kind === "key_lines" && context === DEFAULT_CONTEXT
       && sameChoice(choice, aiConfigOf(env).defaults.key_lines);
   } catch (error) {
-    await store.put(key, JSON.stringify({ error: String(error) }));
+    // `moved`: the app reads the PR at its newest commit and asks again, rather than show the failure.
+    await store.put(key, JSON.stringify({ error: String(error), ...(error instanceof HeadMoved ? { moved: true } : {}) }));
     return false;
   }
 }
@@ -29,4 +30,19 @@ export async function runAiJob(job: AiJob, env: Env, store: Pick<R2Bucket, "put"
 /** Where a job's answer is kept for whoever `env` acts as. */
 export function aiStoreKey(job: AiJob, env: Pick<Env, "SIGNED_IN_USER_ID">): string {
   return scopedKey(env, aiKey(job));
+}
+
+/** How long a failed AI answer is shown before the next ask makes it again: long enough to read, short enough to heal. */
+export const FAILURE_KEPT_MS = 10 * 60_000;
+
+/** A stored failure older than `FAILURE_KEPT_MS`: a run out of credit, or a container that was not ready, goes again. */
+export function isStaleFailure(body: string, storedAt: Date, now: number): boolean {
+  if (now - storedAt.getTime() < FAILURE_KEPT_MS) {
+    return false;
+  }
+  try {
+    return typeof (JSON.parse(body) as { error?: unknown }).error === "string";
+  } catch {
+    return false;
+  }
 }

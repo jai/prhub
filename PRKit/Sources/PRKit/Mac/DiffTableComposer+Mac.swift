@@ -81,16 +81,22 @@ extension DiffTableContainer {
             return
         }
         let range = IndexSet(integersIn: header + 1 ..< header + 1 + rows.files[section].rows.count)
+        // Folded from its pinned header, read from inside: the header stays where it is and the next file comes up
+        // under it, at once, rather than the rows fading out above the screen and the diff scrolling back to it.
+        let isPinned = contentView.bounds.minY > table.rect(ofRow: header).minY
         rebuild()
+        let animation: NSTableView.AnimationOptions = isPinned ? [] : .effectFade
         if wasCollapsed {
-            table.insertRows(at: range, withAnimation: .effectFade)
+            table.insertRows(at: range, withAnimation: animation)
         } else {
-            table.removeRows(at: range, withAnimation: .effectFade)
+            table.removeRows(at: range, withAnimation: animation)
         }
         headers[section]?.setCollapsed(isCollapsed(section))
         headers[section]?.setViewed(viewed.contains(rows.files[section].path))
-        if contentView.bounds.minY > table.rect(ofRow: header).minY {
-            scrollTable(toY: table.rect(ofRow: header).minY)
+        if isPinned {
+            let end = max(table.bounds.height - contentView.bounds.height, 0)
+            contentView.setBoundsOrigin(NSPoint(x: 0, y: min(max(table.rect(ofRow: header).minY, 0), end)))
+            reflectScrolledClipView(contentView)
         }
     }
 

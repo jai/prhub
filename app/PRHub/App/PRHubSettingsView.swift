@@ -11,6 +11,8 @@ struct PRHubSettingsView: View {
     let environment: PRHubEnvironment
     /// Back from the samples to onboarding; nil over a paired Worker.
     var endSample: (() -> Void)?
+    /// Over the samples, the connection that "Sign in with GitHub" signs in.
+    var signIn: WorkerConnection?
     @State private var confirmsDisconnect = false
     @State private var confirmsDelete = false
     @State private var signingOut = false
@@ -18,35 +20,43 @@ struct PRHubSettingsView: View {
     private var connection: WorkerConnection { environment.connection }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Space.sm) {
-                    if let endSample {
-                        samplesBlock(endSample)
-                    } else if connection.isHosted {
-                        accountBlocks
-                    } else {
-                        workerBlocks
-                    }
-                    DiffFontSection()
-                        .recordsDiffFontChanges(environment.usage)
-                    UsageSharingSection(usage: environment.usage)
-                    PRPageBlock("About") {
-                        PRValueLine("Version", value: AppIdentity.appVersion())
-                    }
+        #if os(iOS)
+        NavigationStack { page }
+        #else
+        // A window of its own on the Mac (`PRHubMacSettings`), with nothing to push.
+        page
+        #endif
+    }
+
+    private var page: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Space.sm) {
+                if let endSample {
+                    samplesBlock(endSample)
+                } else if connection.isHosted {
+                    accountBlocks
+                } else if connection.isPaired {
+                    // Before a way in is chosen, which only the Mac's Settings window can show, neither.
+                    workerBlocks
                 }
-                .padding(.bottom, Space.xl)
-                .animation(AppMotion.fold, value: connection.config)
-                .animation(AppMotion.fold, value: environment.alertPermission.status)
+                DiffFontSection()
+                    .recordsDiffFontChanges(environment.usage)
+                UsageSharingSection(usage: environment.usage)
+                PRPageBlock("About") {
+                    PRValueLine("Version", value: AppIdentity.appVersion())
+                }
             }
-            .accessibilityIdentifier("prhub-settings")
-            .background(Color.groundPage)
-            .readableContentWidth()
-            .navigationTitle("Settings")
-            .sheet(isPresented: $confirmsDelete) {
-                DeleteAccountSheet(login: connection.config?.account?.login) {
-                    try await environment.deleteAccount()
-                }
+            .padding(.bottom, Space.xl)
+            .animation(AppMotion.fold, value: connection.config)
+            .animation(AppMotion.fold, value: environment.alertPermission.status)
+        }
+        .accessibilityIdentifier("prhub-settings")
+        .background(Color.groundPage)
+        .readableContentWidth()
+        .navigationTitle("Settings")
+        .sheet(isPresented: $confirmsDelete) {
+            DeleteAccountSheet(login: connection.config?.account?.login) {
+                try await environment.deleteAccount()
             }
         }
     }
@@ -67,25 +77,41 @@ struct PRHubSettingsView: View {
                 connection.build.signInWithGitHub ? "Sign in with GitHub" : "Connect your own Worker",
                 systemImage: (connection.build.signInWithGitHub ? AppIcon.signIn : AppIcon.ownWorker).symbol
             ) { endSample() }
-                .labelStyle(.iconText)
                 .buttonStyle(PRButtonStyle(.primary))
+                .disabled(signIn?.isWorking == true)
                 .accessibilityIdentifier("prhub-connect-own-worker")
+            if let problem = signIn?.signInProblem {
+                ProblemLine(message: problem)
+                    .accessibilityIdentifier("prhub-samples-sign-in-problem")
+            }
         }
     }
 
     // MARK: - Signed in with GitHub
+
+    /// GitHub's install and installation pages open in the browser as usual; coming back reads the config fresh.
+    private var leavingForGitHub: OpenURLAction {
+        OpenURLAction { [connection] url in
+            connection.leavesForGitHub(url)
+            return .systemAction
+        }
+    }
 
     @ViewBuilder private var accountBlocks: some View {
         let account = connection.config?.account
         PRPageBlock("GitHub") {
             PRValueLine("Signed in as", value: account?.login ?? connection.config?.login ?? "…")
                 .accessibilityIdentifier("prhub-account-login")
-            if let config = connection.config, config.isOn(.push) {
+            if let config = connection.config, config.isOn(.push), AppIdentity.receivesPushes {
                 reviewAlertsLine
             }
         }
-        if let installations = connection.config?.installations {
-            GitHubAccessBlock(appName: "PRHub", installations: installations, installURL: PRHubBuild.appInstallURL)
+        if connection.config?.installations != nil || connection.isCheckingInstallations {
+            GitHubAccessBlock(
+                appName: "PRHub", installations: connection.config?.installations ?? [],
+                installURL: PRHubBuild.appInstallURL, isChecking: connection.isCheckingInstallations
+            )
+            .environment(\.openURL, leavingForGitHub)
         } else {
             PRPageBlock(
                 "GitHub access",
@@ -99,12 +125,13 @@ struct PRHubSettingsView: View {
                 .buttonStyle(PRButtonStyle(.secondary))
                 .accessibilityIdentifier("prhub-install-app")
             }
+            .environment(\.openURL, leavingForGitHub)
         }
         AnthropicKeySection(connection: connection)
         PRPageBlock(
             "Account",
-            note: "Sign out forgets your PRs on this phone. Delete account also deletes everything PRHub keeps for "
-                + "you and removes its access on GitHub."
+            note: "Sign out forgets your PRs on this \(AppIdentity.deviceName). Delete account also deletes everything "
+                + "PRHub keeps for you and removes its access on GitHub."
         ) {
             Button("Sign out", systemImage: AppIcon.signOut.symbol) {
                 signingOut = true
@@ -113,14 +140,12 @@ struct PRHubSettingsView: View {
                     signingOut = false
                 }
             }
-            .labelStyle(.iconText)
             .buttonStyle(PRButtonStyle(.secondary))
             .disabled(signingOut)
             .accessibilityIdentifier("prhub-sign-out")
             Button("Delete account", systemImage: AppIcon.delete.symbol, role: .destructive) {
                 confirmsDelete = true
             }
-            .labelStyle(.iconText)
             .buttonStyle(PRButtonStyle(.secondary))
             .tint(Color.toneBad)
             .accessibilityIdentifier("prhub-delete-account")
@@ -139,7 +164,7 @@ struct PRHubSettingsView: View {
                 )
                 PRValueLine("AI", value: Self.aiWords(config))
                     .accessibilityIdentifier("prhub-ai-features")
-                if config.isOn(.push) {
+                if config.isOn(.push), AppIdentity.receivesPushes {
                     reviewAlertsLine
                 }
             }
@@ -172,7 +197,6 @@ struct PRHubSettingsView: View {
             Button("Turn on review alerts", systemImage: AppIcon.alertsTurnOn.symbol) {
                 Task { await permission.ask() }
             }
-            .labelStyle(.iconText)
             .buttonStyle(PRButtonStyle(.secondary))
             .accessibilityIdentifier("prhub-turn-on-alerts")
         case .denied:
@@ -182,7 +206,6 @@ struct PRHubSettingsView: View {
                     UIApplication.shared.open(url)
                 }
             }
-            .labelStyle(.iconText)
             .buttonStyle(PRButtonStyle(.secondary))
             #else
             PRValueLine("Review alerts", value: "Off in System Settings")

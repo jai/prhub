@@ -11,6 +11,25 @@ public struct PullRequestDetail: Decodable, Sendable {
     public struct Author: Decodable, Sendable {
         public let login: String
         public let avatarUrl: String?
+        /// The name on their GitHub profile: absent for a bot, an unset name, or a detail stored before the Worker read
+        /// it.
+        public let name: String?
+
+        public init(login: String, avatarUrl: String?, name: String? = nil) {
+            self.login = login
+            self.avatarUrl = avatarUrl
+            self.name = name
+        }
+    }
+
+    /// The human a bot opened the PR for, as the Worker found them (docs/api.md, "Rows and details"): a login where
+    /// one is known, a name where only that is.
+    public struct RequestedBy: Decodable, Sendable {
+        public let login: String?
+        public let name: String?
+        public let avatarUrl: String?
+        /// `co_author`, `body` or `assignee`: where the Worker read it.
+        public let source: String
     }
 
     public struct Comment: Decodable, Identifiable, Sendable {
@@ -121,6 +140,12 @@ public struct PullRequestDetail: Decodable, Sendable {
     public let headBranch: String
     public let author: Author?
     public let isAuthor: Bool
+    /// These three are absent in a detail stored before the Worker read them. A GitHub App, a `[bot]` login, or an
+    /// account the Worker's `BOT_AUTHORS` names.
+    public let authorIsBot: Bool?
+    public let requestedBy: RequestedBy?
+    /// The Linear issues the title and branch name, as Linear has them where the Worker can ask.
+    public let tickets: [PRListTicket]?
     public let body: String
     public let additions: Int
     public let deletions: Int
@@ -236,5 +261,46 @@ public enum PRMarkdown {
             text = text.replacingOccurrences(of: pattern, with: replacement, options: .regularExpression)
         }
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+extension PullRequestDetail {
+    /// Who the PR is from, in a person's words: the human a bot opened it for and the bot, a bot alone, or the author.
+    /// A bot always says it is one.
+    public var byline: String {
+        let author = author.map { $0.name ?? $0.login } ?? "ghost"
+        guard authorIsBot == true else {
+            return author
+        }
+        let bot = "\(self.author?.login ?? author) (bot)"
+        guard let human = requestedBy.flatMap({ $0.name ?? $0.login }) else {
+            return bot
+        }
+        return "\(human) via \(bot)"
+    }
+
+    /// The face beside the byline: the human a bot opened it for, else the author.
+    public var bylineAvatar: Author? {
+        guard authorIsBot == true, let human = requestedBy, let login = human.login ?? human.name else {
+            return author
+        }
+        return Author(login: login, avatarUrl: human.avatarUrl, name: human.name)
+    }
+
+    /// The title without the brackets naming tickets the page shows: `[ENG-1686] [CORE-12] Count it once` is "Count it
+    /// once" over ENG-1686 and CORE-12. A bracket naming anything else stays.
+    public func title(_ title: String) -> String {
+        let shown = Set((tickets ?? []).map { $0.key.uppercased() })
+        guard !shown.isEmpty else {
+            return title
+        }
+        let kept = title.replacing(/\s*\[([^\]]*)\]/) { bracket in
+            let keys = bracket.output.1.split(separator: ",").map {
+                $0.trimmingCharacters(in: .whitespaces).uppercased()
+            }
+            return keys.allSatisfy(shown.contains) ? "" : String(bracket.output.0)
+        }
+        let trimmed = kept.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? title : trimmed
     }
 }

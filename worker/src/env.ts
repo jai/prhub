@@ -1,4 +1,5 @@
 import type { Installation, IpLimit, SignIn, UserAccount } from "./account";
+import type { AgentContainer } from "./agent-container-object";
 import type { AiJobs } from "./ai-jobs";
 import type { PrIndex } from "./pr-index";
 import type { LimitVars } from "./limits";
@@ -15,10 +16,21 @@ export interface Env extends LimitVars {
   /** A GitHub token that acts as that person: Jai's `gh` login, or a self-hoster's fine-grained PAT. */
   GITHUB_TOKEN: string;
   /**
+   * Optional: a second account's token that makes the reads, so they cost that account's hour, not the person's. Every
+   * write, and every question about the viewer (their viewed files, draft review), stays on `GITHUB_TOKEN`. Set
+   * `GITHUB_LOGIN` beside it. Ignored on the hosted Worker.
+   */
+  GITHUB_READ_TOKEN?: string;
+  /**
    * Optional: the owners (orgs or users) the app filters to by default, comma-separated. The PR list never filters by it;
    * the repo index (`GET /repos`) lists only these owners' repos when it is set.
    */
   GITHUB_ORGS?: string;
+  /**
+   * Optional: where the newest TestFlight builds of the app are published (`app-latest.ts`), for `GET /device/config`'s
+   * `app_latest`. Unset: PRHub's own. `off`: none.
+   */
+  APP_LATEST_URL?: string;
   /**
    * Visible alerts (`alerts.ts`): `review_requested`, `approved`, `changes_requested`, comma-separated, or `off`.
    * Unset: review requests.
@@ -26,7 +38,7 @@ export interface Env extends LimitVars {
   PR_ALERTS?: string;
   /** Jai's app's bearer, from his Pager Worker. Unset on a self-hosted Worker: paired devices only. */
   APP_TOKEN?: string;
-  /** The threads hub's, for `POST /prs/states` and, as Feedback's runner, `/feedback/runner/*`. */
+  /** The threads hub's, for `POST /prs/states`. */
   HUB_TOKEN?: string;
   /** Optional webhooks (`/github/webhook`): without the secret the route is off and the one-minute poll does it all. */
   WEBHOOK_SECRET?: string;
@@ -48,8 +60,18 @@ export interface Env extends LimitVars {
   /** Push through Jai's relay (docs/push-relay.md), for the public PR app. Wins over direct APNs when both are set. */
   PUSH_RELAY_URL?: string;
   PUSH_RELAY_KEY?: string;
-  /** Key lines and rewrites. */
+  /** Key lines and rewrites, when AI does not run on the subscription. */
   ANTHROPIC_API_KEY?: string;
+  /**
+   * A Claude subscription's token (`claude setup-token`): key lines and rewrites run on it in `AGENT`, the Agent SDK
+   * container, and win over `ANTHROPIC_API_KEY`. On the hosted Worker, only for `SUBSCRIPTION_LOGINS`.
+   */
+  CLAUDE_CODE_OAUTH_TOKEN?: string;
+  AGENT?: DurableObjectNamespace<AgentContainer>;
+  /** `on`: key lines, rewrites and Ask may run on an API key. Anything else: on the subscription alone. */
+  AI_ON_API_KEY?: string;
+  /** Hosted only: the comma-separated GitHub logins whose AI runs on the Worker's subscription. Unset: nobody's. */
+  SUBSCRIPTION_LOGINS?: string;
   /** Ask (`ask.ts`): the key whose org holds the agent and environment. Unset: `ANTHROPIC_API_KEY`. */
   ASK_ANTHROPIC_API_KEY?: string;
   ASK_AGENT_ID?: string;
@@ -57,23 +79,32 @@ export interface Env extends LimitVars {
   /** The vault and its `GH_TOKEN` credential, which each question refreshes. */
   ASK_VAULT_ID?: string;
   ASK_CREDENTIAL_ID?: string;
-  /** Jai's Ask GitHub App, which mints a read-only token per question. Unset: `ASK_GITHUB_TOKEN`, else `GITHUB_TOKEN`. */
+  /** Jai's Ask GitHub App, which mints a read-only token per question. Unset: `ASK_GITHUB_TOKEN`, `GITHUB_READ_TOKEN`, `GITHUB_TOKEN`. */
   ASK_GITHUB_APP_ID?: string;
   /** PKCS#8 PEM. */
   ASK_GITHUB_APP_KEY?: string;
   /** A read-only PAT for the Ask agent, so it never holds the write token. */
   ASK_GITHUB_TOKEN?: string;
   /**
-   * Feedback (`feedback.ts`), Jai's alone: the repo his app's feedback changes. Set, the Worker keeps feedback for the
-   * runner on his Mac, which takes it with `HUB_TOKEN`.
+   * The FeedbackKit Worker (jai/feedbackkit, docs/worker.md): set all three, and Feedback goes there, as this app
+   * (`FEEDBACKKIT_APP`) and the signed-in person, instead of being kept here.
    */
-  FEEDBACK_REPO?: string;
+  FEEDBACKKIT_URL?: string;
+  /**
+   * The FeedbackKit Worker as a service binding. A Worker on the same Cloudflare account must use it: Cloudflare
+   * refuses its fetch of another of the account's `workers.dev` URLs. Set, requests to `FEEDBACKKIT_URL` go through it.
+   */
+  FEEDBACKKIT?: Fetcher;
+  FEEDBACKKIT_TOKEN?: string;
+  FEEDBACKKIT_APP?: string;
   /** AI model choice (`models.ts`): allowed models, the effort cap, and each feature's default. Unset: all, high, built in. */
   AI_MODELS_ALLOWED?: string;
   AI_EFFORT_MAX?: string;
   AI_DEFAULTS?: string;
-  /** Optional: a rewrite goes on without the ticket when it is not set. */
+  /** Optional: a rewrite goes on without the ticket, and a PR's tickets without their Linear state, when it is not set. */
   LINEAR_API_KEY?: string;
+  /** Accounts GitHub calls users that open PRs for someone else, comma-separated: their PRs say so (`requester.ts`). */
+  BOT_AUTHORS?: string;
   /** The rewrite's writing guide: `owner/repo@ref` and the comma-separated paths in it. Unset: the built-in guide. */
   GUIDE_REPO?: string;
   GUIDE_FILES?: string;
@@ -109,6 +140,8 @@ export interface Env extends LimitVars {
   IP_LIMITS?: DurableObjectNamespace<IpLimit>;
   /** Set by the Worker on the env it acts with for one signed-in person (`userEnv`); never a var. */
   SIGNED_IN_USER_ID?: string;
+  /** Set by a route that says what it spent (`Server-Timing`): each GitHub call counts one; never a var. */
+  GITHUB_CALLS?: { count: number };
   /** Set by the PR index on the env a background run reads with (`rate-limit.ts`); never a var. */
   GITHUB_RATE?: RateLimitState;
   DIFFS: R2Bucket;
@@ -117,8 +150,12 @@ export interface Env extends LimitVars {
 }
 
 /** A name set to something. An empty var reads as unset, so a template's blanks turn a feature off. */
+/**
+ * Whether a var has a value. An unfilled template placeholder (`__NAME__`) has none: a deploy that missed one leaves
+ * its feature off instead of breaking it.
+ */
 export function isSet(value: string | undefined): value is string {
-  return typeof value === "string" && value.trim() !== "";
+  return typeof value === "string" && value.trim() !== "" && !/^__[A-Z0-9_]+__$/.test(value.trim());
 }
 
 /**

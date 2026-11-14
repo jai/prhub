@@ -2,6 +2,7 @@ import { alarmToSet } from "./alarm";
 import { claimOf, RECEIPT_KEPT_MS, type WriteClaim, type WriteReceipt } from "./write-receipts";
 import { DurableObject } from "cloudflare:workers";
 import { alertKey, alertKinds, alertMessage, alertsFor, type HeldStatus } from "./alerts";
+import { addMissingColumns } from "./pr-columns";
 import { createHeldAlertsTable, type HeldRow, holdAlert, releaseAlerts } from "./push-gate";
 import {
   createPushRegistrationsTable, forgetPushTokensOf, pruneUnlinkedPushTokens, registerPushToken,
@@ -16,10 +17,21 @@ import { actingEnvFor } from "./hosted";
 import type { SignedOutReason } from "./account-core";
 import { fingerprintOf, type PairingRecord, pairingKey, parsePairingRecord } from "./pairing";
 import {
-  detailVersionOf, liveDiff, type OpenRowStatus, type PullRequest, type PullRequestRef, readPullRequests, type RowStatus,
-  searchListings,
+  type ChecksNode, type Detail, detailVersionOf, liveDiff, type OpenRowStatus, type PullRequest, type PullRequestRef,
+  readChecks, readPullRequests, type ReviewWeek, type RowStatus, searchListings,
 } from "./github";
-import { parseRowStatus } from "./boundary";
+import type { ReadPullRequest } from "./alerts";
+import { patchedRead } from "./check-refresh";
+import { createGitHubCacheTable, pruneGitHubCache, sqlCache } from "./github-cache";
+import { GitHubFailure, readStates, type StatesResult } from "./pr-states";
+import {
+  BUSY_WINDOW_MS, createMarkTables, type DueMark, dropMark, dueMarks, finishRead, mark, markedIds, nextDueAt,
+  postpone, type Scope, throttledDue,
+} from "./marks";
+import type { PeopleDecision } from "./policy-people";
+import { parseRowStatus, parseStoredTicket, parseStoredTickets } from "./boundary";
+import { cachedTickets, createTicketsTable, refreshTickets } from "./ticket-cache";
+import { allKeys, lookUpTickets, type Ticket } from "./tickets";
 import {
   type CodeHash, type DeviceToken, type Fingerprint, parseRepoFullName, parseSha, prId, type PrId, type RepoFullName,
   type Sha,
@@ -27,6 +39,8 @@ import {
 import { putVersioned, storeDiff } from "./versioned";
 import { newRateLimitState } from "./rate-limit";
 import { DEFAULT_CONTEXT } from "./key-lines";
+import { onSubscription } from "./agent-container";
+import { OPEN_LISTS } from "./vocab";
 import { consumeLimits, createLimitHitsTable, type LimitCheck, type LimitDecision } from "./limit-counter";
 import { indexedPullRequestsMaxOf, LimitName, limitsOf, retentionOf } from "./limits";
 import { sweepClosedPullRequests } from "./retention";
@@ -38,7 +52,6 @@ import {
   reviewedKeyLines,
 } from "./reviewed-key-lines";
 
-const BUSY_WINDOW_MS = 3_000;
 /** The push that asks a hosted person to sign in again; the app shows Sign in with GitHub when it opens. */
 const SIGN_IN_AGAIN: PushMessage = {
   pushType: "alert", priority: 10, collapseId: "prhub-sign-in", lifetimeSeconds: 7 * 86_400,
@@ -46,6 +59,8 @@ const SIGN_IN_AGAIN: PushMessage = {
     reason: "signed_out" },
 };
 const READS_PER_PASS = 5;
+/** Checks-only reads one pass makes, in one query GitHub prices at a point (`readChecks`). */
+const CHECK_READS_PER_PASS = 25;
 /** A failed read tries again this soon, every time: GitHub's outage, or a token being replaced, ends. */
 const READ_RETRY_MS = 30_000;
 
@@ -54,11 +69,15 @@ const PUSH_SPACING_MS = 30 * 60_000;
 const KEPT_EVENTS = 5_000;
 /** An alert's key outlives any re-request worth hushing; a month of them is a few hundred rows. */
 const ALERTS_KEPT_MS = 30 * 86_400_000;
+/** Raise with `aiKey`'s key lines name (`models.ts`): each index then forgets which key lines it had made. */
+const KEY_LINES_VERSION = 2;
 const KEY_LINES_PER_PASS = 5;
-/** A job that failed, say for want of credit, goes again after this long, so the list heals without being asked. */
+/** Key lines a pass makes for open PRs not waiting on Jai's review, when the token's hour has room. */
+const OTHER_KEY_LINES_PER_PASS = 1;
+/** A job that failed, say at a usage limit, goes again after this long, so the list heals without being asked. */
 const KEY_LINES_RETRY_MS = 30 * 60_000;
 /** Raise it when what a row or detail holds changes shape: every held PR is then read again, once. */
-const ROW_SHAPE = 8;
+const ROW_SHAPE = 12;
 /** The retention sweep (`retention.ts`) runs at most this often. */
 const RETENTION_SWEEP_MS = 86_400_000;
 const LIST_ORDER = "CASE list WHEN 'mine' THEN 1 ELSE 0 END, updated_at DESC";
@@ -91,6 +110,10 @@ export interface Row {
   status: RowStatus | null;
   /** The context the phone can fetch key lines at for this head, once they are ready. */
   keyLines: number | null;
+  /** The Linear tickets the row shows (`rowTickets`); empty without one Linear has, or without Linear. */
+  tickets: Ticket[];
+  /** The first of `tickets`, for an app older than them; null without one. */
+  ticket: Ticket | null;
 }
 
 /**
@@ -112,7 +135,6 @@ export class PrIndex extends DurableObject<Env> {
       DROP TABLE IF EXISTS prs;
       CREATE TABLE IF NOT EXISTS pull_requests (id TEXT PRIMARY KEY, repo TEXT, number INTEGER, title TEXT, head TEXT,
         revision TEXT, list TEXT, updated_at TEXT, changed_at INTEGER, diff_state TEXT, diff_tried_at INTEGER);
-      CREATE TABLE IF NOT EXISTS dirty (id TEXT PRIMARY KEY, repo TEXT, number INTEGER, generation INTEGER);
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value INTEGER);
       CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, at INTEGER, kind TEXT, detail TEXT);
       CREATE TABLE IF NOT EXISTS writes (ref TEXT PRIMARY KEY, state TEXT, at INTEGER);
@@ -123,22 +145,14 @@ export class PrIndex extends DurableObject<Env> {
     createHeldAlertsTable(this.sql);
     createPushRegistrationsTable(this.sql);
     createReviewedKeyLinesTable(this.sql);
-    const columns = this.sql.exec<{ name: string }>("PRAGMA table_info(pull_requests)").toArray();
-    if (!columns.some(({ name }) => name === "version")) {
-      this.sql.exec("ALTER TABLE pull_requests ADD COLUMN version TEXT NOT NULL DEFAULT ''");
-    }
-    if (!columns.some(({ name }) => name === "status")) {
-      this.sql.exec("ALTER TABLE pull_requests ADD COLUMN status TEXT");
-    }
-    if (!columns.some(({ name }) => name === "key_lines_queued")) {
-      this.sql.exec("ALTER TABLE pull_requests ADD COLUMN key_lines_queued TEXT");
-      this.sql.exec("ALTER TABLE pull_requests ADD COLUMN key_lines_ready TEXT");
-    }
-    if (!columns.some(({ name }) => name === "key_lines_tried_at")) {
-      this.sql.exec("ALTER TABLE pull_requests ADD COLUMN key_lines_tried_at INTEGER");
-    }
-    if (!columns.some(({ name }) => name === "detail_version")) {
-      this.sql.exec("ALTER TABLE pull_requests ADD COLUMN detail_version TEXT");
+    createTicketsTable(this.sql);
+    createMarkTables(this.sql);
+    createGitHubCacheTable(this.sql);
+    addMissingColumns(this.sql);
+    // Key lines answers moved to `key-lines-v2` (with the PR's summary): every PR's are made again, at the queue's pace.
+    if (this.meta("key_lines_version") < KEY_LINES_VERSION) {
+      this.sql.exec("UPDATE pull_requests SET key_lines_queued = NULL, key_lines_ready = NULL, key_lines_tried_at = NULL");
+      this.setMeta("key_lines_version", KEY_LINES_VERSION);
     }
   }
 
@@ -148,35 +162,53 @@ export class PrIndex extends DurableObject<Env> {
 
   /** The rows of `GET /prs`, chosen and ordered by `rest`: one SELECT, so an alert's row is the list's row. */
   private selectRows(rest: string, ...bindings: unknown[]): Row[] {
-    const rows = this.sql.exec<Omit<Row, "status"> & { status: string | null }>(`SELECT repo, number, title, head,
+    const rows = this.sql.exec<Omit<Row, "status" | "ticket" | "tickets">
+      & { status: string | null; ticket: string | null; tickets: string | null }>(
+      `SELECT repo, number, title, head,
       revision, diff_state AS diff, COALESCE(detail_version, NULLIF(version, ''), updated_at) AS detail, status,
-      CASE WHEN key_lines_ready = head THEN ${DEFAULT_CONTEXT} END AS keyLines
+      CASE WHEN key_lines_ready = head THEN ${DEFAULT_CONTEXT} END AS keyLines, ticket, tickets
       FROM pull_requests ${rest}`, ...bindings).toArray();
-    return rows.map((row) => ({ ...row, status: parseRowStatus(row.status) }));
+    return rows.map((row) => ({
+      ...row, status: parseRowStatus(row.status), ticket: parseStoredTicket(row.ticket),
+      tickets: parseStoredTickets(row.tickets),
+    }));
   }
 
-  /** A delivery. A PR no list holds and Jai has no part in is dropped here, so it never costs a GitHub read. */
-  async mark(repo: RepoFullName, number: number, involved: boolean): Promise<void> {
+  /**
+   * A delivery. A PR no list holds and Jai has no part in is dropped here, so it never costs a GitHub read. The rest
+   * are read in full, a burst of them once (`marks.ts`). The person's own write is read soon whatever came before it.
+   */
+  async mark(repo: RepoFullName, number: number, involved: boolean, isOwnWrite = false): Promise<void> {
     const id = prId(repo, number);
     if (!involved && !this.exists("pull_requests", id)) {
       return;
     }
-    this.markDirty(id, repo, number);
-    await this.ensureAlarm(BUSY_WINDOW_MS);
+    if (isOwnWrite) {
+      mark(this.sql, { id, repo, number }, "full", Date.now() + BUSY_WINDOW_MS, true);
+      await this.ensureAlarm(BUSY_WINDOW_MS);
+      return;
+    }
+    await this.markThrottled([{ id, repo, number }], "full");
   }
 
-  /** A check suite or a status on a commit: each held PR at that head is read again, for its checks. */
+  /** A check suite or a status on a commit: only the checks of each held PR at that head are read again. */
   async markHead(repo: RepoFullName, sha: Sha): Promise<void> {
     const held = this.sql.exec<{ id: string; repo: string; number: number }>(
-      "SELECT id, repo, number FROM pull_requests WHERE repo = ? AND head = ?", repo, sha).toArray();
-    for (const row of held) {
-      const ref = refOf(row);
-      if (ref) {
-        this.markDirty(ref.id, ref.repo, ref.number);
-      }
+      "SELECT id, repo, number FROM pull_requests WHERE repo = ? AND head = ? AND list <> 'merged'", repo, sha)
+      .toArray();
+    await this.markThrottled(held.flatMap((row) => refOf(row) ?? []), "checks");
+  }
+
+  private async markThrottled(refs: PullRequestRef[], scope: Scope): Promise<void> {
+    const now = Date.now();
+    let earliest: number | null = null;
+    for (const ref of refs) {
+      const due = throttledDue(this.sql, ref.id, scope, now);
+      mark(this.sql, ref, scope, due);
+      earliest = Math.min(earliest ?? due, due);
     }
-    if (held.length > 0) {
-      await this.ensureAlarm(BUSY_WINDOW_MS);
+    if (earliest !== null) {
+      await this.ensureAlarm(earliest - now);
     }
   }
 
@@ -188,15 +220,14 @@ export class PrIndex extends DurableObject<Env> {
   }
 
   private async readMarked(env: Env | null): Promise<void> {
-    const marked = this.sql.exec<{ id: string; repo: string; number: number; generation: number }>(
-      "SELECT id, repo, number, generation FROM dirty LIMIT ?", READS_PER_PASS).toArray();
-    const dirty = marked.flatMap((row) => {
+    const due = (scope: Scope, limit: number) => dueMarks(this.sql, scope, Date.now(), limit).flatMap((row) => {
       const ref = refOf(row);
       if (!ref) {
-        this.sql.exec("DELETE FROM dirty WHERE id = ?", row.id);
+        dropMark(this.sql, row.id);
       }
-      return ref ? [{ ...ref, generation: row.generation }] : [];
+      return ref ? [{ ...row, ...ref }] : [];
     });
+    const dirty = due("full", READS_PER_PASS);
     if (!env) {
       // A hosted person signed out: nothing is read until they sign in again and their account ticks this index.
       return;
@@ -212,34 +243,112 @@ export class PrIndex extends DurableObject<Env> {
         "SELECT id FROM pull_requests WHERE list IN ('review', 'reviewed')").toArray().map((row) => row.id));
       let read: Awaited<ReturnType<typeof readPullRequests>>;
       try {
-        read = await readPullRequests(dirty, env, asked);
+        const tickets = (keys: string[]) => cachedTickets(this.sql, keys, Date.now(), (stale) => lookUpTickets(stale, env));
+        read = await readPullRequests(dirty, env, asked, tickets, sqlCache(this.sql));
       } catch (error) {
-        // Not thrown: Cloudflare would retry it later and later, and new work would wait behind that retry.
-        this.addEvent("read_failed", { error: String(error) });
-        this.noteRateLimit(env);
-        await this.ctx.storage.setAlarm(this.rateLimitedUntil(Date.now()) ?? Date.now() + READ_RETRY_MS);
+        await this.readFailed(env, error);
         return;
       }
-      for (const { id, generation } of dirty) {
-        const pr = read.get(id);
-        if (pr?.status && !this.isFullFor(id)) {
+      for (const marked of dirty) {
+        const pr = read.get(marked.id);
+        if (pr?.status && !this.isFullFor(marked.id)) {
           const listed: Listed = { ...pr, status: pr.status };
           this.holdAlertsOn(listed);
           await this.store(listed, env);
         } else if (pr?.status) {
-          this.addEvent("limit_reached", { limit: LimitName.IndexedPullRequestsMax, pr: id });
+          this.addEvent("limit_reached", { limit: LimitName.IndexedPullRequestsMax, pr: marked.id });
         } else {
-          this.remove(id);
+          this.remove(marked.id);
         }
-        this.sql.exec("DELETE FROM dirty WHERE id = ? AND generation = ?", id, generation);
+        finishRead(this.sql, "full", marked, Date.now());
       }
     }
+    await this.readMarkedChecks(env, due("checks", CHECK_READS_PER_PASS));
     await this.storeDiffs(env);
     await this.queueKeyLines(env);
     this.noteRateLimit(env);
-    if (this.exists("dirty") || this.exists("pending")) {
-      await this.ctx.storage.setAlarm(this.rateLimitedUntil(Date.now()) ?? Date.now() + 250);
+    const next = this.exists("pending") ? Date.now() : nextDueAt(this.sql);
+    if (next !== null) {
+      await this.ctx.storage.setAlarm(this.rateLimitedUntil(Date.now()) ?? Math.max(next, Date.now() + 250));
     }
+  }
+
+  /** Not thrown: Cloudflare would retry it later and later, and new work would wait behind that retry. */
+  private async readFailed(env: Env, error: unknown): Promise<void> {
+    this.addEvent("read_failed", { error: String(error) });
+    this.noteRateLimit(env);
+    await this.ctx.storage.setAlarm(this.rateLimitedUntil(Date.now()) ?? Date.now() + READ_RETRY_MS);
+  }
+
+  /**
+   * The checks of PRs a check suite or a status marked, all in one query, laid over what the index holds
+   * (`check-refresh.ts`). A PR that needs more is marked for a full read, within its window. One GitHub refused is
+   * left until its next delivery or the poll; when the whole query fails, every mark waits `READ_RETRY_MS`.
+   */
+  private async readMarkedChecks(env: Env, marks: (DueMark & PullRequestRef)[]): Promise<void> {
+    if (marks.length === 0) {
+      return;
+    }
+    let read: Awaited<ReturnType<typeof readChecks>>;
+    try {
+      read = await readChecks(marks, env);
+    } catch (error) {
+      this.addEvent("read_failed", { scope: "checks", error: String(error) });
+      postpone(this.sql, "checks", marks.map(({ id }) => id), Date.now() + READ_RETRY_MS);
+      return;
+    }
+    for (const checks of marks) {
+      const node = read.get(checks.id);
+      if (node === "error") {
+        this.addEvent("read_failed", { scope: "checks", pr: checks.id });
+      } else if ((node ? await this.storeChecks(checks.id, node, env) : "full") === "full") {
+        mark(this.sql, checks, "full", throttledDue(this.sql, checks.id, "full", Date.now()));
+      }
+      finishRead(this.sql, "checks", checks, Date.now());
+    }
+  }
+
+  /**
+   * The held row and detail with fresh checks. `full`: it needs a full read instead. `skip`: nothing to do, as the row
+   * went or is merged.
+   */
+  private async storeChecks(id: PrId, node: ChecksNode, env: Env): Promise<"stored" | "full" | "skip"> {
+    const row = this.sql.exec<{ repo: string; number: number; title: string; head: string; updated_at: string;
+      status: string | null; detail_version: string | null; people: string | null; people_at: number | null }>(
+      `SELECT repo, number, title, head, updated_at, status, detail_version, people, people_at FROM pull_requests
+      WHERE id = ?`, id).toArray()[0];
+    const status = parseRowStatus(row?.status ?? null);
+    const repo = parseRepoFullName(row?.repo);
+    if (!row || !repo || status?.list === "merged") {
+      return "skip";
+    }
+    if (!status || row.people === null || row.people_at === null || row.detail_version === null
+      || this.meta("row_shape") < ROW_SHAPE) {
+      return "full";
+    }
+    const stored = await env.DIFFS.get(scopedKey(env, detailKey(row.repo, row.number, row.detail_version)));
+    const detail = stored ? await stored.json<Detail>().catch(() => null) : null;
+    const people = JSON.parse(row.people) as PeopleDecision | null;
+    const patched = detail && patchedRead({
+      head: row.head, updatedAt: row.updated_at, status, detail, people, peopleAt: row.people_at,
+    }, node, Date.now());
+    if (!patched) {
+      return "full";
+    }
+    this.holdAlerts(status, {
+      repo, number: row.number, head: row.head, title: row.title, list: patched.status.list,
+      review: patched.status.review, requestedAt: patched.status.list === "review" ? patched.status.requestedAt : null,
+    });
+    const detailVersion = await detailVersionOf(patched);
+    if (detailVersion === row.detail_version) {
+      return "stored";
+    }
+    await putVersioned(env.DIFFS, scopedKey(env, detailKey(row.repo, row.number, detailVersion)), detailVersion,
+      JSON.stringify(patched.detail), "application/json");
+    this.sql.exec(`UPDATE pull_requests SET version = ?, detail_version = ?, status = ?, changed_at = ? WHERE id = ?
+      AND head = ?`, patched.version, detailVersion, JSON.stringify(patched.status), Date.now(), id, row.head);
+    this.setMeta("changed_at", Date.now());
+    return "stored";
   }
 
   /** Every minute: the safety net, because GitHub does not retry a failed delivery and personal repos send none. */
@@ -266,10 +375,26 @@ export class PrIndex extends DurableObject<Env> {
         this.addEvent("polled", { calls, remaining, limit });
       }
     }
+    await this.refreshTicketsOf(env, now);
     this.sql.exec("DELETE FROM alerts WHERE at < ?", now - ALERTS_KEPT_MS);
     pruneReviewedKeyLines(this.sql, now);
+    pruneGitHubCache(this.sql, now);
     await this.sweepIfDue(env, now);
     await this.pushIfDue(now);
+  }
+
+  /** A ticket that moved on in Linear: its PRs are read again, so the row and the detail say the same. */
+  private async refreshTicketsOf(env: Env, now: number): Promise<void> {
+    if (!isSet(env.LINEAR_API_KEY)) {
+      return;
+    }
+    const changed = await refreshTickets(this.sql, now, (keys) => lookUpTickets(keys, env));
+    for (const row of changed) {
+      const ref = refOf(row);
+      if (ref) {
+        this.markDirty(ref.id, ref.repo, ref.number);
+      }
+    }
   }
 
   /** Once a day when retention is on: stored objects of PRs off the list past it go (`retention.ts`). */
@@ -292,16 +417,22 @@ export class PrIndex extends DurableObject<Env> {
 
   private async compareWithGitHub(env: Env): Promise<void> {
     const listings = await searchListings(env);
+    const now = Date.now();
     const held = this.sql.exec<{ id: string; repo: string; number: number; version: string; status: string | null }>(
       "SELECT id, repo, number, version, status FROM pull_requests").toArray();
     const isCurrentShape = this.meta("row_shape") >= ROW_SHAPE;
     const versions = new Map<string, string | null>(
       held.map((row) => [row.id, row.status && isCurrentShape ? row.version : null]));
     this.setMeta("row_shape", ROW_SHAPE);
+    const updatedOf = (version: string | null | undefined) => version?.slice(0, version.indexOf(".")) ?? null;
     for (const { id, repo, number, version, reviewedOnly } of listings.values()) {
-      if (versions.get(id) !== version && (!reviewedOnly || versions.has(id))) {
-        this.markDirty(id, repo, number);
+      const heldVersion = versions.get(id);
+      if (heldVersion === version || (reviewedOnly && !versions.has(id))) {
+        continue;
       }
+      // The same `updatedAt` with another checks rollup: only checks moved, and a checks-only read will do.
+      const scope = heldVersion && updatedOf(heldVersion) === updatedOf(version) ? "checks" : "full";
+      mark(this.sql, { id, repo, number }, scope, now);
     }
     for (const row of held) {
       const ref = refOf(row);
@@ -309,8 +440,9 @@ export class PrIndex extends DurableObject<Env> {
         this.markDirty(ref.id, ref.repo, ref.number);
       }
     }
-    if (this.exists("dirty") || this.exists("pending")) {
-      await this.ensureAlarm(0);
+    const next = nextDueAt(this.sql);
+    if (next !== null || this.exists("pending")) {
+      await this.ensureAlarm(Math.max(0, (next ?? now) - now));
     }
   }
 
@@ -320,15 +452,17 @@ export class PrIndex extends DurableObject<Env> {
    * held.
    */
   private holdAlertsOn(pr: Listed): void {
+    const heldRow = this.sql.exec<{ status: string | null }>(
+      "SELECT status FROM pull_requests WHERE id = ?", prId(pr.repo, pr.number)).toArray()[0];
+    this.holdAlerts(parseRowStatus(heldRow?.status ?? null), { ...pr, list: pr.status.list, review: pr.status.review });
+  }
+
+  private holdAlerts(held: HeldStatus, read: ReadPullRequest): void {
     const kinds = alertKinds(this.env);
     if (kinds.size === 0) {
       return;
     }
-    const heldRow = this.sql.exec<{ status: string | null }>(
-      "SELECT status FROM pull_requests WHERE id = ?", prId(pr.repo, pr.number)).toArray()[0];
-    const held: HeldStatus = parseRowStatus(heldRow?.status ?? null);
     const now = Date.now();
-    const read = { ...pr, list: pr.status.list, review: pr.status.review };
     for (const alert of alertsFor(held, read, kinds, now)) {
       const key = alertKey(alert);
       const claimed = this.sql.exec(`INSERT INTO alerts (key, at) VALUES (?, ?) ON CONFLICT (key) DO NOTHING
@@ -344,7 +478,7 @@ export class PrIndex extends DurableObject<Env> {
    * `/events` (`alert` and `push_delayed`). One still waiting has an alarm at its deadline.
    */
   private async sendHeldAlerts(env: Env | null): Promise<void> {
-    const makesKeyLines = env !== null && isSet(env.ANTHROPIC_API_KEY);
+    const makesKeyLines = env !== null && onSubscription(env);
     const keyLinesOn = (row: HeldRow) => makesKeyLines && row.list === "review" && row.diff_state === "ready";
     const now = Date.now();
     const { release, dropped, nextAt } = releaseAlerts(this.sql, now, keyLinesOn);
@@ -361,6 +495,27 @@ export class PrIndex extends DurableObject<Env> {
     }));
     if (nextAt !== null) {
       await this.ensureAlarm(Math.max(0, nextAt - now));
+    }
+  }
+
+  /**
+   * `POST /prs/states` (pr-states.ts), read here so `.policy.yml` texts and memberships come from this index's own
+   * cache: a repeat from any isolate is a hit or a free 304, not a paid REST call. Says the GitHub calls it made.
+   */
+  async states(refs: PrId[], week: ReviewWeek | null): Promise<StatesResult> {
+    const env = await this.actingEnv();
+    if (!env) {
+      return { failure: { code: "signed_out", message: "signed out of GitHub" }, githubCalls: 0 };
+    }
+    const rate = env.GITHUB_RATE ?? newRateLimitState();
+    const counted = { ...env, GITHUB_RATE: rate };
+    try {
+      return { answer: await readStates(refs, week, counted, sqlCache(this.sql)), githubCalls: rate.calls };
+    } catch (failure) {
+      if (failure instanceof GitHubFailure) {
+        return { failure: { code: failure.code, message: failure.message }, githubCalls: rate.calls };
+      }
+      throw failure;
     }
   }
 
@@ -413,9 +568,8 @@ export class PrIndex extends DurableObject<Env> {
     for (const row of held.filter((one) => names.has(one.repo.toLowerCase()))) {
       this.remove(row.id);
     }
-    const dirty = this.sql.exec<{ id: string; repo: string }>("SELECT id, repo FROM dirty").toArray();
-    for (const row of dirty.filter((one) => names.has(one.repo.toLowerCase()))) {
-      this.sql.exec("DELETE FROM dirty WHERE id = ?", row.id);
+    for (const row of markedIds(this.sql).filter((one) => names.has(one.repo.toLowerCase()))) {
+      dropMark(this.sql, row.id);
     }
     for (const repo of repos) {
       forgetReviewedKeyLinesOf(this.sql, repo);
@@ -553,10 +707,9 @@ export class PrIndex extends DurableObject<Env> {
       "SELECT at, kind, detail FROM events ORDER BY id DESC LIMIT ?", limit).toArray();
   }
 
-  private exists(what: "pull_requests" | "dirty" | "pending", id?: string): boolean {
+  private exists(what: "pull_requests" | "pending", id?: string): boolean {
     const query = {
       pull_requests: "SELECT 1 FROM pull_requests WHERE id = ?",
-      dirty: "SELECT 1 FROM dirty LIMIT 1",
       pending: "SELECT 1 FROM pull_requests WHERE diff_state = 'pending' AND diff_tried_at < ? LIMIT 1",
     }[what];
     const parameter = what === "pending" ? Date.now() - 60_000 : id;
@@ -570,9 +723,9 @@ export class PrIndex extends DurableObject<Env> {
       && this.sql.exec<{ n: number }>("SELECT count(*) AS n FROM pull_requests").one().n >= max;
   }
 
+  /** A full read due now: the poll, Linear or a carried index found the PR behind. */
   private markDirty(id: PrId, repo: RepoFullName, number: number): void {
-    this.sql.exec(`INSERT INTO dirty (id, repo, number, generation) VALUES (?, ?, ?, 1)
-      ON CONFLICT (id) DO UPDATE SET generation = generation + 1`, id, repo, number);
+    mark(this.sql, { id, repo, number }, "full", Date.now());
   }
 
   private async ensureAlarm(delay: number): Promise<void> {
@@ -600,30 +753,44 @@ export class PrIndex extends DurableObject<Env> {
     const held = this.sql.exec<{ detail_version: string | null }>(
       "SELECT detail_version FROM pull_requests WHERE id = ?", id).toArray()[0];
     this.sql.exec(`INSERT INTO pull_requests (id, repo, number, title, head, revision, list, updated_at, version,
-        detail_version, status, changed_at, diff_state, diff_tried_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)
+        detail_version, status, changed_at, ticket, ticket_keys, tickets, people, people_at, diff_state, diff_tried_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)
       ON CONFLICT (id) DO UPDATE SET title = excluded.title, head = excluded.head, list = excluded.list,
         updated_at = excluded.updated_at, version = excluded.version, detail_version = excluded.detail_version,
-        status = excluded.status, changed_at = excluded.changed_at,
+        status = excluded.status, changed_at = excluded.changed_at, ticket = excluded.ticket,
+        ticket_keys = excluded.ticket_keys, tickets = excluded.tickets, people = excluded.people,
+        people_at = excluded.people_at,
         diff_state = CASE WHEN revision <> excluded.revision THEN 'pending' ELSE diff_state END,
         diff_tried_at = CASE WHEN revision <> excluded.revision THEN 0 ELSE diff_tried_at END,
         revision = excluded.revision`,
     id, pr.repo, pr.number, pr.title, pr.head, pr.revision, pr.status.list, pr.updatedAt, pr.version, detailVersion,
-    JSON.stringify(pr.status), Date.now());
+    JSON.stringify(pr.status), Date.now(), pr.ticket && JSON.stringify(pr.ticket),
+    JSON.stringify(allKeys(pr.ticketKeys)), JSON.stringify(pr.tickets), JSON.stringify(pr.people),
+    Date.now());
     if (held?.detail_version !== detailVersion) {
       this.setMeta("changed_at", Date.now());
     }
   }
 
-  /** One job per new head of a PR waiting on Jai. `AiJobs` runs it, so this mirror never waits on a model. */
+  /**
+   * One job per new head of every open PR on Jai's lists, those waiting on his review first, only on the subscription: on
+   * an API key every PR nobody opens would cost money. `AiJobs` runs it, so this mirror never waits on a model.
+   */
   private async queueKeyLines(env: Env): Promise<void> {
-    if (!isSet(env.ANTHROPIC_API_KEY)) {
+    if (!onSubscription(env)) {
       return;
     }
-    const due = this.sql.exec<{ id: string; repo: string; number: number; head: string }>(`SELECT id, repo, number, head
-      FROM pull_requests WHERE list = 'review' AND diff_state = 'ready' AND (COALESCE(key_lines_queued, '') <> head
-        OR (COALESCE(key_lines_ready, '') <> head AND COALESCE(key_lines_tried_at, 0) < ?))
-      LIMIT ?`, Date.now() - KEY_LINES_RETRY_MS, KEY_LINES_PER_PASS).toArray();
+    // Key lines read every changed file from GitHub. Those waiting on Jai's review go five a pass; the rest, one a pass
+    // and only while the token's hour is not low, so making them never starves the list or his other tools.
+    const spare = this.rateLimitedUntil(Date.now()) === null;
+    let others = spare ? OTHER_KEY_LINES_PER_PASS : 0;
+    const lists = OPEN_LISTS.map((list) => `'${list}'`).join(", ");
+    const rows = this.sql.exec<{ id: string; repo: string; number: number; head: string; list: string }>(`SELECT id,
+      repo, number, head, list FROM pull_requests WHERE list IN (${lists}) AND diff_state = 'ready'
+        AND (COALESCE(key_lines_queued, '') <> head
+          OR (COALESCE(key_lines_ready, '') <> head AND COALESCE(key_lines_tried_at, 0) < ?))
+      ORDER BY list = 'review' DESC LIMIT ?`, Date.now() - KEY_LINES_RETRY_MS, KEY_LINES_PER_PASS).toArray();
+    const due = rows.filter((row) => row.list === "review" || others-- > 0);
     for (const row of due) {
       this.sql.exec("UPDATE pull_requests SET key_lines_queued = ?, key_lines_tried_at = ? WHERE id = ?", row.head,
         Date.now(), row.id);

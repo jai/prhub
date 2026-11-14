@@ -80,11 +80,13 @@ test("after an unpair the secret is refused on the very next request", async () 
 test("a stored status in an old shape reads as no status", () => {
   const today = {
     list: "review", author: "alex", checks: "passing", review: "required", merge: "clean", jaiReview: null,
-    jaiReviewedAt: null, reviewDueAt: "2026-11-07T02:00:00Z",
+    jaiReviewedAt: null, requestedAt: "2026-11-06T02:00:00Z", reviewDueAt: "2026-11-07T02:00:00Z",
   };
   assert.deepEqual(parseRowStatus(JSON.stringify(today)), today);
   const { reviewDueAt: _, ...beforeDueTimes } = today;
   assert.equal(parseRowStatus(JSON.stringify(beforeDueTimes)), null);
+  const { requestedAt: __, ...beforeRequestTimes } = today;
+  assert.equal(parseRowStatus(JSON.stringify(beforeRequestTimes)), null);
   assert.equal(parseRowStatus(JSON.stringify({ ...today, list: "archived" })), null);
   assert.equal(parseRowStatus("{"), null);
   assert.equal(parseRowStatus(null), null);

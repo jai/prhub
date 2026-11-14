@@ -3,7 +3,11 @@ import { askPrompt, askRecordKey, chatOf, QUESTION } from "./ask-chat";
 import type { AskChat, AskInput } from "./ask-chat";
 import { type Env, isSet } from "./env";
 import { prId, type RepoFullName } from "./ids";
-import { askRepoToken, InstallationTokenRefused } from "./app-token";
+import { askGitHubReach, askGrant, askRepoToken, InstallationTokenRefused } from "./app-token";
+import { onApiKey, onSubscription } from "./agent-container";
+import { askSubscriptionPrompt } from "./ask-setup";
+import { AskFailure } from "./ask-trace";
+import { askOnSubscription, isSubscriptionRecord, prDiff, prFacts, subscriptionChat } from "./ask-subscription";
 import { askBudgetOf, limitsOf } from "./limits";
 import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models";
 
@@ -12,7 +16,7 @@ import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models";
  * The session holds the conversation and a checkout, and sessions last until deleted, so this keeps only which one is
  * this PR's. A repo is fixed for a session's life; its GitHub token isn't, and each question brings a fresh one. On Jai's
  * Worker that is minted by the Ask GitHub App, read only across every repo it is installed on. A self-hosted Worker
- * has no App: its own PAT goes instead, `ASK_GITHUB_TOKEN` (read only) or else `GITHUB_TOKEN`. On the hosted Worker
+ * has no App: its own PAT goes instead, `ASK_GITHUB_TOKEN` (read only), else `GITHUB_READ_TOKEN`, else `GITHUB_TOKEN`. On the hosted Worker
  * the PRHub App mints it, read only and for this one repo, after the person's own token has read the PR: an
  * installation token reaches repos the person may not, so it is never minted for one they can't see. The same token is
  * `GH_TOKEN` in the vault, for GitHub's API. A hosted person's sessions run in their own Anthropic org, on their key, and
@@ -36,6 +40,7 @@ interface AskRecord {
 }
 
 export class AskRefused extends Error {}
+
 
 function client(env: Env): Anthropic {
   return new Anthropic({ apiKey: isSet(env.ASK_ANTHROPIC_API_KEY) ? env.ASK_ANTHROPIC_API_KEY : env.ANTHROPIC_API_KEY });
@@ -96,8 +101,15 @@ async function liveRecord(repo: RepoFullName, number: number, head: string, choi
 
 export async function askChat(repo: RepoFullName, number: number, env: Env): Promise<AskChat> {
   const record = await readRecord(repo, number, env);
+  if (isSubscriptionRecord(record)) {
+    return subscriptionChat(record, Date.now());
+  }
   if (!record) {
     return chatOf([], null);
+  }
+  if (!onApiKey(env)) {
+    // A chat from Managed Agents, which ran on an API key: not read while that is off.
+    return { ...chatOf([], null), problem: "This chat ran on an API key, which is off for now. Ask again to start a new one." };
   }
   const events = [];
   for await (const event of client(env).beta.sessions.events.list(record.session)) {
@@ -113,11 +125,36 @@ export async function askChat(repo: RepoFullName, number: number, env: Env): Pro
   );
 }
 
-/** Sends the question. The route reads the conversation after, so a repeat that finds this sent reads it too. */
-export async function ask(repo: RepoFullName, number: number, input: AskInput, choice: ModelChoice, env: Env): Promise<void> {
+/**
+ * Sends the question. The route reads the conversation after, so a repeat that finds this sent reads it too. Each
+ * question is one `ai_run` log line; its cost is the session's, read from Anthropic, as the turn has not run yet.
+ */
+export async function ask(
+  repo: RepoFullName, number: number, input: AskInput, choice: ModelChoice, env: Env, turn?: string,
+): Promise<void> {
+  if (onSubscription(env)) {
+    const grant = () => askGrant(repo, number, env).catch((error: unknown) => {
+      throw error instanceof InstallationTokenRefused ? new AskFailure("github", error.message, error.status) : error;
+    });
+    const reach = askGitHubReach(env);
+    return askOnSubscription(repo, number, input, choice, env, {
+      system: async () => askSubscriptionPrompt({
+        reviewer: env.GITHUB_LOGIN ?? null, repo, number, pr: await prFacts(repo, number, env), reach,
+      }),
+      grant, readOnly: reach !== "none", diff: () => prDiff(repo, number, input.head, env),
+      budgetUsd: askBudgetOf(limitsOf(env)) / 100, turn,
+    });
+  }
+  if (!onApiKey(env)) {
+    throw new AskRefused("AI runs on the subscription alone for now, and this account has none.");
+  }
   const record = await liveRecord(repo, number, input.head, choice, env);
   await client(env).beta.sessions.events.send(record.session, {
     events: [{ type: "user.message", content: [{ type: "text", text: askPrompt(input, record.head) }] }],
+  });
+  console.log("ai_run", {
+    feature: "ask", repo, number, user_id: env.SIGNED_IN_USER_ID ?? null, model: choice.model, effort: choice.effort,
+    session: record.session,
   });
   await env.DIFFS.put(askRecordKey(repo, number, env), JSON.stringify({ ...record, head: input.head }));
 }

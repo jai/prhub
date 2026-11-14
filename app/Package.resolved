@@ -1,0 +1,33 @@
+{
+  "originHash" : "5579b82c81d51767acd2fe594d41b814c06a1a37d731b9c347a6901c755d4e18",
+  "pins" : [
+    {
+      "identity" : "agentchatkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/jai/agentchatkit",
+      "state" : {
+        "revision" : "aeff1f978d6ea0a921fa336ca9a10627ddfd1b4b",
+        "version" : "0.1.0"
+      }
+    },
+    {
+      "identity" : "feedbackkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/jai/feedbackkit",
+      "state" : {
+        "revision" : "1434e5bc91b1d29613d1deb06c592f39ca3b31c8",
+        "version" : "0.1.0"
+      }
+    },
+    {
+      "identity" : "posthog-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/PostHog/posthog-ios",
+      "state" : {
+        "revision" : "4e9850f767988f394e8584b0bf61ce85674775eb",
+        "version" : "3.93.6"
+      }
+    }
+  ],
+  "version" : 3
+}

@@ -52,8 +52,11 @@ struct PRStatusCard: View {
         }
     }
 
+    /// Nothing for a PR that is merged or closed: its row says so.
     @ViewBuilder private var mergeAction: some View {
-        if session.isMerged {
+        if detail.state == "merged" || detail.state == "closed" {
+            EmptyView()
+        } else if session.isMerged {
             Text("Merged")
                 .font(.appFootnote.weight(.semibold))
                 .foregroundStyle(Color.toneMerged)

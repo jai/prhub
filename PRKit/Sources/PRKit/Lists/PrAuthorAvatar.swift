@@ -8,7 +8,7 @@ public struct PrAuthorAvatar: View {
     public let pullRequest: PRListPullRequest
     @Environment(\.loadsAuthorAvatars) private var loadsAvatars
     #if os(macOS)
-    private var size: CGFloat { 32 * MacTextSize.scale }
+    private var size: CGFloat { 32 * MacTextSize.layoutScale }
     #else
     @ScaledMetric(relativeTo: .subheadline) private var size: CGFloat = 32
     #endif

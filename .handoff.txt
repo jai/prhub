@@ -1,0 +1,3 @@
+2026-11-09 (session: feedback-orca): prhub main f68fdd3 changes worker/ Feedback to a queue (no Managed Agents).
+jai/agent-pager deploy/prhub.ref is pinned to f68fdd3 (not a tag). v0.10.0 should be cut from a main that includes
+f68fdd3; then agent-pager can move deploy/prhub.ref to v0.10.0. I did not tag anything.

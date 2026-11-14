@@ -23,6 +23,8 @@ through the PRHub GitHub App. The service stores these items:
   you can see. It uses this record to send each GitHub notification only to the people who can see that repo.
 - **Your Anthropic API key, if you give one.** It is encrypted as the tokens are, and never sent back to your phone.
 - **AI answers.** Key lines, rewrites and the record of your Ask conversations, when you use them.
+- **Your feedback.** What you send from the Feedback tab, and the link to the issue it opened, so that you can
+  follow the chat in the app.
 - **Your phone's push token**, when you allow notifications. The service uses it to send pushes to your phone.
 - **Activity records.** The last 5,000 events of your account, such as syncs, pushes and errors, so that problems
   can be found. They contain no PR content.
@@ -32,6 +34,10 @@ through the PRHub GitHub App. The service stores these items:
 ## Where your data goes
 
 - **GitHub** receives your reads and your actions, such as reviews, comments and merges, sent with your own token.
+- **GitHub, in public: your feedback.** Feedback that you send from the Feedback tab opens a public issue on
+  github.com/jai/prhub (unless Jai has asked you to test with him, when it goes to a private coding chat), with your words, your screenshots, your GitHub username and the app's build number. Anyone can
+  read it. Your replies in the app become comments on it. The screenshots are served by the service at links that
+  anyone with the issue can open. Delete Account does not remove the issue or its screenshots: ask Jai to remove them.
 - **Anthropic** receives PR diffs, descriptions and your questions only when you give your own Anthropic API key and
   use an AI feature. The calls run on your key and in your Anthropic organization, and Anthropic's terms cover them.
 - **Apple** receives the pushes for your phone through its push service.
@@ -48,7 +54,8 @@ The app, not the hosted service, tells Jai which screens and features people use
   a sync, setting or removing your Anthropic key, and a change to the diff font. Opening a PR also sends how it was
   opened (an alert, the list or a link), whether the phone already had it, and how many milliseconds it took; an alert
   sends whether the phone fetched its PR before you tapped it, and how long that took. Failures send only a short error
-  code, such as `github_unavailable`. Each event also carries the app version, the iOS version, the device model, the
+  code, such as `github_unavailable`; a request to the service that fails sends what it was for (such as the PR list or
+  Feedback) and its HTTP status, or that the phone was offline. Each event also carries the app version, the iOS version, the device model, the
   screen size, and the phone's language and time zone.
 - **What is never sent.** Your GitHub user ID, username or email, repo and organization names, PR titles, file paths,
   code, comments, your Anthropic key, your push token, and anything that you type. The app cannot attach these: each

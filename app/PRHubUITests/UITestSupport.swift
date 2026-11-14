@@ -71,6 +71,22 @@ extension XCUIApplication {
                 page.swipeDown(velocity: .slow)
             }
         }
+        waitForStill(element)
+        return isClearOfBars(element)
+    }
+
+    /// Scrolls the page back towards its top until `element` is out from under the bars, then waits for it to stop.
+    /// Xcode Cloud, 2026-11-14, iPhone in the largest text: the swipe that reached the checks left Review changes under
+    /// the nav bar, the bar took the tap, and the diff never opened.
+    @MainActor func scrollDown(to element: XCUIElement) -> Bool {
+        for _ in 0..<5 where !isClearOfBars(element) {
+            swipeDown(velocity: .slow)
+        }
+        waitForStill(element)
+        return isClearOfBars(element)
+    }
+
+    @MainActor private func waitForStill(_ element: XCUIElement) {
         var frame = element.frame
         for _ in 0..<10 {
             RunLoop.current.run(until: Date.now.addingTimeInterval(0.2))
@@ -79,7 +95,6 @@ extension XCUIApplication {
             }
             frame = element.frame
         }
-        return isClearOfBars(element)
     }
 
     /// On screen and out from under the nav bar and the tab bar, which take a tap meant for what scrolls under them.

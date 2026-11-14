@@ -52,13 +52,22 @@ final class PRHubNavigationUITests: XCTestCase {
             .map { app.buttons[$0].frame.width }
         XCTAssertEqual(widths.max()! - widths.min()!, 0, accuracy: 1, "one bar of equal buttons")
         try? picture("nav-diff-review-bar")
-        app.buttons["pr-review-approve"].tap()
+        let approve = app.buttons["pr-review-approve"]
+        let approveLeft = approve.frame.minX
+        approve.tap()
         let send = app.buttons["inline-composer-send"]
         XCTAssertTrue(send.waitForExistence(timeout: 5))
+        XCTAssertEqual(send.frame.minX, approveLeft, accuracy: 1, "Approve stays on the left when its box opens")
+        XCTAssertLessThan(send.frame.maxX, app.buttons["Cancel"].frame.minX)
+        try? picture("nav-diff-approve-open")
         XCTAssertFalse(app.buttons["pr-review-approve"].exists, "the box takes the bar's place")
         send.tap()
         XCTAssertTrue(app.descendants(matching: .any)["pr-notice"].waitForExistence(timeout: 5), "the review went")
         XCTAssertTrue(waitFor { !send.exists }, "and its box closed")
+        XCTAssertTrue(waitFor { approve.exists && approve.label == "Approved" }, "the bar shows your review")
+        XCTAssertTrue(approve.isSelected)
+        XCTAssertFalse(app.buttons["pr-review-request-changes"].isSelected)
+        try? picture("nav-diff-review-bar-approved")
     }
 
     func testTheRowsReviewButtonLandsOnTheDiffWithKeyLinesOpenAndBackGoesToThePR() {
@@ -228,9 +237,16 @@ final class PRHubNavigationUITests: XCTestCase {
     }
 
     /// On screen, in the window's left half: the list's column.
+    /// Read from one snapshot, retried for up to 5 s: the list draws its rows again as the PR opens, and a row read
+    /// with `exists` then `frame` can go between the two, which fails the test outright (Xcode Cloud's iPad, 2026-11-14).
     private func isBeside(_ row: XCUIElement) -> Bool {
         let window = app.windows.firstMatch.frame
-        return row.exists && row.frame.minX >= window.minX && row.frame.maxX < window.midX
+        return waitFor {
+            guard let frame = try? row.snapshot().frame else {
+                return false
+            }
+            return frame.minX >= window.minX && frame.maxX < window.midX
+        }
     }
 
     private func waitForHittable(_ element: XCUIElement) -> Bool {

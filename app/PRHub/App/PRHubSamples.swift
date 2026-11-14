@@ -17,17 +17,19 @@ extension PRHubEnvironment {
     /// pairing. The samples' environment, and the screenshots' `-PRHubPaired`.
     static func offline(
         config: DeviceConfig, access: PRViewerAccess = .offline, samples: PRSampleSet? = nil, worker: URL,
-        defaultsSuite: String, isSample: Bool, usage: UsageAnalytics = .disabled(), outbox: (any PRKitOutbox)? = nil
+        defaultsSuite: String, isSample: Bool, usage: UsageAnalytics = .disabled(), outbox: (any PRKitOutbox)? = nil,
+        checksUpdates: Bool = false
     ) -> PRHubEnvironment {
         let defaults = UserDefaults(suiteName: defaultsSuite) ?? .standard
         defaults.set(try? JSONEncoder().encode(config), forKey: WorkerConnection.configKey)
         let connection = WorkerConnection(
             endpoint: WorkerEndpoint(fixed: worker),
             pairing: DevicePairing(pair: { _, _ in throw URLError(.badURL) }, save: { _ in }),
-            fetchConfig: { config }, forgetSecret: {}, defaults: defaults
+            fetchConfig: { _ in config }, forgetSecret: {}, defaults: defaults
         )
         return PRHubEnvironment(
-            connection: connection, access: access, samples: samples, isSample: isSample, usage: usage, outbox: outbox
+            connection: connection, access: access, samples: samples, isSample: isSample, usage: usage, outbox: outbox,
+            update: PRHubUpdate(defaults: defaults, isEnabled: checksUpdates, usage: usage)
         )
     }
 }
@@ -43,23 +45,25 @@ extension PRSampleSet {
         samples: [
             PRHubSample(
                 repo: "acme/web", number: 412, title: "Show a retry button when checkout fails", list: "review",
-                author: "mona", checks: "passing", review: "required", merge: "clean",
+                author: "mona", checks: "passing", review: "required", merge: "clean", requestedHoursAgo: 3,
                 body: "## What this does\\n\\nWhen a payment fails, checkout now shows **Try again** instead of a dead "
                     + "end. The retry calls `retryPayment`, which the server treats as the same payment.\\n\\n"
-                    + "- [x] Tested with a declined test card\\n- [ ] Tested on a slow network",
+                    + "- [x] Tested with a declined test card\\n- [ ] Tested on a slow network\\n\\nFixes WEB-31",
                 diff: checkoutDiff, keyLines: checkoutKeyLines,
-                comment: ("hubot", "Should the button say why it failed?")
+                comment: ("hubot", "Should the button say why it failed?"), tickets: checkoutTickets
             ).sample,
             PRHubSample(
-                repo: "acme/api", number: 88, title: "Rate-limit the password reset endpoint", list: "review",
-                author: "hubot", checks: "failing", review: "required", merge: "behind", dueHoursAgo: 26,
-                body: rateLimitBody,
-                diff: rateLimitDiff, keyLines: rateLimitKeyLines, comment: nil
+                repo: "acme/api", number: 88, title: "Rate-limit the password reset endpoint [API-88] [SEC-12]",
+                list: "review", author: "hubot", checks: "failing", review: "required", merge: "behind",
+                dueHoursAgo: 26, requestedHoursAgo: 50, body: rateLimitBody,
+                diff: rateLimitDiff, keyLines: rateLimitKeyLines, comment: nil,
+                bot: #"{"login": "mona", "name": "Mona Lisa", "avatarUrl": null, "source": "body"}"#,
+                tickets: rateLimitTickets
             ).sample,
             PRHubSample(
                 repo: "acme/mobile", number: 57, title: "fix: Keep the cart when the app is closed", list: "review",
                 author: "ada-l", checks: "passing", review: "changes_requested", merge: "blocked",
-                yourReview: "changes_requested",
+                requestedHoursAgo: 8, yourReview: "changes_requested",
                 body: "The cart was cleared on exit. It is now saved to storage on every change and restored at "
                     + "launch.",
                 diff: cartDiff, keyLines: cartKeyLines, comment: ("octocat", "Can we save less often than every tap?")
@@ -85,6 +89,21 @@ extension PRSampleSet {
         ],
         mergedReviewed: [], mergedMine: [], answersOnPhone: true
     )
+
+    /// The ticket the checkout retry's description fixes, as the Worker has it from Linear.
+    private static let checkoutTickets = """
+        [{"key": "WEB-31", "url": "https://linear.app/acme/issue/WEB-31",
+          "title": "Let shoppers retry a failed payment", "state": "In Review", "state_type": "started",
+          "state_color": "#0f783c", "found": true}]
+        """
+
+    /// The two tickets the rate limit's title names, as the Worker has them from Linear.
+    private static let rateLimitTickets = """
+        [{"key": "API-88", "url": "https://linear.app/acme/issue/API-88", "title": "Throttle password reset emails",
+          "state": "In Progress", "state_type": "started", "state_color": "#f2c94c", "found": true},
+         {"key": "SEC-12", "url": "https://linear.app/acme/issue/SEC-12", "title": "Stop reset email floods",
+          "state": "Todo", "state_type": "unstarted", "state_color": "#e2e2e2", "found": true}]
+        """
 
     /// GitHub's Markdown at full stretch, as a big repo's descriptions have it: a table with aligned columns, tasks,
     /// code, a quote and a fold. Escaped for the detail's JSON.
@@ -153,6 +172,11 @@ extension PRSampleSet {
                 "why": "If retryPayment throws, retrying stays true and the button stays disabled."},
                {"path": "src/checkout/payments.ts", "line": 12, "side": "RIGHT", "kind": "decision",
                 "why": "The retry relies on the server ignoring a second payment. Is that guaranteed?"}],
+     "summary": {"risk": "medium", "riskWhy": "A retry can pay twice if the server doesn't ignore repeats.",
+                 "points": ["Adds a Retry button when a payment fails", "Retries through a new retryPayment call",
+                            "Disables the button while a retry runs"],
+                 "bugs": [{"path": "src/checkout/CheckoutError.tsx", "line": 9, "side": "RIGHT",
+                           "why": "A thrown retry leaves the button disabled for good."}]},
      "context": 100, "leftOut": []}
     """
 
@@ -177,6 +201,8 @@ extension PRSampleSet {
     private static let rateLimitKeyLines = """
     {"items": [{"path": "app/routes/password_reset.py", "line": 5, "side": "RIGHT", "kind": "risk",
                 "why": "The limit is per email, so one client can still try many addresses. Add a limit per IP too?"}],
+     "summary": {"risk": "low", "riskWhy": "One small, contained limit on password resets.",
+                 "points": ["Limits password reset requests per email", "Answers 429 past the limit"], "bugs": []},
      "context": 100, "leftOut": []}
     """
 
@@ -275,6 +301,7 @@ struct PRHubSample {
     let review: String
     let merge: String
     var dueHoursAgo: Double?
+    var requestedHoursAgo: Double?
     /// The user's own last review, on the For review list.
     var yourReview: String?
     /// Markdown, with its newlines escaped for JSON.
@@ -283,6 +310,17 @@ struct PRHubSample {
     let keyLines: String
     /// Someone's comment on the PR: login and words.
     let comment: (String, String)?
+    /// Set, the author is a bot that opened the PR for this person (the detail's `requestedBy`).
+    var bot: String?
+    /// The detail's `tickets`, as JSON.
+    var tickets = "[]"
+
+    /// The row's tickets: the detail's tickets Linear has. Each sample's are all its title's, or one from its
+    /// description, which is what the Worker picks for them.
+    private var rowTickets: [PRListTicket] {
+        let all = try? JSONDecoder().decode([PRListTicket].self, from: Data(tickets.utf8))
+        return (all ?? []).filter { $0.found == true }
+    }
 
     var sample: PRSampleSet.Sample {
         let row = PullRequestRow(
@@ -291,9 +329,10 @@ struct PRHubSample {
             status: PullRequestRow.Status(
                 list: list, author: author, checks: checks, review: review, merge: merge, jaiReview: yourReview,
                 jaiReviewedAt: yourReview.map { _ in Date.now.addingTimeInterval(-86_400).ISO8601Format() },
+                requestedAt: requestedHoursAgo.map { Date.now.addingTimeInterval(-$0 * 3_600).ISO8601Format() },
                 reviewDueAt: dueHoursAgo.map { Date.now.addingTimeInterval(-$0 * 3_600).ISO8601Format() }
             ),
-            keyLines: PRKeyLines.defaultContext
+            keyLines: PRKeyLines.defaultContext, ticket: rowTickets.first, tickets: rowTickets
         )
         return PRSampleSet.Sample(row: row, detail: detail, diff: diff, keyLines: keyLines)
     }
@@ -317,6 +356,30 @@ struct PRHubSample {
             }
     ).joined(separator: ", ")
 
+    /// GitHub's decision for the row's review, so the PR's page says what its row says. None where no review is needed.
+    private var decision: String? {
+        switch review {
+        case "approved": "APPROVED"
+        case "changes_requested": "CHANGES_REQUESTED"
+        case "none": nil
+        default: "REVIEW_REQUIRED"
+        }
+    }
+
+    /// Who is on the review, in the state the row's review gives them: on the user's own PR a teammate, else the user.
+    private var reviewers: String {
+        let reviewer = { (login: String, state: String) in
+            #"{"login": "\#(login)", "avatarUrl": null, "state": "\#(state)"}"#
+        }
+        let first = list == "mine" ? "mona" : PRSampleSet.prHubLogin
+        switch review {
+        case "none": return "[]"
+        case "approved": return "[\(reviewer(first, "APPROVED"))]"
+        case "changes_requested": return "[\(reviewer(first, "CHANGES_REQUESTED"))]"
+        default: return "[\(reviewer(first, "REQUESTED"))]"
+        }
+    }
+
     private var detail: String {
         let isMine = list == "mine"
         let yesterday = Date.now.addingTimeInterval(-86_400).ISO8601Format()
@@ -325,21 +388,23 @@ struct PRHubSample {
             #"[{"id": "sample-comment-\#(number)", "author": {"login": "\#($0.0)", "avatarUrl": null}, "#
                 + #""body": "\#($0.1)", "createdAt": "\#(yesterday)"}]"#
         } ?? "[]"
-        let reviews = yourReview == "approved"
-            ? #"[{"id": "sample-review-\#(number)", "author": {"login": "\#(PRSampleSet.prHubLogin)", "#
-                + #""avatarUrl": null}, "state": "APPROVED", "body": "Clear, thanks.", "#
+        let said = ["approved": ("APPROVED", "Clear, thanks."),
+                    "changes_requested": ("CHANGES_REQUESTED", "Please add a test for a cart restored at launch.")]
+        let reviews = yourReview.flatMap { said[$0] }.map {
+            #"[{"id": "sample-review-\#(number)", "author": {"login": "\#(PRSampleSet.prHubLogin)", "#
+                + #""avatarUrl": null}, "state": "\#($0.0)", "body": "\#($0.1)", "#
                 + #""submittedAt": "\#(yesterday)"}]"#
-            : "[]"
+        } ?? "[]"
         return """
         {"id": null, "url": "https://github.com/\(repo)/pull/\(number)", "state": "open", "head": "sample-\(number)",
          "base": "main", "headBranch": "\(author)/sample-\(number)",
          "author": {"login": "\(author)", "avatarUrl": null},
-         "isAuthor": \(isMine), "body": "\(body)",
+         "isAuthor": \(isMine), "authorIsBot": \(bot != nil), "requestedBy": \(bot ?? "null"),
+         "tickets": \(tickets), "body": "\(body)",
          "additions": \(count("+")), "deletions": \(count("-")), "changedFiles": \(count("diff --git")),
-         "reviewDecision": "\(review == "approved" ? "APPROVED" : "REVIEW_REQUIRED")",
+         "reviewDecision": \(decision.map { #""\#($0)""# } ?? "null"),
          "mergeState": "\(merge.uppercased())",
-         "reviewers": [{"login": "\(isMine ? "mona" : PRSampleSet.prHubLogin)", "avatarUrl": null,
-                        "state": "\(review == "approved" ? "APPROVED" : "REQUESTED")"}],
+         "reviewers": \(reviewers),
          "viewedFiles": [], "labels": [{"name": "sample", "color": "8250DF"}],
          "checks": [{"name": "test", "state": "\(failing ? "failure" : checks == "pending" ? "pending" : "success")",
                      "url": null, "required": true, "workflow": "CI"},

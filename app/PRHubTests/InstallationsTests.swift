@@ -24,9 +24,7 @@ struct InstallationsTests {
     }
 
     @Test func theWorkersHostedFixtureDecodesWithItsInstallations() throws {
-        let url = URL(filePath: #filePath).deletingLastPathComponent()
-            .appending(path: "../../docs/fixtures/device-config-hosted.json").standardized
-        let config = try JSONDecoder().decode(DeviceConfig.self, from: Data(contentsOf: url))
+        let config = try JSONDecoder().decode(DeviceConfig.self, from: Fixture.data("device-config-hosted.json"))
         #expect(config.hosted && config.account?.login == "octocat")
         let installations = try #require(config.installations)
         #expect(installations.map(\.account) == ["octocat", "acme"])
@@ -79,6 +77,23 @@ struct InstallationsTests {
         let everywhere = PRHubPRHost.installHint(Self.hosted([Self.own, Self.acme]))
         #expect(everywhere.message.contains("in octocat and acme, where PRHub is installed."))
         #expect(!everywhere.message.contains("own account") && !everywhere.message.contains("suspended"))
+    }
+
+    @Test func backFromGitHubTheEmptyListSaysItIsCheckingAndOffersNoLink() {
+        let checking = PRHubPRHost.configuration(Self.hosted([]), isCheckingInstallations: true).emptyHint
+        #expect(checking == PRHubPRHost.checkingHint && checking?.isChecking == true)
+        let checked = PRHubPRHost.configuration(Self.hosted([Self.acme])).emptyHint
+        #expect(checked?.isChecking == false && checked?.title == "No PRs yet")
+        let selfHosted = DeviceConfig(features: [], login: "octocat")
+        #expect(PRHubPRHost.configuration(selfHosted, isCheckingInstallations: true).emptyHint == nil)
+    }
+
+    @Test func theInstallPagesAreTheAppsInstallAndEachInstallationsSettings() {
+        #expect(PRHubBuild.isInstallationPage(PRHubBuild.appInstallURL))
+        #expect(PRHubBuild.isInstallationPage(Self.own.settingsURL))
+        #expect(PRHubBuild.isInstallationPage(Self.acme.settingsURL))
+        #expect(!PRHubBuild.isInstallationPage(URL(string: "https://github.com/acme/api/pull/7")!))
+        #expect(!PRHubBuild.isInstallationPage(URL(string: "https://example.com/settings/installations/1")!))
     }
 
     @Test func anEmptyListWhereEveryInstallationIsSuspendedOpensItsSettings() {

@@ -5,7 +5,8 @@
 #   release/ship.sh [--local] [--dry-run] ["<What to Test>"]
 #
 # Xcode Cloud: when App Store Connect has an Xcode Cloud product for PRHub with an enabled PRHub Release workflow
-# (release/xcode-cloud.swift), that workflow builds the release (app/ci_scripts) and hands it to TestFlight with the
+# (release/xcode-cloud.swift), the next hourly release starts it once the tests pass (release/cadence.mjs), and it
+# builds the release (app/ci_scripts) and hands it to TestFlight with the
 # subject's What to Test, and ship.sh follows it: it finds Xcode Cloud's build of the release, waits for it and for
 # TestFlight to process it. TestFlight's number is Xcode Cloud's; it is N when next-build.sh chose N. A What to Test
 # argument is not used: the commit's subject is the What to Test.
@@ -46,7 +47,6 @@ key=$ASC_KEY_PATH
 git pull -q --ff-only origin main || { echo "SHIP FAILED: main has moved on; rebase and push first"; exit 1; }
 
 cd app
-version=$(awk '$1 == "MARKETING_VERSION:" {print $2; exit}' project.yml)
 team=$(awk '$1 == "DEVELOPMENT_TEAM:" {print $2; exit}' project.yml)
 bundle=$(awk '$1 == "PRODUCT_BUNDLE_IDENTIFIER:" {print $2; exit}' project.yml)
 asc=(env APP_BUNDLE_ID="$bundle" swift ../release/testflight.swift "$key")
@@ -61,6 +61,12 @@ release_notes=
 [[ $subject == "$prefix"* ]] && release_notes=${subject#"$prefix"}
 git merge-base --is-ancestor "$release" origin/main \
     || { echo "SHIP FAILED: $(git log -1 --format=%h "$release") is not pushed to main"; exit 1; }
+# The version, as app/ci_scripts/ci_post_clone.sh sets it: the newest vX.Y.Z tag reachable from the commit built.
+version_of() {
+    local tag
+    tag=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' "$1" 2>/dev/null) || return 1
+    print -r -- "${tag#v}"
+}
 
 if (( ! local_ship )); then
     why=$("${cloud[@]}" 2>&1 >/dev/null)
@@ -72,6 +78,7 @@ if (( ! local_ship )); then
 fi
 
 if (( local_ship )); then
+    version=$(version_of HEAD) || { echo "SHIP FAILED: no vX.Y.Z tag reachable from HEAD"; exit 1; }
     if [[ -n $release_notes && -z $("${asc[@]}" state "$version" "$release_build") ]]; then
         build=$release_build
         [[ -n $notes ]] && echo "What to Test comes from the release commit, not the argument"
@@ -96,7 +103,7 @@ if (( local_ship )); then
     xcodegen generate --spec project.yml --quiet || { echo "SHIP FAILED: xcodegen"; exit 1; }
     xcodebuild archive -project PRHub.xcodeproj -scheme PRHub -configuration Release \
         -destination 'generic/platform=iOS' -archivePath "$archive" -derivedDataPath build/DerivedData-release \
-        -allowProvisioningUpdates "${auth[@]}" CURRENT_PROJECT_VERSION="$build" 2>&1 | grep -E ' error:|\*\* ARCHIVE' | tail -5
+        -allowProvisioningUpdates "${auth[@]}" CURRENT_PROJECT_VERSION="$build" MARKETING_VERSION="$version" 2>&1 | grep -E ' error:|\*\* ARCHIVE' | tail -5
     [[ ${pipestatus[1]} == 0 ]] || { echo "SHIP FAILED: archive of PRHub build $build"; exit 1; }
 
     export_with() {
@@ -122,6 +129,7 @@ else
         exit 1
     }
     [[ -n $notes && $notes != "$release_notes" ]] && echo "What to Test comes from the release commit, not the argument"
+    version=$(version_of "$release") || { echo "SHIP FAILED: no vX.Y.Z tag reachable from the release commit"; exit 1; }
     echo "PRHub $version build $release_build: $release_notes"
     (( dry_run )) && { echo "DRY RUN: would follow Xcode Cloud's build of build $release_build and submit it"; exit 0; }
 
@@ -130,7 +138,7 @@ else
     while true; do
         git fetch -q origin main
         run=
-        # Newest first; Xcode Cloud builds the head of the push, which is the release or a commit after it.
+        # Newest first; Xcode Cloud builds ci/release, which is the release or a commit after it.
         for line in "${(@f)$("${cloud[@]}")}"; do
             if [[ -n $line ]] && git merge-base --is-ancestor "$release" "${line%% *}" 2>/dev/null; then
                 run=$line
@@ -138,21 +146,22 @@ else
             fi
         done
         if [[ -z $run ]]; then
-            if (( SECONDS - started > 600 )); then
-                echo "SHIP FAILED: Xcode Cloud started no build of build $release_build in 10 minutes" \
-                    "(App Store Connect → PRHub → Xcode Cloud → PRHub Release)"
+            # The hourly release starts it after the tests: up to an hour to the next run, then the tests on GitHub's Macs.
+            if (( SECONDS - started > 6600 )); then
+                echo "SHIP FAILED: the hourly release started no build of build $release_build in 110 minutes" \
+                    "(GitHub → Actions → hourly-release; App Store Connect → PRHub → Xcode Cloud → PRHub Release)"
                 exit 1
             fi
         else
-            read -r _ build progress status <<< "$run"
-            [[ $run != "$seen" ]] && echo "Xcode Cloud build $build: $progress $status"
+            read -r _ build progress outcome <<< "$run"
+            [[ $run != "$seen" ]] && echo "Xcode Cloud build $build: $progress $outcome"
             seen=$run
             if [[ $progress == COMPLETE ]]; then
-                [[ $status == SUCCEEDED ]] || { echo "SHIP FAILED: Xcode Cloud build $build $status (App Store Connect → Xcode Cloud → Builds)"; exit 1; }
+                [[ $outcome == SUCCEEDED ]] || { echo "SHIP FAILED: Xcode Cloud build $build $outcome (App Store Connect → Xcode Cloud → Builds)"; exit 1; }
                 break
             fi
-            if (( SECONDS - started > 5400 )); then
-                echo "SHIP FAILED: Xcode Cloud build $build has not finished in 90 minutes"
+            if (( SECONDS - started > 9000 )); then
+                echo "SHIP FAILED: Xcode Cloud build $build has not finished in 150 minutes"
                 exit 1
             fi
         fi

@@ -4,10 +4,8 @@ import SwiftUI
 
 /// What a review button opens in place: Approve, Request changes or Comment. The PR's page and its diff send a review
 /// through these, the one way.
-enum PRReviewAction: Identifiable {
+enum PRReviewAction {
     case approve, requestChanges, comment
-
-    var id: Self { self }
 
     var title: String {
         switch self {
@@ -34,6 +32,22 @@ enum PRReviewAction: Identifiable {
         }
     }
 
+    /// The words once it is your standing review. Comment never stands: it is not a verdict.
+    var doneTitle: String? {
+        switch self {
+        case .approve: "Approved"
+        case .requestChanges: "Changes requested"
+        case .comment: nil
+        }
+    }
+
+    func isYours(_ review: PRJaiReview?) -> Bool {
+        switch (self, review) {
+        case (.approve, .approved), (.requestChanges, .changesRequested): true
+        default: false
+        }
+    }
+
     var identifier: String {
         switch self {
         case .approve: "pr-review-approve"
@@ -54,17 +68,15 @@ enum PRReviewAction: Identifiable {
     func target(hasDrafts: Bool) -> PRComposerTarget {
         self == .comment && hasDrafts ? .review(.comment) : target
     }
-
-    /// The author can only comment on their own PR.
-    static func offered(isAuthor: Bool) -> [PRReviewAction] {
-        isAuthor ? [.comment] : [.approve, .requestChanges, .comment]
-    }
 }
 
 /// The review buttons as one bar across the width they are given, each the same width. When one's words don't fit,
-/// all of them show their icons instead, together; each keeps its words as its accessibility label.
+/// all of them show their icons instead, together; each keeps its words as its accessibility label. The author can only
+/// comment on their own PR. Your standing review is chosen: its tone's ground, its icon and what you did. Another tap
+/// still opens its box, to send it again or change it.
 struct PRReviewBar: View {
-    let actions: [PRReviewAction]
+    let isAuthor: Bool
+    var yourReview: PRJaiReview?
     let open: (PRReviewAction) -> Void
 
     var body: some View {
@@ -74,18 +86,26 @@ struct PRReviewBar: View {
         }
     }
 
+    /// No `ForEach`: `ViewThatFits` makes a `ForEach`'s views while it lays out, which iOS can do on SwiftUI's render
+    /// thread, and the main-actor closure traps there.
     private func bar(showsWords: Bool) -> some View {
         EqualWidths(spacing: Space.sm) {
-            ForEach(actions) { action in
-                button(action, showsWords: showsWords)
+            if !isAuthor {
+                button(.approve, showsWords: showsWords)
+                button(.requestChanges, showsWords: showsWords)
             }
+            button(.comment, showsWords: showsWords)
         }
     }
 
     private func button(_ action: PRReviewAction, showsWords: Bool) -> some View {
-        Button { open(action) } label: {
+        let isYours = action.isYours(yourReview)
+        return Button { open(action) } label: {
             Group {
-                if showsWords {
+                if showsWords, isYours, let done = action.doneTitle {
+                    Label(done, systemImage: action.icon.symbol)
+                        .lineLimit(1)
+                } else if showsWords {
                     Text(action.title)
                         .lineLimit(1)
                 } else {
@@ -94,10 +114,12 @@ struct PRReviewBar: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .buttonStyle(PRButtonStyle(action == .approve ? .primary : .secondary, inset: PRStyle.barButtonInset))
+        .buttonStyle(PRButtonStyle(isYours ? .chosen : .secondary, inset: PRStyle.barButtonInset))
         .tint(action.tone)
-        .accessibilityLabel(action.title)
+        .accessibilityLabel(isYours ? action.doneTitle ?? action.title : action.title)
+        .accessibilityAddTraits(isYours ? .isSelected : [])
         .accessibilityIdentifier(action.identifier)
+        .animation(AppMotion.swap, value: isYours)
     }
 }
 
@@ -110,7 +132,7 @@ struct PRReviewActions: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
             PRPendingComments(count: session.drafts.count)
-            PRReviewBar(actions: PRReviewAction.offered(isAuthor: isAuthor)) { next in
+            PRReviewBar(isAuthor: isAuthor, yourReview: session.yourReview) { next in
                 withAnimation(AppMotion.fold) { action = action == next ? nil : next }
             }
             if let notice = session.notice {
@@ -120,7 +142,8 @@ struct PRReviewActions: View {
     }
 }
 
-/// The words for the review the bar opened, in place. Sending it, or Cancel, closes it.
+/// The words for the review the bar opened, in place. Cancel closes it; sending it locks the words and closes it at
+/// once, and the review goes on in the background with its toast (`PRReviewToast`).
 struct PRReviewComposer: View {
     let session: PRSession
     let action: PRReviewAction
@@ -128,6 +151,8 @@ struct PRReviewComposer: View {
     /// it already does.
     var showsPending = true
     let close: () -> Void
+    /// Sent: the box is read-only while it closes.
+    @State private var isSent = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
@@ -142,15 +167,18 @@ struct PRReviewComposer: View {
         InlineComposer(
             text: session.text(for: action.target),
             placeholder: action == .approve ? "Add a note, or just approve" : "Say something",
-            buttonTitle: action.title, needsText: action != .approve && session.drafts.isEmpty
+            buttonTitle: action.title, needsText: action != .approve && session.drafts.isEmpty,
+            sendAtLeading: action == .approve
         ) { text in
-            try await session.send(text, to: action.target(hasDrafts: !session.drafts.isEmpty))
+            try session.submitReview(text, to: action.target(hasDrafts: !session.drafts.isEmpty))
+            isSent = true
             session.discardText(for: action.target)
             close()
         } cancel: {
             session.discardText(for: action.target)
             close()
         }
+        .disabled(isSent)
     }
 }
 

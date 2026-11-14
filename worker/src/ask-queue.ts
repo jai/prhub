@@ -102,7 +102,11 @@ export function withQueued(chat: AskChat | null, queued: readonly QueuedAsk[], n
     const handedOver = asked?.text === ask.input.question;
     if (!handedOver) {
       const anchor = ask.input.anchor ? `${ask.input.anchor.path}:${ask.input.anchor.line}` : null;
-      shown = { ...shown, messages: [...shown.messages, { id: `queued:${ask.id}`, role: "you", text: ask.input.question, anchor }] };
+      const side = ask.input.anchor ? { side: ask.input.anchor.side } : {};
+      shown = {
+        ...shown,
+        messages: [...shown.messages, { id: `queued:${ask.id}`, role: "you", text: ask.input.question, anchor, ...side }],
+      };
     }
     const problem = ask.error ?? (now - ask.at > ASK_HANDOVER_MS ? NOT_HANDED_OVER : null);
     if (problem) {

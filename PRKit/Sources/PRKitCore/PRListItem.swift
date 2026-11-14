@@ -4,17 +4,26 @@ import Foundation
 /// PRs tab makes one of these for each of its rows, so both screens draw a PR with `PrListBlock`.
 public struct PRListItem: Decodable, Equatable, Sendable {
     public var ticket: PRListTicket?
+    /// The tickets after `ticket`: only a PRs-tab row whose title names several has any. A list item has one ticket.
+    public var moreTickets: [PRListTicket] = []
     public var pullRequests: [PRListPullRequest]
     public var title: String?
     public var note: String?
 
     public init(
-        ticket: PRListTicket? = nil, pullRequests: [PRListPullRequest], title: String? = nil, note: String? = nil
+        ticket: PRListTicket? = nil, moreTickets: [PRListTicket] = [], pullRequests: [PRListPullRequest],
+        title: String? = nil, note: String? = nil
     ) {
         self.ticket = ticket
+        self.moreTickets = ticket == nil ? [] : moreTickets
         self.pullRequests = pullRequests
         self.title = title
         self.note = note
+    }
+
+    /// `ticket`, then `moreTickets`: each draws its own ticket line.
+    public var tickets: [PRListTicket] {
+        (ticket.map { [$0] } ?? []) + moreTickets
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -25,8 +34,9 @@ public struct PRListItem: Decodable, Equatable, Sendable {
 
 /// A Linear issue. `found` is `nil` until the hub has resolved it and `false` when Linear has no such issue for
 /// the hub; only a found one has a title and a state. `url` is Linear's own once found, before that one the
-/// Worker built from the workspace in the agent's Linear URL, else `nil`.
-public struct PRListTicket: Decodable, Equatable, Sendable {
+/// Worker built from the workspace in the agent's Linear URL, else `nil`. A PRs-tab row carries one too
+/// (`PullRequestRow.ticket`), and the phone keeps it with the row.
+public struct PRListTicket: Codable, Hashable, Sendable {
     public var key: String
     public var url: String?
     public var title: String?
@@ -75,7 +85,8 @@ public struct PRListPullRequest: Equatable, Sendable {
     public var resolvedAt: Date?
     /// Only the PRs tab sets this: Jai answered the review it asked of him, and the row stays, read.
     public var isAnswered: Bool?
-    /// Only the PRs tab sets this: when Jai's review is due, by the review SLA. Past it, the row says so.
+    /// When Jai's review is due, by the review SLA: the PRs tab's row, and a list's `review_due_at`. Past it, the row
+    /// says so.
     public var reviewDueAt: Date?
 
     public init(
@@ -123,6 +134,7 @@ extension PRListPullRequest: Decodable {
         case jaiReviewedAt = "jai_reviewed_at"
         case jaiReviewRequested = "jai_review_requested"
         case resolvedAt = "resolved_at"
+        case reviewDueAt = "review_due_at"
     }
 
     /// A state word a newer Worker added reads as no state, never as a list that cannot be read.
@@ -146,6 +158,7 @@ extension PRListPullRequest: Decodable {
         jaiReviewRequested = try container.decodeIfPresent(Bool.self, forKey: .jaiReviewRequested)
         found = try container.decodeIfPresent(Bool.self, forKey: .found)
         resolvedAt = try container.decodeIfPresent(Date.self, forKey: .resolvedAt)
+        reviewDueAt = try? container.decodeIfPresent(Date.self, forKey: .reviewDueAt)
     }
 }
 
@@ -170,10 +183,23 @@ extension PRListItem {
     /// A PR's title, else the item's, else its ref. The ticket this block shows goes from a title that ends with it.
     public func title(of pullRequest: PRListPullRequest) -> String {
         let title = pullRequest.status.title ?? self.title ?? pullRequest.ref
-        guard let key = ticket?.key, title.lowercased().hasSuffix(" [\(key.lowercased())]") else {
-            return title
+        return Self.withoutShownKeys(title, shown: Set(tickets.map { $0.key.uppercased() }))
+    }
+
+    /// The title without the brackets at its end, `[ENG-1]`, `[ENG-1, ENG-2]` or `[ENG-1] [ENG-2]`, each only when every
+    /// key in it has its ticket line.
+    static func withoutShownKeys(_ title: String, shown: Set<String>) -> String {
+        var title = Substring(title)
+        while title.hasSuffix("]"), let open = title.lastIndex(of: "["), open > title.startIndex,
+              title[title.index(before: open)] == " " {
+            let keys = title[title.index(after: open) ..< title.index(before: title.endIndex)]
+                .split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).uppercased() }
+            guard !keys.isEmpty, keys.allSatisfy(shown.contains) else {
+                break
+            }
+            title = title[..<title.index(before: open)]
         }
-        return String(title.dropLast(key.count + 3))
+        return String(title)
     }
 
     /// "Aymen · web-app#6952 · 12h": who, where and how long ago. The ref stays out when it is already the title, and

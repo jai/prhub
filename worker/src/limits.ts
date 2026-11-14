@@ -27,6 +27,7 @@ export const LimitName = {
   PollIntervalMinutes: "poll_interval_minutes",
   InstallationSyncHours: "installation_sync_hours",
   InstallationSyncOnOpenMinutes: "installation_sync_on_open_minutes",
+  InstallationReadsNowPerMinute: "installation_reads_now_per_minute",
   IndexedPullRequestsMax: "indexed_pull_requests_max",
   IndexedReposMax: "indexed_repos_max",
   ClosedPullRequestRetentionDays: "closed_pull_request_retention_days",
@@ -142,6 +143,10 @@ const LIMIT_SPECS = {
   [LimitName.InstallationSyncOnOpenMinutes]: {
     variable: "LIMIT_INSTALLATION_SYNC_ON_OPEN_MINUTES", unit: LimitUnit.Minutes, modes: HOSTED,
     defaults: { hosted: 10, self_hosted: 10 }, canTurnOff: false, min: 1, max: 1_440,
+  },
+  [LimitName.InstallationReadsNowPerMinute]: {
+    variable: "LIMIT_INSTALLATION_READS_NOW_PER_MINUTE", unit: LimitUnit.PerMinute, modes: HOSTED,
+    defaults: { hosted: 6, self_hosted: null }, ...RATE,
   },
   [LimitName.IndexedPullRequestsMax]: {
     variable: "LIMIT_INDEXED_PULL_REQUESTS_MAX", unit: LimitUnit.Count, modes: BOTH,
@@ -281,6 +286,15 @@ export function rateWindowOf(limits: Limits, name: RateLimitName): RateWindow | 
 
 export function durationOf(limits: Limits, name: FixedDurationName): Milliseconds {
   return limits.fixed[name] * UNIT_MS[LIMIT_SPECS[name].unit] as Milliseconds;
+}
+
+/**
+ * The least time between two installation reads that `GET /device/config` waits for: a minute shared evenly by
+ * `installation_reads_now_per_minute`. Off is no gap.
+ */
+export function readNowGapOf(limits: Limits): Milliseconds {
+  const window = rateWindowOf(limits, LimitName.InstallationReadsNowPerMinute);
+  return (window ? Math.ceil(window.windowMs / window.count) : 0) as Milliseconds;
 }
 
 export function countOf(limits: Limits, name: FixedCountName): Count {

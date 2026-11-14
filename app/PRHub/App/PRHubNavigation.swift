@@ -3,6 +3,8 @@ import PRKit
 
 enum PRHubTab: Hashable, Sendable {
     case prs
+    /// The Worker's feature requests, when it serves them (`features.feedback`).
+    case feedback
     case settings
 }
 

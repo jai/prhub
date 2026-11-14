@@ -122,8 +122,69 @@ struct PRAskSendTests {
             messages: [.init(id: "queued:ref-1", role: "you", text: "Is it tested?", anchor: nil)],
             isWorking: false, activity: nil, problem: "The AI couldn't be reached. Try again.", costCents: nil
         )
-        #expect(failed.unsentQuestion == "Is it tested?")
+        #expect(failed.unsentQuestion?.text == "Is it tested?")
         #expect(chat.unsentQuestion == nil)
+    }
+
+    @Test func aTurnThatFailedCanBeSentAgainAboutTheSameLine() {
+        let failed = PRAskChat(
+            messages: [
+                .init(id: "3f2a9c1e-77", role: "you", text: "Why?", anchor: "src/api/retry.ts:42", side: "LEFT"),
+            ],
+            isWorking: false, activity: nil,
+            problem: "GitHub 403: GitHub's rate limit for your account is used up, resets 02:59 UTC · turn 3f2a9c1e",
+            costCents: nil
+        )
+        #expect(failed.unsentQuestion?.text == "Why?")
+        let anchor = PRAskQuestion.Anchor(path: "src/api/retry.ts", line: 42, side: "LEFT")
+        #expect(failed.unsentQuestion?.askedAbout == anchor, "the old side stays the old side")
+        let answered = PRAskChat(
+            messages: failed.messages + [.init(id: "a1", role: "agent", text: "Because.", anchor: nil)],
+            isWorking: false, activity: nil, problem: "x", costCents: nil
+        )
+        #expect(answered.unsentQuestion == nil, "an answered question is not a failed one")
+    }
+
+    private func session(_ kit: PRKitController) -> PRSession {
+        PRSession(ref: ref, title: nil, content: nil, tappedAt: 0, model: kit.model)
+    }
+
+    /// The 2026-11-10 bug bash: a question typed and not sent was gone after a visit to another PR.
+    @Test func anUnsentQuestionIsStillThereWhenThePROpensAgain() {
+        let (made, _) = kit()
+        let first = session(made)
+        first.openAsk()
+        first.askDraft = "kiwi draft about retries"
+        let other = PRSession(
+            ref: PullRequestRef(repo: "acme/api", number: 8), title: nil, content: nil, tappedAt: 0, model: made.model
+        )
+        #expect(other.askDraft.isEmpty)
+        #expect(session(made).askDraft == "kiwi draft about retries")
+    }
+
+    /// The bug bash again: words written about the whole PR showed as the question about a line opened next.
+    @Test func wordsAboutThePRAreNotAQuestionAboutALine() {
+        let (made, _) = kit()
+        let asking = session(made)
+        asking.openAsk()
+        asking.askDraft = "whole PR draft"
+        asking.openAsk(about: PRAskQuestion.Anchor(path: "src/cart/store.ts", line: 12, side: "RIGHT"))
+        #expect(asking.askDraft.isEmpty)
+        asking.askDraft = "why this line?"
+        // Dropping the line keeps what he wrote about it, as the question about the PR.
+        asking.askAboutWholePR()
+        #expect(asking.askAnchor == nil && asking.askDraft == "why this line?")
+    }
+
+    @Test func aFailedQuestionsWordsGoBackToWhatItWasAbout() {
+        let (made, _) = kit()
+        let asking = session(made)
+        let anchor = PRAskQuestion.Anchor(path: "a.swift", line: 3, side: "RIGHT")
+        asking.redraft("Is this safe?", about: anchor)
+        #expect(asking.askAnchor == anchor && asking.askDraft == "Is this safe?")
+        asking.askAboutWholePR()
+        asking.askDraft = ""
+        #expect(made.model.askDrafts.isEmpty, "an emptied box keeps nothing")
     }
 }
 

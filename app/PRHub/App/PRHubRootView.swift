@@ -1,3 +1,4 @@
+import FeatureKit
 import SwiftUI
 
 /// PRHub's window: onboarding until the phone is signed in with GitHub or paired with a pr-worker, then the PRs and
@@ -37,7 +38,10 @@ struct PRHubRootView: View {
                     .transition(.opacity)
             case .samples:
                 if let sample = environment.sample {
-                    PRHubTabs(environment: sample, endSample: { environment.endSample() })
+                    PRHubTabs(
+                        environment: sample, endSample: { Task { await environment.leaveSample() } },
+                        signIn: connection
+                    )
                         .transition(.opacity)
                 }
             case .tabs:
@@ -51,6 +55,10 @@ struct PRHubRootView: View {
             wasShowing && !isShowing && connection.isPaired
         }
         .onOpenURL { url in
+            if url == PRHubBuild.settingsURL {
+                environment.navigation.selectedTab = .settings
+                return
+            }
             // A setup link ends the samples: it is the user's own Worker.
             if environment.sample != nil {
                 environment.endSample()
@@ -66,8 +74,8 @@ struct PRHubRootView: View {
         ) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("This phone is connected to \(connection.ignoredLinkHost ?? "a pr-worker"). To use another one, tap "
-                 + "Disconnect in Settings first.")
+            Text("This \(AppIdentity.deviceName) is connected to \(connection.ignoredLinkHost ?? "a pr-worker"). To use "
+                 + "another one, tap Disconnect in Settings first.")
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             if phase == .active {
@@ -92,34 +100,71 @@ struct PRHubRootView: View {
     }
 }
 
-/// The PRs and Settings, over a paired Worker or over the samples. `endSample` is Settings' way back from the samples.
+/// The PRs, Feedback when the Worker serves it, and Settings, over a paired Worker or over the samples. `endSample` is
+/// Settings' way back from the samples.
 private struct PRHubTabs: View {
     let environment: PRHubEnvironment
     let endSample: (() -> Void)?
+    /// Over the samples, the connection their Sign in with GitHub signs in: its work and its failure show there.
+    var signIn: WorkerConnection?
 
     var body: some View {
+        container
+            .readableContentWidth()
+            .prKitEnvironment(environment.prs)
+            .alertsOffer(environment.alertPermission)
+            .updateOffer(environment.update)
+            .environment(\.loadsAuthorAvatars, !environment.isSample)
+            .recordsScreen(environment.navigation.selectedTab.analyticsScreen, environment.usage)
+    }
+
+    /// The phone's tab bar; the Mac's window is the PRs, with Settings a window of its own (`PRHubMacSettings`).
+    @ViewBuilder private var container: some View {
+        #if os(macOS)
+        PRHubMacWindow(environment: environment)
+        #else
+        tabBar
+        #endif
+    }
+
+    #if os(iOS)
+    private var tabs: [PRHubTab] {
+        environment.connection.config?.isOn(.feedback) == true ? [.prs, .feedback, .settings] : [.prs, .settings]
+    }
+
+    private var tabBar: some View {
         @Bindable var navigation = environment.navigation
-        TabView(selection: $navigation.selectedTab) {
+        let tabs = tabs
+        return TabView(selection: $navigation.selectedTab) {
             Tab("PRs", systemImage: "arrow.triangle.pull", value: PRHubTab.prs) {
                 PRKitRoot(environment.prs)
                     .compactWidthForUITests()
             }
             .accessibilityIdentifier(PRHubTab.prs.identifier)
+            if tabs.contains(.feedback) {
+                Tab("Feedback", systemImage: AppIcon.conversation.symbol, value: PRHubTab.feedback) {
+                    FeatureRequestsView(model: environment.feedback)
+                }
+                .accessibilityIdentifier(PRHubTab.feedback.identifier)
+            }
             Tab("Settings", systemImage: AppIcon.settings.symbol, value: PRHubTab.settings) {
-                PRHubSettingsView(environment: environment, endSample: endSample)
+                PRHubSettingsView(environment: environment, endSample: endSample, signIn: signIn)
             }
             .accessibilityIdentifier(PRHubTab.settings.identifier)
         }
-        .background(TabBarIdentifiers(identifiers: [PRHubTab.prs, .settings].map(\.identifier)))
-        .readableContentWidth()
-        .prKitEnvironment(environment.prs)
-        .alertsOffer(environment.alertPermission)
-        .environment(\.loadsAuthorAvatars, !environment.isSample)
-        .recordsScreen(navigation.selectedTab.analyticsScreen, environment.usage)
+        .background(TabBarIdentifiers(identifiers: tabs.map(\.identifier)))
+        // A Worker that stops serving Feedback under it: the PRs instead.
+        .onChange(of: tabs, initial: true) { _, tabs in
+            if !tabs.contains(navigation.selectedTab) {
+                navigation.selectedTab = .prs
+            }
+        }
     }
+    #endif
 }
 
 extension View {
+    #if os(iOS)
     /// A Debug run's `-PRHubCompactWidth`: a narrow Split View's size class, which a UI test can't make with the
     /// window. Set on the window, so the screens a stack pushes have it too.
     fileprivate func compactWidthForUITests() -> some View {
@@ -136,6 +181,12 @@ extension View {
         self
         #endif
     }
+    #endif
+
+    /// Update available: a newer build on TestFlight. Update opens TestFlight on PRHub; Later skips that build.
+    fileprivate func updateOffer(_ update: PRHubUpdate) -> some View {
+        modifier(UpdateOffer(update: update))
+    }
 
     /// The one offer to turn on review alerts, over the PRs, before the system asks.
     fileprivate func alertsOffer(_ permission: PRHubAlertPermission) -> some View {
@@ -147,6 +198,28 @@ extension View {
         } message: {
             Text("PRHub tells you when someone asks for your review, and a tap opens the PR. You can change this in "
                  + "Settings.")
+        }
+    }
+}
+
+private struct UpdateOffer: ViewModifier {
+    let update: PRHubUpdate
+    @Environment(\.openURL) private var openURL
+
+    func body(content: Content) -> some View {
+        let offered = update.offered
+        content.alert(
+            "Update available: PRHub \(offered?.version ?? "") (\(offered?.build ?? ""))",
+            isPresented: Binding(get: { update.offered != nil }, set: { if !$0 { update.later() } })
+        ) {
+            Button("Later", role: .cancel) { update.later() }
+            Button("Update") {
+                update.update()
+                openURL(PRHubUpdate.testFlightURL)
+            }
+            .keyboardShortcut(.defaultAction)
+        } message: {
+            Text("TestFlight has a newer build of PRHub.")
         }
     }
 }
@@ -167,19 +240,24 @@ extension PRHubTab {
     fileprivate var analyticsScreen: AnalyticsScreen {
         switch self {
         case .prs: .prs
+        case .feedback: .feedback
         case .settings: .settings
         }
     }
 
+    #if os(iOS)
     /// The tab's accessibility identifier, which the UI tests reach it by (`PRHubPlace`).
     fileprivate var identifier: String {
         switch self {
         case .prs: "prhub-tab-prs"
+        case .feedback: "prhub-tab-feedback"
         case .settings: "prhub-tab-settings"
         }
     }
+    #endif
 }
 
+#if os(iOS)
 /// The tabs' accessibility identifiers on a phone's tab bar buttons. `Tab`'s `accessibilityIdentifier` reaches an iPad's
 /// tabs at the top but not a phone's tab bar, whose buttons come from the `UITabBarController`'s items, so this sets
 /// them on the items, in the tabs' order.
@@ -191,11 +269,12 @@ private struct TabBarIdentifiers: UIViewRepresentable {
     }
 
     func updateUIView(_ probe: Probe, context: Context) {
+        probe.identifiers = identifiers
         probe.apply()
     }
 
     final class Probe: UIView {
-        private let identifiers: [String]
+        var identifiers: [String]
 
         init(identifiers: [String]) {
             self.identifiers = identifiers
@@ -229,3 +308,4 @@ private struct TabBarIdentifiers: UIViewRepresentable {
         }
     }
 }
+#endif

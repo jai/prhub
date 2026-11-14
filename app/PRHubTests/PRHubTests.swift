@@ -68,11 +68,11 @@ struct PRHubTests {
     }
 
     @Test func theWorkersFixtureDecodes() throws {
-        let url = URL(filePath: #filePath).deletingLastPathComponent()
-            .appending(path: "../../docs/fixtures/device-config.json").standardized
-        let config = try JSONDecoder().decode(DeviceConfig.self, from: Data(contentsOf: url))
+        let config = try JSONDecoder().decode(DeviceConfig.self, from: Fixture.data("device-config.json"))
         #expect(config.features == [.keyLines, .rewrite, .push])
         #expect(config.login == "alex" && config.orgs == ["acme"])
+        #expect(config.appLatest?.build(for: .internal) == AppBuild(version: "1.0", build: "212"))
+        #expect(config.appLatest?.build(for: .public) == AppBuild(version: "1.0", build: "198"))
     }
 
     @Test func aWorkerThatCouldNotAskGitHubHasNoLoginAndNoOrgs() throws {
@@ -129,7 +129,7 @@ struct PRHubTests {
                 },
                 save: { try endpoint.save($0) }
             ),
-            fetchConfig: { config }, forgetSecret: { forgotten.with { $0 += 1 } },
+            fetchConfig: { _ in config }, forgetSecret: { forgotten.with { $0 += 1 } },
             unpair: { unpaired.with { $0 += 1 } },
             defaults: defaults,
             build: PRHubBuild(hostedURL: nil, signInWithGitHub: false, selfHosted: true, samples: true),

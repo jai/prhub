@@ -7,8 +7,8 @@
 //   swift release/xcode-cloud.swift <key.p8> latest
 //     the product's highest build number, any workflow, or 0. Every workflow of the product shares one sequence.
 //   swift release/xcode-cloud.swift <key.p8> create-workflow
-//     creates the PRHub Release workflow, or says it exists: on a push to main that changes app/project.yml,
-//     archive the PRHub scheme for App Store Connect, clean, on the latest Xcode release. TestFlight post-actions
+//     creates the PRHub Release workflow, turns it on when it is off, or says it exists: started only by
+//     release/cadence.mjs's hourly release on ci/release (or by hand on main), never by a push; archive the PRHub scheme for App Store Connect, clean, on the latest Xcode release. TestFlight post-actions
 //     are not in the API: add them in Xcode (AGENTS.md, "Releases").
 // Exits 3, saying why on stderr, when the app has no Xcode Cloud product (`create-workflow`, `latest`) or no enabled
 // PRHub Release workflow (`runs`): then nothing will build a release, and ship.sh ships locally.
@@ -17,7 +17,16 @@
 import CryptoKit
 import Foundation
 
-let workflowName = "PRHub Release"  // CI_WORKFLOW in app/ci_scripts/release.sh
+let workflowName = "PRHub Release"
+/// The workflow's id, from app/ci_scripts/workflows.sh, which release.sh keys on too: a rename leaves it alone.
+let workflowsFile = URL(filePath: #filePath).deletingLastPathComponent()
+    .appending(path: "../app/ci_scripts/workflows.sh")
+let workflowID: String = {
+    let text = (try? String(contentsOf: workflowsFile, encoding: .utf8)) ?? ""
+    let line = text.split(separator: "\n").first { $0.hasPrefix("release_workflow=") }
+    guard let line else { fail("no release_workflow= in \(workflowsFile.standardized.path)") }
+    return String(line.dropFirst("release_workflow=".count))
+}()
 let containerFilePath = "app/PRHub.xcodeproj"
 
 func fail(_ message: String, status: Int32 = 1) -> Never {
@@ -104,7 +113,7 @@ func product() async throws -> [String: Any] {
 
 func releaseWorkflow(product: String) async throws -> [String: Any]? {
     try await list("ciProducts/\(product)/workflows", ["fields[ciWorkflows]": "name,isEnabled", "limit": "200"])
-        .first { attributes($0)["name"] as? String == workflowName }
+        .first { $0["id"] as? String == workflowID }
 }
 
 /// `<commit sha> <number> <progress> <status>` lines, newest first.
@@ -142,8 +151,15 @@ func latestRelease() async throws -> (xcode: String, macOS: String) {
 
 func createReleaseWorkflow(product: [String: Any]) async throws {
     let productID = product["id"] as! String
-    if let existing = try await releaseWorkflow(product: productID) {
-        print("\(workflowName) already exists: workflow \(existing["id"] as? String ?? "?")")
+    if let existing = try await releaseWorkflow(product: productID), let id = existing["id"] as? String {
+        guard attributes(existing)["isEnabled"] as? Bool != true else {
+            print("\(workflowName) already exists: workflow \(id)")
+            return
+        }
+        _ = try await request("PATCH", "ciWorkflows/\(id)", json: [
+            "data": ["type": "ciWorkflows", "id": id, "attributes": ["isEnabled": true]],
+        ])
+        print("\(workflowName) was off, now on: workflow \(id)")
         return
     }
     let repositories = (product["relationships"] as? [String: Any])?["primaryRepositories"] as? [String: Any]
@@ -156,18 +172,15 @@ func createReleaseWorkflow(product: [String: Any]) async throws {
             "type": "ciWorkflows",
             "attributes": [
                 "name": workflowName,
-                "description": "A chore(release): PRHub build N commit on main: archive and hand to TestFlight.",
+                "description": "A chore(release): PRHub build N commit, started by the hourly release: archive and hand to TestFlight.",
                 "isEnabled": true,
                 "isLockedForEditing": false,
                 "clean": true,
                 "containerFilePath": containerFilePath,
-                "branchStartCondition": [
-                    "source": ["isAllMatch": false, "patterns": [["pattern": "main", "isPrefix": false]]],
-                    "filesAndFoldersRule": [
-                        "mode": "START_IF_ANY_FILE_MATCHES",
-                        "matchers": [["directory": "app", "fileName": "project.yml"]],
-                    ],
-                    "autoCancel": false,
+                "manualBranchStartCondition": [
+                    "source": ["isAllMatch": false, "patterns": [
+                        ["pattern": "main", "isPrefix": false], ["pattern": "ci/release", "isPrefix": false],
+                    ]],
                 ],
                 "actions": [[
                     "name": "Archive - iOS",
@@ -186,7 +199,8 @@ func createReleaseWorkflow(product: [String: Any]) async throws {
             ],
         ],
     ])
-    print("\(workflowName) created: workflow \((created as? [String: Any])?["id"] as? String ?? "?")")
+    let id = (created as? [String: Any])?["id"] as? String ?? "?"
+    print("\(workflowName) created: workflow \(id). Set release_workflow=\(id) in app/ci_scripts/workflows.sh.")
 }
 
 setvbuf(stdout, nil, _IOLBF, 0)
@@ -196,8 +210,8 @@ do {
     switch arguments[2] {
     case "runs":
         guard let workflow = try await releaseWorkflow(product: productID),
-            attributes(workflow)["isEnabled"] as? Bool == true, let workflowID = workflow["id"] as? String
-        else { fail("no enabled Xcode Cloud workflow named \(workflowName) for \(bundleID)", status: 3) }
+            attributes(workflow)["isEnabled"] as? Bool == true
+        else { fail("no enabled Xcode Cloud workflow \(workflowID) (\(workflowName)) for \(bundleID)", status: 3) }
         try await printRuns("ciWorkflows/\(workflowID)/buildRuns")
     case "latest":
         print(try await latestNumber(product: productID))

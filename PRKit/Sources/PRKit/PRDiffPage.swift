@@ -45,7 +45,10 @@ struct PRDiffPage: View {
             PRNavigator(session: session, document: document, files: rows.files)
         }
         .sensoryFeedback(.selection, trigger: session.selectedKeyLine?.id)
-        .task(id: session.contextLines) { await session.loadKeyLines() }
+        // Again once key lines turn on, as when the person adds their Anthropic key with the diff open.
+        .task(id: KeyLinesAsk(context: session.contextLines, isOffered: session.offersKeyLines)) {
+            await session.loadKeyLines()
+        }
         // Each time the diff shows, and at each new head: the ticks made on his other devices.
         .task(id: session.content?.detail.head) { await session.loadReviewedKeyLines() }
     }
@@ -115,6 +118,7 @@ struct PRDiffPage: View {
             closeNote: { session.closeKeyLine() },
             isReviewed: { session.isReviewed($0) },
             setReviewed: { session.setReviewed($1, $0) },
+            explain: session.offersAsk ? { session.explain($0, in: document) } : nil,
             setBarsHidden: { isHidden in
                 guard session.barsHidden != isHidden else {
                     return
@@ -160,8 +164,10 @@ struct PRDiffPage: View {
                 buttonTitle: session.drafts.isEmpty ? "Start review" : "Add to review",
                 context: document.isClipped(line) ? document.text(of: line) : nil,
                 lines: 1...6,
+                // The box closes at once and the toast follows the comment to GitHub, as a review's does.
                 alternate: .init(title: "Comment now") { words in
-                    try await session.send(words, to: target)
+                    PRPlatform.endEditing()
+                    try session.submitReview(words, to: target)
                     closeComposer()
                 },
                 ask: ask,
@@ -217,7 +223,7 @@ struct PRDiffPage: View {
             Button {
                 session.openPanel(on: .keyLines)
             } label: {
-                Text(current.map { "\($0 + 1) of \(items.count)" } ?? "\(items.count) key lines")
+                Text(current.map { "\($0 + 1) of \(items.count)" } ?? PRKeyLines.counted(items.count))
                     .font(.appFootnote.weight(.semibold).monospacedDigit())
                     .contentTransition(.numericText())
                     .frame(minHeight: 44)
@@ -244,6 +250,11 @@ struct PRDiffPage: View {
         .accessibilityLabel(label)
         .accessibilityIdentifier(id)
     }
+}
+
+private struct KeyLinesAsk: Hashable {
+    let context: Int
+    let isOffered: Bool
 }
 
 private extension View {

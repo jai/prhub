@@ -7,6 +7,11 @@ import SwiftUI
 public struct PRKeyLines: Decodable, Sendable {
     public static let defaultContext = 100
 
+    /// "1 key line", "3 key lines": how many a diff has, where none is selected.
+    static func counted(_ count: Int) -> String {
+        "\(count) key line\(count == 1 ? "" : "s")"
+    }
+
     public struct Item: Decodable, Identifiable, Sendable {
         public let path: String
         public let line: Int
@@ -18,6 +23,8 @@ public struct PRKeyLines: Decodable, Sendable {
     }
 
     public let items: [Item]
+    /// The PR at a glance, made with the key lines (`PRKeyLinesSummaryCard.swift`): absent on an older answer.
+    public let summary: Summary?
     public let context: Int
     /// Files too big to send, named so a short list isn't read as a whole one.
     public let leftOut: [String]
@@ -28,9 +35,30 @@ public struct PRRewrite: Decodable, Sendable {
     public let hadTicket: Bool
 }
 
-/// A Worker job that failed, in its own words.
+/// A Worker job that failed, in its own words. `moved`: the PR has a newer commit than the one asked about.
 public struct PRAIFailure: Decodable, Sendable {
     public let error: String
+    public let moved: Bool?
+}
+
+/// The PR moved on past the commit the answer was asked for: read it again and ask at the newest.
+struct PRAIHeadMoved: Error {}
+
+extension Error {
+    /// A failure that passes: no network, a slow or dropped request, the Worker briefly down or busy. Reading an AI
+    /// answer changes nothing, so it is read again rather than shown.
+    var isPassingAIFailure: Bool {
+        if let error = self as? URLError {
+            return [
+                .timedOut, .networkConnectionLost, .notConnectedToInternet, .cannotConnectToHost, .cannotFindHost,
+                .dnsLookupFailed, .dataNotAllowed, .internationalRoamingOff, .callIsActive, .secureConnectionFailed,
+            ].contains(error.code)
+        }
+        if let error = self as? PRWorkerError {
+            return error == .unavailable || error == .limited
+        }
+        return false
+    }
 }
 
 /// The key lines page of the navigator: what to look at first, and how much code the model read to choose.
@@ -40,6 +68,7 @@ struct PRKeyLinesList: View {
     ]
 
     let session: PRSession
+    let document: DiffDocument
     @State private var customContext = ""
 
     var body: some View {
@@ -102,6 +131,9 @@ struct PRKeyLinesList: View {
             }
         case let .ready(lines):
             VStack(alignment: .leading, spacing: Space.xs) {
+                if let summary = lines.summary {
+                    PRKeyLinesSummaryCard(summary: summary) { session.show($0) }
+                }
                 if !lines.items.isEmpty {
                     Text("\(session.reviewedKeyLineCount) of \(lines.items.count) reviewed")
                         .font(.appCaption.monospacedDigit())
@@ -111,18 +143,11 @@ struct PRKeyLinesList: View {
                 }
                 ForEach(lines.items) { item in
                     let isSelected = session.selectedKeyLine?.id == item.id
-                    HStack(alignment: .top, spacing: 0) {
-                        Button { session.show(item) } label: { row(item) }
-                            .buttonStyle(.plain)
-                            .opacity(session.isReviewed(item) ? PRStyle.doneOpacity : 1)
-                            .accessibilityAddTraits(isSelected ? .isSelected : [])
-                            .accessibilityIdentifier("key-line-\(item.id)")
-                        PRKeyLineCheck(item: item, session: session)
-                    }
-                    .background(
-                        isSelected ? Color(platform: DiffStyle.selectedLine) : .clear,
-                        in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous)
-                    )
+                    row(item, isSelected: isSelected)
+                        .background(
+                            isSelected ? Color(platform: DiffStyle.selectedLine) : .clear,
+                            in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous)
+                        )
                 }
                 if !lines.leftOut.isEmpty {
                     Text("Too big to read: \(lines.leftOut.joined(separator: ", "))")
@@ -133,27 +158,58 @@ struct PRKeyLinesList: View {
         }
     }
 
-    private func row(_ item: PRKeyLines.Item) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
-            Image(systemName: item.symbol)
-                .font(.appCaption)
-                .foregroundStyle(item.kind == "risk" ? Color.toneBad : Color.secondary)
-                .frame(width: 16)
-            VStack(alignment: .leading, spacing: Space.xxs) {
-                Text(verbatim: "\(item.path):\(item.line)")
-                    .font(.appCaption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.head)
+    /// A heading line (its kind, where it is, Explain and its tick), then why it matters across the whole row. The path
+    /// scrolls sideways when it is too long to show.
+    private func row(_ item: PRKeyLines.Item, isSelected: Bool) -> some View {
+        // A ticked line's words fade; its controls stay.
+        let words = session.isReviewed(item) ? PRStyle.doneOpacity : 1
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: Space.sm) {
+                HStack(spacing: Space.sm) {
+                    StatusChip(text: item.kindTitle, tint: item.kindTint)
+                    ScrollView(.horizontal) {
+                        Text(verbatim: "\(item.path):\(item.line)")
+                            .font(.appCaption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .scrollIndicators(.hidden)
+                }
+                .opacity(words)
+                .contentShape(.rect)
+                .onTapGesture { session.show(item) }
+                .accessibilityHidden(true)
+                if session.offersAsk {
+                    Button("Explain", systemImage: AppIcon.askAI.symbol) { session.explain(item, in: document) }
+                        .labelStyle(.iconOnly)
+                        .font(.appFootnote)
+                        .foregroundStyle(Color.primary)
+                        .frame(width: PRStyle.rowHeight, height: PRStyle.rowHeight)
+                        .contentShape(.rect)
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Explain \(item.path):\(item.line)")
+                        .accessibilityIdentifier("key-line-explain-\(item.id)")
+                }
+                PRKeyLineCheck(item: item, session: session)
+            }
+            .padding(.leading, Space.sm)
+            Button { session.show(item) } label: {
                 Text(item.why)
                     .font(.appFootnote)
                     .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding([.horizontal, .bottom], Space.sm)
+                    .opacity(words)
+                    .contentShape(.rect)
             }
-            Spacer(minLength: 0)
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(item.kindTitle), \(item.path):\(item.line), \(item.why)")
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+            .accessibilityIdentifier("key-line-\(item.id)")
+            .contextMenu {
+                Button("Copy", systemImage: AppIcon.copy.symbol) { Pasteboard.copy(item.why) }
+            }
         }
-        .padding(Space.sm)
-        .contentShape(.rect)
-        .accessibilityValue(item.kind)
     }
 }
 
@@ -173,8 +229,8 @@ struct PRNavigator: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Files alone when the Worker has no key lines (PRHub without a model key).
-            if session.offersKeyLines {
+            // Files alone when the Worker has no key lines and the host has no way to turn them on.
+            if showsKeyLinesPage {
                 Picker("Navigator", selection: $session.navigatorPage) {
                     ForEach(PRNavigatorPage.allCases) { Text($0.rawValue).tag($0) }
                 }
@@ -183,18 +239,26 @@ struct PRNavigator: View {
                 .padding(PRStyle.inset)
                 Divider()
             }
-            switch session.offersKeyLines ? session.navigatorPage : .files {
+            switch showsKeyLinesPage ? session.navigatorPage : .files {
             case .files:
                 PRFileList(files: files, viewed: session.viewedFiles) { session.show(file: $0) }
                 Divider()
                 filesFoot
             case .keyLines:
-                PRKeyLinesList(session: session)
+                if let hint = session.keyLinesHint {
+                    PRKeyLinesOff(hint: hint)
+                } else {
+                    PRKeyLinesList(session: session, document: document)
+                }
             }
         }
         .background(Color.groundCard)
         // The panel sets its own width: a wide screen's readable margins are not for it.
         .contentMargins(.horizontal, 0, for: .scrollContent)
+    }
+
+    private var showsKeyLinesPage: Bool {
+        session.offersKeyLines || session.keyLinesHint != nil
     }
 
     private var filesFoot: some View {
@@ -216,14 +280,33 @@ struct PRNavigator: View {
     }
 }
 
-extension PRKeyLines.Item {
-    var symbol: String {
-        switch kind {
-        case "risk": "exclamationmark.triangle.fill"
-        case "decision": "arrow.triangle.branch"
-        default: "function"
+/// The Key lines page while key lines are off: the host's words for why, and its link that turns them on.
+struct PRKeyLinesOff: View {
+    let hint: PREmptyHint
+
+    var body: some View {
+        ContentUnavailableView {
+            Label(hint.title, systemImage: AppIcon.keyLinesOff.symbol)
+        } description: {
+            Text(hint.message)
+        } actions: {
+            Link(hint.linkTitle, destination: hint.link)
+                .buttonStyle(PRButtonStyle(.primary))
+                .accessibilityIdentifier("key-lines-off")
         }
     }
+}
+
+extension PRKeyLines.Item {
+    var kindTitle: String {
+        switch kind {
+        case "risk": "Risk"
+        case "decision": "Decision"
+        default: "Logic"
+        }
+    }
+
+    var kindTint: Color { kind == "risk" ? .toneBad : .secondary }
 }
 
 /// A key line's tick: checked off as reviewed, or not yet. A finger's width, beside the line in the list or its note.
@@ -231,12 +314,6 @@ struct PRKeyLineCheck: View {
     let isReviewed: Bool
     let toggle: () -> Void
     let identifier: String
-
-    init(isReviewed: Bool, identifier: String, toggle: @escaping () -> Void) {
-        self.isReviewed = isReviewed
-        self.identifier = identifier
-        self.toggle = toggle
-    }
 
     init(item: PRKeyLines.Item, session: PRSession) {
         isReviewed = session.isReviewed(item)
@@ -260,36 +337,54 @@ struct PRKeyLineCheck: View {
     }
 }
 
-/// Under its line in the diff, while it's the key line being looked at, with its tick: check it off where it's read.
+/// Under its line in the diff, while it's the key line being looked at: its kind and Close on top, why it matters
+/// (long-press to copy), then Explain and Reviewed, so it's checked off where it's read.
 struct PRKeyLineNote: View {
     let item: PRKeyLines.Item
-    /// Read in the body, so the note follows a tick made in the list (`DiffActions.isReviewed`).
-    let isReviewed: (PRKeyLines.Item) -> Bool
-    let setReviewed: (PRKeyLines.Item, Bool) -> Void
-    let close: () -> Void
+    /// Read in the body, so the note follows a tick made in the list.
+    let actions: DiffActions
 
     var body: some View {
-        let reviewed = isReviewed(item)
-        HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
-            Image(systemName: item.symbol)
-                .font(.appCaption)
-                .foregroundStyle(item.kind == "risk" ? Color.toneBad : Color.secondary)
+        let reviewed = actions.isReviewed(item)
+        VStack(alignment: .leading, spacing: Space.sm) {
+            HStack {
+                StatusChip(text: item.kindTitle, tint: item.kindTint)
+                Spacer(minLength: 0)
+                Button("Close", systemImage: AppIcon.close.symbol, action: actions.closeNote)
+                    .labelStyle(.iconOnly)
+                    .font(.appFootnote)
+                    .foregroundStyle(.secondary)
+                    .frame(width: PRStyle.rowHeight, height: PRStyle.rowHeight)
+                    .contentShape(.rect)
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("key-line-note-close")
+            }
             Text(item.why)
                 .font(.appFootnote)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .opacity(reviewed ? PRStyle.doneOpacity : 1)
+                .textSelection(.enabled)
                 .accessibilityIdentifier("key-line-note")
-            PRKeyLineCheck(isReviewed: reviewed, identifier: "key-line-note-reviewed") {
-                setReviewed(item, !reviewed)
+            HStack(spacing: Space.sm) {
+                if let explain = actions.explain {
+                    Button("Explain", systemImage: AppIcon.askAI.symbol) { explain(item) }
+                        .buttonStyle(PRButtonStyle(.secondary))
+                        .accessibilityIdentifier("key-line-note-explain")
+                }
+                Spacer(minLength: 0)
+                Button(
+                    reviewed ? "Reviewed" : "Mark reviewed",
+                    systemImage: (reviewed ? AppIcon.taskDone : AppIcon.taskOpen).symbol
+                ) { actions.setReviewed(item, !reviewed) }
+                    .buttonStyle(PRButtonStyle(.secondary))
+                    .contentTransition(.symbolEffect(.replace))
+                    .accessibilityLabel("Reviewed")
+                    .accessibilityValue(reviewed ? "checked" : "not checked")
+                    .accessibilityIdentifier("key-line-note-reviewed")
             }
-            Button("Close", systemImage: AppIcon.close.symbol, action: close)
-                .labelStyle(.iconOnly)
-                .font(.appCaption)
-                .foregroundStyle(.secondary)
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("key-line-note-close")
         }
-        .padding(PRStyle.inset)
+        .padding([.leading, .bottom, .trailing], PRStyle.inset)
+        .padding(.top, Space.xs)
         .prCard()
     }
 }

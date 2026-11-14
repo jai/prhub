@@ -15,13 +15,16 @@ final class PostHogAnalytics: Analytics {
         config.disableGeoIp = true
         config.captureApplicationLifecycleEvents = true
         config.captureScreenViews = false
+        #if os(iOS)
+        // The phone's alone: the Mac's SDK has no taps, session replay or surveys to turn off.
         config.captureElementInteractions = false
         config.sessionReplay = false
+        config.surveys = false
+        #endif
         config.enableSwizzling = false
         config.capturePushNotificationSubscriptions = false
         config.capturePushNotificationOpened = false
         config.errorTrackingConfig.autoCapture = false
-        config.surveys = false
         config.preloadFeatureFlags = false
         config.sendFeatureFlagEvent = false
         config.optOut = !isSharing
