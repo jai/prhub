@@ -13,10 +13,11 @@ final class PRHubOpenLinkUITests: XCTestCase {
         app.launchArguments = ["-PRHubPaired"]
         app.launch()
         app.go(to: .settings)
-        app.open(try handoff("https://github.com/acme/web/pull/412"))
+        XCUIDevice.shared.system.open(try handoff("https://github.com/acme/web/pull/412"))
 
         XCTAssertTrue(app.buttons["pr-review-changes"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Show a retry button when checkout fails"].exists)
+        XCTAssertTrue(app.navigationBars["acme/web#412"].exists, "the requested PR's detail, not its list row")
+        keep("handoff-requested-pr")
     }
 
     func testADiffHandoffKeepsTheSamplesOpen() throws {
@@ -26,10 +27,19 @@ final class PRHubOpenLinkUITests: XCTestCase {
         XCTAssertTrue(samples.waitForExistence(timeout: 10))
         samples.tap()
         app.go(to: .settings)
-        app.open(try handoff("https://github.com/acme/web/pull/412/files?w=1#diff-abcR12"))
+        // `app.open` launches a fresh process and loses samples; a real app's handoff goes through the OS.
+        XCUIDevice.shared.system.open(try handoff("https://github.com/acme/web/pull/412/files?w=1#diff-abcR12"))
 
-        XCTAssertTrue(app.buttons["file-header-0"].waitForExistence(timeout: 10), "the requested PR's diff")
         XCTAssertFalse(app.buttons["onboardingSignIn"].exists, "the handoff keeps the current samples")
+        XCTAssertTrue(app.buttons["file-header-0"].waitForExistence(timeout: 10), "the requested PR's diff")
+        keep("handoff-sample-diff")
+    }
+
+    private func keep(_ name: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     private func handoff(_ target: String) throws -> URL {
