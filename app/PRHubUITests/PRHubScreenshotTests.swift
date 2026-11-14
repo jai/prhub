@@ -37,6 +37,21 @@ final class PRHubScreenshotTests: XCTestCase {
         }
     }
 
+    /// The list under its "Not up to date" line, at rest and while a pull to refresh runs: Jai saw the spinner and the
+    /// line's words on top of each other (2026-11-14). Pictures only, until they show what is wrong.
+    func testListRefreshingUnderItsBannerInEveryLook() throws {
+        for look in Look.allCases {
+            launch(look, ["-PRHubPaired", "-PRHubSlowRefresh"])
+            let checkout = app.staticTexts["Show a retry button when checkout fails"]
+            XCTAssertTrue(checkout.waitForExistence(timeout: 10))
+            try picture("2-list-banner", look)
+            let row = checkout.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            row.press(forDuration: 0.1, thenDragTo: row.withOffset(CGVector(dx: 0, dy: 400)))
+            RunLoop.current.run(until: Date.now.addingTimeInterval(1.5))
+            try picture("2-list-refreshing", look)
+        }
+    }
+
     private func launch(_ look: Look, _ arguments: [String]) {
         app.launch(
             arguments + (look == .largeText

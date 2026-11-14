@@ -37,6 +37,10 @@ public struct PRSampleSet: Sendable {
     /// Set, the first review sent from its box is refused in these words, and Retry sends it: a UI test's or a
     /// recording's way to show a refusal on sample PRs.
     public var refusesFirstReview: String?
+    /// Set, the list opens with these words in its "Not up to date" line: a UI test's way to picture that line.
+    public var notUpToDate: String?
+    /// How long a pull to refresh takes. Samples answer at once; a UI test sets it to picture the list refreshing.
+    public var refreshDelay = Duration.zero
 
     public init(
         samples: [Sample], mergedReviewed: [PullRequestRow], mergedMine: [PullRequestRow], answersOnPhone: Bool

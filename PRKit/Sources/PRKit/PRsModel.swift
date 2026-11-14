@@ -284,8 +284,9 @@ final class PRsModel {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let saved = samples.map { $0.seed(in: directory) } ?? PRMirror.savedRows(in: directory)
         rows = saved
-        if samples != nil {
+        if let samples {
             localAnswers = [:]
+            errorMessage = samples.notUpToDate
         }
         mirror = PRMirror(directory: directory, client: client, shown: saved)
     }
@@ -338,7 +339,10 @@ final class PRsModel {
     /// its files land: the spinner is for the list, not for every new PR's diff.
     @discardableResult
     func refresh(_ trigger: PRSyncTrigger) async -> PRSyncOutcome {
-        if samples != nil {
+        if let samples {
+            if trigger == .pull, samples.refreshDelay > .zero {
+                try? await Task.sleep(for: samples.refreshDelay)
+            }
             onEvent(.synced(trigger, .unchanged))
             return .unchanged
         }
