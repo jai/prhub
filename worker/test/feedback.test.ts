@@ -164,6 +164,25 @@ test("a message the runner took and never reported on fails after 15 minutes, an
   assert.equal(stuck.isWorking, false);
 });
 
+test("each sender message keeps its persisted delivery state until the runner reports its outcome", async () => {
+  const store = memoryStore();
+  const chat = (await addFeedback(store, null, parseFeedbackInput({ text: "Bigger clock" })!, 1_000))!;
+  assert.equal((await feedbackChat(store, chat, 1_001))!.messages[0].status, "pending");
+  const [work] = await runnerPoll(store, true, 2_000);
+  await runnerClaim(store, chat, work.message, 3_000);
+  const stuck = (await feedbackChat(store, chat, 3_000 + 15 * 60_000 + 1))!;
+  assert.match(stuck.problem ?? "", /stopped while passing this on/);
+  assert.equal(stuck.messages[0].status, "delivering", "the view's timeout is not a delivery receipt");
+  await runnerResult(store, chat, work.message, true, null);
+  assert.equal((await feedbackChat(store, chat, 4_000))!.messages[0].status, "delivered");
+
+  await addFeedback(store, chat, parseFeedbackInput({ text: "And bolder" })!, 5_000);
+  const [next] = await runnerPoll(store, true, 6_000);
+  await runnerClaim(store, chat, next.message, 7_000);
+  await runnerResult(store, chat, next.message, false, "the thread closed");
+  assert.equal((await feedbackChat(store, chat, 8_000))!.messages.at(-1)!.status, "failed");
+});
+
 test("the agent's side is checked before it is kept", () => {
   assert.equal(parseAgentSide({ messages: "no", isWorking: true, activity: null }, 0), null);
   assert.equal(parseAgentSide({ messages: [{ id: "a", text: "x", at: "soon" }], isWorking: true, activity: null }, 0), null);

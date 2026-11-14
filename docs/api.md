@@ -184,9 +184,13 @@ App routes (app auth):
 | `GET /feedback/{id}` | | the chat; `404` none |
 | `POST /feedback/{id}` | as above | the chat, with the message added |
 
-- A chat: `{id, messages: [{id, role: "you" \| "agent", text, anchor: null, images}], isWorking, activity, problem,
+- A chat: `{id, messages: [{id, role: "you" \| "agent", text, anchor: null, images, status?}], isWorking, activity, problem,
   costCents: null, model: null, effort: null, builderOnline, thread}`. `thread` is `{host, id}`, the agent's Agents
   thread, once the runner has found it.
+- A sender's message carries its persisted `status`: `pending`, `delivering`, `delivered` or `failed`. An agent's
+  message has none. A delivery stuck for 15 minutes can set the chat's `problem`, but its message remains
+  `delivering` until the runner reports what happened. A host uses confirmed `delivered` states before switching
+  Feedback to the coding thread's own conversation, so a queued legacy message never disappears on handoff.
 - `text` at most 8,000 characters; `images` up to four JPEG or PNG `{media_type, data}` of at most 1.5 MB decoded.
   Neither: `400`. A repeat `client_ref` keeps the message once.
 - `isWorking` from a send until the agent's turn ends; `problem` says why the last message was not passed on.

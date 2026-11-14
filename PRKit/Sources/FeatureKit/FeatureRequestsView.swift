@@ -10,7 +10,7 @@ import UIKit
 /// it is wide (an iPad, the Mac) the list beside the conversation picked. A tab of its own: it brings its navigation.
 public struct FeatureRequestsView: View {
     @State private var model: FeatureRequestsModel
-    private let conversation: ((FeatureAgentThread) -> AnyView)?
+    private let conversation: ((FeatureConversation) -> AnyView?)?
     /// The wide layout's open conversation.
     @State private var selection: FeatureRoute?
     /// The narrow layout's conversations, pushed by value onto a stack of its own, so they stay open whatever is
@@ -33,12 +33,13 @@ public struct FeatureRequestsView: View {
     }
 
     /// Keeps Feedback's list and first-message flow, then shows the host's coding-thread conversation once the
-    /// runner names it. The host owns that conversation's delivery statuses, reply queue and Send now controls.
-    public init<Conversation: View>(
-        model: FeatureRequestsModel, @ViewBuilder conversation: @escaping (FeatureAgentThread) -> Conversation
+    /// runner names it and the host returns its view. The host moves the draft and attachments into that view's
+    /// composer, and owns its delivery statuses, reply queue and Send now controls. Returning nil keeps Feedback.
+    public init(
+        model: FeatureRequestsModel, conversation: @escaping (FeatureConversation) -> AnyView?
     ) {
         _model = State(initialValue: model)
-        self.conversation = { AnyView(conversation($0)) }
+        self.conversation = conversation
     }
 
     public init(client: FeatureClient) {

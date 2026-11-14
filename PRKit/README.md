@@ -42,15 +42,21 @@ PRHub's host is `app/PRHub/App/PRHubHost.swift`.
 provide its existing conversation instead, sharing that thread's delivery statuses, reply queue and Send now:
 
 ```swift
-FeatureRequestsView(model: feedback) { thread in
-    CodingThreadConversation(host: thread.host, id: thread.id)
+FeatureRequestsView(model: feedback) { context in
+    guard let thread = threads[context.thread] else { return nil }
+    return AnyView(CodingThreadConversation(thread: thread, handoff: context))
 }
 ```
 
-The closure receives `FeatureAgentThread` from the feedback response's `thread` (`host` and `id`). Until the runner
-names it, Feedback keeps its composer and first-message flow; when it arrives, the host's view replaces the chat in
-place. The feedback list and navigation stay the same. Older Workers, samples without a thread, and hosts using the
-existing initializers keep the built-in conversation.
+The closure receives `FeatureConversation`: the `thread` (`host` and `id`), a binding to the unsent `draft`, and the
+same `attachments` tray. Return nil until the host has the thread it needs to draw. On appearance, the host moves
+that draft and those attachments into its existing reply model before clearing them from Feedback.
+
+Feedback sends only the first message for a host with this hook. While it waits for the agent or the host's thread,
+the field stays editable and Send waits. Earlier Feedback messages that are pending, delivering, failed or have no
+confirmed delivery status keep their history in the built-in chat; only delivered messages permit handoff. The host's
+view then replaces the chat in place and Feedback stops polling it. The feedback list and navigation stay the same.
+Hosts using the original initializers keep the built-in conversation and delivery path.
 
 ## What the host gives
 

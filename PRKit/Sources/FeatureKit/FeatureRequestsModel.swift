@@ -24,6 +24,19 @@ enum FeatureRoute: Hashable, Sendable {
     }
 }
 
+/// A standalone chat stops when the agent is idle; a host keeps discovering its thread until the view hands off.
+enum FeatureFollowMode {
+    case whileWorking
+    case untilHandoff
+
+    func keepsReading(_ chat: FeatureChat?) -> Bool {
+        switch self {
+        case .whileWorking: chat?.isWorking == true
+        case .untilHandoff: true
+        }
+    }
+}
+
 /// Requests for changes to the app, each a conversation with an agent that makes the change, tests it and ships a
 /// build. Keep one for the app's life, so drafts and open chats outlive the screen.
 @MainActor
@@ -115,6 +128,14 @@ public final class FeatureRequestsModel {
         }
     }
 
+    /// A host with its own coding-thread chat uses Feedback only to start the agent. Later drafts stay for the host.
+    func sendFirstMessage(_ route: FeatureRoute) async {
+        guard thread(for: route) == nil else {
+            return
+        }
+        await send(route)
+    }
+
     /// The conversation's draft, to its thread, or as a new request before it has one: that makes the thread.
     func send(_ route: FeatureRoute) async {
         let box = route.box
@@ -188,7 +209,7 @@ public final class FeatureRequestsModel {
     }
 
     /// While a chat shows: every few seconds while the agent works or a message is on its way, and once otherwise.
-    func follow(_ route: FeatureRoute) async {
+    func follow(_ route: FeatureRoute, mode: FeatureFollowMode = .whileWorking) async {
         guard let thread = thread(for: route) else {
             return
         }
@@ -205,7 +226,7 @@ public final class FeatureRequestsModel {
             } catch {
                 self.error = error.localizedDescription
             }
-            guard chats[thread]?.isWorking == true || sending.contains(route.box) else {
+            guard mode.keepsReading(chats[thread]) || sending.contains(route.box) else {
                 return
             }
             try? await Task.sleep(for: Self.pollInterval)

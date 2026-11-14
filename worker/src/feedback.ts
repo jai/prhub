@@ -83,6 +83,8 @@ export interface AgentSide {
 /** A message of the chat, with how many screenshots Jai sent on it. */
 export interface FeedbackMessage extends AskMessage {
   images: number;
+  /** The sender's persisted delivery state; absent on messages from the agent. */
+  status?: MessageStatus;
 }
 
 export interface FeedbackChat extends AskChat {
@@ -279,7 +281,10 @@ export function chatView(
   id: string, mine: StoredMessage[], agent: AgentSide | null, online: boolean, now: number,
 ): FeedbackChat {
   const entries: Array<{ at: number; message: FeedbackMessage }> = mine.map((message) => ({
-    at: message.at, message: { id: message.id, role: "you", text: message.text, anchor: null, images: message.images },
+    at: message.at,
+    message: {
+      id: message.id, role: "you", text: message.text, anchor: null, images: message.images, status: message.status,
+    },
   }));
   for (const message of agent?.messages ?? []) {
     entries.push({

@@ -39,6 +39,25 @@ public struct FeatureAgentThread: Codable, Equatable, Hashable, Sendable {
     }
 }
 
+/// What the feedback runner knows of a message. Missing or newer states stay unknown until it confirms delivery.
+public enum FeatureMessageDelivery: Equatable, Sendable, Decodable {
+    case pending
+    case delivering
+    case delivered
+    case failed
+    case unknown
+
+    public init(from decoder: any Decoder) throws {
+        self = switch try decoder.singleValueContainer().decode(String.self) {
+        case "pending": .pending
+        case "delivering": .delivering
+        case "delivered": .delivered
+        case "failed": .failed
+        default: .unknown
+        }
+    }
+}
+
 /// One request's conversation with the builder agent: the Ask chat's shape, and whether the builder Mac is taking work.
 public struct FeatureChat: Decodable, Equatable, Sendable {
     public var id: String
@@ -52,10 +71,15 @@ public struct FeatureChat: Decodable, Equatable, Sendable {
     public var thread: FeatureAgentThread?
     /// How many screenshots each message carried, by its id; none for a message without.
     public var screenshots: [String: Int]
+    /// Only the sender's messages have delivery states; agent messages do not travel through the runner's queue.
+    public var delivery: [String: FeatureMessageDelivery]
+
+    public var hasUndeliveredMessages: Bool { delivery.values.contains { $0 != .delivered } }
 
     public init(
         id: String, messages: [PRAskChat.Message], isWorking: Bool, activity: String?, problem: String?,
-        costCents: Int?, builderOnline: Bool, screenshots: [String: Int] = [:], thread: FeatureAgentThread? = nil
+        costCents: Int?, builderOnline: Bool, screenshots: [String: Int] = [:], thread: FeatureAgentThread? = nil,
+        delivery: [String: FeatureMessageDelivery] = [:]
     ) {
         self.id = id
         self.messages = messages
@@ -66,16 +90,18 @@ public struct FeatureChat: Decodable, Equatable, Sendable {
         self.builderOnline = builderOnline
         self.thread = thread
         self.screenshots = screenshots
+        self.delivery = delivery
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, messages, isWorking, activity, problem, costCents, builderOnline, thread
     }
 
-    /// The count a message's `images` gives; a Worker from before them sends none.
-    private struct Counted: Decodable {
+    /// The screenshot count and persisted delivery state; a Worker from before either field sends none.
+    private struct MessageMetadata: Decodable {
         var id: String
         var images: Int?
+        var status: FeatureMessageDelivery?
     }
 
     public init(from decoder: any Decoder) throws {
@@ -94,9 +120,13 @@ public struct FeatureChat: Decodable, Equatable, Sendable {
         } else {
             thread = nil
         }
-        let counted = try container.decode([Counted].self, forKey: .messages)
-        screenshots = Dictionary(counted.compactMap { message in
+        let metadata = try container.decode([MessageMetadata].self, forKey: .messages)
+        screenshots = Dictionary(metadata.compactMap { message in
             message.images.flatMap { $0 > 0 ? (message.id, $0) : nil }
+        }, uniquingKeysWith: { first, _ in first })
+        let sent = Set(messages.filter(\.isJai).map(\.id))
+        delivery = Dictionary(metadata.filter { sent.contains($0.id) }.map { message in
+            (message.id, message.status ?? .unknown)
         }, uniquingKeysWith: { first, _ in first })
     }
 }

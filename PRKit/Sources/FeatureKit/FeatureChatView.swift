@@ -6,23 +6,27 @@ import SwiftUI
 struct FeatureChatView: View {
     @Bindable var model: FeatureRequestsModel
     let route: FeatureRoute
-    let conversation: ((FeatureAgentThread) -> AnyView)?
+    let conversation: ((FeatureConversation) -> AnyView?)?
     @FocusState private var isWriting: Bool
 
     private var box: String { route.box }
     private var thread: String? { model.thread(for: route) }
     private var chat: FeatureChat? { thread.flatMap { model.chats[$0] } }
     private var isNew: Bool { thread == nil && !model.isSending(box) }
-    /// A new agent can appear while the next message is being written: leave that composer in place until its
-    /// draft and screenshots have been sent or cleared, and its send has finished.
-    var hostedThread: FeatureAgentThread? {
-        guard conversation != nil, model.draft(for: box).isEmpty, model.attachments(for: box).isEmpty,
-              !model.isSending(box)
+    /// Legacy messages stay visible until delivered; the host also decides whether its thread is ready to draw.
+    var hostedConversation: AnyView? {
+        guard let conversation, let chat, let thread = chat.thread,
+              !model.isSending(box), !chat.hasUndeliveredMessages
         else {
             return nil
         }
-        return chat?.thread
+        return conversation(FeatureConversation(
+            thread: thread, draft: model.binding(for: box), attachments: model.attachments(for: box)
+        ))
     }
+
+    /// Once the first message created the feedback chat, the host's coding thread receives every follow-up.
+    var awaitsAgentThread: Bool { conversation != nil && thread != nil }
 
     private var messages: [PRAskChat.Message] {
         let sent = chat?.messages ?? []
@@ -43,9 +47,10 @@ struct FeatureChatView: View {
     @State private var readsEnd = true
 
     var body: some View {
+        let hosted = hostedConversation
         Group {
-            if let thread = hostedThread, let conversation {
-                conversation(thread)
+            if let hosted {
+                hosted
             } else {
                 feedbackConversation
                     .inlineNavigationTitle()
@@ -59,10 +64,10 @@ struct FeatureChatView: View {
             }
         }
         .task(id: FollowKey(
-            thread: thread, isLive: chat?.isWorking == true || model.isSending(box), hostedThread: hostedThread
+            thread: thread, isLive: chat?.isWorking == true || model.isSending(box), isHosted: hosted != nil
         )) {
-            if hostedThread == nil {
-                await model.follow(route)
+            if hosted == nil {
+                await model.follow(route, mode: conversation == nil ? .whileWorking : .untilHandoff)
             }
         }
         .task { await model.seedScreenshot(in: box) }
@@ -104,20 +109,20 @@ struct FeatureChatView: View {
     private struct FollowKey: Hashable {
         let thread: String?
         let isLive: Bool
-        let hostedThread: FeatureAgentThread?
+        let isHosted: Bool
     }
 
     @ViewBuilder private var status: some View {
-        if chat?.isWorking == true || model.isSending(box) {
+        if showsWorking {
             HStack(spacing: Space.sm) {
                 ProgressView().controlSize(.small)
-                Text(chat?.builderOnline == false ? "Waiting for the builder Mac" : chat?.activity ?? "Thinking")
+                Text(activity)
                     .font(.appCaption)
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, PRStyle.inset)
             .accessibilityIdentifier("feedback-working")
-        } else if let problem = chat?.problem {
+        } else if let problem = handoffProblem {
             Text(problem)
                 .font(.appFootnote)
                 .foregroundStyle(Color.toneBad)
@@ -132,6 +137,30 @@ struct FeatureChatView: View {
         }
     }
 
+    private var showsWorking: Bool {
+        if awaitsAgentThread {
+            return handoffProblem == nil
+        }
+        return chat?.isWorking == true || model.isSending(box)
+    }
+
+    var handoffProblem: String? {
+        if let problem = chat?.problem {
+            return problem
+        }
+        if awaitsAgentThread, chat?.delivery.values.contains(.failed) == true {
+            return "An earlier message did not reach the agent. Start new feedback to continue."
+        }
+        return nil
+    }
+
+    private var activity: String {
+        if awaitsAgentThread {
+            return chat?.thread == nil ? "Starting the agent…" : "Waiting for the agent thread"
+        }
+        return chat?.builderOnline == false ? "Waiting for the builder Mac" : chat?.activity ?? "Thinking"
+    }
+
     private var composer: some View {
         VStack(alignment: .leading, spacing: Space.xs) {
             if let error = model.error {
@@ -142,7 +171,7 @@ struct FeatureChatView: View {
                     .transition(.fold)
             }
             SessionComposer(
-                draft: model.binding(for: box), isSending: model.isSending(box), send: send,
+                draft: model.binding(for: box), isSending: model.isSending(box) || awaitsAgentThread, send: send,
                 placeholder: thread == nil ? "What should change?" : "Reply", focused: $isWriting,
                 attachments: model.attachments(for: box)
             )
@@ -152,8 +181,17 @@ struct FeatureChatView: View {
     }
 
     private func send() {
+        guard !awaitsAgentThread else {
+            return
+        }
         isWriting = false
-        Task { await model.send(route) }
+        Task {
+            if conversation != nil {
+                await model.sendFirstMessage(route)
+            } else {
+                await model.send(route)
+            }
+        }
     }
 }
 

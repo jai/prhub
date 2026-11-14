@@ -1,7 +1,5 @@
 import Foundation
-import PRKit
 import PRKitCore
-import SwiftUI
 import Testing
 @testable import FeatureKit
 
@@ -91,28 +89,19 @@ struct FeatureRequestsModelTests {
         #expect(chat.thread == thread)
     }
 
-    @Test func theAgentThreadWaitsUntilTheNextDraftHasBeenSentOrCleared() async {
-        let agent = FeatureAgentThread(host: "builder", id: "codex:session-1")
-        let samples = FeatureSamples(
-            list: FeatureList(threads: [], builderOnline: true),
-            chat: { FeatureChat(
-                id: $0, messages: [], isWorking: true, activity: nil, problem: nil,
-                costCents: nil, builderOnline: true, thread: agent
-            ) },
-            answer: "Got it."
-        )
-        let model = FeatureRequestsModel(client: FeatureClient(viewer: client(Worker()).viewer, samples: samples))
-        let route = FeatureRoute.thread("sesn_1")
-        await model.follow(route)
-        let view = FeatureChatView(model: model, route: route, conversation: { _ in AnyView(EmptyView()) })
-        #expect(view.hostedThread == agent)
+    @Test func aHostStartsTheAgentThroughFeedbackAndKeepsLaterDraftsForItsThread() async {
+        let worker = Worker()
+        let model = FeatureRequestsModel(client: client(worker))
+        let route = model.compose(reusing: nil)
+        model.drafts[route.box] = "Bigger clock"
+        await model.sendFirstMessage(route)
+        #expect(model.thread(for: route) == "sesn_1")
+        #expect(worker.requests == ["POST /feedback", "GET /feedback"])
 
-        model.drafts[route.box] = "And keep the next message I am writing"
-        #expect(view.hostedThread == nil)
-        #expect(model.draft(for: route.box) == "And keep the next message I am writing")
-
-        model.drafts[route.box] = nil
-        #expect(view.hostedThread == agent)
+        model.drafts[route.box] = "Keep this for the thread"
+        await model.sendFirstMessage(route)
+        #expect(model.draft(for: route.box) == "Keep this for the thread")
+        #expect(worker.requests == ["POST /feedback", "GET /feedback"])
     }
 
     /// The first message of a new conversation makes the thread; the conversation keeps its route and goes on there.
