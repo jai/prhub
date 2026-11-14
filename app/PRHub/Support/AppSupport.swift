@@ -13,6 +13,29 @@ enum AppIdentity {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }
 
+    /// What the app's words call the device it runs on.
+    static var deviceName: String {
+        #if os(macOS)
+        "Mac"
+        #else
+        "phone"
+        #endif
+    }
+
+    /// What sign-in and pairing say when the Keychain refuses them.
+    static var keychainProblem: String {
+        "PRHub couldn't use this \(deviceName)'s keychain. Unlock the \(deviceName) and try again."
+    }
+
+    /// Whether a push can reach this app: the phone registers for them at launch (`AppDelegate`); the Mac does not.
+    static var receivesPushes: Bool {
+        #if os(iOS)
+        true
+        #else
+        false
+        #endif
+    }
+
     /// `<CFBundleShortVersionString> (<CFBundleVersion>)`.
     static func appVersion(bundle: Bundle = .main) -> String {
         let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"

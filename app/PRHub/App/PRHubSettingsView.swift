@@ -20,35 +20,43 @@ struct PRHubSettingsView: View {
     private var connection: WorkerConnection { environment.connection }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Space.sm) {
-                    if let endSample {
-                        samplesBlock(endSample)
-                    } else if connection.isHosted {
-                        accountBlocks
-                    } else {
-                        workerBlocks
-                    }
-                    DiffFontSection()
-                        .recordsDiffFontChanges(environment.usage)
-                    UsageSharingSection(usage: environment.usage)
-                    PRPageBlock("About") {
-                        PRValueLine("Version", value: AppIdentity.appVersion())
-                    }
+        #if os(iOS)
+        NavigationStack { page }
+        #else
+        // A window of its own on the Mac (`PRHubMacSettings`), with nothing to push.
+        page
+        #endif
+    }
+
+    private var page: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Space.sm) {
+                if let endSample {
+                    samplesBlock(endSample)
+                } else if connection.isHosted {
+                    accountBlocks
+                } else if connection.isPaired {
+                    // Before a way in is chosen, which only the Mac's Settings window can show, neither.
+                    workerBlocks
                 }
-                .padding(.bottom, Space.xl)
-                .animation(AppMotion.fold, value: connection.config)
-                .animation(AppMotion.fold, value: environment.alertPermission.status)
+                DiffFontSection()
+                    .recordsDiffFontChanges(environment.usage)
+                UsageSharingSection(usage: environment.usage)
+                PRPageBlock("About") {
+                    PRValueLine("Version", value: AppIdentity.appVersion())
+                }
             }
-            .accessibilityIdentifier("prhub-settings")
-            .background(Color.groundPage)
-            .readableContentWidth()
-            .navigationTitle("Settings")
-            .sheet(isPresented: $confirmsDelete) {
-                DeleteAccountSheet(login: connection.config?.account?.login) {
-                    try await environment.deleteAccount()
-                }
+            .padding(.bottom, Space.xl)
+            .animation(AppMotion.fold, value: connection.config)
+            .animation(AppMotion.fold, value: environment.alertPermission.status)
+        }
+        .accessibilityIdentifier("prhub-settings")
+        .background(Color.groundPage)
+        .readableContentWidth()
+        .navigationTitle("Settings")
+        .sheet(isPresented: $confirmsDelete) {
+            DeleteAccountSheet(login: connection.config?.account?.login) {
+                try await environment.deleteAccount()
             }
         }
     }
@@ -94,7 +102,7 @@ struct PRHubSettingsView: View {
         PRPageBlock("GitHub") {
             PRValueLine("Signed in as", value: account?.login ?? connection.config?.login ?? "…")
                 .accessibilityIdentifier("prhub-account-login")
-            if let config = connection.config, config.isOn(.push) {
+            if let config = connection.config, config.isOn(.push), AppIdentity.receivesPushes {
                 reviewAlertsLine
             }
         }
@@ -122,8 +130,8 @@ struct PRHubSettingsView: View {
         AnthropicKeySection(connection: connection)
         PRPageBlock(
             "Account",
-            note: "Sign out forgets your PRs on this phone. Delete account also deletes everything PRHub keeps for "
-                + "you and removes its access on GitHub."
+            note: "Sign out forgets your PRs on this \(AppIdentity.deviceName). Delete account also deletes everything "
+                + "PRHub keeps for you and removes its access on GitHub."
         ) {
             Button("Sign out", systemImage: AppIcon.signOut.symbol) {
                 signingOut = true
@@ -156,7 +164,7 @@ struct PRHubSettingsView: View {
                 )
                 PRValueLine("AI", value: Self.aiWords(config))
                     .accessibilityIdentifier("prhub-ai-features")
-                if config.isOn(.push) {
+                if config.isOn(.push), AppIdentity.receivesPushes {
                     reviewAlertsLine
                 }
             }

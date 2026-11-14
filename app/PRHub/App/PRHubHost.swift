@@ -152,7 +152,8 @@ final class PRHubPRHost: PRKitHost {
     /// The mirror in the app group (`PRHubAppGroup` in Info.plist). The first launch with it moves the caches' mirror
     /// there, so nothing is downloaded again.
     nonisolated static func mirrorDirectory(bundle: Bundle = .main) -> URL {
-        let group = bundle.object(forInfoDictionaryKey: "PRHubAppGroup") as? String
+        // Empty on the Mac (PRHub.xcconfig), whose mirror stays in its own caches.
+        let group = (bundle.object(forInfoDictionaryKey: "PRHubAppGroup") as? String).flatMap { $0.isEmpty ? nil : $0 }
         let shared = PRMirrorLocation.directory(appGroup: group)
         let old = PRMirrorLocation.directory(appGroup: nil)
         let manager = FileManager.default

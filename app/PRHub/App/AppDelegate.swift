@@ -1,3 +1,4 @@
+#if os(iOS)
 import UIKit
 import UserNotifications
 
@@ -65,3 +66,4 @@ extension AppDelegate {
         }
     }
 }
+#endif

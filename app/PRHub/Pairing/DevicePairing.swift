@@ -33,7 +33,8 @@ enum PairingError: Error, Equatable, Sendable {
         case .codeRefused:
             "That code has expired, was already used, or is wrong. Run npm run pair on your Worker for a new one."
         case .secretRefused:
-            "The Worker refused this phone's key. Try again; if it keeps happening, reinstall PRHub."
+            "The Worker refused this \(AppIdentity.deviceName)'s key. Try again; if it keeps happening, reinstall "
+                + "PRHub."
         case .pairingUnsupported:
             "This Worker can't pair phones yet. Update it from github.com/jai/prhub and try again."
         case .appCode:
@@ -45,7 +46,7 @@ enum PairingError: Error, Equatable, Sendable {
         case .unreadable:
             "The Worker's answer didn't make sense. Check that the address is your pr-worker."
         case .keychain:
-            "PRHub couldn't use this phone's keychain. Unlock the phone and try again."
+            AppIdentity.keychainProblem
         }
     }
 

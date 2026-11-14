@@ -45,7 +45,9 @@ struct AnthropicKeySection: View {
             } else {
                 SecureField("Paste your Anthropic API key", text: $key)
                     .font(.appFootnote.monospaced())
+                    #if os(iOS)
                     .textInputAutocapitalization(.never)
+                    #endif
                     .autocorrectionDisabled()
                     .submitLabel(.done)
                     .onSubmit(save)

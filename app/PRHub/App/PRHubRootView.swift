@@ -74,8 +74,8 @@ struct PRHubRootView: View {
         ) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("This phone is connected to \(connection.ignoredLinkHost ?? "a pr-worker"). To use another one, tap "
-                 + "Disconnect in Settings first.")
+            Text("This \(AppIdentity.deviceName) is connected to \(connection.ignoredLinkHost ?? "a pr-worker"). To use "
+                 + "another one, tap Disconnect in Settings first.")
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             if phase == .active {
@@ -108,14 +108,34 @@ private struct PRHubTabs: View {
     /// Over the samples, the connection their Sign in with GitHub signs in: its work and its failure show there.
     var signIn: WorkerConnection?
 
+    var body: some View {
+        container
+            .readableContentWidth()
+            .prKitEnvironment(environment.prs)
+            .alertsOffer(environment.alertPermission)
+            .updateOffer(environment.update)
+            .environment(\.loadsAuthorAvatars, !environment.isSample)
+            .recordsScreen(environment.navigation.selectedTab.analyticsScreen, environment.usage)
+    }
+
+    /// The phone's tab bar; the Mac's window is the PRs, with Settings a window of its own (`PRHubMacSettings`).
+    @ViewBuilder private var container: some View {
+        #if os(macOS)
+        PRHubMacWindow(environment: environment)
+        #else
+        tabBar
+        #endif
+    }
+
+    #if os(iOS)
     private var tabs: [PRHubTab] {
         environment.connection.config?.isOn(.feedback) == true ? [.prs, .feedback, .settings] : [.prs, .settings]
     }
 
-    var body: some View {
+    private var tabBar: some View {
         @Bindable var navigation = environment.navigation
         let tabs = tabs
-        TabView(selection: $navigation.selectedTab) {
+        return TabView(selection: $navigation.selectedTab) {
             Tab("PRs", systemImage: "arrow.triangle.pull", value: PRHubTab.prs) {
                 PRKitRoot(environment.prs)
                     .compactWidthForUITests()
@@ -139,16 +159,12 @@ private struct PRHubTabs: View {
                 navigation.selectedTab = .prs
             }
         }
-        .readableContentWidth()
-        .prKitEnvironment(environment.prs)
-        .alertsOffer(environment.alertPermission)
-        .updateOffer(environment.update)
-        .environment(\.loadsAuthorAvatars, !environment.isSample)
-        .recordsScreen(navigation.selectedTab.analyticsScreen, environment.usage)
     }
+    #endif
 }
 
 extension View {
+    #if os(iOS)
     /// A Debug run's `-PRHubCompactWidth`: a narrow Split View's size class, which a UI test can't make with the
     /// window. Set on the window, so the screens a stack pushes have it too.
     fileprivate func compactWidthForUITests() -> some View {
@@ -165,6 +181,7 @@ extension View {
         self
         #endif
     }
+    #endif
 
     /// Update available: a newer build on TestFlight. Update opens TestFlight on PRHub; Later skips that build.
     fileprivate func updateOffer(_ update: PRHubUpdate) -> some View {
@@ -228,6 +245,7 @@ extension PRHubTab {
         }
     }
 
+    #if os(iOS)
     /// The tab's accessibility identifier, which the UI tests reach it by (`PRHubPlace`).
     fileprivate var identifier: String {
         switch self {
@@ -236,8 +254,10 @@ extension PRHubTab {
         case .settings: "prhub-tab-settings"
         }
     }
+    #endif
 }
 
+#if os(iOS)
 /// The tabs' accessibility identifiers on a phone's tab bar buttons. `Tab`'s `accessibilityIdentifier` reaches an iPad's
 /// tabs at the top but not a phone's tab bar, whose buttons come from the `UITabBarController`'s items, so this sets
 /// them on the items, in the tabs' order.
@@ -288,3 +308,4 @@ private struct TabBarIdentifiers: UIViewRepresentable {
         }
     }
 }
+#endif

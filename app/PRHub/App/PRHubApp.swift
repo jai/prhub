@@ -2,7 +2,10 @@ import SwiftUI
 
 @main
 struct PRHubApp: App {
+    #if os(iOS)
+    // The phone's launch wiring: pushes and the notification delegate. The Mac gets no pushes.
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    #endif
 
     /// `-PRHubPaired` (with `-PRHubNoAI` or `-PRHubSettings`): PRHub over the sample PRs as if paired, for the UI
     /// tests' screenshots. Debug only.
@@ -23,13 +26,37 @@ struct PRHubApp: App {
         #endif
     }()
 
+    #if os(macOS) && DEBUG
+    init() {
+        PRHubMacSnapshot.openWindowIfNoneOpened {
+            PRHubRootView(environment: Self.screenshotEnvironment ?? .shared)
+                .symbolVariant(DesignTokens.iconVariant)
+                .task { await PRHubMacSnapshot.runIfAsked() }
+        }
+    }
+    #endif
+
     var body: some Scene {
         WindowGroup {
             root
                 // DESIGN.md's icon style, for every symbol in the app.
                 .symbolVariant(DesignTokens.iconVariant)
                 .preferredColorScheme(Self.screenshotColorScheme)
+                #if os(macOS) && DEBUG
+                .task { await PRHubMacSnapshot.runIfAsked() }
+                #endif
         }
+        #if os(macOS)
+        .defaultSize(width: 1_200, height: 800)
+        .commands { MacTextSizeCommands() }
+        #endif
+        #if os(macOS)
+        Settings {
+            PRHubMacSettings(environment: Self.screenshotEnvironment ?? .shared)
+                .symbolVariant(DesignTokens.iconVariant)
+                .preferredColorScheme(Self.screenshotColorScheme)
+        }
+        #endif
     }
 
     @ViewBuilder private var root: some View {
