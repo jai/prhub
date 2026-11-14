@@ -185,7 +185,7 @@ struct PRAskSheet: View {
                         .lineLimit(1)
                         .truncationMode(.head)
                     Spacer()
-                    Button("Ask about the whole PR", systemImage: AppIcon.close.symbol) { session.askAnchor = nil }
+                    Button("Ask about the whole PR", systemImage: AppIcon.close.symbol) { session.askAboutWholePR() }
                         .labelStyle(.iconOnly)
                         .font(.appCaption)
                         .foregroundStyle(.secondary)
@@ -219,8 +219,7 @@ struct PRAskSheet: View {
     /// The failed question's words back in the box, to change before they go again.
     private func editFailed() {
         if case let .failed(question, _) = session.askSend {
-            session.askDraft = question.question
-            session.askAnchor = question.anchor ?? session.askAnchor
+            session.redraft(question.question, about: question.anchor)
         } else {
             session.editFailedAsk()
         }

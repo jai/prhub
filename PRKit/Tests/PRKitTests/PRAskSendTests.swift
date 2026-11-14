@@ -144,6 +144,48 @@ struct PRAskSendTests {
         )
         #expect(answered.unsentQuestion == nil, "an answered question is not a failed one")
     }
+
+    private func session(_ kit: PRKitController) -> PRSession {
+        PRSession(ref: ref, title: nil, content: nil, tappedAt: 0, model: kit.model)
+    }
+
+    /// The 2026-11-10 bug bash: a question typed and not sent was gone after a visit to another PR.
+    @Test func anUnsentQuestionIsStillThereWhenThePROpensAgain() {
+        let (made, _) = kit()
+        let first = session(made)
+        first.openAsk()
+        first.askDraft = "kiwi draft about retries"
+        let other = PRSession(
+            ref: PullRequestRef(repo: "acme/api", number: 8), title: nil, content: nil, tappedAt: 0, model: made.model
+        )
+        #expect(other.askDraft.isEmpty)
+        #expect(session(made).askDraft == "kiwi draft about retries")
+    }
+
+    /// The bug bash again: words written about the whole PR showed as the question about a line opened next.
+    @Test func wordsAboutThePRAreNotAQuestionAboutALine() {
+        let (made, _) = kit()
+        let asking = session(made)
+        asking.openAsk()
+        asking.askDraft = "whole PR draft"
+        asking.openAsk(about: PRAskQuestion.Anchor(path: "src/cart/store.ts", line: 12, side: "RIGHT"))
+        #expect(asking.askDraft.isEmpty)
+        asking.askDraft = "why this line?"
+        // Dropping the line keeps what he wrote about it, as the question about the PR.
+        asking.askAboutWholePR()
+        #expect(asking.askAnchor == nil && asking.askDraft == "why this line?")
+    }
+
+    @Test func aFailedQuestionsWordsGoBackToWhatItWasAbout() {
+        let (made, _) = kit()
+        let asking = session(made)
+        let anchor = PRAskQuestion.Anchor(path: "a.swift", line: 3, side: "RIGHT")
+        asking.redraft("Is this safe?", about: anchor)
+        #expect(asking.askAnchor == anchor && asking.askDraft == "Is this safe?")
+        asking.askAboutWholePR()
+        asking.askDraft = ""
+        #expect(made.model.askDrafts.isEmpty, "an emptied box keeps nothing")
+    }
 }
 
 struct PRAskReadProblemTests {

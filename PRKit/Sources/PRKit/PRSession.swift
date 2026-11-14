@@ -118,7 +118,18 @@ final class PRSession: Hashable {
     var barsHidden = false
     /// Asking the PR's AI agent (`PRSession+Ask.swift`).
     var isShowingAsk = false
-    var askDraft = ""
+    /// The question being written. It belongs to what it is about, the PR or one line (`askAnchor`), so words
+    /// written about the PR never go as a question about a line; and the model holds it, so it is still here when the
+    /// PR opens again.
+    var askDraft: String {
+        get {
+            access(keyPath: \.askDraft)
+            return model.askDrafts[askDraftKey] ?? ""
+        }
+        set {
+            withMutation(keyPath: \.askDraft) { model.askDrafts[askDraftKey] = newValue.isEmpty ? nil : newValue }
+        }
+    }
     /// The last question between its send and the chat having it, shown as sent meanwhile (`PRAskSend`).
     var askSend = PRAskSend.idle
     var askAnchor: PRAskQuestion.Anchor?

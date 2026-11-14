@@ -28,6 +28,28 @@ extension PRSession {
         openAsk(about: anchor, words: "Explain this line. It was picked as a key line: \(item.why)")
     }
 
+    /// Where the model keeps this PR's unsent question about `askAnchor`.
+    var askDraftKey: String {
+        let about = askAnchor.map { "|\($0.path):\($0.line):\($0.side)" } ?? ""
+        return "\(ref.repo)#\(ref.number)\(about)"
+    }
+
+    /// The question is about the whole PR from now. Its words come along: he dropped the line, not what he wrote.
+    func askAboutWholePR() {
+        let words = askDraft
+        askDraft = ""
+        askAnchor = nil
+        if !words.isEmpty {
+            askDraft = words
+        }
+    }
+
+    /// A question's words back in the box, about what it was asked about.
+    func redraft(_ words: String, about anchor: PRAskQuestion.Anchor?) {
+        askAnchor = anchor ?? askAnchor
+        askDraft = words
+    }
+
     func askAnchor(for target: PRComposerTarget, code: String) -> PRAskQuestion.Anchor? {
         guard case let .line(path, line, side) = target else {
             return nil
@@ -62,8 +84,7 @@ extension PRSession {
         guard let failed = askChat?.unsentQuestion else {
             return
         }
-        askDraft = failed.text
-        askAnchor = failed.askedAbout ?? askAnchor
+        redraft(failed.text, about: failed.askedAbout)
     }
 
     private func send(_ question: PRAskQuestion) async {

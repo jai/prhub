@@ -201,6 +201,9 @@ final class PRsModel {
     private(set) var mergedError: [PRListPage: String] = [:]
     private(set) var errorMessage: String?
     private(set) var workerSyncedAt: Date?
+    /// Questions to a PR's AI not yet sent, by PR and by what each is about (`PRSession.askDraft`). Kept while the
+    /// app runs, so a visit to another PR does not lose one.
+    @ObservationIgnored var askDrafts: [String: String] = [:]
     /// Rows Jai swiped away. They stay hidden until the Worker's list drops them, so one can't flicker back.
     private(set) var removedRequests: Set<String> = []
     /// By row id. Saved, so a row stays read through a restart until the Worker's list catches up.
