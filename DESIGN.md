@@ -138,7 +138,7 @@ run `make -C app design` if it is a token, then look at the screenshots (Checkin
 | The page or block colour | `Color.groundPage`, `Color.groundCard` in `PRKitDesign/AppColor.swift` | every page and block |
 | A spacing step | `spacing` above (`md: 12px`) | every gap and inset on that step |
 | A corner | `rounded` above: `sm` buttons and fields, `md` boxes, `lg` chat | every button, field, box or bubble |
-| A part's own measure | `PRKitDesign/Metrics.swift` (`PRStyle`, `ChatStyle`, `ChipStyle`, `MarkdownStyle`) | that part everywhere |
+| A part's own measure | `PRKitDesign/Metrics.swift` (`PRStyle`, `ChipStyle`); a chat's, jai/agentchatkit `ChatStyle.swift` (`ChatStyle`, `MarkdownStyle`) | that part everywhere |
 | How fast things move | `x-motion` above | every `AppMotion` animation |
 | The icon style | `x-icons.variant` above | every SF Symbol |
 | A meaning's icon | `PRKitDesign/AppIcon.swift` | every place showing that meaning |
@@ -325,16 +325,16 @@ The shared parts. Use these; extend one rather than writing a near-copy. Each is
 | `PRSectionTitle` | a section's title on the page's grey | PRKit `Parts/` |
 | `.prCard()` | a box on a PR's page | PRKit `PRParts.swift` |
 | `PRAuthorLine`, `PRAvatar` | who said it and when | PRKit `PRParts.swift` |
-| `PRCommentText`, `MarkdownText` | what people and agents write, in GitHub's Markdown: one renderer for descriptions, comments and chat | PRKit `Parts/Markdown*.swift` |
+| `PRCommentText`, `MarkdownText` | what people and agents write, in GitHub's Markdown: one renderer for descriptions, comments and chat | AgentChatKit `MarkdownText.swift` (`PRCommentText`: PRKit) |
 | `PRButtonStyle` | every button on a row or screen, its icon and words included | PRKit `PRParts.swift` |
 | `PRReviewActions`, `PRReviewBar`, `PRReviewComposer` | a review: Approve, Request changes and Comment as one bar, and the box each opens, on a PR's page and under its diff | PRKit `PRReviewActions.swift` |
 | `PRReviewToastView` | a review on its way after its box closed: Submitting, then what landed, or why it didn't with Retry | PRKit `PRReviewToast.swift` |
 | `.prField(isFocused:)` | every field you type in | PRKit `PRParts.swift` |
 | `InlineComposer` | writing on a PR, in place | PRKit `PRParts.swift` |
 | `StatusChip` | state words outside lists | PRKit `Parts/` |
-| `SessionBubble`, `SessionComposer` | a message in a chat, and its field; with `ComposerAttachments`, screenshots on it (a paperclip whose menu offers Photos, Files and, while the clipboard holds a picture, Paste; a tray of thumbnails above the field, no room taken while empty) | PRKit `Parts/` |
-| `ChatView`, `ChatMessage` | the one chat screen: messages, ticks, tool lines, keeping the reader at the end, the field at the foot, and "Wait, what?" under the agent's newest words where the host turns it on (`waitWhat`; off in Ask AI and Feedback); a host's extras in its slots. Agent Pager's threads, Ask AI and Feedback are each one. A long press on a bubble is Copy, the whole message | PRKit `Parts/ChatView.swift` |
-| `DeliveryTicksLine`, `.followsChatEnd` | under one of Jai's messages, how far it got (one tick: the Worker has it; two, the second half over the first: the agent has it); a chat that keeps its reader at its end as an answer grows it. Agent Pager's threads and Ask AI draw with the same ones | PRKit `Parts/` |
+| `SessionBubble`, `SessionComposer` | a message in a chat, and its field; with `ComposerAttachments`, screenshots on it (a paperclip whose menu offers Photos, Files and, while the clipboard holds a picture, Paste; a tray of thumbnails above the field, no room taken while empty) | AgentChatKit |
+| `ChatView`, `ChatMessage` | the one chat screen: messages, ticks, tool lines, keeping the reader at the end, the field at the foot, and "Wait, what?" under the agent's newest words where the host turns it on (`waitWhat`; off in Ask AI and Feedback); a host's extras in its slots. Agent Pager's threads, Ask AI and Feedback are each one. A long press on a bubble is Copy, the whole message | AgentChatKit `ChatView.swift` |
+| `DeliveryTicksLine`, `.followsChatEnd` | under one of Jai's messages, how far it got (one tick: the Worker has it; two, the second half over the first: the agent has it); a chat that keeps its reader at its end as an answer grows it. Agent Pager's threads and Ask AI draw with the same ones | AgentChatKit |
 | `IconText`, `.labelStyle(.iconText)` | an icon and its words | PRKitDesign |
 | `sidePanel` | a panel from the right | PRKit `Parts/SidePanel.swift` |
 | `PRSwipeRow`, `PRSwipeAction` | the one swipe on a row: right for Review changes, left for Remove me | PRKit `Phone/`, `Parts/` |

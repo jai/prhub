@@ -188,6 +188,7 @@ public struct PRKitRoot: View {
     public var body: some View {
         PRsView(model: kit.model, navigation: kit.navigation, launchOptions: kit.launchOptions)
             .environment(kit.model)
+            .chatTheme(.prHub)
     }
 }
 
@@ -196,6 +197,7 @@ extension View {
     /// (`opensPullRequestLinks`).
     public func prKitEnvironment(_ kit: PRKitController) -> some View {
         environment(kit.model)
+            .chatTheme(.prHub)
     }
 
     /// On a `NavigationStack`: PR links in it push the PR on this stack (the phone); elsewhere they open as links. A

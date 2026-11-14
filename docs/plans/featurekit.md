@@ -17,8 +17,8 @@ on the owner's sessions (one Managed Agents chat cost $10.43, mostly context re-
   chat on the owner's build Mac and Claude Code launched there by `orca agent launch`; a reply goes into the same Orca chat; the
   agent's words come back from its transcript, the same read the Agents tab uses. The chat is an Agents thread too
   (jai/agent-pager `docs/api/feedback.md`).
-- App: `FeatureRequestsView` and `FeatureClient` in PRKit's `FeatureKit` target, on the `/feedback` routes; Agent
-  Pager's Feedback tab shows it. Composer, image attachments and chat bubbles are PRKit's. The contract did not change
+- App: `FeatureRequestsView` and `FeatureClient` in [jai/feedbackkit](https://github.com/jai/feedbackkit) (2026-11-14; before, PRKit's `FeatureKit` target, which now re-exports it over PRKit's Worker client), on the `/feedback` routes; Agent
+  Pager's Feedback tab shows it. Composer, image attachments and chat bubbles are [AgentChatKit](https://github.com/jai/agentchatkit)'s. The contract did not change
   with the runner, so the app did not either.
 
 ## Shape
