@@ -10,13 +10,20 @@ on:
   push:
     branches: [main]
     paths: [Package.swift, PRKit/**, app/**, DESIGN.md, docs/fixtures/**, scripts/design-lint*, .github/workflows/ios.yml]
+  # By hand, `only` runs one test class or test on both devices in a run of its own, for a quick look at a screen:
+  #   gh workflow run ios.yml -f only=PRHubUITests/PRHubScreenshotTests/testListRefreshingUnderItsBannerInEveryLook
   workflow_dispatch:
+    inputs:
+      only:
+        description: "One test to run, as xcodebuild's -only-testing takes it (target/class/test). Empty: every test."
+        required: false
+        default: ""
 
 permissions:
   contents: read
 
 concurrency:
-  group: ios-${{ github.ref }}
+  group: ios-${{ github.ref }}-${{ inputs.only || 'all' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
@@ -34,6 +41,7 @@ jobs:
         run: scripts/design-lint.sh
 
   prkit:
+    if: ${{ !inputs.only }}
     runs-on: xcode-27
     timeout-minutes: 30
     steps:
@@ -64,12 +72,14 @@ jobs:
           cp Package.resolved PRHub.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
       - name: The PRHub scheme's unit and UI tests
         working-directory: app
+        env:
+          ONLY: ${{ inputs.only }}
         run: |
           set -o pipefail
           xcodebuild test -project PRHub.xcodeproj -scheme PRHub \
             -destination 'platform=iOS Simulator,name=${{ matrix.device }},OS=27.2' \
             -derivedDataPath build/DerivedData -resultBundlePath build/PRHub.xcresult \
-            -skipPackagePluginValidation -skipMacroValidation \
+            -skipPackagePluginValidation -skipMacroValidation ${ONLY:+"-only-testing:$ONLY"} \
             | grep -E --line-buffered "^Test (Suite|Case|session)|^\s+(Executed|✔|✘)|error:|\*\* TEST|Testing (failed|started)|: (error|failed)" || true
           xcrun xcresulttool get test-results summary --path build/PRHub.xcresult --compact > build/summary.json
           jq -r '"\(.result): \(.passedTests) passed, \(.failedTests) failed, \(.skippedTests) skipped", (.testFailures[]? | "FAILED \(.testIdentifierString): \(.failureText)")' build/summary.json | tee -a "$GITHUB_STEP_SUMMARY"

@@ -45,9 +45,16 @@ final class PRHubScreenshotTests: XCTestCase {
             let checkout = app.staticTexts["Show a retry button when checkout fails"]
             XCTAssertTrue(checkout.waitForExistence(timeout: 10))
             try picture("2-list-banner", look)
-            let row = checkout.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            row.press(forDuration: 0.1, thenDragTo: row.withOffset(CGVector(dx: 0, dy: 400)))
-            RunLoop.current.run(until: Date.now.addingTimeInterval(1.5))
+            // From the line itself, which takes no tap, slowly, and held past the pull's length before letting go: the
+            // first try dragged a row fast and nothing refreshed.
+            let line = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Not up to date'")).firstMatch
+            XCTAssertTrue(line.waitForExistence(timeout: 5))
+            let from = line.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            from.press(
+                forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: 0, dy: 320)), withVelocity: .slow,
+                thenHoldForDuration: 0.8
+            )
+            RunLoop.current.run(until: Date.now.addingTimeInterval(1))
             try picture("2-list-refreshing", look)
         }
     }
