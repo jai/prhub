@@ -96,8 +96,12 @@ final class PRHubScreenshotTests: XCTestCase {
         app.closePanelOverDiff()
         XCTAssertTrue(app.buttons["key-line-next"].waitForExistence(timeout: 5))
         app.buttons["key-line-next"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["key-line-note"].waitForExistence(timeout: 5))
+        let note = app.descendants(matching: .any)["key-line-note"]
+        XCTAssertTrue(note.waitForExistence(timeout: 5))
         try picture("4-diff-key-line", look)
+        // In the largest text the note ran down to the stepper (Xcode Cloud's picture, 2026-11-14): 2 pt apart.
+        let stepper = app.buttons["key-line-next"]
+        XCTAssertLessThanOrEqual(note.frame.maxY + 8, stepper.frame.minY, "the note is clear of the stepper")
 
         launch(look, ["-PRHubPaired", "-PRHubSettings"])
         XCTAssertTrue(app.staticTexts["prhub-worker-host"].waitForExistence(timeout: 10)

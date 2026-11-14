@@ -29,6 +29,31 @@ final class PRHubPRPageUITests: XCTestCase {
         try picture("summary-bug-in-diff")
     }
 
+    /// The bug bash's keyboard bug (2026-11-10): six lines in the review's box with the keyboard up, and the button
+    /// that sends it still shows above the keys. Skipped where the Simulator shows no keyboard.
+    func testAReviewsSendButtonStaysAboveTheKeyboard() throws {
+        launch([])
+        openCheckout()
+        let request = app.buttons["pr-review-request-changes"]
+        for _ in 0..<5 where !(request.exists && request.isHittable) {
+            app.swipeUp(velocity: .slow)
+        }
+        request.tap()
+        let field = app.descendants(matching: .any)["inline-composer-field"].firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("line one\nline two\nline three\nline four\nline five\nline six")
+        let keyboard = app.keyboards.firstMatch
+        let hasKeyboard = keyboard.waitForExistence(timeout: 3)
+        // The box moves after the keys do.
+        RunLoop.current.run(until: Date.now.addingTimeInterval(1))
+        try picture("review-box-keyboard-up")
+        try XCTSkipUnless(hasKeyboard, "this Simulator shows no software keyboard")
+        let send = app.buttons["inline-composer-send"]
+        XCTAssertTrue(send.exists, "the box has its send button")
+        XCTAssertLessThanOrEqual(send.frame.maxY, keyboard.frame.minY, "the send button is under the keyboard")
+    }
+
     func testAskShowsSentWhileTheAgentIsThinking() throws {
         launch(["-PRHubAskWorking"])
         openCheckout()

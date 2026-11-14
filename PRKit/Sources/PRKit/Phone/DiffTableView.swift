@@ -192,7 +192,12 @@ final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableView
         setContentOffset(CGPoint(x: 0, y: contentOffset.y), animated: false)
         if let row = rowToShow(jump, in: section) {
             highlightLines()
-            table.scrollToRow(at: IndexPath(row: row, section: section), at: .middle, animated: true)
+            // A key line's note is the row under its line, and the middle goes to the note: the line sits just above
+            // it, and the whole note above the floating controls. With the line in the middle, a tall note (the
+            // largest text) ran down to the stepper.
+            let under = rows.files[section].rows
+            let shown = row + 1 < under.count && under[row + 1] == .note ? row + 1 : row
+            table.scrollToRow(at: IndexPath(row: shown, section: section), at: .middle, animated: true)
             return
         }
         highlightLines()
