@@ -56,6 +56,11 @@ public struct ChatView<Extras: View, Header: View, Footer: View, Composer: View>
     @Binding var readsEnd: Bool
     var isLoadingEarlier: Bool
     var focus: FocusState<Bool>.Binding
+    /// "Wait, what?" under the agent's newest words, while it has the last word: what it sends, or `nil` for none.
+    /// Off where every answer is already shaped for the reader (PRHub's Ask AI, Jai 2026-11-14).
+    var waitWhat: (() -> Void)?
+    /// A message of his on its way: "Wait, what?" waits for it.
+    var isSending: Bool
     @ViewBuilder let extras: (ChatMessage) -> Extras
     @ViewBuilder let header: () -> Header
     @ViewBuilder let footer: () -> Footer
@@ -63,7 +68,8 @@ public struct ChatView<Extras: View, Header: View, Footer: View, Composer: View>
 
     public init(
         messages: [ChatMessage], emptyText: String? = nil, sent: AnyHashable, readsEnd: Binding<Bool>,
-        isLoadingEarlier: Bool = false, focus: FocusState<Bool>.Binding,
+        isLoadingEarlier: Bool = false, focus: FocusState<Bool>.Binding, waitWhat: (() -> Void)? = nil,
+        isSending: Bool = false,
         @ViewBuilder extras: @escaping (ChatMessage) -> Extras,
         @ViewBuilder header: @escaping () -> Header,
         @ViewBuilder footer: @escaping () -> Footer,
@@ -75,6 +81,8 @@ public struct ChatView<Extras: View, Header: View, Footer: View, Composer: View>
         _readsEnd = readsEnd
         self.isLoadingEarlier = isLoadingEarlier
         self.focus = focus
+        self.waitWhat = waitWhat
+        self.isSending = isSending
         self.extras = extras
         self.header = header
         self.footer = footer
@@ -97,8 +105,9 @@ public struct ChatView<Extras: View, Header: View, Footer: View, Composer: View>
                             .padding(PRStyle.inset)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    let waitWhatID = waitWhat == nil ? nil : Self.waitWhatID(in: messages)
                     ForEach(messages) { message in
-                        row(message)
+                        row(message, waitWhat: message.id == waitWhatID)
                             .transition(.fold)
                     }
                     footer()
@@ -118,15 +127,33 @@ public struct ChatView<Extras: View, Header: View, Footer: View, Composer: View>
         .safeAreaBar(edge: .bottom) { composer() }
     }
 
+    /// The agent's newest words, when nothing of Jai's came after them: where "Wait, what?" goes.
+    private static func waitWhatID(in messages: [ChatMessage]) -> String? {
+        let newest = messages.last { message in
+            if case .tool = message.role {
+                return false
+            }
+            return true
+        }
+        return newest?.role == .theirs ? newest?.id : nil
+    }
+
     @ViewBuilder
-    private func row(_ message: ChatMessage) -> some View {
+    private func row(_ message: ChatMessage, waitWhat showsWaitWhat: Bool) -> some View {
         switch message.role {
         case let .tool(name):
             ChatToolLine(name: name, text: message.text)
                 .equatable()
         case .mine, .theirs:
-            if message.hasExtras {
-                ChatBubble(message: message) { extras(message) }
+            if message.hasExtras || showsWaitWhat {
+                ChatBubble(message: message) {
+                    extras(message)
+                    if showsWaitWhat, let waitWhat {
+                        WaitWhatButton(isSending: isSending, send: waitWhat)
+                            .padding(.top, Space.xs)
+                            .padding(.leading, Space.md)
+                    }
+                }
             } else {
                 ChatBubble(message: message) { EmptyView() }
                     .equatable()
