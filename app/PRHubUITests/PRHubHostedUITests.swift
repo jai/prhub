@@ -167,6 +167,30 @@ final class PRHubHostedUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["pr-empty-hint-link"].exists)
     }
 
+    /// The 2026-11-10 bug bash: with Merged picked, an empty list still said none "are open", and Open's cleared tick
+    /// was still read out as selected.
+    func testAnEmptyMergedListSaysNoneAreMergedAndOnlyMergedIsSelected() {
+        app.launchArguments = ["-PRHubHosted", "-PRHubHostedEmpty"]
+        app.launch()
+        let notNow = app.buttons["Not now"]
+        if notNow.waitForExistence(timeout: 5) {
+            notNow.tap()
+        }
+        let hint = app.descendants(matching: .any)["pr-empty-hint-link"]
+        XCTAssertTrue(hint.waitForExistence(timeout: 10))
+        app.buttons["pr-org-filter"].tap()
+        let merged = app.buttons["pr-filter-merged"]
+        let open = app.buttons["pr-filter-open"]
+        XCTAssertTrue(merged.waitForExistence(timeout: 5))
+        merged.tap()
+        XCTAssertTrue(waitFor { merged.isSelected && !open.isSelected }, "Merged alone is selected")
+        XCTAssertFalse(open.images["Selected"].exists, "a cleared tick is not read out")
+        // A tap beside the filter closes it.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.95)).tap()
+        XCTAssertTrue(app.staticTexts["No merged PRs"].waitForExistence(timeout: 5))
+        XCTAssertFalse(hint.exists, "the hint about open PRs is gone")
+    }
+
     func testAnEmptyListPointsAtInstallingTheApp() {
         app.launchArguments = ["-PRHubHosted", "-PRHubHostedEmpty"]
         app.launch()
@@ -176,5 +200,16 @@ final class PRHubHostedUITests: XCTestCase {
             notNow.tap()
         }
         XCTAssertTrue(app.descendants(matching: .any)["pr-empty-hint-link"].waitForExistence(timeout: 10))
+    }
+
+    private func waitFor(timeout: TimeInterval = 5, _ condition: () -> Bool) -> Bool {
+        let end = Date.now.addingTimeInterval(timeout)
+        while Date.now < end {
+            if condition() {
+                return true
+            }
+            RunLoop.current.run(until: Date.now.addingTimeInterval(0.1))
+        }
+        return condition()
     }
 }

@@ -202,4 +202,9 @@ struct PRKeyLinesSummaryTests {
         let older = try JSONDecoder().decode(PRKeyLines.self, from: Data(#"{"items": [], "context": 0, "leftOut": []}"#.utf8))
         #expect(older.summary == nil)
     }
+
+    @Test func oneKeyLineIsCountedAsOne() {
+        #expect(PRKeyLines.counted(1) == "1 key line")
+        #expect(PRKeyLines.counted(0) == "0 key lines" && PRKeyLines.counted(3) == "3 key lines")
+    }
 }

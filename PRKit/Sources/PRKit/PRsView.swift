@@ -216,6 +216,17 @@ struct PRsList: View {
                     model.stillDownloading ? "Downloading PRs" : "PRs didn't load", systemImage: "arrow.triangle.pull",
                     description: Text(message)
                 )
+            } else if showsMergedHere, model.mergedError[page] == nil, model.merged[page]?.isEmpty == true {
+                // Before the host's hint, which is about open PRs.
+                ContentUnavailableView(
+                    "No merged PRs", systemImage: AppIcon.merged.symbol,
+                    description: Text(
+                        page == .mine
+                            ? "None of your pull requests have been merged yet."
+                            : "None of the pull requests you reviewed have been merged yet."
+                    )
+                )
+                .transition(.opacity)
             } else if model.rows.isEmpty, model.workerSyncedAt != nil || model.samples != nil,
                       let hint = model.configuration.emptyHint {
                 emptyHint(hint)
@@ -471,10 +482,12 @@ struct PRFilterPanel: View {
     ) -> some View {
         Button(action: action) {
             HStack(spacing: Space.sm) {
+                // The row's selected trait says it: left to itself the tick reads "Selected" even when it is clear.
                 Image(systemName: "checkmark")
                     .font(.appCaption.weight(.semibold))
                     .opacity(isOn ? 1 : 0)
                     .frame(width: 16)
+                    .accessibilityHidden(true)
                 Text(title)
                     .font(.appFootnote)
                     .lineLimit(1)

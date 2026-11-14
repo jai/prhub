@@ -223,7 +223,7 @@ struct PRDiffPage: View {
             Button {
                 session.openPanel(on: .keyLines)
             } label: {
-                Text(current.map { "\($0 + 1) of \(items.count)" } ?? "\(items.count) key lines")
+                Text(current.map { "\($0 + 1) of \(items.count)" } ?? PRKeyLines.counted(items.count))
                     .font(.appFootnote.weight(.semibold).monospacedDigit())
                     .contentTransition(.numericText())
                     .frame(minHeight: 44)

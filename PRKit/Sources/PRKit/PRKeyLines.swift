@@ -7,6 +7,11 @@ import SwiftUI
 public struct PRKeyLines: Decodable, Sendable {
     public static let defaultContext = 100
 
+    /// "1 key line", "3 key lines": how many a diff has, where none is selected.
+    static func counted(_ count: Int) -> String {
+        "\(count) key line\(count == 1 ? "" : "s")"
+    }
+
     public struct Item: Decodable, Identifiable, Sendable {
         public let path: String
         public let line: Int
