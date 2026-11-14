@@ -405,7 +405,9 @@ cost on the API; Ask's chat has `costCents` `null`, so the app shows no cost, an
   made: a clone made while the person could see a repo is shut once they can't.
 - Each person's questions run in a container of their own (`ask:<user id>`; `ask:self` on a Worker of one's own), so
   no person's agent shares a disk with another's checkouts. Key lines and rewrites share one (`ai`). Each sleeps after
-  two idle minutes, and the hosted Worker allows eight at once.
+  two idle minutes, and the hosted Worker allows eight at once. A container keeps the `CLAUDE_CODE_OAUTH_TOKEN` it
+  started with: a replaced token is used from each container's next start
+  ([hosted-deploy.md, "Replacing the Claude token"](hosted-deploy.md#replacing-the-claude-token)).
 - `clone_repo` and `github_api` exist only when the token is read only by how it was made: hosted, the PRHub App's
   installation token for the PR's installation, naming every repo of it the person can see (up to 500). The Worker
   reads that list with the person's own token, `GET /user/installations/{id}/repositories`, keeps it under their

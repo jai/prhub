@@ -81,6 +81,20 @@ Logs: `npx wrangler@4 tail prhub --config ../deploy/hosted/wrangler.jsonc --form
 
 `deploy/hosted/wrangler.jsonc` is gitignored; never commit it or any value above.
 
+## Replacing the Claude token
+
+`CLAUDE_CODE_OAUTH_TOKEN` reaches a container when the container starts, and a running one keeps the token it started
+with. Setting the secret restarts nothing by itself:
+
+1. Set the secret, piped as above.
+2. Each container takes the new token at its next start, after it has been idle for two minutes and gone to sleep.
+   `agent_container_stopped` in the logs is that sleep.
+3. Check that the next run answers: an `ai_run` line with `auth: "subscription"`, and no `agent_container_failed`. A
+   failed key lines job is tried again 30 minutes after its last try, so allow that long.
+
+A container that is never idle for two minutes keeps the old token. A deploy that changes `agent/` replaces every
+container at once. Before 14 November 2026 no container slept at all, and a replaced token did nothing until a deploy.
+
 ## Rotating the token key
 
 `TOKEN_ENCRYPTION_KEY` seals each person's GitHub tokens and Anthropic key. Rotate it when it may have leaked, and
