@@ -62,6 +62,11 @@ public enum ChatStyle {
     /// A screenshot waiting to go with the message, above the field, and the button that takes it off.
     public static let attachmentSize: CGFloat = 64
     public static let attachmentRemove: CGFloat = 22
+    /// How far the second delivery tick sits over the first: half a glyph, so the two read as one mark (Jai,
+    /// 2026-11-14: at a quarter the edges only touched).
+    public static let tickOverlap: CGFloat = -6
+    /// How near the end of a chat counts as reading it, so a new message keeps the reader there.
+    public static let followSlack: CGFloat = 40
 }
 
 /// The review's toast at the top of the PRs tab (`PRReviewToastView`).

@@ -162,7 +162,7 @@ all of them are in scope. A new screen adds a row here and a step in `PRHubScree
 | PR filter | PRs → Filter | `PRFilterPanel`, `PRSectionTitle` |
 | PR description | PRs → a PR: its title, who it is from, its tickets, then status, review and conversation | `PRScreen`, `PRDescriptionView`, `ObjectReferenceLines`, `PRChangesCard`, `PRStatusCard`, `PRReviewActions`, `.prCard()`, `PRCommentText`, `PRThreadCard` |
 | Review in the background | PRs → a PR → Approve, Request changes or Comment → send: the box closes, the toast follows the review | `PRReviewComposer`, `PRReviewToastView` |
-| Ask AI | PRs → a PR → the toolbar, a line's comment box, or a key line's Explain | `PRAskSheet`, `SessionBubble`, `SessionComposer` |
+| Ask AI | PRs → a PR → the toolbar, a line's comment box, or a key line's Explain | `PRAskSheet`, `SessionBubble`, `SessionComposer`, `DeliveryTicksLine`, `WaitWhatButton` |
 | PR diff | PRs → a PR → Review changes, or Files changed | `PRDiffScreen`, `DiffTableView`, `PRDiffPage`, `PRNavigator`, `PRReviewActions` |
 | Settings | Settings; signed in: account, GitHub access, Anthropic key, Sign out, Delete account | `PRHubSettingsView`, `PRPageBlock`, `PRValueLine`, `AnthropicKeySection`, `DeleteAccountSheet` |
 | GitHub access | Settings, signed in: each account the PRHub App is installed on (its repositories, Suspended), each opening its settings on GitHub, then Add another account; read again on every foreground | `GitHubAccessBlock`, `GitHubInstallationLine`, `PRAvatar`, `StatusChip` |
@@ -333,6 +333,7 @@ The shared parts. Use these; extend one rather than writing a near-copy. Each is
 | `InlineComposer` | writing on a PR, in place | PRKit `PRParts.swift` |
 | `StatusChip` | state words outside lists | PRKit `Parts/` |
 | `SessionBubble`, `SessionComposer` | a message in a chat, and its field; with `ComposerAttachments`, screenshots on it (a paperclip whose menu offers Photos, Files and, while the clipboard holds a picture, Paste; a tray of thumbnails above the field, no room taken while empty) | PRKit `Parts/` |
+| `DeliveryTicksLine`, `WaitWhatButton`, `.followsChatEnd` | under one of Jai's messages, how far it got (one tick: the Worker has it; two, the second half over the first: the agent has it); under the agent's newest answer, "Wait, what?" (`ChatQuickReply`); a chat that keeps its reader at its end as an answer grows it. Agent Pager's threads and Ask AI draw with the same ones | PRKit `Parts/` |
 | `IconText`, `.labelStyle(.iconText)` | an icon and its words | PRKitDesign |
 | `sidePanel` | a panel from the right | PRKit `Parts/SidePanel.swift` |
 | `PRSwipeRow`, `PRSwipeAction` | the one swipe on a row: right for Review changes, left for Remove me | PRKit `Phone/`, `Parts/` |

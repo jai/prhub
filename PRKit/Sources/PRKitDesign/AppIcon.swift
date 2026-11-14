@@ -130,3 +130,8 @@ extension Image {
         self.init(systemName: icon.symbol)
     }
 }
+
+public extension AppIcon {
+    /// Asks the agent to say its last answer again, plainly ("Wait, what?"): Ask AI's bubble, as Agent Pager draws it.
+    static var waitWhat: AppIcon { .askAI }
+}

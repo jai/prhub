@@ -67,13 +67,15 @@ final class PRHubPRPageUITests: XCTestCase {
         XCTAssertTrue(app.buttons["pr-review-changes"].waitForExistence(timeout: 5), "still on the PR, not in a browser")
     }
 
-    func testAskShowsSentWhileTheAgentIsThinking() throws {
+    /// The agent at work on his question has it: two ticks under it, as in Agent Pager's threads.
+    func testAskShowsDeliveredWhileTheAgentIsThinking() throws {
         launch(["-PRHubAskWorking"])
         openCheckout()
         app.buttons["pr-ask"].tap()
-        let sent = app.descendants(matching: .any)["pr-ask-sent"]
-        XCTAssertTrue(sent.waitForExistence(timeout: 5))
-        XCTAssertTrue(sent.label.contains("Sent"))
+        let ticks = app.descendants(matching: .any)["reply-ticks-2"]
+        XCTAssertTrue(ticks.waitForExistence(timeout: 5))
+        XCTAssertTrue(ticks.label.contains("Delivered"))
+        XCTAssertFalse(app.descendants(matching: .any)["pr-ask-wait-what"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["pr-ask-working"].exists)
         XCTAssertFalse(app.descendants(matching: .any)["pr-ask-sending"].exists)
         XCTAssertFalse(app.descendants(matching: .any)["pr-ask-failed"].exists)
@@ -100,12 +102,23 @@ final class PRHubPRPageUITests: XCTestCase {
         )
     }
 
+    /// The agent's newest answer has "Wait, what?" under it, and the chat opens at its end.
+    func testAnAnsweredAskOffersWaitWhatAtItsEnd() {
+        launch(["-PRHubAskAnswered"])
+        openCheckout()
+        app.buttons["pr-ask"].tap()
+        let waitWhat = app.buttons["pr-ask-wait-what"]
+        XCTAssertTrue(waitWhat.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitWhat.isHittable, "the chat opens at its end, with Wait, what? in sight")
+    }
+
     func testAnEmptyAskChatDoesNotClaimAMessageWasSent() {
         launch()
         openCheckout()
         app.buttons["pr-ask"].tap()
         XCTAssertTrue(app.buttons["sessionReplySend"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.descendants(matching: .any)["pr-ask-sent"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["reply-ticks-1"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["reply-ticks-2"].exists)
     }
 
     /// One job name in two workflows says its workflow; a job's matrix legs are one line that opens to them.

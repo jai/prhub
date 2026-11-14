@@ -19,13 +19,10 @@ struct PRAskSheet: View {
         let anchor = question.anchor.map { "\($0.path):\($0.line)" }
         return sent + [PRAskChat.Message(id: "pending", role: "you", text: question.question, anchor: anchor)]
     }
-    /// What the end of the chat shows: when it changes, the sheet scrolls to it.
-    private var tail: [String] {
-        [
-            String(messages.count), messages.last?.text ?? "", String(isWorking), String(describing: session.askSend),
-            String(isWriting),
-        ]
-    }
+    /// Whether Jai was reading the end of the chat when he last scrolled it: a new message then keeps him there.
+    @State private var readsEnd = true
+    /// How many questions the chat shows: one more is one he sent, and the sheet goes to the end with it.
+    private var asked: Int { messages.count(where: \.isJai) }
     /// The agent at work on a question it has. A question still on its way says so instead.
     private var isWorking: Bool { session.askSend == .idle && session.askChat?.isWorking == true }
 
@@ -33,7 +30,9 @@ struct PRAskSheet: View {
         NavigationStack {
             ScrollViewReader { proxy in
                 ChatScroll {
-                    LazyVStack(alignment: .leading, spacing: Space.sm) {
+                    // A plain stack, not a lazy one: the chat keeps to its end by its content's height, which a lazy
+                    // stack only estimates, so a long answer left the sheet somewhere in its middle.
+                    VStack(alignment: .leading, spacing: Space.sm) {
                         if messages.isEmpty, !isWorking, session.askSend == .idle {
                             Text("Ask about this PR. The AI reads the whole repo at this PR's head, and can't change anything.")
                                 .font(.appFootnote)
@@ -44,8 +43,8 @@ struct PRAskSheet: View {
                         }
                         // By place: the question drawn on its way becomes the chat's own message, with no fold out and
                         // back in, which left the sheet scrolled past it.
-                        ForEach(Array(messages.enumerated()), id: \.offset) {
-                            message($0.element).transition(.fold)
+                        ForEach(Array(messages.enumerated()), id: \.offset) { index, item in
+                            message(item, at: index).transition(.fold)
                         }
                         status.id(Self.end)
                     }
@@ -55,12 +54,9 @@ struct PRAskSheet: View {
                     .animation(AppMotion.fold, value: isWorking)
                     .animation(AppMotion.swap, value: session.askSend)
                 }
+                // Reading the end, he stays with it as an answer grows it; scrolled up, he stays where he is.
+                .followsChatEnd(proxy, endID: Self.end, readsEnd: $readsEnd, sent: asked)
                 .dismissesKeyboard($isWriting)
-                // The foot follows anything that changes the end: a message, its words, the agent's work, the send's
-                // state, and the keyboard going as the question is sent.
-                .onChange(of: tail) {
-                    withAnimation(AppMotion.fold) { proxy.scrollTo(Self.end, anchor: .bottom) }
-                }
                 .onAppear { proxy.scrollTo(Self.end, anchor: .bottom) }
             }
             .background(Color.groundPage)
@@ -85,9 +81,46 @@ struct PRAskSheet: View {
 
     private static let end = "end"
 
-    /// A message as every chat draws it; a question about a line names the line under it.
-    private func message(_ message: PRAskChat.Message) -> some View {
-        SessionBubble(title: nil, text: message.text, date: nil, isMine: message.isJai, footnote: message.anchor)
+    /// A message as every chat draws it; a question about a line names the line under it. Under his questions, how
+    /// far each got (`DeliveryTicks`); under the agent's newest answer, "Wait, what?".
+    private func message(_ message: PRAskChat.Message, at index: Int) -> some View {
+        SessionBubble(
+            title: nil, text: message.isJai ? ChatQuickReply.shown(message.text) : message.text, date: nil,
+            isMine: message.isJai, footnote: message.anchor
+        ) {
+            if let ticks = ticks(at: index) {
+                DeliveryTicksLine(ticks: ticks, date: nil, about: message.text)
+            }
+            if canWaitWhat, index == messages.count - 1 {
+                WaitWhatButton(isSending: session.isSendingAsk) { waitWhat() }
+                    .padding(.leading, Space.md)
+                    .accessibilityIdentifier("pr-ask-wait-what")
+            }
+        }
+    }
+
+    /// How far his question at `index` got: one tick once the Worker has it, two once the agent has it, as working on
+    /// it or answering it shows. None while it is on its way, or when it could not reach the agent.
+    private func ticks(at index: Int) -> DeliveryTicks? {
+        let message = messages[index]
+        guard message.isJai, message.id != "pending" else {
+            return nil
+        }
+        if messages[(index + 1)...].contains(where: { !$0.isJai }) {
+            return .delivered
+        }
+        guard index == messages.count - 1, session.askSend == .idle, session.askChat?.unsentQuestion == nil else {
+            return nil
+        }
+        return isWorking ? .delivered : .sent
+    }
+
+    /// The agent's answer is the chat's newest word and nothing is on its way: he can ask for it again, plainly.
+    private var canWaitWhat: Bool {
+        guard let last = messages.last else {
+            return false
+        }
+        return !last.isJai && !isWorking && session.askSend == .idle
     }
 
     @ViewBuilder private var status: some View {
@@ -101,10 +134,6 @@ struct PRAskSheet: View {
         case let .failed(_, reason):
             failure(reason)
         case .idle:
-            if session.askChat?.messages.last?.isJai == true, session.askChat?.unsentQuestion == nil {
-                quietMark("Sent", icon: .done)
-                    .accessibilityIdentifier("pr-ask-sent")
-            }
             chatStatus
         }
     }
@@ -210,6 +239,11 @@ struct PRAskSheet: View {
     private func send() {
         isWriting = false
         Task { await session.sendAsk() }
+    }
+
+    private func waitWhat() {
+        isWriting = false
+        Task { await session.sendAsk(ChatQuickReply.waitWhat.text) }
     }
 
     private func retry() {
