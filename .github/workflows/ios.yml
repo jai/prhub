@@ -1,6 +1,7 @@
-# The design checks for PRKit and the PRHub app, on GitHub's own Linux runners (free for a public repo). The tests run in Xcode Cloud's "PRHub Tests" workflow
-# (app/ci_scripts): PRKit's `swift test` on its build Mac, then the PRHub scheme's unit and UI tests on an iPhone and on
-# a 13-inch iPad Pro.
+# PRKit and the PRHub app, on GitHub's own runners (free for a public repo): the design checks on Linux, and the tests
+# on Macs with Xcode 27.2 (the `xcode-27` image): PRKit's `swift test`, then the PRHub scheme's unit and UI tests on an
+# iPhone and on a 13-inch iPad Pro, each device a job of its own. Each test job keeps its result bundle (pictures, UI
+# trees, logs) as an artifact for a week. Xcode Cloud ran these until 14 November 2026; it still makes the builds.
 name: ios
 
 on:
@@ -31,3 +32,56 @@ jobs:
         run: make -C app design-check
       - name: No literal fonts, colours, paddings, corners or animations in views
         run: scripts/design-lint.sh
+
+  prkit:
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Xcode 27.2
+        run: sudo xcode-select -s /Applications/Xcode_27.2.app
+      - name: PRKit's own tests, on the Mac
+        run: swift test
+
+  test:
+    name: test (${{ matrix.device }})
+    runs-on: xcode-27
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        device: ["iPhone 17", "iPad Pro 13-inch (M5)"]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Xcode 27.2
+        run: sudo xcode-select -s /Applications/Xcode_27.2.app
+      - name: Generate the project
+        working-directory: app
+        run: |
+          HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install --quiet xcodegen
+          xcodegen generate --spec project.yml --quiet
+          mkdir -p PRHub.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+          cp Package.resolved PRHub.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+      - name: The PRHub scheme's unit and UI tests
+        working-directory: app
+        run: |
+          set -o pipefail
+          xcodebuild test -project PRHub.xcodeproj -scheme PRHub \
+            -destination 'platform=iOS Simulator,name=${{ matrix.device }},OS=27.2' \
+            -derivedDataPath build/DerivedData -resultBundlePath build/PRHub.xcresult \
+            -skipPackagePluginValidation -skipMacroValidation \
+            | grep -E --line-buffered "^Test (Suite|Case|session)|^\s+(Executed|✔|✘)|error:|\*\* TEST|Testing (failed|started)|: (error|failed)" || true
+          xcrun xcresulttool get test-results summary --path build/PRHub.xcresult --compact > build/summary.json
+          jq -r '"\(.result): \(.passedTests) passed, \(.failedTests) failed, \(.skippedTests) skipped", (.testFailures[]? | "FAILED \(.testIdentifierString): \(.failureText)")' build/summary.json | tee -a "$GITHUB_STEP_SUMMARY"
+          jq -e '.failedTests == 0 and .passedTests > 0' build/summary.json > /dev/null
+      - name: Zip the result bundle
+        if: always()
+        working-directory: app/build
+        run: "[ -d PRHub.xcresult ] && zip -qry PRHub.xcresult.zip PRHub.xcresult || true"
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: xcresult-${{ matrix.device }}
+          path: app/build/PRHub.xcresult.zip
+          retention-days: 7
+          if-no-files-found: ignore

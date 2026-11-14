@@ -30,18 +30,19 @@ pairing the phone, and troubleshooting.
   Jai's Agent Pager follows on its own: within 10 minutes it moves to `main`'s head and to the newest `v*` tag, tests,
   and deploys. Nothing to commit there, and never deploy its Worker by hand.
   CI runs on every push to `main`: the Linux jobs on GitHub's own runners (`scrub`, `worker`, `relay`; `design` when PRKit, the
-  app or DESIGN.md change) and, when `app/`, `PRKit/` or `docs/fixtures/` change, Xcode Cloud's PRHub Tests
-  (`PRHub | PRHub Tests | Test - iOS`): PRKit's `swift test`, then the PRHub scheme's unit and UI tests on an
-  iPhone and a 13-inch iPad Pro. A red run on `main` is fixed next, by whoever pushed it. A change only to
-  `Package.swift` or `DESIGN.md` starts PRHub Tests by hand (App Store Connect → PRHub → Xcode Cloud, or the API).
-  The scripts in `app/ci_scripts` know each workflow by its id (`workflows.sh`), never its name.
+  app or DESIGN.md change) and, on the same changes, the tests on GitHub's Macs (`.github/workflows/ios.yml`, the
+  `xcode-27` image): `prkit` is PRKit's `swift test`, and `test (iPhone 17)` and `test (iPad Pro 13-inch (M5))` are
+  the PRHub scheme's unit and UI tests. A red run on `main` is fixed next, by whoever pushed it. Each test job keeps
+  its result bundle as an artifact for a week: `gh run download <run> -n 'xcresult-iPhone 17'`, then
+  `xcrun xcresulttool export attachments` for a failed test's pictures and UI tree.
+  Xcode Cloud makes the builds only. Its PRHub Tests workflow ran the tests until 14 November 2026 and is turned off,
+  not deleted. The scripts in `app/ci_scripts` know each workflow by its id (`workflows.sh`), never its name.
 - Tests: `npm test` and `npm run typecheck` in `worker/` and `relay/`. The worker's contract test compares what the
   real builders send with `docs/fixtures/*.json`; after a deliberate change run `UPDATE_FIXTURES=1 npm test` and
   commit the fixtures with the code.
 - iOS: Swift 6, iOS 26, SwiftUI, Xcode 26. `swift test` for PRKit; `make -C app test` and `make -C app ui-test` for
   the app on a Simulator, on the sample PRs (`-PRHubFirstRun`, `-PRHubPaired`), with no Worker. Every UI test passes on
-  an iPhone and on an iPad (`make -C app ui-test SIM_NAME='iPad Pro 13-inch (M5)'`; Xcode Cloud's PRHub Tests
-  workflow runs both): reach a tab with `app.go(to:)` in `UITestSupport.swift`, by accessibility identifier, never
+  an iPhone and on an iPad (`make -C app ui-test SIM_NAME='iPad Pro 13-inch (M5)'`; CI runs both): reach a tab with `app.go(to:)` in `UITestSupport.swift`, by accessibility identifier, never
   through `tabBars`. Xcode Cloud's test Macs have no sources: a test that reads a repo file runs only where the
   repo is (`RepoFixtures.areHere`), or bundles the file.
   PRKit is public API for other apps: a change to `PRKitHost`, `PRKitController` or `PRKitConfiguration` is a
