@@ -254,7 +254,7 @@ export function readOnlyHooks(cwd, clones, reachable = null) {
         return {};
       }
       // A draft for the reviewer's phone: it reaches nothing, and posts nothing.
-      if (name === `mcp__${SERVER}__draft_review`) {
+      if (name === `mcp__${SERVER}__draft_review` || name === `mcp__${SERVER}__github_act`) {
         return {};
       }
       const granted = (repo) => (inGrant(repo, reachable) ? null : cantAccess(repo));
@@ -364,8 +364,11 @@ export function runGit(dir, args, token, timeout = 120_000) {
  * go; `scope` holds both, and git never runs outside it. `token`, read only, reaches GitHub; null leaves git on the
  * checkout alone. `reachable`, hosted, names the repos the token reaches: no other clone is read or made.
  */
-export function readTools({ prDir, prRepo, clones, scope, token, locked, reachable = null, onDraft = () => {} }) {
+export function readTools({
+  prDir, prRepo, clones, scope, token, locked, reachable = null, onDraft = () => {}, onAct = () => {},
+}) {
   const draftReview = draftReviewTool(onDraft);
+  const act = actTool(onAct);
   const dirOf = (repo) => (repo === undefined ? prDir : `${clones}/${repo}`);
   const git = tool(
     "git",
@@ -391,7 +394,7 @@ export function readTools({ prDir, prRepo, clones, scope, token, locked, reachab
     },
   );
   if (!token) {
-    return createSdkMcpServer({ name: SERVER, tools: [git, draftReview], alwaysLoad: true });
+    return createSdkMcpServer({ name: SERVER, tools: [git, draftReview, act], alwaysLoad: true });
   }
   const cloneRepo = tool(
     "clone_repo",
@@ -461,7 +464,7 @@ export function readTools({ prDir, prRepo, clones, scope, token, locked, reachab
       }
     },
   );
-  return createSdkMcpServer({ name: SERVER, tools: [git, cloneRepo, githubApi, draftReview], alwaysLoad: true });
+  return createSdkMcpServer({ name: SERVER, tools: [git, cloneRepo, githubApi, draftReview, act], alwaysLoad: true });
 }
 
 /** The most line comments one draft holds: a review past this is a wall, not a review. */
@@ -491,7 +494,32 @@ function draftReviewTool(onDraft) {
   );
 }
 
+/** The most actions one turn takes on GitHub. */
+export const ACTS = 10;
+
+/**
+ * Acting on the PR as the reviewer, as they asked: the container has no token that writes, so each action goes to the
+ * Worker with the answer, and the Worker posts it with the reviewer's own GitHub sign-in (`POST …/write`'s way).
+ */
+function actTool(onAct) {
+  return tool(
+    "github_act",
+    `Acts on this PR on GitHub as the reviewer, with their own permissions, once your turn ends: the chat then says what GitHub took or refused. Only when the reviewer asked for it in their message. One action per call, up to ${ACTS} a turn:
+- {"kind":"review","event":"APPROVE"|"REQUEST_CHANGES"|"COMMENT","body":"…","commit":"<head sha>","comments":[{"path":"…","line":12,"side":"RIGHT","body":"…"}]}
+- {"kind":"comment","body":"…"}: a comment on the PR
+- {"kind":"line","body":"…","commit":"<head sha>","path":"…","line":12,"side":"RIGHT"|"LEFT"}
+- {"kind":"merge","method":"merge"|"squash"|"rebase","commit":"<head sha>"}
+- {"kind":"update_branch","commit":"<head sha>"}
+A line comment must be on a line the diff shows.`,
+    { action: z.record(z.string(), z.unknown()).describe("One action, as above") },
+    async ({ action }) => {
+      onAct(action);
+      return reply("Queued: it goes to GitHub as the reviewer when your turn ends, and the chat shows the result. Don't say it is done yet.", null);
+    },
+  );
+}
+
 /** The tools' names, for `allowedTools`. */
 export function readToolNames(hasToken) {
-  return ["git", ...(hasToken ? ["clone_repo", "github_api"] : []), "draft_review"].map((name) => `mcp__${SERVER}__${name}`);
+  return ["git", ...(hasToken ? ["clone_repo", "github_api"] : []), "draft_review", "github_act"].map((name) => `mcp__${SERVER}__${name}`);
 }

@@ -9,6 +9,7 @@ import { askSubscriptionPrompt } from "./ask-setup";
 import { AskFailure } from "./ask-trace";
 import { askOnSubscription, isSubscriptionRecord, prDiff, prFacts, subscriptionChat } from "./ask-subscription";
 import { askBudgetOf, limitsOf } from "./limits";
+import { writeToGitHub } from "./write";
 import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models";
 
 /**
@@ -143,6 +144,11 @@ export async function ask(
       }),
       grant, readOnly: reach !== "none", diff: () => prDiff(repo, number, input.head, env),
       budgetUsd: askBudgetOf(limitsOf(env)) / 100, turn,
+      // As the person, with their own sign-in: the way the app's own buttons write.
+      act: async (action) => {
+        const refused = await writeToGitHub(repo, number, action, env);
+        return refused ? ((await refused.json().catch(() => null)) as { error?: string } | null)?.error ?? `HTTP ${refused.status}` : null;
+      },
     });
   }
   if (!onApiKey(env)) {

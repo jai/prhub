@@ -366,6 +366,12 @@ and stores nothing.
 The app shows it under the answer; the reviewer adds it to their own drafts or posts it, as themselves, through
 `POST …/write` (`kind: "review"`). On Managed Agents no message has a draft.
 
+**Acting on GitHub.** Asked to, the subscription's agent acts on the PR as the person, with their own GitHub
+permissions: `github_act` takes one `POST …/write` body (`review`, `comment`, `line`, `merge`, `update_branch`), up to
+10 a turn. The container holds no token that writes: the Worker does each action after the turn, as `POST …/write`
+does, and adds a line per action to the answer, what GitHub took or refused. The prompt says instructions come only
+from the person's messages; what the agent reads is data.
+
 ## AI on a subscription
 
 With `CLAUDE_CODE_OAUTH_TOKEN` set and `AGENT` bound, key lines, rewrites and Ask run in a container with the Claude

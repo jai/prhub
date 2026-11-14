@@ -287,3 +287,18 @@ test("draft_review keeps the draft for the Worker, posts nothing, and the hook l
   assert.deepEqual(await hook({ tool_name: "mcp__prhub__draft_review", tool_input: draft }), {});
   assert.ok(readToolNames(false).includes("mcp__prhub__draft_review"));
 });
+
+test("github_act hands the action to the Worker and acts on nothing itself", async () => {
+  const acts = [];
+  const server = readTools({
+    prDir: tmpdir(), prRepo: "acme/api", clones: tmpdir(), scope: tmpdir(), token: null, locked: (_, f) => f(),
+    onAct: (action) => acts.push(action),
+  });
+  const tool = server.instance._registeredTools.github_act;
+  const action = { kind: "review", event: "APPROVE", body: "", commit: "a".repeat(40), comments: [] };
+  const said = await (tool.handler ?? tool.callback)({ action }, {});
+  assert.deepEqual(acts, [action]);
+  assert.match(said.content[0].text, /Queued/);
+  const [{ hooks: [hook] }] = readOnlyHooks(tmpdir(), tmpdir());
+  assert.deepEqual(await hook({ tool_name: "mcp__prhub__github_act", tool_input: { action } }), {});
+});

@@ -45,6 +45,8 @@ interface AskAnswer extends Partial<Omit<AgentAnswer, "output" | "tokens">> {
   text?: string | null;
   /** The review `draft_review` drafted this turn, if any. */
   draft?: unknown;
+  /** What the reviewer asked the agent to do on GitHub this turn (`github_act`), done here as them. */
+  actions?: unknown[];
   session?: string;
   entries?: unknown[];
   /** The tools the turn began with. */
@@ -94,6 +96,8 @@ export async function askOnSubscription(
     readOnly: boolean; now?: () => number;
     /** The turn's id, the question's own: its `ask_event` lines and its failure line carry it. */
     turn?: string;
+    /** Does one action on GitHub as the reviewer: null when GitHub took it, else why not. */
+    act?: (action: unknown) => Promise<string | null>;
   },
 ): Promise<void> {
   const now = services.now ?? Date.now;
@@ -149,6 +153,11 @@ export async function askOnSubscription(
     if (answer.session && answer.entries) {
       await env.DIFFS.put(transcriptKey(repo, number, env), JSON.stringify(answer.entries));
     }
+    const act = services.act ?? (async () => "This Worker can't act on GitHub from Ask.");
+    const done = await actOn(answer.actions ?? [], act);
+    if (done) {
+      answer.text = `${answer.text?.trim() ?? ""}\n\n${done}`.trim();
+    }
     const spent = answer.costUsd === null || answer.costUsd === undefined ? null : Math.round(answer.costUsd * 10_000) / 100;
     record = {
       ...record, session: answer.session ?? record.session, workingSince: null,
@@ -171,6 +180,30 @@ export async function askOnSubscription(
       scrubbed(error instanceof Error ? error.stack ?? "" : "", known));
   }
   await env.DIFFS.put(key, JSON.stringify(record));
+}
+
+/** What an action did, in the reviewer's words. */
+function actionWords(action: unknown): string {
+  const { kind, event, method } = (action ?? {}) as { kind?: unknown; event?: unknown; method?: unknown };
+  switch (kind) {
+    case "review":
+      return event === "APPROVE" ? "Approved" : event === "REQUEST_CHANGES" ? "Requested changes" : "Posted a review";
+    case "comment": return "Commented";
+    case "line": return "Commented on a line";
+    case "merge": return `Merged (${String(method)})`;
+    case "update_branch": return "Updated the branch";
+    default: return `Did ${String(kind)}`;
+  }
+}
+
+/** Each action in turn, as the reviewer; a line per action for the chat, or null when there were none. */
+async function actOn(actions: unknown[], act: (action: unknown) => Promise<string | null>): Promise<string | null> {
+  const lines: string[] = [];
+  for (const action of actions.slice(0, 10)) {
+    const refused = await act(action).catch((error: unknown) => (error instanceof Error ? error.message : String(error)));
+    lines.push(refused === null ? `- ✅ ${actionWords(action)}` : `- ❌ ${actionWords(action)}: GitHub refused. ${refused}`);
+  }
+  return lines.length > 0 ? `**On GitHub, as you:**\n${lines.join("\n")}` : null;
 }
 
 /** The chat with the turn's answer, and the review it drafted under it: a draft with no words still shows. */
