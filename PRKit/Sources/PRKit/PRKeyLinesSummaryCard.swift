@@ -54,6 +54,8 @@ struct PRKeyLinesSummaryCard: View {
                 .padding(PRStyle.inset)
                 .prCard()
                 .textSelection(.enabled)
+                // Its own element, holding the others: without this the name goes to every child, a bug's button too.
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("pr-summary")
         } else {
             parts
@@ -61,6 +63,7 @@ struct PRKeyLinesSummaryCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.groundFill, in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous))
                 .textSelection(.enabled)
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("key-lines-summary")
         }
     }
@@ -121,8 +124,9 @@ struct PRKeyLinesSummaryCard: View {
             Label {
                 Text(verbatim: title)
             } icon: {
-                // At the body's size, so it fits the icons' column and the heading's words start where the lines' do.
-                Image(icon).font(.appFootnote.weight(.semibold)).foregroundStyle(tone)
+                // A size under the body's, so the widest of them (the bug, the list) fits the icons' column and every
+                // heading's words start where the lines' do: at the body's size those two pushed their words right.
+                Image(icon).font(.appCaption.weight(.semibold)).foregroundStyle(tone)
             }
             .labelStyle(.iconText)
             .font(.appSubheadline.weight(.semibold))

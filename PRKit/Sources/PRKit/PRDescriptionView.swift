@@ -10,6 +10,8 @@ struct PRDescriptionView: View {
     let showDiff: () -> Void
     let reviewChanges: () -> Void
     @State private var action: PRReviewAction?
+    /// The open box's height, as last laid out: a change of it is the box growing or shrinking as its words do.
+    @State private var boxHeight: CGFloat = 0
     private static let descriptionEditor = "description-editor"
 
     private var folds: FoldSet { session.folds }
@@ -23,6 +25,11 @@ struct PRDescriptionView: View {
                     reveal(in: proxy)
                 }
                 .onChange(of: action) {
+                    Task { @MainActor in reveal(in: proxy) }
+                }
+                // A box grows downwards with each line typed, under the keyboard, Post and all (the bug bash's
+                // keyboard bug, 2026-11-10; 13 pt under on an iPhone in the test's picture). It is brought back whole.
+                .onChange(of: boxHeight) {
                     Task { @MainActor in reveal(in: proxy) }
                 }
                 #endif
@@ -120,6 +127,7 @@ struct PRDescriptionView: View {
             }
             .padding(PRStyle.inset)
             .prCard()
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { boxHeight = $0 }
             .id(action)
             .transition(.fold)
         }
@@ -134,6 +142,7 @@ struct PRDescriptionView: View {
                 ) { try await session.send($0, to: .description) } cancel: {
                     session.discardText(for: .description)
                 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { boxHeight = $0 }
                 .id(Self.descriptionEditor)
                 .transition(.fold)
             } else {
