@@ -297,11 +297,27 @@ public struct InlineComposer: View {
         isSending = true
         defer { isSending = false }
         do {
-            try await send(trimmed)
+            try await send(text.asPosted)
             posted += 1
         } catch {
             withAnimation(AppMotion.fold) { failure = error.localizedDescription }
         }
+    }
+}
+
+extension String {
+    /// The words as they are posted: without the empty lines before and after them, or the space at their end. The
+    /// first line keeps its indent, which is Markdown's: four spaces start a code block, as on GitHub.
+    var asPosted: String {
+        var lines = split(separator: "\n", omittingEmptySubsequences: false)[...]
+        while let first = lines.first, first.allSatisfy(\.isWhitespace) {
+            lines.removeFirst()
+        }
+        var words = lines.joined(separator: "\n")
+        while words.last?.isWhitespace == true {
+            words.removeLast()
+        }
+        return words
     }
 }
 

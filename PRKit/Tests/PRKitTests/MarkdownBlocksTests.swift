@@ -60,6 +60,17 @@ struct MarkdownBlocksTests {
             == "OK the prod deploy for NM-692")
         #expect("- one\n- two".withoutMarkdown == "- one\n- two")
     }
+
+    /// The 2026-11-10 bug bash: the box trimmed a comment's first indent, so GitHub's indented code block drew as one
+    /// run-on paragraph.
+    @Test func aCommentIndentedFourSpacesIsPostedAsTypedAndDrawsAsCode() {
+        let posted = "\n  \n    indented review\n    second line  \n\n".asPosted
+        #expect(posted == "    indented review\n    second line")
+        let blocks = MarkdownBlocks.parse(posted)
+        #expect(blocks.map(\.kind) == [.code])
+        #expect(String(blocks[0].content.characters) == "indented review\nsecond line")
+        #expect("  plain words \n".asPosted == "  plain words" && " \n ".asPosted.isEmpty)
+    }
 }
 
 /// GitHub's flavour, as a PR's description has it: tables, task lists, images, strikethrough and `<details>`.
