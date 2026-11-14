@@ -83,6 +83,10 @@ enum PRHubScreenshots {
         if arguments.contains("-PRHubSettings") {
             environment.navigation.selectedTab = .settings
         }
+        // On the Mac this opens the Feedback window; the phone has the tab only where the Worker serves it.
+        if arguments.contains("-PRHubFeedback") {
+            environment.navigation.selectedTab = .feedback
+        }
         if let index = arguments.firstIndex(of: "-PRHubOpen"), arguments.indices.contains(index + 1) {
             environment.prs.open(text: arguments[index + 1])
         }

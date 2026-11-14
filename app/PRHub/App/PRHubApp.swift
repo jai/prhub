@@ -51,6 +51,13 @@ struct PRHubApp: App {
         .commands { MacTextSizeCommands() }
         #endif
         #if os(macOS)
+        Window("Feedback", id: PRHubMacFeedback.windowID) {
+            PRHubMacFeedback(environment: Self.screenshotEnvironment ?? .shared)
+                .symbolVariant(DesignTokens.iconVariant)
+                .preferredColorScheme(Self.screenshotColorScheme)
+        }
+        .defaultSize(width: 560, height: 720)
+        .keyboardShortcut("f", modifiers: [.command, .shift])
         Settings {
             PRHubMacSettings(environment: Self.screenshotEnvironment ?? .shared)
                 .symbolVariant(DesignTokens.iconVariant)
