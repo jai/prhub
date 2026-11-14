@@ -5,12 +5,6 @@
     scripts/ui-test-slices.py show <of> <device>           each slice's tests and seconds
     scripts/ui-test-slices.py times <device> <tests.json>… rewrite a device's seconds from a run's result bundles
                                                    (xcrun xcresulttool get test-results tests --path <bundle> --compact)
-    scripts/ui-test-slices.py plans [--check]              write app/TestPlans (Xcode Cloud's PRHub Tests), or
-                                                           fail when they differ from what the slices are now
-
-Xcode Cloud runs one Test action a plan, side by side, each on the iPhone and the iPad at once: app/TestPlans/ui-N
-is slice N of the iPad's (the slower device's) slices, and ui-1 also holds the unit tests. all.xctestplan, every
-test, is the scheme's default, so a run from Xcode or with -only-testing runs what it names as before.
 
 <device> is iPhone or iPad (its name's first word). The tests are read from app/PRHubUITests/*.swift, so a new test is
 in a slice from its first push. Their seconds on each device are in app/PRHubUITests/times.txt ("Class/test iPhone
@@ -120,92 +114,6 @@ def write_times(device: str, tree_paths: list[str]) -> None:
     print(f"{device}: {found} tests timed, {len(rows)} listed")
 
 
-PLANS = TESTS.parent / "TestPlans"
-PLAN_SLICES = 4
-# The test targets as the generated project names them: XcodeGen derives an id from the target's name, so they hold.
-UI_TARGET = {
-    "containerPath": "container:PRHub.xcodeproj",
-    "identifier": "ECC363D5E63C730E3779F386",
-    "name": "PRHubUITests",
-}
-UNIT_TARGETS = [
-    {
-        "target": {
-            "containerPath": "container:PRHub.xcodeproj",
-            "identifier": "FDE14B3D00FCA91A6857FCF5",
-            "name": "PRHubTests",
-        }
-    },
-    {
-        "target": {
-            "containerPath": "container:..",
-            "identifier": "PRKitTests",
-            "name": "PRKitTests",
-        }
-    },
-]
-
-
-def plan(targets: list[dict]) -> str:
-    """An Xcode test plan: a failed test runs once more, as on GitHub's Macs the slow Simulator made some flaky."""
-    return (
-        json.dumps(
-            {
-                "configurations": [
-                    {
-                        "id": "6C1E3F2A-0000-4000-8000-000000000001",
-                        "name": "Tests",
-                        "options": {},
-                    }
-                ],
-                "defaultOptions": {
-                    "maximumTestRepetitions": 2,
-                    "testRepetitionMode": "retryOnFailure",
-                },
-                "testTargets": targets,
-                "version": 1,
-            },
-            indent=2,
-        )
-        + "\n"
-    )
-
-
-def plans() -> dict[str, str]:
-    made = {"all": plan(UNIT_TARGETS + [{"target": UI_TARGET}])}
-    for number, chosen in enumerate(slices(PLAN_SLICES, "iPad"), 1):
-        ui = [
-            {
-                "selectedTests": sorted(f"{name}()" for name, _ in chosen),
-                "target": UI_TARGET,
-            }
-        ]
-        made[f"ui-{number}"] = plan((UNIT_TARGETS if number == 1 else []) + ui)
-    return made
-
-
-def write_plans(check: bool) -> None:
-    wanted = plans()
-    stale = [
-        name
-        for name, text in wanted.items()
-        if not (PLANS / f"{name}.xctestplan").exists()
-        or (PLANS / f"{name}.xctestplan").read_text() != text
-    ]
-    if check:
-        if stale:
-            sys.exit(
-                f"ui-test-slices: app/TestPlans differ from the slices ({', '.join(stale)}): "
-                "run scripts/ui-test-slices.py plans and commit them"
-            )
-        print(f"ui-test-slices: {len(wanted)} test plans match the slices")
-        return
-    PLANS.mkdir(exist_ok=True)
-    for name, text in wanted.items():
-        (PLANS / f"{name}.xctestplan").write_text(text)
-    print(f"wrote {len(wanted)} test plans ({', '.join(stale) or 'none changed'})")
-
-
 def main() -> None:
     match sys.argv[1:]:
         case ["args", index, count, device] if 1 <= int(index) <= int(count):
@@ -218,10 +126,6 @@ def main() -> None:
                     print(f"  {seconds:5.0f}  {name}")
         case ["times", device, *tree_paths] if tree_paths:
             write_times(device, tree_paths)
-        case ["plans"]:
-            write_plans(check=False)
-        case ["plans", "--check"]:
-            write_plans(check=True)
         case _:
             sys.exit(__doc__)
 

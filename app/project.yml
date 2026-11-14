@@ -130,14 +130,6 @@ targets:
         # The PR screens' own tests, run with the app's.
         - package: PRKit/PRKitTests
       gatherCoverageData: true
-      # Every test by default; Xcode Cloud's PRHub Tests runs ui-1 to ui-4 side by side (scripts/ui-test-slices.py).
-      testPlans:
-        - path: TestPlans/all.xctestplan
-          defaultPlan: true
-        - path: TestPlans/ui-1.xctestplan
-        - path: TestPlans/ui-2.xctestplan
-        - path: TestPlans/ui-3.xctestplan
-        - path: TestPlans/ui-4.xctestplan
 
   # The Notification Service Extension: fetches an alert's PR into the app group's mirror before the tap
   # (`PRPushPrefetch`), within iOS's time for it, and shows the alert either way.
