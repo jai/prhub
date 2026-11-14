@@ -66,7 +66,9 @@ final class PRHubScreenshotTests: XCTestCase {
         group.tap()
         XCTAssertTrue(app.buttons["web 1/4"].waitForExistence(timeout: 5))
         try picture("3-pr-checks", look)
-        app.buttons["pr-review-changes"].tap()
+        let review = app.buttons["pr-review-changes"]
+        XCTAssertTrue(app.scrollDown(to: review), "Review changes is out from under the bars")
+        review.tap()
         XCTAssertTrue(app.buttons["key-lines-context-100"].waitForExistence(timeout: 5))
         try picture("4-diff-panel", look)
         app.closePanelOverDiff()
