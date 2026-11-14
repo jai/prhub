@@ -64,6 +64,13 @@ extension PRSession {
         guard let head = content?.detail.head, !words.isEmpty, !isSendingAsk else {
             return
         }
+        // "go" under a drafted review posts it: the draft is on screen, so the word is his yes to it.
+        if Self.postWords.contains(words.lowercased().trimmingCharacters(in: .punctuationCharacters)),
+           let message = pendingAskReview {
+            askDraft = ""
+            postAskReview(message)
+            return
+        }
         askDraft = ""
         let question = PRAskQuestion(question: words, head: head, anchor: askAnchor)
         askAnchor = nil
@@ -134,6 +141,64 @@ extension PRSession {
             }
             try? await Task.sleep(for: Self.askPollInterval)
         }
+    }
+}
+
+// MARK: - A review Ask drafted
+
+extension PRSession {
+    /// What, said under a drafted review, posts it.
+    static let postWords: Set<String> = ["go", "post", "post it", "send", "send it", "ship it"]
+    /// The answers whose drafted review he added or posted, by message id: on this device for good, so a draft is used
+    /// once, whenever the chat opens again.
+    private static let usedReviewsKey = "PRAskUsedReviews"
+    private static let usedReviewsKept = 200
+
+    func isUsed(_ message: PRAskChat.Message) -> Bool {
+        _ = askReviewsUsed
+        return UserDefaults.standard.stringArray(forKey: Self.usedReviewsKey)?.contains(message.id) ?? false
+    }
+
+    /// The newest answer, when it drafted a review not yet used: what "go" posts.
+    var pendingAskReview: PRAskChat.Message? {
+        guard let last = askChat?.messages.last(where: { !$0.isJai }), last.draft?.reviewEvent != nil,
+              !isUsed(last) else {
+            return nil
+        }
+        return last
+    }
+
+    /// Its line comments join his drafts, and its words wait in its review's box on the PR, to change before they go.
+    func addAskReviewToDrafts(_ message: PRAskChat.Message) {
+        guard let draft = message.draft, let event = draft.reviewEvent else {
+            return
+        }
+        addDrafts(draft.draftComments)
+        openText(for: .review(event)).wrappedValue = draft.body
+        markUsed(message)
+        isShowingAsk = false
+    }
+
+    /// Posted as Jai's review, from his account, with its line comments and any of his own drafts: the review's way
+    /// (`submitReview`), so the toast follows it and a refusal puts it all back in his drafts and the box.
+    func postAskReview(_ message: PRAskChat.Message) {
+        guard let draft = message.draft, let event = draft.reviewEvent else {
+            return
+        }
+        addDrafts(draft.draftComments)
+        markUsed(message)
+        do {
+            try submitReview(draft.body, to: .review(event))
+        } catch {
+            askError = PRAskReadProblem(error)
+        }
+    }
+
+    private func markUsed(_ message: PRAskChat.Message) {
+        var used = UserDefaults.standard.stringArray(forKey: Self.usedReviewsKey) ?? []
+        used.append(message.id)
+        UserDefaults.standard.set(Array(used.suffix(Self.usedReviewsKept)), forKey: Self.usedReviewsKey)
+        askReviewsUsed += 1
     }
 }
 

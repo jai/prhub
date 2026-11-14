@@ -20,6 +20,45 @@ export interface AskInput {
   anchor: AskAnchor | null;
 }
 
+/** A line comment of a drafted review, on a line the PR's diff shows. */
+export interface AskDraftComment {
+  path: string;
+  line: number;
+  side: "LEFT" | "RIGHT";
+  body: string;
+}
+
+/**
+ * A review the agent drafted when asked (`draft_review` in `agent/read-tools.mjs`). Nothing posts it: the phone shows it
+ * under the answer, and the reviewer posts it through `POST …/write` as themselves.
+ */
+export interface AskDraft {
+  event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT";
+  body: string;
+  comments: AskDraftComment[];
+}
+
+const EVENTS = new Set(["APPROVE", "REQUEST_CHANGES", "COMMENT"]);
+const DRAFT_COMMENTS = 30;
+
+/** The container's draft, as the phone may read it; null for anything else. */
+export function draftOf(value: unknown): AskDraft | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const { event, body, comments } = value as { event?: unknown; body?: unknown; comments?: unknown };
+  if (typeof event !== "string" || !EVENTS.has(event) || typeof body !== "string" || !Array.isArray(comments)) {
+    return null;
+  }
+  const kept = comments.slice(0, DRAFT_COMMENTS).flatMap((one): AskDraftComment[] => {
+    const { path, line, side, body: words } = (one ?? {}) as Record<string, unknown>;
+    return typeof path === "string" && path && Number.isInteger(line) && (line as number) > 0
+      && (side === "LEFT" || side === "RIGHT") && typeof words === "string" && words.trim()
+      ? [{ path, line: line as number, side, body: words }] : [];
+  });
+  return body.trim() || kept.length > 0 ? { event: event as AskDraft["event"], body, comments: kept } : null;
+}
+
 export interface AskMessage {
   id: string;
   role: "you" | "agent";
@@ -28,6 +67,8 @@ export interface AskMessage {
   anchor: string | null;
   /** That line's side, `LEFT` (old) or `RIGHT` (new), so a Retry asks about the same line. */
   side?: "LEFT" | "RIGHT";
+  /** On an answer: the review it drafted, for the reviewer to post. */
+  draft?: AskDraft;
 }
 
 export interface AskChat {

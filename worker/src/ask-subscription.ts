@@ -3,7 +3,7 @@
 // take the next question.
 import { AskFailure, askEvent, errorWords, failedLine, scrubbed, sideOf } from "./ask-trace.ts";
 import { type AgentAnswer, askContainer } from "./agent-container.ts";
-import { type AskChat, type AskInput, type AskMessage, askPrompt, askRecordKey } from "./ask-chat.ts";
+import { type AskChat, type AskInput, type AskMessage, askPrompt, askRecordKey, draftOf } from "./ask-chat.ts";
 import type { AskGrant } from "./app-token.ts";
 import type { PrFacts } from "./ask-setup.ts";
 import { type Env, scopedKey } from "./env.ts";
@@ -43,6 +43,8 @@ interface AskAnswer extends Partial<Omit<AgentAnswer, "output" | "tokens">> {
   error?: string;
   subtype?: string;
   text?: string | null;
+  /** The review `draft_review` drafted this turn, if any. */
+  draft?: unknown;
   session?: string;
   entries?: unknown[];
   /** The tools the turn began with. */
@@ -150,8 +152,7 @@ export async function askOnSubscription(
     const spent = answer.costUsd === null || answer.costUsd === undefined ? null : Math.round(answer.costUsd * 10_000) / 100;
     record = {
       ...record, session: answer.session ?? record.session, workingSince: null,
-      messages: answer.text ? [...record.messages, { id: crypto.randomUUID(), role: "agent", text: answer.text, anchor: null }]
-        : record.messages,
+      messages: answered(record.messages, answer),
       problem: answer.subtype === "success" ? null : STOPS[answer.subtype ?? ""] ?? "The agent stopped before it answered.",
       costCents: spent === null ? record.costCents : (record.costCents ?? 0) + spent, model: answer.model ?? record.model,
     };
@@ -170,6 +171,14 @@ export async function askOnSubscription(
       scrubbed(error instanceof Error ? error.stack ?? "" : "", known));
   }
   await env.DIFFS.put(key, JSON.stringify(record));
+}
+
+/** The chat with the turn's answer, and the review it drafted under it: a draft with no words still shows. */
+function answered(messages: AskMessage[], answer: AskAnswer): AskMessage[] {
+  const draft = draftOf(answer.draft);
+  const text = answer.text?.trim() ? answer.text : draft ? "I drafted a review." : null;
+  return text === null ? messages
+    : [...messages, { id: crypto.randomUUID(), role: "agent", text, anchor: null, ...(draft ? { draft } : {}) }];
 }
 
 /** What the model's side says when it, not the container, stopped the turn. */

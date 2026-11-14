@@ -34,7 +34,7 @@ struct PRAskSheet: View {
                     ? "Ask about this PR. The AI reads the whole repo at this PR's head, and can't change anything."
                     : nil,
                 sent: asked, readsEnd: $readsEnd, focus: $isWriting,
-                extras: { _ in EmptyView() },
+                extras: { chatMessage in reviewCard(for: chatMessage) },
                 header: { EmptyView() },
                 footer: {
                     status
@@ -69,7 +69,7 @@ struct PRAskSheet: View {
         messages.enumerated().map { index, message in
             ChatMessage(
                 id: "ask-\(index)", role: message.isJai ? .mine : .theirs, text: message.text,
-                footnote: message.anchor, ticks: ticks(at: index)
+                footnote: message.anchor, ticks: ticks(at: index), hasExtras: message.draft?.reviewEvent != nil
             )
         }
     }
@@ -88,6 +88,22 @@ struct PRAskSheet: View {
             return nil
         }
         return isWorking ? .delivered : .sent
+    }
+
+    /// The review an answer drafted, under it: post it, or add it to his drafts to change first.
+    @ViewBuilder private func reviewCard(for chatMessage: ChatMessage) -> some View {
+        if let index = Int(chatMessage.id.dropFirst("ask-".count)), messages.indices.contains(index),
+           let draft = messages[index].draft, let event = draft.reviewEvent {
+            let message = messages[index]
+            PRAskReviewCard(
+                draft: draft, event: event, isUsed: session.isUsed(message),
+                isNewest: session.pendingAskReview?.id == message.id,
+                otherDrafts: session.drafts.count,
+                post: { session.postAskReview(message) },
+                addToDrafts: { session.addAskReviewToDrafts(message) }
+            )
+            .padding(.top, Space.sm)
+        }
     }
 
     @ViewBuilder private var status: some View {
@@ -220,6 +236,93 @@ struct PRAskSheet: View {
             session.editFailedAsk()
         }
         isWriting = true
+    }
+}
+
+/// A review Ask AI drafted: its verdict, its words and its line comments, not yet on GitHub. Posted, it is Jai's
+/// review from his account; added to his drafts, its comments wait in the diff and its words in the review's box.
+struct PRAskReviewCard: View {
+    let draft: PRAskDraft
+    let event: PRReviewEvent
+    let isUsed: Bool
+    /// The newest answer's: "go" posts it.
+    let isNewest: Bool
+    /// His own line comments already waiting: they go with it.
+    let otherDrafts: Int
+    let post: () -> Void
+    let addToDrafts: () -> Void
+
+    private var action: PRReviewAction {
+        switch event {
+        case .approve: .approve
+        case .requestChanges: .requestChanges
+        case .comment: .comment
+        }
+    }
+
+    private static let shownComments = 5
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            HStack {
+                IconText("Draft review: \(action.title)", icon: action.icon)
+                    .font(.appSubheadline.weight(.semibold))
+                    .foregroundStyle(action.tone ?? Color.primary)
+                Spacer()
+                StatusChip(text: isUsed ? "Used" : "Not posted", tint: Color.toneWaiting)
+            }
+            if !draft.body.isEmpty {
+                PRCommentText(draft.body)
+            }
+            if !draft.comments.isEmpty {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    ForEach(Array(draft.comments.prefix(Self.shownComments).enumerated()), id: \.offset) { _, comment in
+                        VStack(alignment: .leading, spacing: Space.xxs) {
+                            Text(verbatim: "\(comment.path):\(comment.line)")
+                                .font(.app(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.head)
+                            Text(comment.body)
+                                .font(.appFootnote)
+                                .lineLimit(3)
+                        }
+                    }
+                    if draft.comments.count > Self.shownComments {
+                        Text("and \(draft.comments.count - Self.shownComments) more line comments")
+                            .font(.appCaption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            if !isUsed {
+                HStack(spacing: Space.sm) {
+                    Button("Post review", systemImage: action.icon.symbol, action: post)
+                        .buttonStyle(PRButtonStyle(.primary))
+                        .accessibilityIdentifier("pr-ask-review-post")
+                    Button("Add to my drafts", systemImage: AppIcon.compose.symbol, action: addToDrafts)
+                        .buttonStyle(PRButtonStyle(.secondary))
+                        .accessibilityIdentifier("pr-ask-review-drafts")
+                }
+                Text(footnote)
+                    .font(.appCaption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(PRStyle.inset)
+        .prCard()
+        .accessibilityIdentifier("pr-ask-review")
+    }
+
+    private var footnote: String {
+        var words = "Posts as you."
+        if otherDrafts > 0 {
+            words += otherDrafts == 1 ? " Your 1 other draft comment goes with it." : " Your \(otherDrafts) other draft comments go with it."
+        }
+        if isNewest {
+            words += " Or say \"go\"."
+        }
+        return words
     }
 }
 

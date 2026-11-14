@@ -137,6 +137,8 @@ final class PRSession: Hashable {
     var isSendingAsk = false
     /// Why the chat could not be read.
     var askError: PRAskReadProblem?
+    /// Drafted reviews used on this device so far: a change redraws their cards (`PRSession+Ask.swift`).
+    var askReviewsUsed = 0
     var isKeyboardUp = false
     /// The line under the PR's actions: a write saved for later, a refusal, or a sample's note.
     var notice: PRNotice?
@@ -434,6 +436,11 @@ final class PRSession: Hashable {
         }
         discardText(for: target)
         setDrafts(drafts + [PRDraftComment(id: UUID(), path: path, line: line, side: side, body: text)])
+    }
+
+    /// Line comments from elsewhere (Ask AI's drafted review), after his own.
+    func addDrafts(_ more: [PRDraftComment]) {
+        setDrafts(drafts + more)
     }
 
     func removeDraft(_ draft: PRDraftComment) {

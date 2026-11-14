@@ -246,3 +246,26 @@ test("a grant that may write tells the container so: the agent's tools get no Gi
     { ...w.services, grant: async () => ({ token: "worker-token", repos: null, readOnly: false }) });
   assert.equal(w.sent[0].readOnly, false);
 });
+
+test("a drafted review rides under its answer, checked: a bad comment is dropped, and a draft with no words still shows", async () => {
+  const draft = {
+    event: "REQUEST_CHANGES", body: "The retry loses the error.",
+    comments: [{ path: "src/a.ts", line: 12, side: "RIGHT", body: "Keep the cause." }, { path: "", line: 0, side: "UP", body: "" }],
+  };
+  const w = world([
+    { subtype: "success", text: "Drafted: request changes.", draft, session: "s1", entries: [], model: "m", costUsd: 0 },
+    { subtype: "success", text: "", draft: { event: "APPROVE", body: "Looks good.", comments: [] }, session: "s1", entries: [],
+      model: "m", costUsd: 0 },
+    { subtype: "success", text: "No.", draft: { event: "MERGE", body: "x", comments: [] }, session: "s1", entries: [],
+      model: "m", costUsd: 0 },
+  ]);
+  const choice = { model: "claude-haiku-5-5" as const, effort: "high" as const };
+  await askOnSubscription(REPO, 7, input("Write the review"), choice, w.env, w.services);
+  await askOnSubscription(REPO, 7, input("Approve it"), choice, w.env, w.services);
+  await askOnSubscription(REPO, 7, input("Merge it"), choice, w.env, w.services);
+  const answers = w.record().messages.filter((message) => message.role === "agent");
+  assert.deepEqual(answers[0].draft, { ...draft, comments: [draft.comments[0]] });
+  assert.equal(answers[1].text, "I drafted a review.");
+  assert.equal(answers[1].draft?.event, "APPROVE");
+  assert.equal(answers[2].draft, undefined, "an event GitHub has no review for is no draft");
+});

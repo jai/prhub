@@ -253,6 +253,10 @@ export function readOnlyHooks(cwd, clones, reachable = null) {
       if (WEB_TOOLS.includes(name)) {
         return {};
       }
+      // A draft for the reviewer's phone: it reaches nothing, and posts nothing.
+      if (name === `mcp__${SERVER}__draft_review`) {
+        return {};
+      }
       const granted = (repo) => (inGrant(repo, reachable) ? null : cantAccess(repo));
       const reason = name === `mcp__${SERVER}__git`
         ? vetGit(given.args) ?? (given.repo === undefined ? null : vetRepo(given.repo) ?? granted(given.repo))
@@ -360,7 +364,8 @@ export function runGit(dir, args, token, timeout = 120_000) {
  * go; `scope` holds both, and git never runs outside it. `token`, read only, reaches GitHub; null leaves git on the
  * checkout alone. `reachable`, hosted, names the repos the token reaches: no other clone is read or made.
  */
-export function readTools({ prDir, prRepo, clones, scope, token, locked, reachable = null }) {
+export function readTools({ prDir, prRepo, clones, scope, token, locked, reachable = null, onDraft = () => {} }) {
+  const draftReview = draftReviewTool(onDraft);
   const dirOf = (repo) => (repo === undefined ? prDir : `${clones}/${repo}`);
   const git = tool(
     "git",
@@ -386,7 +391,7 @@ export function readTools({ prDir, prRepo, clones, scope, token, locked, reachab
     },
   );
   if (!token) {
-    return createSdkMcpServer({ name: SERVER, tools: [git], alwaysLoad: true });
+    return createSdkMcpServer({ name: SERVER, tools: [git, draftReview], alwaysLoad: true });
   }
   const cloneRepo = tool(
     "clone_repo",
@@ -456,10 +461,37 @@ export function readTools({ prDir, prRepo, clones, scope, token, locked, reachab
       }
     },
   );
-  return createSdkMcpServer({ name: SERVER, tools: [git, cloneRepo, githubApi], alwaysLoad: true });
+  return createSdkMcpServer({ name: SERVER, tools: [git, cloneRepo, githubApi, draftReview], alwaysLoad: true });
+}
+
+/** The most line comments one draft holds: a review past this is a wall, not a review. */
+export const DRAFT_COMMENTS = 30;
+
+/**
+ * A review the reviewer asked for, as a draft: it never reaches GitHub from here. `onDraft` keeps the newest, the
+ * container hands it to the Worker with the answer, and the reviewer posts it from the phone, as themselves.
+ */
+function draftReviewTool(onDraft) {
+  return tool(
+    "draft_review",
+    `Drafts a review of this PR for the reviewer to post: a verdict, the review's words, and up to ${DRAFT_COMMENTS} line comments. It posts nothing: the reviewer reads it on their phone and posts it themselves. Call it only when they ask you to write, draft or give a review, approve, or request changes; a later call replaces the draft. Each comment is on a line the PR's diff shows: \`line\` is the new file's line number with side RIGHT, or the old file's with side LEFT for a removed line. GitHub refuses the whole review when one comment is on any other line.`,
+    {
+      event: z.enum(["APPROVE", "REQUEST_CHANGES", "COMMENT"]),
+      body: z.string().max(20_000).describe("The review's own words, in GitHub's Markdown"),
+      comments: z.array(z.object({
+        path: z.string().min(1), line: z.number().int().positive(), side: z.enum(["LEFT", "RIGHT"]),
+        body: z.string().min(1).max(5_000),
+      })).max(DRAFT_COMMENTS).default([]),
+    },
+    async ({ event, body, comments }) => {
+      onDraft({ event, body, comments });
+      const lines = comments.length === 1 ? "1 line comment" : `${comments.length} line comments`;
+      return reply(`Drafted: ${event} with ${lines}. Nothing is posted: the reviewer sees the draft under your answer and posts it. Say in one line what the draft does; don't repeat it.`, null);
+    },
+  );
 }
 
 /** The tools' names, for `allowedTools`. */
 export function readToolNames(hasToken) {
-  return ["git", ...(hasToken ? ["clone_repo", "github_api"] : [])].map((name) => `mcp__${SERVER}__${name}`);
+  return ["git", ...(hasToken ? ["clone_repo", "github_api"] : []), "draft_review"].map((name) => `mcp__${SERVER}__${name}`);
 }

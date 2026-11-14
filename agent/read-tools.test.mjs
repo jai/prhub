@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { readOnlyHooks, readTools, runGit, vetApiPath, vetGit, vetRepo, vetRef } from "./read-tools.mjs";
+import { readOnlyHooks, readToolNames, readTools, runGit, vetApiPath, vetGit, vetRepo, vetRef } from "./read-tools.mjs";
 
 test("git reads pass", () => {
   for (const args of [
@@ -268,4 +268,22 @@ test("a repo config that names a program runs nothing: every git call overrides 
     await call(args);
   }
   assert.throws(() => statSync(marker), "no program from the repo's config ran");
+});
+
+test("draft_review keeps the draft for the Worker, posts nothing, and the hook lets it through", async () => {
+  let kept = null;
+  const server = readTools({
+    prDir: tmpdir(), prRepo: "acme/api", clones: tmpdir(), scope: tmpdir(), token: null, locked: (_, f) => f(),
+    onDraft: (draft) => { kept = draft; },
+  });
+  const tool = server.instance._registeredTools.draft_review;
+  assert.ok(tool, "offered without a token too");
+  const draft = { event: "REQUEST_CHANGES", body: "Retry loses the error.", comments: [
+    { path: "src/a.ts", line: 12, side: "RIGHT", body: "Keep the cause." }] };
+  const said = await (tool.handler ?? tool.callback)(draft, {});
+  assert.deepEqual(kept, draft);
+  assert.match(said.content[0].text, /Nothing is posted/);
+  const [{ hooks: [hook] }] = readOnlyHooks(tmpdir(), tmpdir());
+  assert.deepEqual(await hook({ tool_name: "mcp__prhub__draft_review", tool_input: draft }), {});
+  assert.ok(readToolNames(false).includes("mcp__prhub__draft_review"));
 });

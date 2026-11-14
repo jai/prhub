@@ -27,6 +27,43 @@ public struct PRAskQuestion: Encodable, Equatable, Sendable {
     }
 }
 
+/// A review the agent drafted when asked (`draft_review`, docs/api.md "Drafted reviews"). Nothing posts it but Jai:
+/// he adds it to his drafts or posts it, as himself.
+public struct PRAskDraft: Decodable, Equatable, Sendable {
+    public struct Comment: Decodable, Equatable, Sendable {
+        public let path: String
+        public let line: Int
+        public let side: PRDiffSide
+        public let body: String
+
+        public init(path: String, line: Int, side: PRDiffSide, body: String) {
+            self.path = path
+            self.line = line
+            self.side = side
+            self.body = body
+        }
+    }
+
+    /// GitHub's review event, `APPROVE`, `REQUEST_CHANGES` or `COMMENT`.
+    public let event: String
+    public let body: String
+    public let comments: [Comment]
+
+    public init(event: PRReviewEvent, body: String, comments: [Comment]) {
+        self.event = event.rawValue
+        self.body = body
+        self.comments = comments
+    }
+
+    /// Nil for an event this app sends no review for.
+    public var reviewEvent: PRReviewEvent? { PRReviewEvent(rawValue: event) }
+
+    /// The line comments as Jai's own drafts, each new.
+    public var draftComments: [PRDraftComment] {
+        comments.map { PRDraftComment(id: UUID(), path: $0.path, line: $0.line, side: $0.side, body: $0.body) }
+    }
+}
+
 /// The conversation as the Worker reads it from the session, which holds it.
 public struct PRAskChat: Decodable, Equatable, Sendable {
     public struct Message: Decodable, Equatable, Identifiable, Sendable {
@@ -36,13 +73,18 @@ public struct PRAskChat: Decodable, Equatable, Sendable {
         public let anchor: String?
         /// The anchored line's side, `LEFT` (old) or `RIGHT` (new); absent on older Workers and on whole-PR questions.
         public let side: String?
+        /// On an answer: the review it drafted.
+        public let draft: PRAskDraft?
 
-        public init(id: String, role: String, text: String, anchor: String?, side: String? = nil) {
+        public init(
+            id: String, role: String, text: String, anchor: String?, side: String? = nil, draft: PRAskDraft? = nil
+        ) {
             self.id = id
             self.role = role
             self.text = text
             self.anchor = anchor
             self.side = side
+            self.draft = draft
         }
 
         public var isJai: Bool { role == "you" }

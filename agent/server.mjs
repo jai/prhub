@@ -140,6 +140,8 @@ async function ask({
     const reads = readOnly === true ? token : null;
     const allowed = [...ASK_TOOLS, ...readToolNames(reads !== null)];
     const store = new SeededStore(session ? entries : []);
+    // The newest review the agent drafted this turn (`draft_review`): it goes to the Worker, never to GitHub.
+    let draft = null;
     let result = null;
     let tools = [];
     for await (const message of query({
@@ -148,6 +150,7 @@ async function ask({
         systemPrompt: system, model, effort, cwd, tools: ASK_TOOLS, allowedTools: allowed, permissionMode: "dontAsk",
         mcpServers: { [SERVER]: readTools({
           prDir: cwd, prRepo: repo, clones, scope: home, token: reads, locked, reachable: granted,
+          onDraft: (made) => { draft = made; },
         }) },
         settingSources: [], maxTurns: 60, maxBudgetUsd: budgetUsd ?? undefined, sessionStore: store,
         hooks: { PreToolUse: readOnlyHooks(cwd, clones, granted) },
@@ -169,6 +172,9 @@ async function ask({
       // The tools the turn began with, for the Worker's log: what the agent could use, not what it says it could.
       tools,
       text: typeof result.result === "string" ? scrub(result.result, token) : null,
+      draft: draft && {
+        ...draft, body: scrub(draft.body, token), comments: draft.comments.map((one) => ({ ...one, body: scrub(one.body, token) })),
+      },
       session: result.session_id,
       entries: store.entries,
       model: model in (result.modelUsage ?? {}) ? model : Object.keys(result.modelUsage ?? {})[0] ?? model,

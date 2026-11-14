@@ -356,6 +356,12 @@ couldn't be reached. Try again."); one still waiting after 2 minutes says "The q
 again." The next question to that PR replaces a failed one. A copy with the same `client_ref` answers the chat again
 and stores nothing.
 
+**Drafted reviews.** Asked to write a review, approve or request changes, the subscription's agent calls `draft_review`
+(`agent/read-tools.mjs`), which posts nothing. Its answer's message then carries `draft`: `{event: "APPROVE" |
+"REQUEST_CHANGES" | "COMMENT", body, comments: [{path, line, side: "LEFT" | "RIGHT", body}]}`, at most 30 comments.
+The app shows it under the answer; the reviewer adds it to their own drafts or posts it, as themselves, through
+`POST …/write` (`kind: "review"`). On Managed Agents no message has a draft.
+
 ## AI on a subscription
 
 With `CLAUDE_CODE_OAUTH_TOKEN` set and `AGENT` bound, key lines, rewrites and Ask run in a container with the Claude
