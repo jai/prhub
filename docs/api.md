@@ -172,7 +172,7 @@ install, `public` the newest the Public group can (after Beta App Review). Never
 
 Requests for changes to the app, from the app (FeatureKit). The Worker keeps none: with `FEEDBACKKIT_URL`,
 `FEEDBACKKIT_APP` and `FEEDBACKKIT_TOKEN` it forwards `/feedback` to the FeedbackKit Worker as its app and the person
-it acts for. That Worker gives the person a coding chat or a public issue ([featurekit.md](featurekit.md)). Without
+it acts for. That Worker gives the person a coding chat or a public issue ([jai/feedbackkit `docs/worker.md`](https://github.com/jai/feedbackkit/blob/main/docs/worker.md)). Without
 the three, the routes answer `404`.
 
 App routes (app auth):

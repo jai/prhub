@@ -86,7 +86,7 @@ export interface Env extends LimitVars {
   /** A read-only PAT for the Ask agent, so it never holds the write token. */
   ASK_GITHUB_TOKEN?: string;
   /**
-   * The FeedbackKit Worker (`featurekit.ts`, docs/featurekit.md): set all three, and Feedback goes there, as this app
+   * The FeedbackKit Worker (jai/feedbackkit, docs/worker.md): set all three, and Feedback goes there, as this app
    * (`FEEDBACKKIT_APP`) and the signed-in person, instead of being kept here.
    */
   FEEDBACKKIT_URL?: string;

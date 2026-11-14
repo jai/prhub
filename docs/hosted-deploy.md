@@ -33,7 +33,7 @@ Secrets, each with `wrangler secret put`, from the password manager:
 | `WEBHOOK_SECRET` | The App's webhook secret |
 | `TOKEN_ENCRYPTION_KEY` | `k1:` and `openssl rand -base64 32`; rotation in [api.md, "Tokens"](api.md#tokens) |
 | `APNS_KEY_P8` | Jai's APNs key (`.p8`) |
-| `FEEDBACKKIT_TOKEN` | The FeedbackKit Worker's `CALLER_TOKEN` ([featurekit.md](featurekit.md)): Feedback goes there |
+| `FEEDBACKKIT_TOKEN` | The FeedbackKit Worker's `CALLER_TOKEN` ([jai/feedbackkit](https://github.com/jai/feedbackkit/blob/main/docs/worker.md)): Feedback goes there |
 
 No `GITHUB_TOKEN` and no `ANTHROPIC_API_KEY`: each person acts with their own token, and AI runs on their own key.
 `CLAUDE_CODE_OAUTH_TOKEN` (a secret) runs key lines and rewrites on Jai's subscription, for `SUBSCRIPTION_LOGINS` only.

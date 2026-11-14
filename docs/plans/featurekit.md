@@ -3,7 +3,7 @@
 An app's users ask for changes from inside the app. A request from the app's owner starts a coding session that changes
 the app's repo; a request from anyone else becomes a GitHub issue. Agent Pager and PR Hub both use it.
 
-Status: step 1 done (PRKit v0.9.0, 2026-11-09). The Worker is a queue and the agent runs on the owner's Mac subscription
+Status: moved to [jai/feedbackkit](https://github.com/jai/feedbackkit) on 2026-11-14 (the Swift package and the Worker); this plan is history. Step 1 done (PRKit v0.9.0, 2026-11-09). The Worker is a queue and the agent runs on the owner's Mac subscription
 (2026-11-09). Decided by Jai: it lives in jai/prhub; owner → coding session; other users → GitHub issue; no API spend
 on the owner's sessions (one Managed Agents chat cost $10.43, mostly context re-read while it waited on CI).
 
