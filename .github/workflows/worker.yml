@@ -58,6 +58,13 @@ jobs:
               wrangler.template.jsonc > wrangler.jsonc
       - name: wrangler deploy --dry-run (hosted)
         run: npx wrangler deploy --dry-run --outdir dist-hosted --config ../deploy/hosted/wrangler.jsonc
+      - name: Keep the tested hosted bundle for deployment
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: worker-hosted
+          path: worker/dist-hosted/
+          retention-days: 1
+          if-no-files-found: error
 
   agent:
     runs-on: ubuntu-latest
