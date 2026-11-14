@@ -51,8 +51,8 @@ public struct ChatView<Extras: View, Header: View, Footer: View, Composer: View>
     let messages: [ChatMessage]
     /// Said where the messages go while there are none.
     var emptyText: String?
-    /// Goes up by one with each message Jai sends: the chat goes to the end with it.
-    let sends: Int
+    /// Changes with each message Jai sends (a count of them, the newest's id): the chat goes to the end with it.
+    let sent: AnyHashable
     @Binding var readsEnd: Bool
     var isLoadingEarlier: Bool
     var focus: FocusState<Bool>.Binding
@@ -62,7 +62,7 @@ public struct ChatView<Extras: View, Header: View, Footer: View, Composer: View>
     @ViewBuilder let composer: () -> Composer
 
     public init(
-        messages: [ChatMessage], emptyText: String? = nil, sends: Int, readsEnd: Binding<Bool>,
+        messages: [ChatMessage], emptyText: String? = nil, sent: AnyHashable, readsEnd: Binding<Bool>,
         isLoadingEarlier: Bool = false, focus: FocusState<Bool>.Binding,
         @ViewBuilder extras: @escaping (ChatMessage) -> Extras,
         @ViewBuilder header: @escaping () -> Header,
@@ -71,7 +71,7 @@ public struct ChatView<Extras: View, Header: View, Footer: View, Composer: View>
     ) {
         self.messages = messages
         self.emptyText = emptyText
-        self.sends = sends
+        self.sent = sent
         _readsEnd = readsEnd
         self.isLoadingEarlier = isLoadingEarlier
         self.focus = focus
@@ -111,7 +111,7 @@ public struct ChatView<Extras: View, Header: View, Footer: View, Composer: View>
                 .padding(.vertical, Space.md)
                 .animation(AppMotion.fold, value: messages)
             }
-            .followsChatEnd(proxy, endID: Self.end, readsEnd: $readsEnd, isLoadingEarlier: isLoadingEarlier, sent: sends)
+            .followsChatEnd(proxy, endID: Self.end, readsEnd: $readsEnd, isLoadingEarlier: isLoadingEarlier, sent: sent)
             .dismissesKeyboard(focus)
             .onAppear { proxy.scrollTo(Self.end, anchor: .bottom) }
         }

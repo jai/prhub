@@ -295,7 +295,7 @@ struct FeatureChatView: View {
                     text: ScreenshotLine.bubbleText($0.text, screenshots: screenshots($0))
                 )
             },
-            sends: messages.count(where: \.isJai), readsEnd: $readsEnd, focus: $isWriting,
+            sent: messages.count(where: \.isJai), readsEnd: $readsEnd, focus: $isWriting,
             extras: { _ in EmptyView() },
             header: {
                 if chat?.builderOnline == false || (isNew && !model.list.builderOnline) {

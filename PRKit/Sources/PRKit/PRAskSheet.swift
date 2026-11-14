@@ -33,7 +33,7 @@ struct PRAskSheet: View {
                 emptyText: !isWorking && session.askSend == .idle
                     ? "Ask about this PR. The AI reads the whole repo at this PR's head, and can't change anything."
                     : nil,
-                sends: asked, readsEnd: $readsEnd, focus: $isWriting,
+                sent: asked, readsEnd: $readsEnd, focus: $isWriting,
                 extras: { _ in EmptyView() },
                 header: { EmptyView() },
                 footer: {
