@@ -67,6 +67,9 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: setup
             CFBundleURLSchemes: [prhub]
+          # Separate from setup: an older PRHub cannot accept and silently ignore a PR handoff.
+          - CFBundleURLName: pull-request
+            CFBundleURLSchemes: [prhub-pr]
         # Config/PRHub.xcconfig: the hosted Worker, and which ways in onboarding offers.
         PRHubHostedHost: $(PRHUB_HOSTED_HOST)
         PRHubSignInWithGitHub: $(PRHUB_SIGN_IN_GITHUB)

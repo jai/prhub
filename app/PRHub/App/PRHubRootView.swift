@@ -59,6 +59,12 @@ struct PRHubRootView: View {
                 environment.navigation.selectedTab = .settings
                 return
             }
+            if environment.openPullRequestLink(url) {
+                return
+            }
+            guard (try? SetupLink.parse(url.absoluteString)) != nil else {
+                return
+            }
             // A setup link ends the samples: it is the user's own Worker.
             if environment.sample != nil {
                 environment.endSample()
@@ -74,8 +80,9 @@ struct PRHubRootView: View {
         ) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("This \(AppIdentity.deviceName) is connected to \(connection.ignoredLinkHost ?? "a pr-worker"). To use "
-                 + "another one, tap Disconnect in Settings first.")
+            Text("This \(AppIdentity.deviceName) is connected to "
+                 + "\(connection.ignoredLinkHost ?? "a pr-worker"). "
+                 + "To use another one, tap Disconnect in Settings first.")
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             if phase == .active {

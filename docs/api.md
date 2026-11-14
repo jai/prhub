@@ -31,6 +31,19 @@ reason}]}`, `token` being its first 8 hex characters and `reason` `unlinked` or 
 registers again at its next launch or foreground. `POST /device/event` takes an object with a `kind`
 (1–64 characters) and, when sent, `changed` as a list of PR ids and `complete` as a boolean; the same `400` otherwise.
 
+## Opening a pull request in PRHub
+
+Another app can open `prhub-pr://open?url=<percent-encoded GitHub URL>`, with exactly one `url` query item. The value
+must be an HTTPS `github.com/<owner>/<repo>/pull/<positive number>` URL, with no credentials or port. Its suffix,
+query and fragment remain in the handed-off URL; `/files` and `/changes` open the PR's diff, and other suffixes open
+its overview. PRHub selects its PRs tab. The current samples stay open when the link arrives during samples.
+
+Malformed handoffs, non-PR URLs, extra query items and duplicate `url` items do nothing. Settings and setup links keep
+their separate routes. A caller should try this custom URL first and, if the system cannot open PRHub, try the original
+GitHub URL as an app-only universal link, then open that URL normally in the browser.
+The dedicated `prhub-pr` scheme is registered by this receiving app version. Older PRHub versions register only
+`prhub`, so the caller falls back instead of opening an older app that would ignore the PR route.
+
 ## Pairing
 
 ### The setup link
