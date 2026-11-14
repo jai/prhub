@@ -13,7 +13,16 @@ struct FeatureChatView: View {
     private var thread: String? { model.thread(for: route) }
     private var chat: FeatureChat? { thread.flatMap { model.chats[$0] } }
     private var isNew: Bool { thread == nil && !model.isSending(box) }
-    private var hostedThread: FeatureAgentThread? { conversation == nil ? nil : chat?.thread }
+    /// A new agent can appear while the next message is being written: leave that composer in place until its
+    /// draft and screenshots have been sent or cleared, and its send has finished.
+    var hostedThread: FeatureAgentThread? {
+        guard conversation != nil, model.draft(for: box).isEmpty, model.attachments(for: box).isEmpty,
+              !model.isSending(box)
+        else {
+            return nil
+        }
+        return chat?.thread
+    }
 
     private var messages: [PRAskChat.Message] {
         let sent = chat?.messages ?? []
