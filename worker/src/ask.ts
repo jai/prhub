@@ -10,6 +10,9 @@ import { AskFailure } from "./ask-trace";
 import { askOnSubscription, isSubscriptionRecord, prDiff, prFacts, subscriptionChat } from "./ask-subscription";
 import { askBudgetOf, limitsOf } from "./limits";
 import { writeToGitHub } from "./write";
+import { proposalsOf } from "./linear-act";
+import { linearPostedNow } from "./ask-linear";
+import { allKeys, ticketKeysOf } from "./tickets";
 import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models";
 
 /**
@@ -103,7 +106,7 @@ async function liveRecord(repo: RepoFullName, number: number, head: string, choi
 export async function askChat(repo: RepoFullName, number: number, env: Env): Promise<AskChat> {
   const record = await readRecord(repo, number, env);
   if (isSubscriptionRecord(record)) {
-    return subscriptionChat(record, Date.now());
+    return subscriptionChat(record, Date.now(), await linearPostedNow(repo, number, env, record.messages));
   }
   if (!record) {
     return chatOf([], null);
@@ -149,6 +152,11 @@ export async function ask(
         const refused = await writeToGitHub(repo, number, action, env);
         return refused ? ((await refused.json().catch(() => null)) as { error?: string } | null)?.error ?? `HTTP ${refused.status}` : null;
       },
+      // Cards only: each posts when the person confirms it (`postAskLinear`), with their own Linear key.
+      linear: (raw) => proposalsOf(raw, async () => {
+        const pr = await prFacts(repo, number, env);
+        return pr ? allKeys(ticketKeysOf(pr.title, (pr.head ?? "").replace(/^[^:]*:/, ""), pr.body)) : [];
+      }, env),
     });
   }
   if (!onApiKey(env)) {
@@ -164,3 +172,4 @@ export async function ask(
   });
   await env.DIFFS.put(askRecordKey(repo, number, env), JSON.stringify({ ...record, head: input.head }));
 }
+

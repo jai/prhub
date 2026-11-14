@@ -18,15 +18,18 @@ test("connecting Linear validates, seals and uses only that person's key; discon
     assert.equal(url, "https://api.linear.app/graphql");
     assert.equal(init?.method, "POST");
     seen.push(new Headers(init?.headers).get("Authorization") ?? "");
-    return Response.json({ data: { viewer: { id: "linear-person" } } });
+    // The write probe: a comment on an issue that can't exist, which a key that may write gets "not found" for.
+    return String(init?.body).includes("PRHubCanComment")
+      ? Response.json({ errors: [{ message: "Entity not found: Issue", extensions: { code: "INPUT_ERROR" } }], data: null })
+      : Response.json({ data: { viewer: { id: "linear-person" } } });
   };
   const connect = (secret: string, value: string) => world.route("/account/linear-key", {
     ...bearer(secret), method: "PUT", body: JSON.stringify({ key: value }),
   });
   const first = await connect(secret, key);
   assert.equal(first.status, 200);
-  assert.deepEqual(await first.json(), { linear_key: true });
-  assert.deepEqual(seen, [key]);
+  assert.deepEqual(await first.json(), { linear_key: true, linear_can_comment: true });
+  assert.deepEqual(seen, [key, key]);
   const stored = await world.stores.get("4242")!.get<string>("linear");
   assert.match(stored!, /^v1\.k1\./);
   assert.equal(stored?.includes(key), false);
@@ -38,6 +41,7 @@ test("connecting Linear validates, seals and uses only that person's key; discon
   assert.equal(two.env.LINEAR_API_KEY, undefined);
   assert.equal(JSON.stringify(hostedAccountConfig(one.session)).includes(key), false);
   assert.equal(one.session.hasLinearKey, true);
+  assert.equal(one.session.linearCanComment, true);
   await connect(second, otherKey);
   await world.route("/account/linear-key", { ...bearer(secret), method: "DELETE" });
   assert.equal(await world.stores.get("4242")!.get("linear"), null);
@@ -92,3 +96,40 @@ test("Linear GraphQL rejection and transport failures do not become a connected 
   assert.equal(await checkLinearKey(key, async () => Response.json({ errors: [{ message: "Authentication required" }] })), "invalid");
   assert.equal(await checkLinearKey(key, async () => { throw new Error("offline"); }), "unavailable");
 });
+
+test("a key that may only read is connected for tickets, and Settings hears it can't comment", async () => {
+  const world = hostedWorld();
+  const secret = await signIn(world);
+  world.services.fetch = async (_url, init) => (String(init?.body).includes("PRHubCanComment")
+    ? Response.json({ errors: [{ message: "Invalid scope: `write` required", extensions: { code: "FORBIDDEN" } }],
+      data: null })
+    : Response.json({ data: { viewer: { id: "linear-person" } } }));
+  const response = await world.route("/account/linear-key", {
+    ...bearer(secret), method: "PUT", body: JSON.stringify({ key }),
+  });
+  assert.deepEqual(await response.json(), { linear_key: true, linear_can_comment: false });
+  const session = await sessionFor(world, secret);
+  const config = hostedAccountConfig(session) as { account: Record<string, unknown> };
+  assert.equal(config.account.linear_key, true);
+  assert.equal(config.account.linear_can_comment, false);
+});
+
+test("a comment Linear refused for the key's scope marks the key read only; a new key starts over", async () => {
+  const world = hostedWorld();
+  const secret = await signIn(world);
+  const account = world.accounts.get("4242")!;
+  await account.setLinearKey(key, true);
+  await account.linearCannotComment();
+  assert.equal((await sessionFor(world, secret)).linearCanComment, false);
+  await account.setLinearKey(otherKey, true);
+  assert.equal((await sessionFor(world, secret)).linearCanComment, true);
+  await account.setLinearKey(null);
+  await account.linearCannotComment();
+  assert.equal(await world.stores.get("4242")!.get("linear_comments"), null, "no key, nothing to mark");
+});
+
+async function sessionFor(world: ReturnType<typeof hostedWorld>, secret: string) {
+  const answer = await authenticate(new Request(`${ORIGIN}/prs`, bearer(secret)), world.workerEnv, world.services);
+  assert.ok(answer.session);
+  return answer.session;
+}

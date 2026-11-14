@@ -587,6 +587,13 @@ final class PRsModel {
         }
     }
 
+    func postAskLinear(message: String, index: Int, about ref: PullRequestRef) async throws -> PRAskChat {
+        if samples != nil {
+            throw SamplesPostNothing()
+        }
+        return try await client.postAskLinear(message: message, index: index, about: ref)
+    }
+
     func askChat(_ ref: PullRequestRef) async throws -> PRAskChat {
         if let samples {
             return samples.askChat
@@ -760,4 +767,9 @@ struct PROpenEvent: Encodable, Sendable {
     let preloaded: Bool
     let bytes: Int
     let lines: Int
+}
+
+/// A sample PR's Linear ticket is made up: nothing posts.
+struct SamplesPostNothing: LocalizedError {
+    var errorDescription: String? { "Sample PRs don't post to Linear." }
 }

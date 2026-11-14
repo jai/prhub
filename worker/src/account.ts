@@ -83,8 +83,12 @@ export class UserAccount extends DurableObject<Env> {
     return this.#core.setAnthropicKey(key, ask);
   }
 
-  setLinearKey(key: string | null): Promise<boolean> {
-    return this.#core.setLinearKey(key);
+  setLinearKey(key: string | null, canComment: boolean | null = null): Promise<boolean> {
+    return this.#core.setLinearKey(key, canComment);
+  }
+
+  linearCannotComment(): Promise<void> {
+    return this.#core.linearCannotComment();
   }
 
   installationIds(): Promise<string[]> {

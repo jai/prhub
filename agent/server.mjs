@@ -6,7 +6,7 @@ import { createServer } from "node:http";
 import { promisify } from "node:util";
 import { InMemorySessionStore, query } from "@anthropic-ai/claude-agent-sdk";
 import {
-  ACTS, authArgs, gitEnv, lockConfig, readOnlyHooks, readToolNames, readTools, SAFE_GIT, SERVER, vetRepo, WEB_TOOLS,
+  ACTS, authArgs, LINEAR_ACTS, gitEnv, lockConfig, readOnlyHooks, readToolNames, readTools, SAFE_GIT, SERVER, vetRepo, WEB_TOOLS,
 } from "./read-tools.mjs";
 
 const exec = promisify(execFile);
@@ -144,6 +144,8 @@ async function ask({
     let draft = null;
     // What the reviewer asked the agent to do on GitHub (`github_act`): the Worker does it, as them.
     const actions = [];
+    // Comments the reviewer asked for on the PR's Linear tickets (`linear_act`): proposals they confirm on the phone.
+    const linear = [];
     let result = null;
     let tools = [];
     for await (const message of query({
@@ -154,6 +156,7 @@ async function ask({
           prDir: cwd, prRepo: repo, clones, scope: home, token: reads, locked, reachable: granted,
           onDraft: (made) => { draft = made; },
           onAct: (action) => { if (actions.length < ACTS) actions.push(action); },
+          onLinear: (comment) => { if (linear.length < LINEAR_ACTS) linear.push(comment); },
         }) },
         settingSources: [], maxTurns: 60, maxBudgetUsd: budgetUsd ?? undefined, sessionStore: store,
         hooks: { PreToolUse: readOnlyHooks(cwd, clones, granted) },
@@ -179,6 +182,7 @@ async function ask({
         ...draft, body: scrub(draft.body, token), comments: draft.comments.map((one) => ({ ...one, body: scrub(one.body, token) })),
       },
       actions,
+      linear: linear.map((one) => ({ ...one, body: scrub(one.body, token) })),
       session: result.session_id,
       entries: store.entries,
       model: model in (result.modelUsage ?? {}) ? model : Object.keys(result.modelUsage ?? {})[0] ?? model,

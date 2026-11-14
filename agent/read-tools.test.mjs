@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { readOnlyHooks, readToolNames, readTools, runGit, vetApiPath, vetGit, vetRepo, vetRef } from "./read-tools.mjs";
+import { LINEAR_ACTS, readOnlyHooks, readToolNames, readTools, runGit, vetApiPath, vetGit, vetRepo, vetRef } from "./read-tools.mjs";
 
 test("git reads pass", () => {
   for (const args of [
@@ -301,4 +301,20 @@ test("github_act hands the action to the Worker and acts on nothing itself", asy
   assert.match(said.content[0].text, /Queued/);
   const [{ hooks: [hook] }] = readOnlyHooks(tmpdir(), tmpdir());
   assert.deepEqual(await hook({ tool_name: "mcp__prhub__github_act", tool_input: { action } }), {});
+});
+
+test("linear_act proposes a comment for the reviewer to post, holds no Linear key, and posts nothing", async () => {
+  const proposed = [];
+  const server = readTools({
+    prDir: tmpdir(), prRepo: "acme/api", clones: tmpdir(), scope: tmpdir(), token: null, locked: (_, f) => f(),
+    onLinear: (comment) => proposed.push(comment),
+  });
+  const tool = server.instance._registeredTools.linear_act;
+  const said = await (tool.handler ?? tool.callback)({ issue: "eng-12", body: "@Octbot rename the flag" }, {});
+  assert.deepEqual(proposed, [{ issue: "ENG-12", body: "@Octbot rename the flag" }]);
+  assert.match(said.content[0].text, /Nothing is posted/);
+  const [{ hooks: [hook] }] = readOnlyHooks(tmpdir(), tmpdir());
+  assert.deepEqual(await hook({ tool_name: "mcp__prhub__linear_act", tool_input: { issue: "ENG-12", body: "x" } }), {});
+  assert.ok(readToolNames(false).includes("mcp__prhub__linear_act"));
+  assert.equal(LINEAR_ACTS, 3);
 });

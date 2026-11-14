@@ -260,6 +260,16 @@ public struct PRViewerClient: Sendable {
         return try decode(PRAskChat.self, from: data, path: path)
     }
 
+    /// Jai's yes to a Linear comment an answer proposed: the Worker posts it with his Linear key, once. The chat comes
+    /// back with the card posted, or failed with Linear's reason.
+    public func postAskLinear(message: String, index: Int, about ref: PullRequestRef) async throws -> PRAskChat {
+        struct Body: Encodable, Sendable {
+            let message: String
+            let index: Int
+        }
+        return try await send("prs/\(ref.repo)/\(ref.number)/ask/linear", Body(message: message, index: index), as: PRAskChat.self)
+    }
+
     /// A read of any route on the Worker, decoded.
     public func read<Answer: Decodable>(
         _ path: String, query: [String: String] = [:], as type: Answer.Type

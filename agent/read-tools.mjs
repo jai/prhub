@@ -254,7 +254,7 @@ export function readOnlyHooks(cwd, clones, reachable = null) {
         return {};
       }
       // A draft for the reviewer's phone: it reaches nothing, and posts nothing.
-      if (name === `mcp__${SERVER}__draft_review` || name === `mcp__${SERVER}__github_act`) {
+      if ([`draft_review`, `github_act`, `linear_act`].some((one) => name === `mcp__${SERVER}__${one}`)) {
         return {};
       }
       const granted = (repo) => (inGrant(repo, reachable) ? null : cantAccess(repo));
@@ -365,10 +365,11 @@ export function runGit(dir, args, token, timeout = 120_000) {
  * checkout alone. `reachable`, hosted, names the repos the token reaches: no other clone is read or made.
  */
 export function readTools({
-  prDir, prRepo, clones, scope, token, locked, reachable = null, onDraft = () => {}, onAct = () => {},
+  prDir, prRepo, clones, scope, token, locked, reachable = null, onDraft = () => {}, onAct = () => {}, onLinear = () => {},
 }) {
   const draftReview = draftReviewTool(onDraft);
   const act = actTool(onAct);
+  const linear = linearActTool(onLinear);
   const dirOf = (repo) => (repo === undefined ? prDir : `${clones}/${repo}`);
   const git = tool(
     "git",
@@ -394,7 +395,7 @@ export function readTools({
     },
   );
   if (!token) {
-    return createSdkMcpServer({ name: SERVER, tools: [git, draftReview, act], alwaysLoad: true });
+    return createSdkMcpServer({ name: SERVER, tools: [git, draftReview, act, linear], alwaysLoad: true });
   }
   const cloneRepo = tool(
     "clone_repo",
@@ -464,7 +465,7 @@ export function readTools({
       }
     },
   );
-  return createSdkMcpServer({ name: SERVER, tools: [git, cloneRepo, githubApi, draftReview, act], alwaysLoad: true });
+  return createSdkMcpServer({ name: SERVER, tools: [git, cloneRepo, githubApi, draftReview, act, linear], alwaysLoad: true });
 }
 
 /** The most line comments one draft holds: a review past this is a wall, not a review. */
@@ -519,7 +520,30 @@ A line comment must be on a line the diff shows.`,
   );
 }
 
+/** The most Linear comments one turn proposes. */
+export const LINEAR_ACTS = 3;
+
+/**
+ * A comment on one of the PR's Linear tickets, as the reviewer, as they asked: the container has no Linear key, so it
+ * goes to the Worker with the answer. The reviewer sees it as a card and posts it from the phone; the Worker posts it
+ * with their own Linear key, its @mentions made Linear's own.
+ */
+function linearActTool(onLinear) {
+  return tool(
+    "linear_act",
+    `Proposes a comment on one of this PR's Linear tickets, posted as the reviewer once they confirm it on their phone. Only when the reviewer asked for it in their message ("tag Octbot on the ticket", "comment on the ticket"). \`issue\` is a ticket key the PR names, such as ENG-12. Write @Name for each person or agent to mention, as the reviewer named them ("@Octbot"): the Worker finds them in Linear. Up to ${LINEAR_ACTS} a turn.`,
+    {
+      issue: z.string().regex(/^[A-Za-z][A-Za-z0-9]{0,9}-\d+$/).describe("The ticket's key, such as ENG-12"),
+      body: z.string().min(1).max(10_000).describe("The comment, in Markdown, with @Name mentions"),
+    },
+    async ({ issue, body }) => {
+      onLinear({ issue: issue.toUpperCase(), body });
+      return reply(`Proposed: a comment on ${issue.toUpperCase()}. Nothing is posted: the reviewer sees it under your answer and posts it. Say in one line what it asks; don't say it is posted.`, null);
+    },
+  );
+}
+
 /** The tools' names, for `allowedTools`. */
 export function readToolNames(hasToken) {
-  return ["git", ...(hasToken ? ["clone_repo", "github_api"] : []), "draft_review", "github_act"].map((name) => `mcp__${SERVER}__${name}`);
+  return ["git", ...(hasToken ? ["clone_repo", "github_api"] : []), "draft_review", "github_act", "linear_act"].map((name) => `mcp__${SERVER}__${name}`);
 }

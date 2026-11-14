@@ -1,6 +1,7 @@
 /** What Jai asks about a PR and what comes back, as the phone shows it. Nothing here calls anything. */
 import { type Env, scopedKey } from "./env.ts";
 import type { RepoFullName, Sha } from "./ids.ts";
+import type { LinearMention, LinearProposal, LinearSession } from "./linear-act.ts";
 
 /** Where a PR's Ask session is named: under `users/<id>/` for a hosted person, so nobody else's chat can find it. */
 export function askRecordKey(repo: RepoFullName, number: number, env: Pick<Env, "SIGNED_IN_USER_ID">): string {
@@ -69,10 +70,33 @@ export interface AskMessage {
   side?: "LEFT" | "RIGHT";
   /** On an answer: the review it drafted, for the reviewer to post. */
   draft?: AskDraft;
+  /** On an answer: the comments it proposed on the PR's Linear tickets (`linear-act.ts`), for the reviewer to post. */
+  linear?: LinearProposal[];
+}
+
+/** A proposed Linear comment as the phone reads it: what posts, who it mentions, and where it stands. */
+export interface AskLinearCard {
+  issue: string;
+  text: string;
+  mentions: LinearMention[];
+  /** Why it can't post; null when it can. */
+  problem: string | null;
+  state: "proposed" | "posted" | "failed";
+  /** The posted comment's link. */
+  url: string | null;
+  /** Linear's reason a post failed. */
+  failure: string | null;
+  /** The agent session the comment's mention started, once posted. */
+  session: LinearSession | null;
+}
+
+/** An answer as the phone reads it: its proposed Linear comments as cards. */
+export interface AskChatMessage extends Omit<AskMessage, "linear"> {
+  linear?: AskLinearCard[];
 }
 
 export interface AskChat {
-  messages: AskMessage[];
+  messages: AskChatMessage[];
   isWorking: boolean;
   /** What the agent is doing right now, in a few words. */
   activity: string | null;
@@ -131,7 +155,7 @@ export function chatOf(
   events: SessionEvent[], costCents: number | null, marker = QUESTION,
   run: { model: string; effort: string | null } | null = null,
 ): AskChat {
-  const messages: AskMessage[] = [];
+  const messages: AskChatMessage[] = [];
   let isWorking = false;
   let activity: string | null = null;
   let problem: string | null = null;

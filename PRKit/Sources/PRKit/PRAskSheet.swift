@@ -34,7 +34,10 @@ struct PRAskSheet: View {
                     ? "Ask about this PR. The AI reads the whole repo at this PR's head, and can't change anything."
                     : nil,
                 sent: asked, readsEnd: $readsEnd, focus: $isWriting,
-                extras: { chatMessage in reviewCard(for: chatMessage) },
+                extras: { chatMessage in
+                    reviewCard(for: chatMessage)
+                    linearCards(for: chatMessage)
+                },
                 header: { EmptyView() },
                 footer: {
                     status
@@ -69,7 +72,7 @@ struct PRAskSheet: View {
         messages.enumerated().map { index, message in
             ChatMessage(
                 id: "ask-\(index)", role: message.isJai ? .mine : .theirs, text: message.text,
-                footnote: message.anchor, ticks: ticks(at: index), hasExtras: message.draft?.reviewEvent != nil
+                footnote: message.anchor, ticks: ticks(at: index), hasExtras: message.draft?.reviewEvent != nil || message.linear?.isEmpty == false
             )
         }
     }
@@ -103,6 +106,24 @@ struct PRAskSheet: View {
                 addToDrafts: { session.addAskReviewToDrafts(message) }
             )
             .padding(.top, Space.sm)
+        }
+    }
+
+    /// The Linear comments an answer proposed, under it: each posts as Jai once he says yes.
+    @ViewBuilder private func linearCards(for chatMessage: ChatMessage) -> some View {
+        if let index = Int(chatMessage.id.dropFirst("ask-".count)), messages.indices.contains(index),
+           let cards = messages[index].linear, !cards.isEmpty {
+            let message = messages[index]
+            ForEach(Array(cards.enumerated()), id: \.offset) { place, card in
+                let key = PRSession.askLinearKey(message, place)
+                PRAskLinearCommentCard(
+                    card: card, isPosting: session.askLinearPosting.contains(key),
+                    problem: session.askLinearProblems[key],
+                    isNewest: session.pendingAskLinear.map { $0.0.id == message.id && $0.1 == place } ?? false,
+                    post: { Task { await session.postAskLinear(message, index: place) } }
+                )
+                .padding(.top, Space.sm)
+            }
         }
     }
 
@@ -323,6 +344,117 @@ struct PRAskReviewCard: View {
             words += " Or say \"go\"."
         }
         return words
+    }
+}
+
+/// A comment Ask AI proposed on one of the PR's Linear tickets: the words exactly as they post, with each mention as the
+/// person or agent it reaches. Posted, it is Jai's comment, from his Linear account; a mention of an agent such as
+/// Octobot starts its session, shown here with a link to it in Linear.
+struct PRAskLinearCommentCard: View {
+    let card: PRAskLinearCard
+    let isPosting: Bool
+    /// Why the yes didn't reach the Worker.
+    let problem: String?
+    /// The newest answer's only card that can post: "go" posts it.
+    let isNewest: Bool
+    let post: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            HStack {
+                IconText("Comment on \(card.issue)", icon: .conversation)
+                    .font(.appSubheadline.weight(.semibold))
+                Spacer()
+                StatusChip(text: chip.text, tint: chip.tint)
+            }
+            PRCommentText(card.text)
+            if !card.mentions.isEmpty {
+                VStack(alignment: .leading, spacing: Space.xxs) {
+                    ForEach(card.mentions, id: \.written) { mention in
+                        Group {
+                            if let user = mention.user {
+                                Text("@\(mention.written) → \(user.name)\(user.agent ? " (agent)" : "")")
+                            } else {
+                                Text("@\(mention.written) → nobody in Linear").foregroundStyle(Color.toneBad)
+                            }
+                        }
+                        .font(.appCaption)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+                .accessibilityIdentifier("pr-ask-linear-mentions")
+            }
+            if let session = card.session {
+                sessionLine(session)
+            }
+            if card.state == .posted, let url = card.url {
+                Link(destination: url) {
+                    IconText("Open the comment in Linear", icon: .openExternally)
+                }
+                .font(.appFootnote)
+                .accessibilityIdentifier("pr-ask-linear-open")
+            }
+            if let why = card.problem ?? problem ?? card.failure {
+                Text(why)
+                    .font(.appFootnote)
+                    .foregroundStyle(Color.toneBad)
+                    .accessibilityIdentifier("pr-ask-linear-problem")
+            }
+            if card.canPost {
+                Button(action: post) {
+                    ZStack {
+                        Label(card.state == .failed || problem != nil ? "Retry" : "Post to Linear",
+                              systemImage: (card.state == .failed ? AppIcon.refresh : AppIcon.sending).symbol)
+                            .opacity(isPosting ? 0 : 1)
+                        if isPosting {
+                            ProgressView()
+                        }
+                    }
+                }
+                .buttonStyle(PRButtonStyle(.primary))
+                .disabled(isPosting)
+                .accessibilityIdentifier("pr-ask-linear-post")
+                Text(isNewest ? "Posts as you, from your Linear account. Or say \"go\"." : "Posts as you, from your Linear account.")
+                    .font(.appCaption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(PRStyle.inset)
+        .prCard()
+        .accessibilityIdentifier("pr-ask-linear")
+    }
+
+    private var chip: (text: String, tint: Color) {
+        switch card.state {
+        case .posted: ("Posted", Color.toneGood)
+        case .failed: ("Not posted", Color.toneBad)
+        case .proposed: (card.problem == nil ? "Not posted" : "Can't post", Color.toneWaiting)
+        }
+    }
+
+    @ViewBuilder private func sessionLine(_ session: PRAskLinearCard.Session) -> some View {
+        let words = "\(session.agent ?? "Agent") session: \(Self.statusWords(session.status))"
+        Group {
+            if let url = session.url {
+                Link(destination: url) { IconText(words, icon: .openExternally) }
+            } else {
+                IconText(words, icon: .toolCall)
+            }
+        }
+        .font(.appFootnote)
+        .accessibilityIdentifier("pr-ask-linear-session")
+    }
+
+    static func statusWords(_ status: String) -> String {
+        switch status {
+        case "pending": "starting"
+        case "active": "working"
+        case "awaitingInput": "waiting for you"
+        case "complete": "done"
+        case "error": "failed"
+        case "stale": "stopped"
+        default: status
+        }
     }
 }
 

@@ -114,6 +114,8 @@ export interface SessionInfo {
   /** Whether the person gave their own Anthropic key. The key itself never leaves the account. */
   hasAnthropicKey: boolean;
   hasLinearKey?: boolean;
+  /** Whether that key may write comments: false when Linear said it can only read, null when not known. */
+  linearCanComment?: boolean | null;
   /** When this phone's session was made: its sign-in. */
   createdAt: number;
 }
@@ -208,7 +210,8 @@ export class AccountCore {
     return {
       userId: String(record.user_id), login: record.login, state: record.state, reason: record.signed_out_reason,
       hasAnthropicKey: (await this.#readAi()) !== null,
-      hasLinearKey: typeof await this.#deps.store.get("linear") === "string", createdAt: live.created_at,
+      hasLinearKey: typeof await this.#deps.store.get("linear") === "string",
+      linearCanComment: await this.#deps.store.get<boolean | null>(LINEAR_COMMENTS) ?? null, createdAt: live.created_at,
     };
   }
 
@@ -295,6 +298,7 @@ export class AccountCore {
     await this.#write(signedOut(record, reason));
     await this.#deps.store.put(AI, null);
     await this.#deps.store.put("linear", null);
+    await this.#deps.store.put(LINEAR_COMMENTS, null);
     await this.#deps.onSignedOut(reason)
       .catch((error: unknown) => console.error("sign-in-again push failed", error));
   }
@@ -314,6 +318,7 @@ export class AccountCore {
     if (isLast) {
       await this.#deps.store.put(AI, null);
       await this.#deps.store.put("linear", null);
+      await this.#deps.store.put(LINEAR_COMMENTS, null);
     }
     return isLast;
   }
@@ -351,7 +356,8 @@ export class AccountCore {
     return true;
   }
 
-  async setLinearKey(key: string | null): Promise<boolean> {
+  /** `canComment`: whether Linear lets the key write comments (`canComment` in linear-act.ts), null when unknown. */
+  async setLinearKey(key: string | null, canComment: boolean | null = null): Promise<boolean> {
     const record = await this.#read();
     if (!record || record.state !== "signed_in") {
       return false;
@@ -362,7 +368,15 @@ export class AccountCore {
     }
     await this.#deps.store.put("linear", key !== null && keyring
       ? await sealToken(keyring, key, associatedData(record.user_id, "linear")) : null);
+    await this.#deps.store.put(LINEAR_COMMENTS, key === null ? null : canComment);
     return true;
+  }
+
+  /** Linear refused a comment for the key's scope: Settings says it can only read until another key replaces it. */
+  async linearCannotComment(): Promise<void> {
+    if (typeof await this.#deps.store.get("linear") === "string") {
+      await this.#deps.store.put(LINEAR_COMMENTS, false);
+    }
   }
 
   async #linearKey(record: AccountRecord, keyring: Keyring): Promise<string | null> {
@@ -563,6 +577,9 @@ export class AccountCore {
     await this.#deps.store.put(ACCOUNT, record);
   }
 }
+
+/** Whether the Linear key may write comments: stored beside it, cleared with it. */
+const LINEAR_COMMENTS = "linear_comments";
 
 export type SealedField = "access" | "refresh" | "anthropic" | "linear";
 

@@ -3,7 +3,10 @@
 // take the next question.
 import { AskFailure, askEvent, errorWords, failedLine, scrubbed, sideOf } from "./ask-trace.ts";
 import { type AgentAnswer, askContainer } from "./agent-container.ts";
-import { type AskChat, type AskInput, type AskMessage, askPrompt, askRecordKey, draftOf } from "./ask-chat.ts";
+import {
+  type AskChat, type AskChatMessage, type AskInput, type AskMessage, askPrompt, askRecordKey, draftOf,
+} from "./ask-chat.ts";
+import { type LinearPosted, type LinearProposal, proposalRef } from "./linear-act.ts";
 import type { AskGrant } from "./app-token.ts";
 import type { PrFacts } from "./ask-setup.ts";
 import { type Env, scopedKey } from "./env.ts";
@@ -47,6 +50,8 @@ interface AskAnswer extends Partial<Omit<AgentAnswer, "output" | "tokens">> {
   draft?: unknown;
   /** What the reviewer asked the agent to do on GitHub this turn (`github_act`), done here as them. */
   actions?: unknown[];
+  /** The comments the reviewer asked for on the PR's Linear tickets (`linear_act`): proposals, posted only on their yes. */
+  linear?: unknown[];
   session?: string;
   entries?: unknown[];
   /** The tools the turn began with. */
@@ -61,17 +66,37 @@ export function isSubscriptionRecord(record: unknown): record is SubscriptionRec
  * The phone's chat from the record. No cost: the subscription is billed by plan, not by question. The record keeps what
  * the turns would have cost on the API, and each `ai_run` line logs it.
  */
-export function subscriptionChat(record: SubscriptionRecord, now: number): AskChat {
+export function subscriptionChat(
+  record: SubscriptionRecord, now: number, posted: Record<string, LinearPosted> = {},
+): AskChat {
   const lost = record.workingSince !== null && now - record.workingSince >= TURN_LOST_MS;
   const isWorking = record.workingSince !== null && !lost;
   return {
-    messages: record.messages,
+    messages: record.messages.map((message) => withCards(message, posted)),
     isWorking,
     activity: isWorking ? "Reading the repo" : null,
     problem: lost ? "The agent stopped before it answered. Ask again." : record.problem,
     costCents: null,
     model: record.model,
     effort: record.choice.effort,
+  };
+}
+
+/** An answer's proposed Linear comments as cards, each with where it stands; the URLs that make mentions stay here. */
+function withCards({ linear, ...message }: AskMessage, posted: Record<string, LinearPosted>): AskChatMessage {
+  if (!linear?.length) {
+    return message;
+  }
+  return {
+    ...message,
+    linear: linear.map((one, index) => {
+      const done = posted[proposalRef(message.id, index)];
+      return {
+        issue: one.issue, text: one.text, mentions: one.mentions, problem: one.problem,
+        state: done?.state ?? "proposed", url: done?.url ?? null, failure: done?.state === "failed" ? done.problem : null,
+        session: done?.session ?? null,
+      };
+    }),
   };
 }
 
@@ -98,6 +123,8 @@ export async function askOnSubscription(
     turn?: string;
     /** Does one action on GitHub as the reviewer: null when GitHub took it, else why not. */
     act?: (action: unknown) => Promise<string | null>;
+    /** The container's proposed Linear comments as cards: issues the PR names, mentions found in Linear. */
+    linear?: (raw: unknown[]) => Promise<LinearProposal[]>;
   },
 ): Promise<void> {
   const now = services.now ?? Date.now;
@@ -158,10 +185,11 @@ export async function askOnSubscription(
     if (done) {
       answer.text = `${answer.text?.trim() ?? ""}\n\n${done}`.trim();
     }
+    const linear = answer.linear?.length && services.linear ? await services.linear(answer.linear) : [];
     const spent = answer.costUsd === null || answer.costUsd === undefined ? null : Math.round(answer.costUsd * 10_000) / 100;
     record = {
       ...record, session: answer.session ?? record.session, workingSince: null,
-      messages: answered(record.messages, answer),
+      messages: answered(record.messages, answer, linear),
       problem: answer.subtype === "success" ? null : STOPS[answer.subtype ?? ""] ?? "The agent stopped before it answered.",
       costCents: spent === null ? record.costCents : (record.costCents ?? 0) + spent, model: answer.model ?? record.model,
     };
@@ -206,12 +234,18 @@ async function actOn(actions: unknown[], act: (action: unknown) => Promise<strin
   return lines.length > 0 ? `**On GitHub, as you:**\n${lines.join("\n")}` : null;
 }
 
-/** The chat with the turn's answer, and the review it drafted under it: a draft with no words still shows. */
-function answered(messages: AskMessage[], answer: AskAnswer): AskMessage[] {
+/**
+ * The chat with the turn's answer, and the review and Linear comments it drafted under it: a draft with no words still
+ * shows.
+ */
+function answered(messages: AskMessage[], answer: AskAnswer, linear: LinearProposal[] = []): AskMessage[] {
   const draft = draftOf(answer.draft);
-  const text = answer.text?.trim() ? answer.text : draft ? "I drafted a review." : null;
-  return text === null ? messages
-    : [...messages, { id: crypto.randomUUID(), role: "agent", text, anchor: null, ...(draft ? { draft } : {}) }];
+  const text = answer.text?.trim() ? answer.text
+    : draft ? "I drafted a review." : linear.length > 0 ? `I drafted a comment on ${linear[0].issue}.` : null;
+  return text === null ? messages : [...messages, {
+    id: crypto.randomUUID(), role: "agent", text, anchor: null, ...(draft ? { draft } : {}),
+    ...(linear.length > 0 ? { linear } : {}),
+  }];
 }
 
 /** What the model's side says when it, not the container, stopped the turn. */

@@ -105,6 +105,10 @@ For questions about this policy, open an issue on [jai/prhub](https://github.com
 
 When you connect Linear in Settings, PRHub validates and stores your personal API key encrypted, separately for
 your GitHub account. It uses the key to read ticket titles, links and statuses for your PRs and ticket text for
-rewrites. PRHub does not write to Linear. The key is never returned to the app. Disconnecting removes it and clears
+rewrites. PRHub writes to Linear only when you post a comment Ask AI proposed: you see the comment, and who it
+mentions, on a card, and nothing posts until you tap Post to Linear (or say "go"). It posts as you, with your key, and
+PRHub then reads the agent session the comment started, if it mentions an agent. To check whether the key may write,
+PRHub tries a comment on an issue that doesn't exist, which posts nothing. The key never goes to the AI's container.
+The key is never returned to the app. Disconnecting removes it and clears
 the ticket cache; signing out of your last device, revoking GitHub access or deleting your account also removes it.
 Linear's terms cover these requests.

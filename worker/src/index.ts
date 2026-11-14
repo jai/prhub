@@ -4,6 +4,7 @@ import { statesRoute } from "./pr-states";
 import { AiJobs, type AiJob } from "./ai-jobs";
 import { appLatest } from "./app-latest";
 import { askChat } from "./ask";
+import { postAskLinear } from "./ask-linear";
 import { acceptAsk, askPr, withQueued } from "./ask-queue";
 import { bodyOf, parseAskInput, parseKeyLineMark } from "./boundary";
 import { eventRoute, registerRoute, unpairRoute } from "./devices";
@@ -37,7 +38,7 @@ import { busyAnswer, clientRefOf } from "./write-receipts";
 
 import { Installation, IpLimit, SignIn, UserAccount } from "./account";
 import {
-  authenticate, configInstallations, hostedAccountConfig, hostedMode, publicHostedRoute, servicesOf, userEnv,
+  accountOf, authenticate, configInstallations, hostedAccountConfig, hostedMode, publicHostedRoute, servicesOf, userEnv,
 } from "./hosted";
 import { pairingLimitAnswer, personLimitAnswer, reportedLimitsOf } from "./limit-enforcement";
 import { LimitName } from "./limits";
@@ -45,7 +46,7 @@ import { LimitName } from "./limits";
 export { AgentContainer, AiJobs, Installation, IpLimit, PrIndex, SignIn, UserAccount };
 
 const PULL_REQUEST_PATH =
-  /^\/prs\/([\w.-]+)\/([\w.-]+)\/(\d+)\/(diff|detail|summary|write|key-lines-reviewed|key-lines|rewrite|ask)$/;
+  /^\/prs\/([\w.-]+)\/([\w.-]+)\/(\d+)\/(diff|detail|summary|write|key-lines-reviewed|key-lines|rewrite|ask|ask\/linear)$/;
 /** GraphQL's `Int`: a bigger number is no PR, and GitHub would refuse the query for it. */
 const MAX_PR_NUMBER = 2_147_483_647;
 const VERSION = /^[\w.:-]{1,200}$/;
@@ -255,6 +256,26 @@ async function reviewedRoute(
   return marked ? Response.json(marked) : errorAnswer(400, "too_many", "this PR has as many reviewed lines as it keeps");
 }
 
+/** The person's yes to a Linear comment an Ask answer proposed: it posts with their Linear key, once. */
+async function askLinearRoute(repo: RepoFullName, number: number, request: Request, env: Env): Promise<Response> {
+  const { message, index } = ((await bodyOf(request))?.value ?? {}) as { message?: unknown; index?: unknown };
+  if (typeof message !== "string" || !message || message.length > 100 || !Number.isInteger(index)
+    || (index as number) < 0) {
+    return errorAnswer(400, "validation_error", "send {message, index}");
+  }
+  const userId = isSet(env.SIGNED_IN_USER_ID) && env.USER_ACCOUNTS !== undefined ? env.SIGNED_IN_USER_ID : null;
+  const { status, body } = await postAskLinear(repo, number, { message, index: index as number }, env, {
+    claim: async (key) => prIndex(env).claimWrite(key, Date.now()),
+    finish: async (key, sent) => prIndex(env).finishWrite(key, sent, Date.now()),
+    readOnly: async () => {
+      if (userId) {
+        await accountOf(env, userId).linearCannotComment();
+      }
+    },
+  });
+  return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
+}
+
 /**
  * The conversation on a GET, with the questions the agent doesn't have yet. A question on a POST is stored and answered
  * `202` at once; the agent gets it from the ask queue's alarm (`ask-queue.ts`), so the phone never waits on GitHub or
@@ -411,6 +432,10 @@ function pullRequestRead(
   }
   if (kind === "write") {
     return request.method === "POST" ? write(repo, pr, request, env)
+      : Promise.resolve(new Response("not found\n", { status: 404 }));
+  }
+  if (kind === "ask/linear") {
+    return request.method === "POST" ? askLinearRoute(repo, pr, request, env)
       : Promise.resolve(new Response("not found\n", { status: 404 }));
   }
   if (kind === "ask") {

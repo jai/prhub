@@ -79,18 +79,22 @@ struct DeviceConfig: Codable, Equatable, Sendable {
         var userId: String?
         /// Whether the person gave their own Anthropic key. The key itself is never answered.
         var linearKey: Bool = false
+        /// Whether that Linear key may write comments, for Ask's comments on tickets: false when Linear said it can only
+        /// read, nil when not known (an older Worker, or Linear didn't say).
+        var linearCanComment: Bool?
         var anthropicKey: Bool
         /// A signed-out account's why: `revoked`, `refresh_expired` or `signed_out`.
         var reason: String?
 
         init(
             state: State, login: String? = nil, userId: String? = nil, anthropicKey: Bool = false,
-            reason: String? = nil, linearKey: Bool = false
+            reason: String? = nil, linearKey: Bool = false, linearCanComment: Bool? = nil
         ) {
             self.state = state
             self.login = login
             self.userId = userId
             self.linearKey = linearKey
+            self.linearCanComment = linearCanComment
             self.anthropicKey = anthropicKey
             self.reason = reason
         }
@@ -99,6 +103,7 @@ struct DeviceConfig: Codable, Equatable, Sendable {
             case state, login, reason
             case userId = "user_id"
             case linearKey = "linear_key"
+            case linearCanComment = "linear_can_comment"
             case anthropicKey = "anthropic_key"
         }
 
@@ -110,6 +115,7 @@ struct DeviceConfig: Codable, Equatable, Sendable {
             userId = try? container.decodeIfPresent(String.self, forKey: .userId)
             anthropicKey = (try? container.decodeIfPresent(Bool.self, forKey: .anthropicKey)) == true
             linearKey = (try? container.decodeIfPresent(Bool.self, forKey: .linearKey)) == true
+            linearCanComment = try? container.decodeIfPresent(Bool.self, forKey: .linearCanComment)
             reason = try? container.decodeIfPresent(String.self, forKey: .reason)
         }
     }

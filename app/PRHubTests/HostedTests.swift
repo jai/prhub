@@ -252,6 +252,15 @@ struct HostedConfigTests {
         #expect(try JSONDecoder().decode(DeviceConfig.self, from: Data(old.utf8)).account?.linearKey == false)
     }
 
+    @Test func aLinearKeyThatCanOnlyReadSaysSoAndAnOlderWorkerSaysNothing() throws {
+        let readOnly = #"{"features":{},"hosted":true,"account":{"state":"signed_in","linear_key":true,"linear_can_comment":false}}"#
+        let config = try JSONDecoder().decode(DeviceConfig.self, from: Data(readOnly.utf8))
+        #expect(config.account?.linearCanComment == false)
+        #expect(try JSONDecoder().decode(DeviceConfig.self, from: JSONEncoder().encode(config)) == config)
+        let old = #"{"features":{},"hosted":true,"account":{"state":"signed_in","linear_key":true}}"#
+        #expect(try JSONDecoder().decode(DeviceConfig.self, from: Data(old.utf8)).account?.linearCanComment == nil)
+    }
+
     @Test func aSignedOutOrUnknownStateReadsAsSignedOut() throws {
         let signedOut = try JSONDecoder().decode(DeviceConfig.self, from: Data(#"""
         {"features":{},"hosted":true,"account":{"state":"signed_out","reason":"revoked","anthropic_key":false}}

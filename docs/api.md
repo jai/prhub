@@ -385,6 +385,30 @@ permissions: `github_act` takes one `POST …/write` body (`review`, `comment`, 
 does, and adds a line per action to the answer, what GitHub took or refused. The prompt says instructions come only
 from the person's messages; what the agent reads is data.
 
+**Commenting on Linear.** Asked to ("tag Octbot on the ticket to rename the flag"), the agent proposes a comment on
+one of the PR's Linear tickets with `linear_act` (`{issue, body}`, up to 3 a turn). It posts nothing. After the turn the
+Worker turns each proposal into a card on the answer, `messages[].linear[]`:
+`{issue, text, mentions: [{written, user: {name, display_name, agent} | null}], problem, state, url, failure, session}`.
+
+- `issue` must be a key the PR's title, branch or description names; another is a card with a `problem`.
+- Each `@name` in the body is found among the Linear workspace's active users, people and agents (app users) alike:
+  its display name or name, case, spaces and dots aside, or else the one user a single letter away ("Octbot" finds
+  Octo Bot, `octobot`). None, or more than one that close, is a `problem` ("No one in Linear matches @Nobody."). `text`
+  is the comment exactly as it posts, with each mention as the user's name; the Worker posts it with each mention as
+  the user's profile URL, which Linear makes the mention itself, so Linear notifies them.
+- `state` is `proposed`, `posted` or `failed`. Nothing posts until the person says yes:
+  `POST /prs/{owner}/{repo}/{n}/ask/linear` with `{"message": "<answer id>", "index": 0}`. The Worker posts it with the
+  person's own Linear key (`commentCreate`), once (a repeat finds it posted), and answers with the chat: `posted` with
+  the comment's `url`, or `failed` with Linear's reason in `failure`, which a Retry (the same POST) tries again. A card
+  with a `problem` answers `409` with it; an answer or card that isn't there, `404`.
+- A comment that mentions an agent starts the agent's session in Linear: Linear does that for any mention of an agent,
+  and for a person it is the direct way to start one (the API's `agentSessionCreateOn…` mutations take the agent's own
+  token). `session` is `{id, agent, status, url}` (`pending`, `active`, `awaitingInput`, `complete`, `error`,
+  `stale`); the Worker asks Linear again, briefly, when the session isn't there yet, and reading the chat asks again
+  about one still running, at most every 30 seconds. PRHub never delegates or assigns the issue.
+- The container never holds the Linear key. Linear refusing a comment for the key's scope marks the key read only
+  (`account.linear_can_comment: false`).
+
 ## AI on a subscription
 
 With `CLAUDE_CODE_OAUTH_TOKEN` set and `AGENT` bound, key lines, rewrites and Ask run in a container with the Claude
@@ -844,8 +868,12 @@ by GitHub, and Delete Account drop the key too.
 
 Settings connects Linear with `PUT /account/linear-key`, the signed-in session bearer and `{"key":"…"}`.
 PRHub validates the key with Linear before storing it, encrypted with the account's user ID and a separate field
-as associated data. It never returns the key. The response is `{"linear_key":true}`; `/device/config` adds
-`account.linear_key` (a boolean, false when absent on older Workers). The person's PR rows and rewrites use only
+as associated data. It never returns the key. The response is `{"linear_key":true,"linear_can_comment":true}`;
+`/device/config` adds `account.linear_key` (a boolean, false when absent on older Workers) and, with a key,
+`account.linear_can_comment`: whether the key may write comments, for Ask's comments on tickets ("Commenting on
+Linear"). PRHub checks without writing: it comments on an issue that can't exist, which Linear answers "not found" for
+a key that may write and refuses for one that may only read. `false` is a key that can only read (Settings says so and
+asks for one with Write or Create comments permission), `null` when Linear's answer said neither. The person's PR rows and rewrites use only
 that person's Linear key, never an operator's key or another account's.
 
 `DELETE /account/linear-key` disconnects it and answers `{"linear_key":false}`. Connecting, replacing or removing a
@@ -854,7 +882,8 @@ and account deletion also erase the key. Keys rotate with `TOKEN_ENCRYPTION_KEY`
 
 Errors: `400 linear_key_malformed`, `422 linear_key_invalid`, `503 linear_unavailable`, or `401 signed_out`.
 A rejected or unavailable key leaves the previous connection intact. A key with Read access to the desired Linear
-teams is sufficient; PRHub does not write to Linear.
+teams is enough for tickets; Ask's comments need Write or Create comments. PRHub writes to Linear only a comment the
+person confirmed on its card.
 
 ### `DELETE /account`
 

@@ -64,12 +64,18 @@ extension PRSession {
         guard let head = content?.detail.head, !words.isEmpty, !isSendingAsk else {
             return
         }
-        // "go" under a drafted review posts it: the draft is on screen, so the word is his yes to it.
-        if Self.postWords.contains(words.lowercased().trimmingCharacters(in: .punctuationCharacters)),
-           let message = pendingAskReview {
-            askDraft = ""
-            postAskReview(message)
-            return
+        // "go" under a drafted review, or a proposed Linear comment, posts it: it is on screen, so the word is his yes.
+        if Self.postWords.contains(words.lowercased().trimmingCharacters(in: .punctuationCharacters)) {
+            if let message = pendingAskReview {
+                askDraft = ""
+                postAskReview(message)
+                return
+            }
+            if let (message, index) = pendingAskLinear {
+                askDraft = ""
+                await postAskLinear(message, index: index)
+                return
+            }
         }
         askDraft = ""
         let question = PRAskQuestion(question: words, head: head, anchor: askAnchor)
@@ -199,6 +205,40 @@ extension PRSession {
         used.append(message.id)
         UserDefaults.standard.set(Array(used.suffix(Self.usedReviewsKept)), forKey: Self.usedReviewsKey)
         askReviewsUsed += 1
+    }
+}
+
+// MARK: - A Linear comment Ask proposed
+
+extension PRSession {
+    /// One card's name: its answer, then its place under it.
+    static func askLinearKey(_ message: PRAskChat.Message, _ index: Int) -> String { "\(message.id):\(index)" }
+
+    /// The newest answer's one Linear comment that can post: what "go" posts. Nil with none, or more than one.
+    var pendingAskLinear: (PRAskChat.Message, Int)? {
+        guard let last = askChat?.messages.last(where: { !$0.isJai }), let cards = last.linear else {
+            return nil
+        }
+        let ready = cards.indices.filter { cards[$0].canPost && cards[$0].state == .proposed }
+        return ready.count == 1 ? (last, ready[0]) : nil
+    }
+
+    /// Posted as Jai with his Linear key, by the Worker, once. The chat comes back with the card posted, or failed with
+    /// Linear's reason and a Retry.
+    func postAskLinear(_ message: PRAskChat.Message, index: Int) async {
+        let key = Self.askLinearKey(message, index)
+        guard !askLinearPosting.contains(key) else {
+            return
+        }
+        askLinearPosting.insert(key)
+        askLinearProblems[key] = nil
+        defer { askLinearPosting.remove(key) }
+        do {
+            let chat = try await model.postAskLinear(message: message.id, index: index, about: ref)
+            withAnimation(AppMotion.swap) { askChat = chat }
+        } catch {
+            withAnimation(AppMotion.swap) { askLinearProblems[key] = error.localizedDescription }
+        }
     }
 }
 

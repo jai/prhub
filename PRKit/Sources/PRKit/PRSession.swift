@@ -139,6 +139,10 @@ final class PRSession: Hashable {
     var askError: PRAskReadProblem?
     /// Drafted reviews used on this device so far: a change redraws their cards (`PRSession+Ask.swift`).
     var askReviewsUsed = 0
+    /// Linear comments on their way to Linear, by card (`PRSession+Ask.swift`).
+    var askLinearPosting: Set<String> = []
+    /// Why a Linear comment could not reach the Worker, by card; Linear's own refusals come back on the card.
+    var askLinearProblems: [String: String] = [:]
     var isKeyboardUp = false
     /// The line under the PR's actions: a write saved for later, a refusal, or a sample's note.
     var notice: PRNotice?

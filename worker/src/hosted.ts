@@ -139,7 +139,7 @@ export interface AnthropicApi {
 
 export type AccountApi = Pick<AccountCore,
   "signIn" | "finish" | "session" | "accessToken" | "tokenAfterUnauthorized" | "signOutEverywhere" | "signOut"
-  | "deleteAccount" | "setAnthropicKey" | "setLinearKey" | "installationIds" | "claimInstallationSync" | "setInstallations"
+  | "deleteAccount" | "setAnthropicKey" | "setLinearKey" | "linearCannotComment" | "installationIds" | "claimInstallationSync" | "setInstallations"
   | "installationAccounts" | "installationSyncedAt">;
 
 /** The part of a person's `PrIndex` the hosted routes and installations touch. */
@@ -717,6 +717,7 @@ export function hostedAccountConfig(session: SessionInfo, installations: Install
     account: {
       state: session.state, login: session.login, user_id: session.userId, anthropic_key: session.hasAnthropicKey,
       linear_key: session.hasLinearKey === true,
+      ...(session.hasLinearKey === true ? { linear_can_comment: session.linearCanComment ?? null } : {}),
       ...(session.state === "signed_out" ? { reason: session.reason } : {}),
     },
     ...(session.state === "signed_in" && installations ? { installations } : {}),

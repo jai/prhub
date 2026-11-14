@@ -20,11 +20,18 @@ struct AccountKeySection: View {
             : connection.config?.account?.anthropicKey == true
     }
 
+    /// Linear said the connected key may only read: Ask can't comment on tickets with it.
+    private var isReadOnly: Bool {
+        provider == .linear && hasKey && connection.config?.account?.linearCanComment == false
+    }
+
     private var note: String {
         if provider == .linear {
-            return hasKey ? "Ticket titles and statuses come from your Linear account. Disconnect to stop looking them up."
-                : "Show ticket titles and statuses under your PRs. Create a personal API key in Linear Settings → "
-                    + "Security & access, with Read permission for your teams. PRHub keeps it encrypted."
+            return hasKey ? "Ticket titles and statuses come from your Linear account, and Ask AI comments on tickets "
+                    + "as you once you post its card. Disconnect to stop."
+                : "Show ticket titles and statuses under your PRs, and let Ask AI comment on tickets once you confirm. "
+                    + "Create a personal API key in Linear Settings → Security & access, with Read and Write (or Create "
+                    + "comments) permission for your teams. PRHub keeps it encrypted."
         }
         return "Key lines, Rewrite and Ask AI run on your own Anthropic key, billed to your Anthropic account. "
             + "Make one at console.anthropic.com. PRHub keeps it encrypted and never shows it again."
@@ -56,7 +63,14 @@ struct AccountKeySection: View {
                 .disabled(isWorking)
                 .accessibilityIdentifier("prhub-\(provider.rawValue)-key-remove")
                 .transition(.fold)
-            } else {
+                if isReadOnly {
+                    ProblemLine(message: "This key can only read, so Ask AI can't comment on tickets. Paste a key with "
+                        + "Write or Create comments permission to replace it.")
+                        .accessibilityIdentifier("prhub-linear-read-only")
+                        .transition(.fold)
+                }
+            }
+            if !hasKey || isReadOnly {
                 SecureField("Paste your \(provider.title) API key", text: $key)
                     .font(.appFootnote.monospaced())
                     #if os(iOS)
@@ -82,7 +96,7 @@ struct AccountKeySection: View {
                     Spacer()
                     Button(action: save) {
                         ZStack {
-                            Text(provider == .linear ? "Connect Linear" : "Save key").opacity(isWorking ? 0 : 1)
+                            Text(provider == .linear ? (hasKey ? "Replace key" : "Connect Linear") : "Save key").opacity(isWorking ? 0 : 1)
                             if isWorking {
                                 ProgressView().tint(Color.onAccent)
                             }
