@@ -11,7 +11,7 @@ import {
 
 const exec = promisify(execFile);
 
-const PORT = 8080;
+const PORT = Number(process.env.PORT) || 8080;
 
 /** One structured answer: `{system, prompt, model, effort, schema}` in, the parsed output and what it spent out. */
 async function run({ system, prompt, model, effort, schema }) {
@@ -179,6 +179,25 @@ async function ask({
 
 const ROUTES = { "/run": run, "/ask": ask };
 
+/**
+ * The Worker stops an idle container with SIGTERM. Node is this container's first process, and a first process ignores
+ * a signal it has no handler for, so the container never stopped: it ran on with the CLAUDE_CODE_OAUTH_TOKEN it started
+ * with, whatever the Worker's secret had become since. Now it leaves, once no run is in flight.
+ */
+let inFlight = 0;
+let leaving = false;
+function leaveWhenIdle() {
+  if (leaving && inFlight === 0) {
+    process.exit(0);
+  }
+}
+for (const signal of ["SIGTERM", "SIGINT"]) {
+  process.on(signal, () => {
+    leaving = true;
+    leaveWhenIdle();
+  });
+}
+
 createServer(async (request, response) => {
   response.setHeader("content-type", "application/json");
   if (request.method === "GET" && request.url === "/health") {
@@ -191,6 +210,12 @@ createServer(async (request, response) => {
     response.end('{"error":"not found"}');
     return;
   }
+  // In flight until its answer has left: a stop asked for meanwhile waits for it.
+  inFlight++;
+  response.once("close", () => {
+    inFlight--;
+    leaveWhenIdle();
+  });
   let body = "";
   for await (const chunk of request) {
     body += chunk;
