@@ -267,4 +267,3 @@ struct BuilderNote: View {
         .accessibilityIdentifier("feedback-builder-offline")
     }
 }
-
