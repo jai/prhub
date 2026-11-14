@@ -156,6 +156,10 @@ final class PRSession: Hashable {
     private(set) var contextLines = UserDefaults.standard.object(forKey: PRSession.contextKey) as? Int
         ?? PRKeyLines.defaultContext
     private var keyLinesByContext: [Int: PRKeyLines] = [:]
+    /// Key lines held without asking, at the chosen context or else any: `summary` reads the PR at a glance from them.
+    var heldKeyLines: PRKeyLines? {
+        keyLinesByContext[contextLines] ?? keyLinesByContext.min { $0.key < $1.key }?.value
+    }
     /// Half-written comments, by `PRComposerTarget.key`. A key with no text is a box open and empty.
     private var writing: [String: String] = [:]
     private let rowTitle: String?

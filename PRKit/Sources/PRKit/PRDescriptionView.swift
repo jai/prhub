@@ -44,6 +44,13 @@ struct PRDescriptionView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Space.md) {
                 header
+                if let summary = session.summary {
+                    // A bug's tap is its line in the diff, as in Key lines.
+                    PRKeyLinesSummaryCard(summary: summary, onPage: true) { bug in
+                        session.show(bug)
+                        showDiff()
+                    }
+                }
                 PRChangesCard(detail: detail, showDiff: showDiff, reviewChanges: reviewChanges)
                 PRStatusCard(session: session, detail: detail, folds: folds)
                 PRReviewActions(session: session, isAuthor: detail.isAuthor, action: $action)

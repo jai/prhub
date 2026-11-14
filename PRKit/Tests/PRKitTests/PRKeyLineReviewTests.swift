@@ -203,6 +203,30 @@ struct PRKeyLinesSummaryTests {
         #expect(older.summary == nil)
     }
 
+    /// A PR's page shows its summary from key lines the session already holds, at whatever context, and asks for none:
+    /// on an API key, asking is what makes them.
+    @MainActor @Test func aPRsPageHasItsSummaryFromKeyLinesAlreadyHeldAndAsksForNone() throws {
+        let asked = Mutex(0)
+        let access = PRViewerAccess(baseURL: { URL(string: "https://worker.test")! }, bearer: { "t" }, discard: {})
+        let client = PRViewerClient(access: access) { _ in
+            asked.withLock { $0 += 1 }
+            throw URLError(.notConnectedToInternet)
+        }
+        let directory = URL.temporaryDirectory.appending(path: "summary-\(UUID().uuidString)")
+        let model = PRsModel(client: client, directory: directory)
+        let json = #"""
+        {"items": [], "context": 10, "leftOut": [],
+         "summary": {"risk": "low", "riskWhy": "", "points": ["One"], "bugs": []}}
+        """#
+        let held = try JSONDecoder().decode(PRKeyLines.self, from: Data(json.utf8))
+        let ref = PullRequestRef(repo: "acme/web", number: 1)
+        let session = PRSession(ref: ref, title: nil, content: nil, keyLines: held, tappedAt: 0, model: model)
+        session.setContextLines(PRKeyLines.defaultContext)
+        #expect(session.summary?.points == ["One"])
+        #expect(PRSession(ref: ref, title: nil, content: nil, tappedAt: 0, model: model).summary == nil)
+        #expect(asked.withLock { $0 } == 0)
+    }
+
     @Test func theSummarysHeadingsSayTheRiskAndCountTheBugs() throws {
         func summary(risk: String, bugs: Int) throws -> PRKeyLines.Summary {
             let bug = #"{"path": "a", "line": 1, "side": "RIGHT", "why": "w"}"#

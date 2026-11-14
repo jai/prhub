@@ -132,7 +132,7 @@ struct PRKeyLinesList: View {
         case let .ready(lines):
             VStack(alignment: .leading, spacing: Space.xs) {
                 if let summary = lines.summary {
-                    PRKeyLinesSummaryCard(summary: summary, session: session)
+                    PRKeyLinesSummaryCard(summary: summary) { session.show($0) }
                 }
                 if !lines.items.isEmpty {
                     Text("\(session.reviewedKeyLineCount) of \(lines.items.count) reviewed")

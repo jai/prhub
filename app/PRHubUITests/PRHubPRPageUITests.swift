@@ -16,6 +16,19 @@ final class PRHubPRPageUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
     }
 
+    /// The PR at a glance on its page, from key lines already on the phone, and a bug's tap is its line in the diff.
+    func testThePageShowsThePRAtAGlanceAndABugOpensItsLine() throws {
+        launch([])
+        openCheckout()
+        XCTAssertTrue(app.descendants(matching: .any)["pr-summary"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Medium risk"].exists && app.staticTexts["1 bug found"].exists)
+        XCTAssertTrue(app.staticTexts["What this does"].exists)
+        try picture("summary-on-page")
+        app.buttons["key-lines-summary-bug-src/checkout/CheckoutError.tsx:RIGHT:9"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["key-line-note"].waitForExistence(timeout: 5))
+        try picture("summary-bug-in-diff")
+    }
+
     func testAskShowsSentWhileTheAgentIsThinking() throws {
         launch(["-PRHubAskWorking"])
         openCheckout()

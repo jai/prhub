@@ -41,11 +41,31 @@ extension PRKeyLines {
 /// The PR at a glance, above its key lines: its risk and why, the bugs found (each a tap to its line), and what it does.
 /// Three parts, each under a heading of an icon and words (DESIGN.md, "A PR at a glance"): the icons share one column
 /// and every word starts in the next, so a heading reads as a heading and a bullet's second line stays under its first.
+/// Above the key lines it sits on the fill; on a PR's page it is one of the page's cards.
 struct PRKeyLinesSummaryCard: View {
     let summary: PRKeyLines.Summary
-    let session: PRSession
+    var onPage = false
+    /// A bug was tapped: show its line in the diff.
+    let showBug: (PRKeyLines.Item) -> Void
 
     var body: some View {
+        if onPage {
+            parts
+                .padding(PRStyle.inset)
+                .prCard()
+                .textSelection(.enabled)
+                .accessibilityIdentifier("pr-summary")
+        } else {
+            parts
+                .padding(Space.sm)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.groundFill, in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous))
+                .textSelection(.enabled)
+                .accessibilityIdentifier("key-lines-summary")
+        }
+    }
+
+    private var parts: some View {
         VStack(alignment: .leading, spacing: Space.md) {
             part(summary.riskTitle, icon: riskIcon, tone: riskTone, id: "key-lines-summary-risk") {
                 if !summary.riskWhy.isEmpty {
@@ -57,7 +77,7 @@ struct PRKeyLinesSummaryCard: View {
                 tone: summary.bugs.isEmpty ? .toneGood : .toneBad, id: "key-lines-summary-bugs"
             ) {
                 ForEach(summary.bugs) { bug in
-                    Button { session.show(bug.asItem) } label: {
+                    Button { showBug(bug.asItem) } label: {
                         line {
                             VStack(alignment: .leading, spacing: 0) {
                                 Text(verbatim: "\(bug.path):\(bug.line)")
@@ -81,11 +101,6 @@ struct PRKeyLinesSummaryCard: View {
                 }
             }
         }
-        .padding(Space.sm)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.groundFill, in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous))
-        .textSelection(.enabled)
-        .accessibilityIdentifier("key-lines-summary")
     }
 
     private var riskIcon: AppIcon { summary.risk == "low" ? .riskLow : .risk }

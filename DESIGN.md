@@ -578,7 +578,9 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
   line in the diff: the kind and Close on top, the why (selectable, to copy), then Explain on the left and Mark
   reviewed / Reviewed on the right, as `PRButtonStyle(.secondary)` buttons. The note stays on screen while the code
   scrolls sideways, as threads and file headers do.
-- **A PR at a glance:** `PRKeyLinesSummaryCard`, above the key lines on `groundFill`. Three parts, `Space.md` apart:
+- **A PR at a glance:** `PRKeyLinesSummaryCard`, above the key lines on `groundFill`, and on a PR's page under its
+  header as one of the page's cards (`prCard`), when the PR's key lines are already on the phone: the page never asks
+  for them. Three parts, `Space.md` apart:
   its risk and why, the bugs found (each a tap to its line), and what it does. Each part has a heading, an icon and
   words through `IconText`'s line, `appSubheadline` semibold: the risk's `AppIcon.risk` in `toneBad` (high) or
   `toneWaiting` (medium), `.riskLow` in `toneGood`; `.ok` in `toneGood` for "No bugs found", `.bugsFound` in `toneBad`

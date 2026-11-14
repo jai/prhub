@@ -14,6 +14,18 @@ extension PRSession {
     /// The Worker's AI features, as `GET /device/config` has them in PRHub; all three in Jai's build.
     var offersKeyLines: Bool { model.configuration.isOn(.keyLines) }
 
+    /// The PR at a glance, for its page, from key lines this session already holds: the ones on the phone when the PR
+    /// opened, or the ones its diff asked for. The page never asks for them: on an API key, asking is what makes them.
+    var summary: PRKeyLines.Summary? {
+        guard offersKeyLines else {
+            return nil
+        }
+        if case let .ready(lines) = keyLines, let summary = lines.summary {
+            return summary
+        }
+        return heldKeyLines?.summary
+    }
+
     /// Why key lines are off and how to turn them on, while they are (`PRKitConfiguration.keyLinesHint`).
     var keyLinesHint: PREmptyHint? { offersKeyLines ? nil : model.configuration.keyLinesHint }
     var offersAsk: Bool { model.configuration.isOn(.askAI) }
