@@ -284,46 +284,41 @@ struct FeatureChatView: View {
         message.id == Self.pendingID ? model.pending[box]?.screenshots ?? 0 : chat?.screenshots[message.id] ?? 0
     }
 
+    /// Whether Jai was reading the end of the chat when he last scrolled it: a new message then keeps him there.
+    @State private var readsEnd = true
+
     var body: some View {
-        ScrollViewReader { proxy in
-            ChatScroll {
-                LazyVStack(alignment: .leading, spacing: Space.sm) {
-                    if chat?.builderOnline == false || (isNew && !model.list.builderOnline) {
-                        BuilderNote()
-                    }
-                    if messages.isEmpty {
-                        Text(model.list.notice ?? FeatureList.agentNotice)
-                            .font(.appFootnote)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                            .padding(.horizontal, Space.lg)
-                            .transition(.opacity)
-                            .accessibilityIdentifier("feedback-new-hint")
-                    }
-                    ForEach(messages) { message($0).transition(.fold) }
-                    status.id(Self.end)
+        ChatView(
+            messages: messages.map {
+                ChatMessage(
+                    id: $0.id, role: $0.isJai ? .mine : .theirs,
+                    text: ScreenshotLine.bubbleText($0.text, screenshots: screenshots($0))
+                )
+            },
+            sends: messages.count(where: \.isJai), readsEnd: $readsEnd, focus: $isWriting,
+            extras: { _ in EmptyView() },
+            header: {
+                if chat?.builderOnline == false || (isNew && !model.list.builderOnline) {
+                    BuilderNote()
                 }
-                .padding(.horizontal, Space.md)
-                .padding(.vertical, Space.sm)
-                .animation(AppMotion.fold, value: messages)
-                .animation(AppMotion.fold, value: chat?.isWorking)
-            }
-            .dismissesKeyboard($isWriting)
-            .onChange(of: messages.count) {
-                withAnimation(AppMotion.fold) { proxy.scrollTo(Self.end, anchor: .bottom) }
-            }
-            .onAppear { proxy.scrollTo(Self.end, anchor: .bottom) }
-            #if os(iOS)
-            // The keyboard covers the end of the chat: once it is up, the last message sits over the box, as Messages
-            // has it.
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
-                withAnimation(AppMotion.fold) { proxy.scrollTo(Self.end, anchor: .bottom) }
-            }
-            #endif
-        }
+                if messages.isEmpty {
+                    Text(model.list.notice ?? FeatureList.agentNotice)
+                        .font(.appFootnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, Space.lg)
+                        .transition(.opacity)
+                        .accessibilityIdentifier("feedback-new-hint")
+                }
+            },
+            footer: {
+                status
+                    .animation(AppMotion.fold, value: chat?.isWorking)
+            },
+            composer: { composer }
+        )
         .background(HomePalette.screenBackground)
-        .safeAreaBar(edge: .bottom) { composer }
         .inlineNavigationTitle()
         .featureTitle(model.title(for: route) ?? "New feedback")
         .task(id: thread) {
@@ -340,16 +335,6 @@ struct FeatureChatView: View {
     private struct FollowKey: Hashable {
         let thread: String?
         let isLive: Bool
-    }
-
-    private static let end = "end"
-
-    /// A message as every chat draws it.
-    private func message(_ message: PRAskChat.Message) -> some View {
-        SessionBubble(
-            title: nil, text: ScreenshotLine.bubbleText(message.text, screenshots: screenshots(message)), date: nil,
-            isMine: message.isJai
-        )
     }
 
     @ViewBuilder private var status: some View {

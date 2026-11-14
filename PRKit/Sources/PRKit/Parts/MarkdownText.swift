@@ -15,13 +15,17 @@ public struct MarkdownText: View {
     private let checkboxes: [Int: Int]
     /// Room kept clear beside the first block only, for buttons over its top corner: the rest uses the full width.
     private let firstBlockInset: CGFloat
+    /// Whether its words can be selected. A chat bubble on the phone turns it off: there a long press is the bubble's
+    /// Copy, for the whole message, where selection took one paragraph at a time.
+    private let isSelectable: Bool
     /// The `<details>` sections opened.
     @State private var folds = FoldSet()
 
     public init(
         _ source: String, headingFont: Font? = nil, firstBlockInset: CGFloat = 0,
-        onCheckbox: ((Int, Bool) -> Void)? = nil
+        onCheckbox: ((Int, Bool) -> Void)? = nil, isSelectable: Bool = true
     ) {
+        self.isSelectable = isSelectable
         let parsed = MarkdownBlocks.parse(source)
         blocks = parsed
         self.headingFont = headingFont
@@ -46,7 +50,7 @@ public struct MarkdownText: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .textSelection(.enabled)
+        .selectable(isSelectable)
     }
 
     private var context: MarkdownBlockView.Context {
@@ -288,5 +292,16 @@ private struct CappedWidth: Layout {
     private func width(_ view: LayoutSubview, _ proposal: ProposedViewSize) -> CGFloat {
         let ideal = view.sizeThatFits(.unspecified).width
         return min(ideal, maxWidth, proposal.width ?? .infinity)
+    }
+}
+
+extension View {
+    /// Text selection on or off, as a value.
+    @ViewBuilder func selectable(_ isOn: Bool) -> some View {
+        if isOn {
+            textSelection(.enabled)
+        } else {
+            textSelection(.disabled)
+        }
     }
 }

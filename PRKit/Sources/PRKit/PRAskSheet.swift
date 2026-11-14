@@ -28,39 +28,22 @@ struct PRAskSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollViewReader { proxy in
-                ChatScroll {
-                    // A plain stack, not a lazy one: the chat keeps to its end by its content's height, which a lazy
-                    // stack only estimates, so a long answer left the sheet somewhere in its middle.
-                    VStack(alignment: .leading, spacing: Space.sm) {
-                        if messages.isEmpty, !isWorking, session.askSend == .idle {
-                            Text("Ask about this PR. The AI reads the whole repo at this PR's head, and can't change anything.")
-                                .font(.appFootnote)
-                                .foregroundStyle(.secondary)
-                                .padding(PRStyle.inset)
-                                // The sheet's width, not the lazy stack's first measure: on an iPad that was a phone's.
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        // By place: the question drawn on its way becomes the chat's own message, with no fold out and
-                        // back in, which left the sheet scrolled past it.
-                        ForEach(Array(messages.enumerated()), id: \.offset) { index, item in
-                            message(item, at: index).transition(.fold)
-                        }
-                        status.id(Self.end)
-                    }
-                    .padding(.horizontal, Space.md)
-                    .padding(.vertical, Space.sm)
-                    .animation(AppMotion.fold, value: messages)
-                    .animation(AppMotion.fold, value: isWorking)
-                    .animation(AppMotion.swap, value: session.askSend)
-                }
-                // Reading the end, he stays with it as an answer grows it; scrolled up, he stays where he is.
-                .followsChatEnd(proxy, endID: Self.end, readsEnd: $readsEnd, sent: asked)
-                .dismissesKeyboard($isWriting)
-                .onAppear { proxy.scrollTo(Self.end, anchor: .bottom) }
-            }
+            ChatView(
+                messages: chatMessages,
+                emptyText: !isWorking && session.askSend == .idle
+                    ? "Ask about this PR. The AI reads the whole repo at this PR's head, and can't change anything."
+                    : nil,
+                sends: asked, readsEnd: $readsEnd, focus: $isWriting,
+                extras: { _ in EmptyView() },
+                header: { EmptyView() },
+                footer: {
+                    status
+                        .animation(AppMotion.fold, value: isWorking)
+                        .animation(AppMotion.swap, value: session.askSend)
+                },
+                composer: { composer }
+            )
             .background(Color.groundPage)
-            .safeAreaBar(edge: .bottom) { composer }
             .inlineNavigationTitle()
             .navigationTitle(Text(verbatim: "\(session.ref.repo.split(separator: "/").last ?? "")#\(session.ref.number)"))
             .toolbar {
@@ -79,17 +62,15 @@ struct PRAskSheet: View {
         .onAppear { isWriting = messages.isEmpty && session.askDraft.isEmpty && session.askSend == .idle }
     }
 
-    private static let end = "end"
-
-    /// A message as every chat draws it; a question about a line names the line under it. Under his questions, how
-    /// far each got (`DeliveryTicks`). No "Wait, what?": every answer is already shaped for him (`ANSWER_SHAPE`).
-    private func message(_ message: PRAskChat.Message, at index: Int) -> some View {
-        SessionBubble(
-            title: nil, text: message.text, date: nil, isMine: message.isJai, footnote: message.anchor
-        ) {
-            if let ticks = ticks(at: index) {
-                DeliveryTicksLine(ticks: ticks, date: nil, about: message.text)
-            }
+    /// The chat as every chat draws it (`ChatView`); a question about a line names the line under it, and his
+    /// questions say how far each got. By place: the question drawn on its way becomes the chat's own message with
+    /// the same id, so it does not fade out and back in.
+    private var chatMessages: [ChatMessage] {
+        messages.enumerated().map { index, message in
+            ChatMessage(
+                id: "ask-\(index)", role: message.isJai ? .mine : .theirs, text: message.text,
+                footnote: message.anchor, ticks: ticks(at: index)
+            )
         }
     }
 
@@ -108,7 +89,6 @@ struct PRAskSheet: View {
         }
         return isWorking ? .delivered : .sent
     }
-
 
     @ViewBuilder private var status: some View {
         switch session.askSend {

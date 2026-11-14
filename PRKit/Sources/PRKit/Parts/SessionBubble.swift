@@ -31,12 +31,13 @@ public struct SessionBubble<Accessory: View>: View {
                     Text(title)
                         .font(.appBody.weight(.semibold))
                 }
-                // An agent writes Markdown; Jai's own words are drawn as he typed them.
+                // An agent writes Markdown; Jai's own words are drawn as he typed them. On a Mac the words select; on the
+                // phone a long press is Copy, below.
                 if isMine {
                     Text(text)
-                        .textSelection(.enabled)
+                        .selectable(Self.selectsWords)
                 } else {
-                    MarkdownText(text)
+                    MarkdownText(text, isSelectable: Self.selectsWords)
                 }
             }
             .font(.appCallout)
@@ -46,6 +47,12 @@ public struct SessionBubble<Accessory: View>: View {
                 isMine ? AnyShapeStyle(.tint) : AnyShapeStyle(.fill.secondary),
                 in: .rect(cornerRadius: ChatStyle.radius, style: .continuous)
             )
+            // Tap and hold (a right click on a Mac): Copy, the whole message as it was written (Jai, 2026-11-14).
+            .contentShape(.rect(cornerRadius: ChatStyle.radius, style: .continuous))
+            .contextMenu {
+                Button("Copy", systemImage: AppIcon.copy.symbol) { Pasteboard.copy(text) }
+                    .accessibilityIdentifier("bubble-copy")
+            }
             if !caption.isEmpty {
                 Text(caption)
                     .font(.appCaption2)
@@ -54,6 +61,15 @@ public struct SessionBubble<Accessory: View>: View {
             accessory
         }
         .modifier(BubbleColumn(isMine: isMine))
+    }
+
+    /// Selection on a Mac; on the phone the bubble's long press is Copy.
+    private static var selectsWords: Bool {
+        #if os(macOS)
+        true
+        #else
+        false
+        #endif
     }
 
     private var caption: String {
