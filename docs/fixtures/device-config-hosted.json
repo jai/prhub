@@ -36,7 +36,8 @@
     "state": "signed_in",
     "login": "octocat",
     "user_id": "4242",
-    "anthropic_key": false
+    "anthropic_key": false,
+    "linear_key": false
   },
   "installations": [
     {
