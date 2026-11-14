@@ -85,3 +85,25 @@ test("changing a Linear connection clears cached tickets and schedules every ope
   assert.deepEqual(sql.exec("SELECT ticket, tickets FROM pull_requests").toArray(),
     [{ ticket: null, tickets: "[]" }, { ticket: null, tickets: "[]" }]);
 });
+
+test("a late lookup from the old connection cannot hide the new connection's ticket for an hour", async () => {
+  const sql = index();
+  let finish!: (tickets: Map<string, Ticket>) => void;
+  const pending = new Promise<Map<string, Ticket>>((resolve) => { finish = resolve; });
+  const old = cachedTickets(sql, ["ENG-1"], 100, () => pending, "old-connection");
+  sql.exec("DELETE FROM tickets");
+  finish(new Map());
+  await old;
+  const result = await cachedTickets(sql, ["ENG-1"], 101,
+    async () => new Map([["ENG-1", issue("ENG-1")]]), "new-connection");
+  assert.deepEqual(result.get("ENG-1"), issue("ENG-1"));
+});
+
+test("changing Linear accounts never falls back to the previous account's cached ticket", async () => {
+  const sql = index();
+  await cachedTickets(sql, ["ENG-1"], 100,
+    async () => new Map([["ENG-1", issue("ENG-1")]]), "old-connection");
+  const empty = async () => new Map<string, Ticket>();
+  assert.equal((await cachedTickets(sql, ["ENG-1"], 101, empty, "new-connection")).size, 0);
+  assert.equal((await cachedTickets(sql, ["ENG-1"], 102, empty, "new-connection")).size, 0);
+});

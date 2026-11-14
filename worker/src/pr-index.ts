@@ -1,3 +1,4 @@
+import { sha256Hex } from "./pairing";
 import { alarmToSet } from "./alarm";
 import { claimOf, RECEIPT_KEPT_MS, type WriteClaim, type WriteReceipt } from "./write-receipts";
 import { DurableObject } from "cloudflare:workers";
@@ -254,7 +255,9 @@ export class PrIndex extends DurableObject<Env> {
         "SELECT id FROM pull_requests WHERE list IN ('review', 'reviewed')").toArray().map((row) => row.id));
       let read: Awaited<ReturnType<typeof readPullRequests>>;
       try {
-        const tickets = (keys: string[]) => cachedTickets(this.sql, keys, Date.now(), (stale) => lookUpTickets(stale, env));
+        const connection = await sha256Hex(env.LINEAR_API_KEY ?? "");
+        const tickets = (keys: string[]) => cachedTickets(this.sql, keys, Date.now(),
+          (stale) => lookUpTickets(stale, env), connection);
         read = await readPullRequests(dirty, env, asked, tickets, sqlCache(this.sql));
       } catch (error) {
         await this.readFailed(env, error);
@@ -399,7 +402,8 @@ export class PrIndex extends DurableObject<Env> {
     if (!isSet(env.LINEAR_API_KEY)) {
       return;
     }
-    const changed = await refreshTickets(this.sql, now, (keys) => lookUpTickets(keys, env));
+    const connection = await sha256Hex(env.LINEAR_API_KEY ?? "");
+    const changed = await refreshTickets(this.sql, now, (keys) => lookUpTickets(keys, env), connection);
     for (const row of changed) {
       const ref = refOf(row);
       if (ref) {
