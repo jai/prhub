@@ -196,6 +196,8 @@ final class PRsModel {
     private(set) var rows: [PullRequestRow]
     /// Merged PRs by page: his own on My PRs, the ones he reviewed on For review. Read when a page shows them.
     private(set) var merged: [PRListPage: [PullRequestRow]] = [:]
+    /// The sample PRs merged on this phone, newest first, under the page that listed them.
+    private var sampleMerged: [PRListPage: [PullRequestRow]] = [:]
     private(set) var mergedError: [PRListPage: String] = [:]
     private(set) var errorMessage: String?
     private(set) var workerSyncedAt: Date?
@@ -300,7 +302,7 @@ final class PRsModel {
 
     func loadMerged(on page: PRListPage) async {
         if let samples {
-            merged[page] = samples.merged(reviewed: page == .review)
+            merged[page] = (sampleMerged[page] ?? []) + samples.merged(reviewed: page == .review)
             return
         }
         do {
@@ -309,6 +311,23 @@ final class PRsModel {
         } catch {
             mergedError[page] = error.localizedDescription
         }
+    }
+
+    /// A sample PR's row after a write that stayed on the phone, as the Worker's next list would have it
+    /// (`PRSampleSet.applying`). A merged PR leaves the open ones for its page's merged ones.
+    func sampleWritten(_ write: PRWrite, to row: PullRequestRow) {
+        guard let samples, let index = rows.firstIndex(of: row) else {
+            return
+        }
+        guard case .merge = write, let status = row.status else {
+            rows[index] = PRSampleSet.applying(write, to: row)
+            return
+        }
+        rows.remove(at: index)
+        let page = PRListPage.allCases.first { $0.holds(row) } ?? .mine
+        let mergedRow = row.with(status.with(list: "merged", mergedAt: Date.now.ISO8601Format()))
+        sampleMerged[page, default: []].insert(mergedRow, at: 0)
+        merged[page] = (sampleMerged[page] ?? []) + samples.merged(reviewed: page == .review)
     }
 
     /// A wake that finds a sync running waits for it, rather than reporting work it did not do. A pull waits for a

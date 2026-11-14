@@ -89,30 +89,88 @@ public struct PRSampleSet: Sendable {
         }
     }
 
-    /// The stored detail with `write` applied as GitHub would show it: a review or a comment joins the conversation,
-    /// signed by `login`. Other writes leave it as it was.
+    /// The stored detail with `write` applied as GitHub would show it, signed by `login`. A review or a comment joins
+    /// the conversation; an approval or a change request is the decision and its reviewer's state; a line comment,
+    /// alone or sent with a review, starts a thread on its line, which takes replies and resolves; an edit is the
+    /// description; a merge leaves the PR merged. Other writes leave it as it was.
     public static func applying(_ write: PRWrite, to detail: Data, login: String, now: Date = .now) -> Data {
         guard var object = (try? JSONSerialization.jsonObject(with: detail)) as? [String: Any] else {
             return detail
         }
         let author: [String: Any] = ["login": login, "avatarUrl": NSNull()]
-        let id = "sample-\(UUID().uuidString)"
         let stamp = now.ISO8601Format()
-        let (key, item): (String, [String: Any])
+        let id = { "sample-\(UUID().uuidString)" }
+        let comment = { (body: String) -> [String: Any] in
+            ["id": id(), "author": author, "body": body, "createdAt": stamp]
+        }
+        let newThread = { (path: String, line: Int, side: PRDiffSide, body: String) -> [String: Any] in
+            [
+                "id": id(), "isResolved": false, "isOutdated": false, "viewerCanResolve": true,
+                "viewerCanUnresolve": true, "path": path, "line": line, "diffSide": side.rawValue,
+                "comments": ["nodes": [comment(body)]],
+            ]
+        }
         switch write {
-        case let .review(event, body, _, _):
-            (key, item) = ("reviews", [
-                "id": id, "author": author, "state": event.state, "body": body, "submittedAt": stamp,
-            ])
+        case let .review(event, body, _, comments):
+            object.append(
+                [["id": id(), "author": author, "state": event.state, "body": body, "submittedAt": stamp]],
+                to: "reviews"
+            )
+            object.append(comments.map { newThread($0.path, $0.line, $0.side, $0.body) }, to: "reviewThreads")
+            if event != .comment {
+                object["reviewDecision"] = event.state
+                let mine: [String: Any] = ["login": login, "avatarUrl": NSNull(), "state": event.state]
+                let others = (object["reviewers"] as? [[String: Any]] ?? []).filter { $0["login"] as? String != login }
+                object["reviewers"] = others + [mine]
+            }
         case let .comment(body):
-            (key, item) = ("comments", ["id": id, "author": author, "body": body, "createdAt": stamp])
+            object.append([comment(body)], to: "comments")
+        case let .line(path, line, side, body, _):
+            object.append([newThread(path, line, side, body)], to: "reviewThreads")
+        case let .reply(thread, body):
+            object.changeThread(thread) { $0.append([comment(body)], to: "comments") }
+        case let .resolve(thread, resolved):
+            object.changeThread(thread) { $0["isResolved"] = resolved }
+        case let .editBody(body, _):
+            object["body"] = body
+        case .merge:
+            object["state"] = "merged"
         default:
             return detail
         }
-        var holder = object[key] as? [String: Any] ?? [:]
-        holder["nodes"] = (holder["nodes"] as? [Any] ?? []) + [item]
-        object[key] = holder
         return (try? JSONSerialization.data(withJSONObject: object)) ?? detail
+    }
+
+    /// A sample's row after `write`, as the Worker's next list would have it: an approval or a change request is the
+    /// PR's review. Other writes leave the row as it was; a merge takes it off the open list (`PRsModel`).
+    public static func applying(_ write: PRWrite, to row: PullRequestRow) -> PullRequestRow {
+        guard case let .review(event, _, _, _) = write, event != .comment, let status = row.status else {
+            return row
+        }
+        return row.with(status.with(review: event == .approve ? "approved" : "changes_requested"))
+    }
+}
+
+private extension [String: Any] {
+    /// Adds `items` to the `nodes` under `key`, as the detail holds its comments, reviews and threads.
+    mutating func append(_ items: [[String: Any]], to key: String) {
+        var holder = self[key] as? [String: Any] ?? [:]
+        holder["nodes"] = (holder["nodes"] as? [Any] ?? []) + items
+        self[key] = holder
+    }
+
+    /// Changes the review thread with this id, where the detail has it.
+    mutating func changeThread(_ id: String, _ change: (inout [String: Any]) -> Void) {
+        var holder = self["reviewThreads"] as? [String: Any] ?? [:]
+        holder["nodes"] = (holder["nodes"] as? [[String: Any]] ?? []).map { thread in
+            guard thread["id"] as? String == id else {
+                return thread
+            }
+            var changed = thread
+            change(&changed)
+            return changed
+        }
+        self["reviewThreads"] = holder
     }
 }
 

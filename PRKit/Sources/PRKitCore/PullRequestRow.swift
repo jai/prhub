@@ -69,12 +69,29 @@ public struct PullRequestRow: Codable, Hashable, Identifiable, Sendable {
             self.reviewDueAt = reviewDueAt
             self.mergedAt = mergedAt
         }
+
+        /// This status with what is given changed.
+        public func with(list: String? = nil, review: String? = nil, mergedAt: String? = nil) -> Status {
+            Status(
+                list: list ?? self.list, author: author, checks: checks, review: review ?? self.review, merge: merge,
+                jaiReview: jaiReview, jaiReviewedAt: jaiReviewedAt, requestedAt: requestedAt, reviewDueAt: reviewDueAt,
+                mergedAt: mergedAt ?? self.mergedAt
+            )
+        }
     }
 
     /// GitHub refuses a diff over 300 files or 20,000 lines.
     public enum DiffAvailability: String, Codable, Hashable, Sendable {
         case ready, pending
         case tooLarge = "too_large"
+    }
+
+    /// This row with another status, and everything else as it was.
+    public func with(_ status: Status) -> PullRequestRow {
+        PullRequestRow(
+            repo: repo, number: number, title: title, head: head, revision: revision, diff: diff, detail: detail,
+            status: status, keyLines: keyLines, ticket: ticket, tickets: tickets
+        )
     }
 
     public var id: String { "\(repo)#\(number)" }

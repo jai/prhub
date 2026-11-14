@@ -40,6 +40,19 @@ struct PRHubSamplesTests {
         }
     }
 
+    /// The bug bash's "changes requested" row opened a page that said "Needs review", and so did a PR needing none.
+    @Test func everySamplesPageSaysWhatItsRowSaysOfTheReview() throws {
+        let decisions = ["approved": "APPROVED", "changes_requested": "CHANGES_REQUESTED", "required": "REVIEW_REQUIRED"]
+        for sample in PRSampleSet.prHub.samples {
+            let detail = try PullRequestDetail.decode(Data(sample.detail.utf8))
+            let review = try #require(sample.row.status?.review)
+            #expect(detail.reviewDecision == decisions[review], "\(sample.row.id) \(review)")
+            if let mine = sample.row.status?.jaiReview {
+                #expect(detail.reviews.nodes.last?.state == decisions[mine], "\(sample.row.id)")
+            }
+        }
+    }
+
     @Test func everyKeyLineIsALineItsDiffShows() throws {
         for sample in PRSampleSet.prHub.samples {
             let document = DiffDocument(data: Data(sample.diff.utf8))

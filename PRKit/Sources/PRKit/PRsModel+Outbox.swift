@@ -42,10 +42,11 @@ extension PRsModel {
         return outcome
     }
 
-    /// What `write` makes of a sample PR, kept in its file so the PR shows it when it opens again. Nil for a PR that
-    /// is not a sample.
+    /// What `write` makes of a sample PR, kept in its file so the PR shows it when it opens again, and in its row so
+    /// the list does. Nil for a PR that is not a sample.
     private func sampleWrite(_ write: PRWrite, to ref: PullRequestRef) -> PullRequestDetail? {
-        guard let row = rows.first(where: { $0.repo == ref.repo && $0.number == ref.number }) else {
+        let isThisPR = { (row: PullRequestRow) in row.repo == ref.repo && row.number == ref.number }
+        guard let row = rows.first(where: isThisPR) ?? merged.values.joined().first(where: isThisPR) else {
             return nil
         }
         let file = mirror.directory.appending(path: row.detailFileName)
@@ -55,6 +56,7 @@ extension PRsModel {
         let login = configuration.login ?? "you"
         let data = PRSampleSet.applying(write, to: stored, login: login)
         try? data.write(to: file)
+        sampleWritten(write, to: row)
         return try? PullRequestDetail.decode(data)
     }
 

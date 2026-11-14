@@ -356,6 +356,30 @@ struct PRHubSample {
             }
     ).joined(separator: ", ")
 
+    /// GitHub's decision for the row's review, so the PR's page says what its row says. None where no review is needed.
+    private var decision: String? {
+        switch review {
+        case "approved": "APPROVED"
+        case "changes_requested": "CHANGES_REQUESTED"
+        case "none": nil
+        default: "REVIEW_REQUIRED"
+        }
+    }
+
+    /// Who is on the review, in the state the row's review gives them: on the user's own PR a teammate, else the user.
+    private var reviewers: String {
+        let reviewer = { (login: String, state: String) in
+            #"{"login": "\#(login)", "avatarUrl": null, "state": "\#(state)"}"#
+        }
+        let first = list == "mine" ? "mona" : PRSampleSet.prHubLogin
+        switch review {
+        case "none": return "[]"
+        case "approved": return "[\(reviewer(first, "APPROVED"))]"
+        case "changes_requested": return "[\(reviewer(first, "CHANGES_REQUESTED"))]"
+        default: return "[\(reviewer(first, "REQUESTED"))]"
+        }
+    }
+
     private var detail: String {
         let isMine = list == "mine"
         let yesterday = Date.now.addingTimeInterval(-86_400).ISO8601Format()
@@ -364,11 +388,13 @@ struct PRHubSample {
             #"[{"id": "sample-comment-\#(number)", "author": {"login": "\#($0.0)", "avatarUrl": null}, "#
                 + #""body": "\#($0.1)", "createdAt": "\#(yesterday)"}]"#
         } ?? "[]"
-        let reviews = yourReview == "approved"
-            ? #"[{"id": "sample-review-\#(number)", "author": {"login": "\#(PRSampleSet.prHubLogin)", "#
-                + #""avatarUrl": null}, "state": "APPROVED", "body": "Clear, thanks.", "#
+        let said = ["approved": ("APPROVED", "Clear, thanks."),
+                    "changes_requested": ("CHANGES_REQUESTED", "Please add a test for a cart restored at launch.")]
+        let reviews = yourReview.flatMap { said[$0] }.map {
+            #"[{"id": "sample-review-\#(number)", "author": {"login": "\#(PRSampleSet.prHubLogin)", "#
+                + #""avatarUrl": null}, "state": "\#($0.0)", "body": "\#($0.1)", "#
                 + #""submittedAt": "\#(yesterday)"}]"#
-            : "[]"
+        } ?? "[]"
         return """
         {"id": null, "url": "https://github.com/\(repo)/pull/\(number)", "state": "open", "head": "sample-\(number)",
          "base": "main", "headBranch": "\(author)/sample-\(number)",
@@ -376,10 +402,9 @@ struct PRHubSample {
          "isAuthor": \(isMine), "authorIsBot": \(bot != nil), "requestedBy": \(bot ?? "null"),
          "tickets": \(tickets), "body": "\(body)",
          "additions": \(count("+")), "deletions": \(count("-")), "changedFiles": \(count("diff --git")),
-         "reviewDecision": "\(review == "approved" ? "APPROVED" : "REVIEW_REQUIRED")",
+         "reviewDecision": \(decision.map { #""\#($0)""# } ?? "null"),
          "mergeState": "\(merge.uppercased())",
-         "reviewers": [{"login": "\(isMine ? "mona" : PRSampleSet.prHubLogin)", "avatarUrl": null,
-                        "state": "\(review == "approved" ? "APPROVED" : "REQUESTED")"}],
+         "reviewers": \(reviewers),
          "viewedFiles": [], "labels": [{"name": "sample", "color": "8250DF"}],
          "checks": [{"name": "test", "state": "\(failing ? "failure" : checks == "pending" ? "pending" : "success")",
                      "url": null, "required": true, "workflow": "CI"},

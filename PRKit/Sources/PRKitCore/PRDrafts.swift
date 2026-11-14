@@ -72,9 +72,6 @@ extension PullRequestRow {
             list: "reviewed", author: status.author, checks: status.checks, review: status.review, merge: status.merge,
             jaiReview: answer.review, jaiReviewedAt: answer.sentAt
         )
-        return PullRequestRow(
-            repo: repo, number: number, title: title, head: head, revision: revision, diff: diff, detail: detail,
-            status: read, keyLines: keyLines, ticket: ticket
-        )
+        return with(read)
     }
 }
