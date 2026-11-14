@@ -11,6 +11,10 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
 
     private let app = XCUIApplication()
 
+    /// Review alerts already declined: the offer came up over the PR on an iPad and took the tap meant for Review
+    /// changes (CI's recording, 2026-11-14).
+    private static let noAlertsOffer = ["-prhubAlertsDeclined", "YES"]
+
     override func setUp() {
         continueAfterFailure = false
     }
@@ -56,7 +60,7 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
     func testALongPathAtBigTextSizes() throws {
         for (name, textSize) in [("xxxl", "UICTContentSizeCategoryXXXL")] + Self.textSizes {
             app.launch(
-                ["-PRHubPaired", "-PRHubLongDiff"] + (textSize.map { ["-UIPreferredContentSizeCategoryName", $0] } ?? []),
+                ["-PRHubPaired", "-PRHubLongDiff"] + Self.noAlertsOffer + (textSize.map { ["-UIPreferredContentSizeCategoryName", $0] } ?? []),
                 appearance: .light
             )
             openPR("Give the deploy team access to staging")
@@ -80,7 +84,7 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
         from start: CGFloat, by distance: CGFloat, holding: TimeInterval, bringingUpCode: Bool = false
     ) -> Positions {
         let lines = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH 'diff-line-'"))
-        var positions = Positions(app)
+        let positions = Positions(app)
         // The topmost line under the header, well above the screen's bottom edge: a sideways drag there switches apps.
         var below: [CGRect] {
             lines.allElementsBoundByIndex.map(\.frame)
@@ -132,7 +136,7 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
     /// The checkout sample's Files changed, its first key line's note open under its line.
     private func openKeyLineNote(textSize: String?) throws {
         app.launch(
-            ["-PRHubPaired"] + (textSize.map { ["-UIPreferredContentSizeCategoryName", $0] } ?? []),
+            ["-PRHubPaired"] + Self.noAlertsOffer + (textSize.map { ["-UIPreferredContentSizeCategoryName", $0] } ?? []),
             appearance: .light
         )
         openPR("Show a retry button when checkout fails")

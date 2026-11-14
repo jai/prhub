@@ -130,7 +130,9 @@ final class PRHubScreenshotTests: XCTestCase {
 
         launch(look, ["-PRHubHosted", "-PRHubSettings"])
         XCTAssertTrue(app.descendants(matching: .any)["prhub-account-login"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.scrollSettings(to: app.secureTextFields["prhub-anthropic-key-field"]))
+        // In the largest text a swipe can step past the field to the foot of Settings: back down to it, then.
+        let keyField = app.secureTextFields["prhub-anthropic-key-field"]
+        XCTAssertTrue(app.scrollSettings(to: keyField) || app.scrollSettings(to: keyField, up: false))
         try picture("9-account-no-key", look)
         let delete = app.buttons["prhub-delete-account"]
         XCTAssertTrue(app.scrollSettings(to: delete))
