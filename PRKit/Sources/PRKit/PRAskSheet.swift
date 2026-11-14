@@ -82,19 +82,13 @@ struct PRAskSheet: View {
     private static let end = "end"
 
     /// A message as every chat draws it; a question about a line names the line under it. Under his questions, how
-    /// far each got (`DeliveryTicks`); under the agent's newest answer, "Wait, what?".
+    /// far each got (`DeliveryTicks`). No "Wait, what?": every answer is already shaped for him (`ANSWER_SHAPE`).
     private func message(_ message: PRAskChat.Message, at index: Int) -> some View {
         SessionBubble(
-            title: nil, text: message.isJai ? ChatQuickReply.shown(message.text) : message.text, date: nil,
-            isMine: message.isJai, footnote: message.anchor
+            title: nil, text: message.text, date: nil, isMine: message.isJai, footnote: message.anchor
         ) {
             if let ticks = ticks(at: index) {
                 DeliveryTicksLine(ticks: ticks, date: nil, about: message.text)
-            }
-            if canWaitWhat, index == messages.count - 1 {
-                WaitWhatButton(isSending: session.isSendingAsk) { waitWhat() }
-                    .padding(.leading, Space.md)
-                    .accessibilityIdentifier("pr-ask-wait-what")
             }
         }
     }
@@ -115,13 +109,6 @@ struct PRAskSheet: View {
         return isWorking ? .delivered : .sent
     }
 
-    /// The agent's answer is the chat's newest word and nothing is on its way: he can ask for it again, plainly.
-    private var canWaitWhat: Bool {
-        guard let last = messages.last else {
-            return false
-        }
-        return !last.isJai && !isWorking && session.askSend == .idle
-    }
 
     @ViewBuilder private var status: some View {
         switch session.askSend {
@@ -239,11 +226,6 @@ struct PRAskSheet: View {
     private func send() {
         isWriting = false
         Task { await session.sendAsk() }
-    }
-
-    private func waitWhat() {
-        isWriting = false
-        Task { await session.sendAsk(ChatQuickReply.waitWhat.text) }
     }
 
     private func retry() {

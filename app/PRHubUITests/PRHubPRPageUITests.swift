@@ -75,7 +75,6 @@ final class PRHubPRPageUITests: XCTestCase {
         let ticks = app.descendants(matching: .any)["reply-ticks-2"]
         XCTAssertTrue(ticks.waitForExistence(timeout: 5))
         XCTAssertTrue(ticks.label.contains("Delivered"))
-        XCTAssertFalse(app.descendants(matching: .any)["pr-ask-wait-what"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["pr-ask-working"].exists)
         XCTAssertFalse(app.descendants(matching: .any)["pr-ask-sending"].exists)
         XCTAssertFalse(app.descendants(matching: .any)["pr-ask-failed"].exists)
@@ -100,16 +99,6 @@ final class PRHubPRPageUITests: XCTestCase {
         XCTAssertLessThan(
             answer.frame.minX - field.frame.minX, width * 0.1, "the answer starts at the chat's leading edge"
         )
-    }
-
-    /// The agent's newest answer has "Wait, what?" under it, and the chat opens at its end.
-    func testAnAnsweredAskOffersWaitWhatAtItsEnd() {
-        launch(["-PRHubAskAnswered"])
-        openCheckout()
-        app.buttons["pr-ask"].tap()
-        let waitWhat = app.buttons["pr-ask-wait-what"]
-        XCTAssertTrue(waitWhat.waitForExistence(timeout: 5))
-        XCTAssertTrue(waitWhat.isHittable, "the chat opens at its end, with Wait, what? in sight")
     }
 
     func testAnEmptyAskChatDoesNotClaimAMessageWasSent() {

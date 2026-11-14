@@ -70,14 +70,6 @@ extension PRSession {
         await send(question)
     }
 
-    /// One of the chat's quick replies ("Wait, what?"): about the whole PR, and leaving the box's draft as it is.
-    func sendAsk(_ words: String) async {
-        guard let head = content?.detail.head, !isSendingAsk else {
-            return
-        }
-        await send(PRAskQuestion(question: words, head: head, anchor: nil))
-    }
-
     /// A question that could not go, sent again: from the phone, or one the Worker could not hand to the agent.
     func retryAsk() async {
         if case let .failed(question, _) = askSend {

@@ -5,7 +5,7 @@ import type { AskInput } from "../src/ask-chat.ts";
 import { askGitHubReach, rateLimitWords } from "../src/app-token.ts";
 import { withQueued } from "../src/ask-queue.ts";
 import { AskFailure } from "../src/ask-trace.ts";
-import { askSubscriptionPrompt, PR_BODY_KEPT, type PrFacts } from "../src/ask-setup.ts";
+import { ANSWER_SHAPE, askSubscriptionPrompt, askSystemPrompt, PR_BODY_KEPT, type PrFacts } from "../src/ask-setup.ts";
 import { askOnSubscription, subscriptionChat, type SubscriptionRecord, TURN_LOST_MS } from "../src/ask-subscription.ts";
 import type { Env } from "../src/env.ts";
 import type { RepoFullName, Sha } from "../src/ids.ts";
@@ -102,6 +102,13 @@ test("the prompt names the repo, the PR, its title, author, branches and link, a
   const long = askSubscriptionPrompt({ reviewer: null, repo: REPO, number: 7, pr: { ...FACTS, body: "x".repeat(PR_BODY_KEPT + 50) },
     reach: "wide" });
   assert.match(long, /\[cut\]/);
+});
+
+test("both paths shape every answer for a reader with ADHD", () => {
+  for (const prompt of [askSubscriptionPrompt({ reviewer: null, repo: REPO, number: 7, pr: FACTS, reach: "wide" }), askSystemPrompt(null)]) {
+    assert.ok(prompt.includes(ANSWER_SHAPE));
+    assert.ok(!prompt.includes("a few short paragraphs"));
+  }
 });
 
 test("without a read-only token the prompt says the agent keeps to the checkout; hosted, to repos the reviewer can see", () => {
