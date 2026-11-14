@@ -116,6 +116,14 @@ final class WorkerConnection {
         isHosted && isSignedOutOfGitHub
     }
 
+    /// Why the last sign-in stopped, in the words under its button. Nil when it did not, or he closed the sheet.
+    var signInProblem: String? {
+        if case let .signInFailed(error) = phase {
+            return error.message
+        }
+        return nil
+    }
+
     var isWorking: Bool {
         if case .working = phase {
             return true

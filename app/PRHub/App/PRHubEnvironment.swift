@@ -132,6 +132,21 @@ final class PRHubEnvironment {
         PRSampleSet.resetListSettings()
     }
 
+    /// The samples' way out, from their Settings. Where the build signs in with GitHub this is the sign-in itself, in
+    /// one tap, with no stop at onboarding for a second "Sign in with GitHub". Signed in, the samples are over. A
+    /// sign-in that he cancels or that fails leaves him in the samples, with what he did to them; their Settings say
+    /// why it failed (`WorkerConnection.signInProblem`).
+    func leaveSample() async {
+        guard connection.build.signInWithGitHub, connection.hosted != nil else {
+            endSample()
+            return
+        }
+        await signIn()
+        if connection.isPaired {
+            endSample()
+        }
+    }
+
     /// Settings' Disconnect: the Worker forgets this phone, the phone forgets the Worker and every PR it mirrored, so
     /// the next Worker starts from nothing.
     func disconnect() async {

@@ -11,6 +11,8 @@ struct PRHubSettingsView: View {
     let environment: PRHubEnvironment
     /// Back from the samples to onboarding; nil over a paired Worker.
     var endSample: (() -> Void)?
+    /// Over the samples, the connection that "Sign in with GitHub" signs in.
+    var signIn: WorkerConnection?
     @State private var confirmsDisconnect = false
     @State private var confirmsDelete = false
     @State private var signingOut = false
@@ -68,7 +70,12 @@ struct PRHubSettingsView: View {
                 systemImage: (connection.build.signInWithGitHub ? AppIcon.signIn : AppIcon.ownWorker).symbol
             ) { endSample() }
                 .buttonStyle(PRButtonStyle(.primary))
+                .disabled(signIn?.isWorking == true)
                 .accessibilityIdentifier("prhub-connect-own-worker")
+            if let problem = signIn?.signInProblem {
+                ProblemLine(message: problem)
+                    .accessibilityIdentifier("prhub-samples-sign-in-problem")
+            }
         }
     }
 

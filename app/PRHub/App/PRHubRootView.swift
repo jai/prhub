@@ -38,7 +38,10 @@ struct PRHubRootView: View {
                     .transition(.opacity)
             case .samples:
                 if let sample = environment.sample {
-                    PRHubTabs(environment: sample, endSample: { environment.endSample() })
+                    PRHubTabs(
+                        environment: sample, endSample: { Task { await environment.leaveSample() } },
+                        signIn: connection
+                    )
                         .transition(.opacity)
                 }
             case .tabs:
@@ -102,6 +105,8 @@ struct PRHubRootView: View {
 private struct PRHubTabs: View {
     let environment: PRHubEnvironment
     let endSample: (() -> Void)?
+    /// Over the samples, the connection their Sign in with GitHub signs in: its work and its failure show there.
+    var signIn: WorkerConnection?
 
     private var tabs: [PRHubTab] {
         environment.connection.config?.isOn(.feedback) == true ? [.prs, .feedback, .settings] : [.prs, .settings]
@@ -123,7 +128,7 @@ private struct PRHubTabs: View {
                 .accessibilityIdentifier(PRHubTab.feedback.identifier)
             }
             Tab("Settings", systemImage: AppIcon.settings.symbol, value: PRHubTab.settings) {
-                PRHubSettingsView(environment: environment, endSample: endSample)
+                PRHubSettingsView(environment: environment, endSample: endSample, signIn: signIn)
             }
             .accessibilityIdentifier(PRHubTab.settings.identifier)
         }

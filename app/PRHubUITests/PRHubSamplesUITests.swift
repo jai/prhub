@@ -51,7 +51,29 @@ final class PRHubSamplesUITests: XCTestCase {
         let connect = app.buttons["prhub-connect-own-worker"]
         XCTAssertTrue(connect.waitForExistence(timeout: 5))
         connect.tap()
-        XCTAssertTrue(app.buttons["onboardingSignIn"].waitForExistence(timeout: 5), "back on onboarding")
+        // The sign-in itself, in one tap: no stop at onboarding for a second Sign in with GitHub.
+        XCTAssertTrue(waitFor { !connect.exists }, "signed in, the samples are over")
+        XCTAssertFalse(app.buttons["onboardingSignIn"].exists, "and onboarding never showed")
+        XCTAssertFalse(app.staticTexts["prhub-samples-explained"].exists)
+    }
+
+    /// The 2026-11-10 bug bash: a sign-in refused from the samples left him at onboarding, and what he had done to the
+    /// samples was gone when he came back to them.
+    func testASignInRefusedFromTheSamplesLeavesThemAsTheyWereAndSaysWhy() {
+        app.launchArguments = ["-PRHubFirstRun", "-PRHubSignInDenied"]
+        app.launch()
+        let trySamples = app.buttons["onboardingTrySamples"]
+        XCTAssertTrue(trySamples.waitForExistence(timeout: 10))
+        trySamples.tap()
+        app.go(to: .settings)
+        let connect = app.buttons["prhub-connect-own-worker"]
+        XCTAssertTrue(connect.waitForExistence(timeout: 5))
+        connect.tap()
+        let problem = app.descendants(matching: .any)["prhub-samples-sign-in-problem"]
+        XCTAssertTrue(problem.waitForExistence(timeout: 5), "GitHub's refusal is said under the button")
+        XCTAssertTrue(connect.exists, "still in the samples' Settings")
+        XCTAssertTrue(app.staticTexts["prhub-samples-explained"].exists)
+        XCTAssertFalse(app.buttons["onboardingSignIn"].exists)
     }
 
     /// Settings' switch for anonymous usage data: on until turned off, in a build that names an analytics project.
@@ -79,5 +101,16 @@ final class PRHubSamplesUITests: XCTestCase {
         let status = app.descendants(matching: .any)["onboardingStatus"]
         XCTAssertTrue(status.waitForExistence(timeout: 5))
         XCTAssertTrue(status.label.contains("expired"), status.label)
+    }
+
+    private func waitFor(timeout: TimeInterval = 5, _ condition: () -> Bool) -> Bool {
+        let end = Date.now.addingTimeInterval(timeout)
+        while Date.now < end {
+            if condition() {
+                return true
+            }
+            RunLoop.current.run(until: Date.now.addingTimeInterval(0.1))
+        }
+        return condition()
     }
 }
