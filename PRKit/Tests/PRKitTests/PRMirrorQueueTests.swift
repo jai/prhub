@@ -263,6 +263,42 @@ struct PRMirrorQueueTests {
         #expect(await worker.count("\(gone.number)/diff") == 1)
     }
 
+    /// An open PR with no changes (2026-11-14, 0 files on GitHub): its diff is empty, the mirror refused it as
+    /// unreadable on every try, and the list said "1 of 125 PRs could not be downloaded" whatever was pulled.
+    @Test func aPRThatChangesNothingLandsWithItsEmptyDiff() async {
+        let item = row(1)
+        await worker.answer(diffPath(item), body: "")
+        let directory = Self.ownDirectory()
+        let mirror = mirror(in: directory)
+        _ = await mirror.begin([item], generation: 1)
+        let result = await mirror.sync(generation: 1)
+        #expect(result?.rows.map(\.id) == [item.id] && result?.failed.isEmpty == true && result?.isComplete == true)
+        // It opens: a description, and a diff with no files.
+        let model = PRsModel(client: client, directory: directory)
+        guard case let .document(document, _)? = model.session(for: item).content?.diff else {
+            Issue.record("the PR has no content, or its diff reads as too large")
+            return
+        }
+        #expect(document.files.isEmpty)
+    }
+
+    @Test func anEmptyDiffOfAPRWithChangesIsNotTaken() async {
+        let item = row(1)
+        await worker.answer(diffPath(item), body: "")
+        await worker.answer(detailPath(item), body: Self.detailWithChanges)
+        let mirror = mirror()
+        _ = await mirror.begin([item], generation: 1)
+        let result = await mirror.sync(generation: 1)
+        #expect(result?.rows.isEmpty == true && result?.failed == [item.id])
+        #expect(await worker.count("/diff") == 3, "tried as any answer that does not read")
+    }
+
+    private static let detailWithChanges = """
+        {"url":"u","head":"h","base":"main","headBranch":"b","author":null,"isAuthor":false,"body":"","additions":4,
+        "deletions":1,"changedFiles":2,"reviewDecision":null,"mergeState":"CLEAN","labels":[],"checks":[],
+        "comments":{"nodes":[]},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]},"title":null}
+        """
+
     @Test func aFailedFileWaitsForAPullWhichTriesItAtOnce() async {
         let item = row(1)
         await worker.answer(diffPath(item), statuses: [404])

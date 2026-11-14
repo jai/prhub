@@ -225,7 +225,7 @@ actor PRMirror {
     private func download(_ row: PullRequestRow, generation: Int) async -> Bool {
         let route = "prs/\(row.repo)/\(row.number)"
         async let diff = row.hasDiff && !fileExists(row.diffFileName)
-            ? file(row.diffFileName, check: readable("\(route)/diff") { !$0.isEmpty }, read: {
+            ? file(row.diffFileName, check: readableDiff(of: row, route: "\(route)/diff"), read: {
                 try await self.client.diff(row)
             }) : .landed
         async let detail = !fileExists(row.detailFileName)
@@ -245,6 +245,27 @@ actor PRMirror {
             await rowLanded(generation: generation) // its failure, for the row to say so
         }
         return whole
+    }
+
+    /// A diff reads when it has text. An empty one reads only for a PR that changes nothing, which its description
+    /// says (`changedFiles`): GitHub's diff of such a PR is empty, and refusing it left the PR "not downloaded" for
+    /// good. Before the description is here the diff is asked again; for a PR with changes it is an unreadable answer.
+    private nonisolated func readableDiff(of row: PullRequestRow, route: String) -> @Sendable (Data) -> Bool {
+        { [client, directory] data in
+            guard data.isEmpty else {
+                return true
+            }
+            let detail = (try? Data(contentsOf: directory.appending(path: row.detailFileName)))
+                .flatMap { try? PullRequestDetail.decode($0) }
+            guard let detail else {
+                return false
+            }
+            if detail.changedFiles == 0 {
+                return true
+            }
+            client.reportFailure(path: route, .unreadable)
+            return false
+        }
     }
 
     /// `check`, with a file it refuses reported as an unreadable answer of `route`.
