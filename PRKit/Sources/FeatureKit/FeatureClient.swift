@@ -28,6 +28,17 @@ public struct FeatureList: Decodable, Equatable, Sendable {
     }
 }
 
+/// The coding thread the feedback agent runs in, once the runner has started it.
+public struct FeatureAgentThread: Codable, Equatable, Hashable, Sendable {
+    public let host: String
+    public let id: String
+
+    public init(host: String, id: String) {
+        self.host = host
+        self.id = id
+    }
+}
+
 /// One request's conversation with the builder agent: the Ask chat's shape, and whether the builder Mac is taking work.
 public struct FeatureChat: Decodable, Equatable, Sendable {
     public var id: String
@@ -37,12 +48,14 @@ public struct FeatureChat: Decodable, Equatable, Sendable {
     public var problem: String?
     public var costCents: Int?
     public var builderOnline: Bool
+    /// The agent's coding thread. A host with its own thread conversation can use that same reply path here.
+    public var thread: FeatureAgentThread?
     /// How many screenshots each message carried, by its id; none for a message without.
     public var screenshots: [String: Int]
 
     public init(
         id: String, messages: [PRAskChat.Message], isWorking: Bool, activity: String?, problem: String?,
-        costCents: Int?, builderOnline: Bool, screenshots: [String: Int] = [:]
+        costCents: Int?, builderOnline: Bool, screenshots: [String: Int] = [:], thread: FeatureAgentThread? = nil
     ) {
         self.id = id
         self.messages = messages
@@ -51,11 +64,12 @@ public struct FeatureChat: Decodable, Equatable, Sendable {
         self.problem = problem
         self.costCents = costCents
         self.builderOnline = builderOnline
+        self.thread = thread
         self.screenshots = screenshots
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, messages, isWorking, activity, problem, costCents, builderOnline
+        case id, messages, isWorking, activity, problem, costCents, builderOnline, thread
     }
 
     /// The count a message's `images` gives; a Worker from before them sends none.
@@ -73,6 +87,13 @@ public struct FeatureChat: Decodable, Equatable, Sendable {
         problem = try container.decodeIfPresent(String.self, forKey: .problem)
         costCents = try container.decodeIfPresent(Int.self, forKey: .costCents)
         builderOnline = try container.decode(Bool.self, forKey: .builderOnline)
+        if let agentThread = try container.decodeIfPresent(FeatureAgentThread.self, forKey: .thread),
+           !agentThread.host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !agentThread.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            thread = agentThread
+        } else {
+            thread = nil
+        }
         let counted = try container.decode([Counted].self, forKey: .messages)
         screenshots = Dictionary(counted.compactMap { message in
             message.images.flatMap { $0 > 0 ? (message.id, $0) : nil }

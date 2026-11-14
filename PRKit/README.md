@@ -36,6 +36,22 @@ Tab("PRs", systemImage: "arrow.triangle.pull", value: PRHubTab.prs) {
 
 PRHub's host is `app/PRHub/App/PRHubHost.swift`.
 
+### Feedback in a host that already has coding-thread chats
+
+`FeatureRequestsView(model:)` keeps its own conversation. A host that also shows the agent's coding threads can
+provide its existing conversation instead, sharing that thread's delivery statuses, reply queue and Send now:
+
+```swift
+FeatureRequestsView(model: feedback) { thread in
+    CodingThreadConversation(host: thread.host, id: thread.id)
+}
+```
+
+The closure receives `FeatureAgentThread` from the feedback response's `thread` (`host` and `id`). Until the runner
+names it, Feedback keeps its composer and first-message flow; when it arrives, the host's view replaces the chat in
+place. The feedback list and navigation stay the same. Older Workers, samples without a thread, and hosts using the
+existing initializers keep the built-in conversation.
+
 ## What the host gives
 
 | `PRKitHost` member | What it is |

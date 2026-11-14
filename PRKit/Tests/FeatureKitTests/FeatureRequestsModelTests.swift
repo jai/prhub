@@ -44,6 +44,51 @@ struct FeatureRequestsModelTests {
         #expect(chat.screenshots == ["e1": 2] && chat.messages.count == 2)
     }
 
+    @Test func aChatNamesTheAgentsCodingThread() throws {
+        let json = #"{"id":"sesn_1","messages":[],"isWorking":true,"builderOnline":true,"thread": "#
+            + #"{"host":"builder","id":"codex:session-1"}}"#
+        let chat = try JSONDecoder().decode(FeatureChat.self, from: Data(json.utf8))
+
+        #expect(chat.thread == FeatureAgentThread(host: "builder", id: "codex:session-1"))
+    }
+
+    @Test func aChatWithoutAnAgentThreadKeepsTheFeedbackConversation() throws {
+        for thread in ["", #", "thread": null"#] {
+            let json = #"{"id":"sesn_1","messages":[],"isWorking":false,"builderOnline":true"# + thread + "}"
+            let chat = try JSONDecoder().decode(FeatureChat.self, from: Data(json.utf8))
+            #expect(chat.thread == nil)
+        }
+    }
+
+    @Test func aThreadMustNameBothItsHostAndSession() throws {
+        let json = #"{"id":"sesn_1","messages":[],"isWorking":true,"builderOnline":true,"thread": "#
+            + #"{"host":"builder"}}"#
+
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(FeatureChat.self, from: Data(json.utf8))
+        }
+    }
+
+    @Test func blankThreadMetadataKeepsTheFeedbackConversation() throws {
+        for thread in [#"{"host":" ","id":"codex:session-1"}"#, #"{"host":"builder","id":""}"#] {
+            let json = #"{"id":"sesn_1","messages":[],"isWorking":true,"builderOnline":true,"thread": "#
+                + thread + "}"
+            let chat = try JSONDecoder().decode(FeatureChat.self, from: Data(json.utf8))
+            #expect(chat.thread == nil)
+        }
+    }
+
+    @Test func sampleChatsCanNameAnAgentThreadAndOlderInitializersStayEmpty() {
+        var chat = FeatureChat(
+            id: "sesn_1", messages: [], isWorking: false, activity: nil, problem: nil,
+            costCents: nil, builderOnline: true
+        )
+        #expect(chat.thread == nil)
+        let thread = FeatureAgentThread(host: "builder", id: "codex:session-1")
+        chat.thread = thread
+        #expect(chat.thread == thread)
+    }
+
     /// The first message of a new conversation makes the thread; the conversation keeps its route and goes on there.
     @Test func theFirstMessageMakesTheThread() async {
         let worker = Worker()
