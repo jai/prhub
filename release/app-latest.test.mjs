@@ -25,7 +25,10 @@ test("App Store Connect's builds, with their version and where testers can insta
     paths.push(`${method} ${path}`);
     return document;
   });
-  assert.match(paths[0], /^GET builds\?filter\[app\]=6831601628&filter\[processingState\]=VALID&filter\[expired\]=false/);
+  assert.match(
+    paths[0],
+    /^GET builds\?filter\[app\]=6831601628&filter\[preReleaseVersion\.platform\]=IOS&filter\[processingState\]=VALID&filter\[expired\]=false/,
+  );
   assert.deepEqual(builds, [
     { version: "1.0", build: "214", internal: true, external: false },
     { version: "1.0", build: "198", internal: true, external: true },

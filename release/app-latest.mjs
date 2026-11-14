@@ -17,10 +17,15 @@ export const BRANCH = "ci/app-latest";
 export const PATH = "app-latest.json";
 const AVAILABLE = "IN_BETA_TESTING";
 
-/** PRHub's processed, unexpired builds: { version, build, internal, external }, from App Store Connect. */
+/**
+ * PRHub's processed, unexpired iPhone and iPad builds: { version, build, internal, external }, from App Store Connect.
+ * The Mac's builds have numbers of their own from the same sequence, so they are left out: a newer Mac build would tell
+ * every phone an update is waiting.
+ */
 export async function recentBuilds(request) {
   const query = [
-    `filter[app]=${APP_ID}`, "filter[processingState]=VALID", "filter[expired]=false", "sort=-uploadedDate",
+    `filter[app]=${APP_ID}`, "filter[preReleaseVersion.platform]=IOS", "filter[processingState]=VALID",
+    "filter[expired]=false", "sort=-uploadedDate",
     "limit=50", "include=preReleaseVersion,buildBetaDetail", "fields[builds]=version,preReleaseVersion,buildBetaDetail",
     "fields[preReleaseVersions]=version", "fields[buildBetaDetails]=internalBuildState,externalBuildState",
   ].join("&");

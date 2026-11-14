@@ -8,6 +8,8 @@
 // succeeded or failed (a failed commit is not retried; the next app change starts a build).
 // Before it starts one it makes the build's version (release/version.mjs): a feat or fix since the newest vX.Y.Z tag
 // tags main's head with the next version and makes its GitHub Release; a head with a v-tag keeps it.
+// With the phone's build it starts the Mac's, Internal - TestFlight (Mac) (internal_mac_workflow), on the same commit:
+// a build of its own number, since every workflow of the product shares one sequence.
 // Needs ASC_KEY_P8 (the .p8 key's PEM text), ASC_KEY_ID and ASC_ISSUER_ID, and GITHUB_TOKEN (contents: write) and
 // GITHUB_REPOSITORY to tag. The workflow is known by its id, internal_workflow in app/ci_scripts/workflows.sh.
 // --dry-run prints the decision and the version, and starts and tags nothing.
@@ -161,7 +163,9 @@ export async function startBuild(request, workflowID, referenceID) {
  * version and `version.publish(plan)` tags main's head and makes the Release (release/version.mjs), so Xcode Cloud's
  * clone sees the tag.
  */
-export async function run({ request, workflowID, head, changedSince, version, dryRun, log = console.log }) {
+export async function run({
+  request, workflowID, macWorkflowID, head, changedSince, version, dryRun, log = console.log,
+}) {
   const decision = decide({ runs: await recentRuns(request, workflowID), head, changedSince });
   if (decision.action !== "start") {
     log(decision.reason);
@@ -174,8 +178,13 @@ export async function run({ request, workflowID, head, changedSince, version, dr
   }
   const published = await version.publish(plan);
   const number = await startBuild(request, workflowID, await mainReference(request, workflowID));
-  log(`started build ${number ?? "?"} of ${short(head)}, ${published}: ${decision.reason}`);
-  return { ...decision, plan, number };
+  // The Mac's follows the phone's decision: one cadence, and the phone's runs are the record of what was built.
+  const macNumber = macWorkflowID
+    ? await startBuild(request, macWorkflowID, await mainReference(request, macWorkflowID))
+    : undefined;
+  const mac = macWorkflowID ? ` and the Mac's ${macNumber ?? "?"}` : "";
+  log(`started build ${number ?? "?"}${mac} of ${short(head)}, ${published}: ${decision.reason}`);
+  return { ...decision, plan, number, macNumber };
 }
 
 function git(...args) {
@@ -205,10 +214,11 @@ function commitsInGit(range) {
     });
 }
 
-function workflowIDFromFile() {
+/** A workflow's id from app/ci_scripts/workflows.sh; one that is not `required` is undefined when the file has none. */
+function workflowIDFromFile(name = "internal_workflow", required = true) {
   const text = readFileSync(new URL("../app/ci_scripts/workflows.sh", import.meta.url), "utf8");
-  const id = text.match(/^internal_workflow=(\S+)$/m)?.[1];
-  if (!id) throw new Error("no internal_workflow= in app/ci_scripts/workflows.sh");
+  const id = text.match(new RegExp(`^${name}=(\\S+)$`, "m"))?.[1];
+  if (!id && required) throw new Error(`no ${name}= in app/ci_scripts/workflows.sh`);
   return id;
 }
 
@@ -238,6 +248,7 @@ async function main() {
       issuerID: process.env.ASC_ISSUER_ID,
     }),
     workflowID: workflowIDFromFile(),
+    macWorkflowID: workflowIDFromFile("internal_mac_workflow", false),
     head,
     changedSince: changedSinceInGit,
     version: {

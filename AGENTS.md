@@ -102,6 +102,11 @@ new event that breaks a rule below is a privacy policy change, not a code change
   it made no new version). Xcode Cloud numbers the build itself; its **Next Build Number** (App Store Connect → PRHub
   → Xcode Cloud → Settings) must stay above TestFlight's highest build, or the upload is refused. Nothing to run; `node release/cadence.mjs --dry-run` says
   what it would do.
+  The Mac app goes to the same group from a workflow of its own, **Internal - TestFlight (Mac)**, which the cadence
+  starts with the phone's build on the same commit. Its build has its own number, and `release/app-latest.mjs` counts
+  only the phone's builds. The Internal group has every build, so the Mac's needs no TestFlight post-action. The
+  Mac's icon sizes come from `swift app/Tools/icon/mac-icon.swift`; run it when `PRHubIcon.png` changes. The Public
+  group has no Mac build yet.
 - **PRHub for the Public group**: a release is one commit on `main` that sets `CURRENT_PROJECT_VERSION` in `app/project.yml` to N, with
   the subject `chore(release): PRHub build N — <What to Test>`. Take N from `release/next-build.sh`, change nothing
   else in that commit, and change `CURRENT_PROJECT_VERSION` in no other commit.

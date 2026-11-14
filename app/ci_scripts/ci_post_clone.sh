@@ -9,7 +9,8 @@
 # `xcodebuild -resolvePackageDependencies` in app/, then copy the project's Package.resolved back to app/.
 # In every workflow it sets MARKETING_VERSION to the newest vX.Y.Z tag reachable from the commit (release/version.mjs
 # makes them from conventional commits; nobody edits MARKETING_VERSION). The clone can be shallow and without tags.
-# In the Internal - TestFlight workflow it marks the build as the Internal group's (PRHUB_INTERNAL_TESTFLIGHT).
+# In the Internal - TestFlight workflow, and the Mac's, it marks the build as the Internal group's
+# (PRHUB_INTERNAL_TESTFLIGHT).
 # In the PRHub Tests workflow it runs PRKit's `swift test` here, on the one Mac with the sources: the test Macs get only
 # the built products, so the PRHub scheme's PRKitTests skip what reads docs/fixtures/, and the Mac's code runs only here.
 # That workflow is known by its id, which a rename leaves alone; where Xcode Cloud gives no id, every run that is not a
@@ -41,7 +42,7 @@ fi
 echo "workflow: ${CI_WORKFLOW_ID:-no id} (${CI_WORKFLOW:-no name})"
 # An Internal - TestFlight build compares itself with the Internal group's newest build for Update available
 # (PRHubUpdate); every other build with the Public group's.
-if [[ ${CI_WORKFLOW_ID:-} == "$internal_workflow" ]]; then
+if [[ ${CI_WORKFLOW_ID:-} == "$internal_workflow" || ${CI_WORKFLOW_ID:-} == "$internal_mac_workflow" ]]; then
     print 'SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) PRHUB_INTERNAL_TESTFLIGHT' >> "$app/Config/PRHub.xcconfig"
     echo "internal: built for the Internal TestFlight group"
 fi

@@ -23,7 +23,7 @@ function stubAPI(runs) {
         })),
       };
     }
-    if (path.startsWith(`ciWorkflows/${WORKFLOW}/repository`)) return { data: { id: "repo-1" } };
+    if (/^ciWorkflows\/[\w-]+\/repository/.test(path)) return { data: { id: "repo-1" } };
     if (path.startsWith("scmRepositories/repo-1/gitReferences")) {
       return {
         data: [
@@ -32,7 +32,10 @@ function stubAPI(runs) {
         ],
       };
     }
-    if (method === "POST" && path === "ciBuildRuns") return { data: { id: "run-9", attributes: { number: 9 } } };
+    if (method === "POST" && path === "ciBuildRuns") {
+      const number = 9 + calls.filter((c) => c.method === "POST").length - 1;
+      return { data: { id: `run-${number}`, attributes: { number } } };
+    }
     throw new Error(`unexpected ${method} ${path}`);
   };
   return { request, calls };
@@ -110,6 +113,18 @@ test("a change inside the app paths makes the version, then starts the workflow 
     workflow: { data: { type: "ciWorkflows", id: WORKFLOW } },
     sourceBranchOrTag: { data: { type: "scmGitReferences", id: "ref-main" } },
   });
+});
+
+test("with a Mac workflow, its build starts on the same commit after the phone's", async () => {
+  const { request, calls } = stubAPI([succeeded]);
+  const lines = [];
+  const decision = await run({
+    request, workflowID: WORKFLOW, macWorkflowID: "workflow-mac", head: HEAD, changedSince: () => ["app/x"],
+    version: stubVersion(), dryRun: false, log: (line) => lines.push(line),
+  });
+  assert.deepEqual([decision.number, decision.macNumber], [9, 10]);
+  assert.match(lines[0], /^started build 9 and the Mac's 10 of hhhhhhh, /);
+  assert.deepEqual(posts(calls).map((post) => post.body.data.relationships.workflow.data.id), [WORKFLOW, "workflow-mac"]);
 });
 
 test("--dry-run decides and plans the version but starts and tags nothing", async () => {
