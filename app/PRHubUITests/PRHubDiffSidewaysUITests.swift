@@ -37,8 +37,7 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
     func testTheHeaderAndTheNoteStayWhileTheCodeScrolls() throws {
         for (name, textSize) in Self.textSizes {
             try openKeyLineNote(textSize: textSize)
-            let before = Positions(app)
-            drag(from: 0.6, by: -150, holding: 0.3, bringingUpCode: true)
+            let before = drag(from: 0.6, by: -150, holding: 0.3, bringingUpCode: true)
             try picture("diff-sideways-\(name)-3-scrolled-left")
             let after = Positions(app)
             if isWide, after.line.minX == before.line.minX {
@@ -76,7 +75,10 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
 
     /// A finger on the first code line under the pinned header, `start` of the way across the diff (from its header's
     /// path to its viewed mark: an iPad's list may be beside it), moved `distance` sideways.
-    private func drag(from start: CGFloat, by distance: CGFloat, holding: TimeInterval, bringingUpCode: Bool = false) {
+    @discardableResult
+    private func drag(
+        from start: CGFloat, by distance: CGFloat, holding: TimeInterval, bringingUpCode: Bool = false
+    ) -> Positions {
         let lines = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH 'diff-line-'"))
         var positions = Positions(app)
         // The topmost line under the header, well above the screen's bottom edge: a sideways drag there switches apps.
@@ -84,8 +86,6 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
             lines.allElementsBoundByIndex.map(\.frame)
                 .filter { $0.minY > positions.header.maxY && $0.maxY < positions.screen.maxY * 0.75 }
         }
-        // In the largest text the open note fills the screen under the header: the code comes up from under it, where
-        // a test reads only sideways positions.
         for _ in 0..<3 where bringingUpCode && below.isEmpty {
             app.tables.firstMatch.swipeUp(velocity: .slow)
             positions = Positions(app)
@@ -108,6 +108,7 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
             }
             frame = first.frame
         }
+        return positions
     }
 
     /// A sample PR's row on For review, scrolled to: at the largest text size a row is taller than half the screen.
