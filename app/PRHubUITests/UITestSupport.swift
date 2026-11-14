@@ -80,7 +80,16 @@ extension XCUIApplication {
     /// its summary over Review changes (2026-11-14): in the largest text the button is several screens down, and the
     /// lazy page has not made it yet.
     @MainActor func reveal(_ element: XCUIElement) -> Bool {
+        // The review alerts offer comes up over the PRs when the app decides, and takes the tap meant for the page
+        // (an iPad on CI, 2026-11-14): Not now, as someone reading would.
+        let notNow = alerts.buttons["Not now"]
+        if notNow.exists {
+            notNow.tap()
+        }
         for _ in 0..<15 where !isTappable(element) {
+            if notNow.exists {
+                notNow.tap()
+            }
             let top = navigationBars.firstMatch.exists ? navigationBars.firstMatch.frame.maxY : 0
             if element.exists, element.frame.maxY > 0, element.frame.midY < top {
                 swipeDown(velocity: .slow)
