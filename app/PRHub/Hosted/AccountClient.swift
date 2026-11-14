@@ -42,6 +42,14 @@ struct AccountClient: Sendable {
         }
     }
 
+    private struct LinearConnection: Decodable {
+        let linearKey: Bool
+
+        private enum CodingKeys: String, CodingKey {
+            case linearKey = "linear_key"
+        }
+    }
+
     /// Read per request, as the PR screens' are.
     var worker: @Sendable () -> URL?
     var bearer: @Sendable () throws -> String
@@ -84,11 +92,14 @@ struct AccountClient: Sendable {
     }
 
     func setLinearKey(_ key: String) async throws(Failure) {
-        _ = try await send("PUT", "account/linear-key", body: encode(["key": key]))
+        let answer = try decode(LinearConnection.self,
+                                try await send("PUT", "account/linear-key", body: encode(["key": key])))
+        guard answer.linearKey else { throw .decoding }
     }
 
     func removeLinearKey() async throws(Failure) {
-        _ = try await send("DELETE", "account/linear-key")
+        let answer = try decode(LinearConnection.self, try await send("DELETE", "account/linear-key"))
+        guard !answer.linearKey else { throw .decoding }
     }
 
     private func send(

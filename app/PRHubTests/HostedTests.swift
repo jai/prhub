@@ -200,6 +200,17 @@ struct AccountClientTests {
         #expect(requests[1].httpBody == nil)
     }
 
+    @Test func aLinearConnectionRequiresTheWorkersConfirmedAnswer() async {
+        let stub = StubWorker([.reply(status: 200, body: "<html>Sign in</html>"),
+                               .reply(status: 200, body: #"{"linear_key":true}"#)])
+        await #expect(throws: AccountClient.Failure.decoding) {
+            try await Self.client(stub).setLinearKey("lin_api_synthetic01234567890")
+        }
+        await #expect(throws: AccountClient.Failure.decoding) {
+            try await Self.client(stub).removeLinearKey()
+        }
+    }
+
     @Test func aFreshConfigAsksTheWorkerToReadTheInstallationsFirst() async throws {
         let body = #"{"features":{},"hosted":true}"#
         let stub = StubWorker([.reply(status: 200, body: body), .reply(status: 200, body: body)])
