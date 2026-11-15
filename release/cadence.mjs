@@ -3,7 +3,7 @@
 //   node release/cadence.mjs decide [--dry-run]     whether main's head is due a release; to GITHUB_OUTPUT, sha=<head>
 //   node release/cadence.mjs release <sha> [--dry-run]   after the full tests of <sha> passed: its version and builds
 // No Xcode Cloud workflow starts on a push or a pull request; this is the only thing that starts them.
-// decide: nothing while a build of Internal - TestFlight is pending or running, or when a scheduled hourly run already
+// decide: nothing within an hour of the newest Internal build (at most one release an hour), nothing while a build of Internal - TestFlight is pending or running, or when a scheduled hourly run already
 // failed on main's head (a red commit is not retried; the next push is, or a run by hand). Otherwise the last released commit is that of
 // Internal - TestFlight's newest run that SUCCEEDED (or, with none in the last 10, its newest run). Main's head is due
 // when it differs from it and the commits between touch app/, PRKit/, Package.swift or DESIGN.md, unless a build of
@@ -45,7 +45,14 @@ const RELEASE_SUBJECT = /^chore\(release\): PRHub build \d+ — /;
  * head, whether the hourly run already failed on the head, and a `changedSince(commit)` that lists the files changed
  * from that commit to the head. Returns { action: "busy" | "none" | "start", reason, run?, last? }.
  */
-export function decide({ runs, head, failedBefore = false, changedSince }) {
+export function decide({ runs, head, failedBefore = false, changedSince, now = Date.now() }) {
+  // At most one release an hour, timed from the newest Internal build (ci on main can start this several times an hour).
+  const newest = runs.find((run) => run.created);
+  const minutes = newest ? Math.floor((now - Date.parse(newest.created)) / 60_000) : Infinity;
+  const start = (reason, extra) =>
+    minutes < 60
+      ? { action: "none", reason: `${reason}, but build ${newest.number} started ${minutes} minutes ago: at most one release an hour` }
+      : { action: "start", reason, ...extra };
   const busy = runs.find((run) => BUSY.has(run.progress));
   if (busy)
     return { action: "busy", reason: `build ${busy.number} is ${busy.progress} (${short(busy.commit)})`, run: busy };
@@ -53,11 +60,11 @@ export function decide({ runs, head, failedBefore = false, changedSince }) {
   if (atHead) return { action: "none", reason: `no change: build ${atHead.number} of ${short(head)} ${atHead.status}` };
   if (failedBefore) return { action: "none", reason: `no release: the hourly run failed on ${short(head)} before` };
   const last = runs.find((run) => run.status === "SUCCEEDED") ?? runs[0];
-  if (!last) return { action: "start", reason: `no earlier build; releasing ${short(head)}` };
+  if (!last) return start(`no earlier build; releasing ${short(head)}`);
   if (last.commit === head) return { action: "none", reason: `no change: ${short(head)} is build ${last.number}` };
   const changed = changedSince(last.commit);
   if (changed === null)
-    return { action: "start", reason: `build ${last.number}'s ${short(last.commit)} is not in main's history`, last };
+    return start(`build ${last.number}'s ${short(last.commit)} is not in main's history`, { last });
   if (!touchesApp(changed)) {
     return {
       action: "none",
@@ -65,7 +72,7 @@ export function decide({ runs, head, failedBefore = false, changedSince }) {
       last,
     };
   }
-  return { action: "start", reason: `app changed since build ${last.number} (${short(last.commit)})`, last };
+  return start(`app changed since build ${last.number} (${short(last.commit)})`, { last });
 }
 
 /**
@@ -139,10 +146,11 @@ function runOf({ id, attributes }) {
     commit: attributes.sourceCommit?.commitSha ?? null,
     progress: attributes.executionProgress,
     status: attributes.completionStatus ?? null,
+    created: attributes.createdDate ?? null,
   };
 }
 
-const RUN_FIELDS = "number,executionProgress,completionStatus,sourceCommit";
+const RUN_FIELDS = "number,createdDate,executionProgress,completionStatus,sourceCommit";
 
 export async function recentRuns(request, workflowID) {
   const document = await request(
@@ -294,14 +302,15 @@ async function main() {
 
   if (mode === "decide") {
     const head = git("rev-parse", "origin/main");
-    // A scheduled hourly run that failed on this head: its tests were red. A run by hand tries again.
+    // A scheduled or ci-started run that failed on this head: its tests were red. A run by hand tries again.
     const failed = github && process.env.GITHUB_EVENT_NAME !== "workflow_dispatch"
-      ? await github("GET", `actions/workflows/hourly-release.yml/runs?head_sha=${head}&event=schedule&status=failure&per_page=1`)
+      ? await github("GET", `actions/workflows/hourly-release.yml/runs?head_sha=${head}&status=failure&per_page=30`)
       : null;
+    const failedBefore = (failed?.workflow_runs ?? []).some((run) => ["schedule", "workflow_run"].includes(run.event));
     const decision = decide({
       runs: await recentRuns(request, internal),
       head,
-      failedBefore: (failed?.total_count ?? 0) > 0,
+      failedBefore,
       changedSince: changedSinceInGit,
     });
     console.log(decision.reason);

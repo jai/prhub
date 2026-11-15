@@ -152,6 +152,17 @@ test("a head whose build failed is not retried; a canceled one is", () => {
   assert.equal(decide({ runs: [at("CANCELED"), succeeded], head: HEAD, changedSince }).action, "start");
 });
 
+test("at most one release an hour, from the newest Internal build", () => {
+  const changedSince = () => ["app/x"];
+  const now = Date.parse("2026-11-15T10:00:00Z");
+  const recent = { ...succeeded, created: "2026-11-15T09:20:00Z" };
+  const soon = decide({ runs: [recent], head: HEAD, changedSince, now });
+  assert.equal(soon.action, "none");
+  assert.match(soon.reason, /started 40 minutes ago: at most one release an hour/);
+  const older = { ...succeeded, created: "2026-11-15T08:59:00Z" };
+  assert.equal(decide({ runs: [older], head: HEAD, changedSince, now }).action, "start");
+});
+
 test("no runs at all, or a last commit missing from history: start", () => {
   assert.equal(decide({ runs: [], head: HEAD, changedSince: () => [] }).action, "start");
   assert.equal(decide({ runs: [succeeded], head: HEAD, changedSince: () => null }).action, "start");

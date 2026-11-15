@@ -1,5 +1,5 @@
 # PRHub's hourly release, the only thing that starts an Xcode Cloud workflow: none starts there on a push or a pull
-# request. Once an hour, and only when main changed the app since the last release (release/cadence.mjs decide), it
+# request. When ios passes on a push to main, on the hourly cron, or by hand, at most once an hour, and only when main changed the app since the last release (release/cadence.mjs decide), it
 # runs the full tests on GitHub's Macs (ios.yml) on main's head, and when they pass releases that commit
 # (release/cadence.mjs release): ci/release points at it, the next version's tag and GitHub Release
 # (release/version.mjs), and Xcode Cloud's Internal - TestFlight, the Mac's, and PRHub Release when a release commit is
@@ -9,6 +9,12 @@
 name: hourly-release
 
 on:
+  # ios finished on main (a push that changed the app): try a release now instead of waiting for the cron. GitHub skips
+  # scheduled runs for hours at a time, so the cron is the backup. cadence.mjs still allows one release an hour.
+  workflow_run:
+    workflows: [ios]
+    types: [completed]
+    branches: [main]
   schedule:
     - cron: "7 * * * *"
   push:
@@ -35,7 +41,10 @@ jobs:
       - run: node --test release/cadence.test.mjs release/version.test.mjs release/app-latest.test.mjs
 
   decide:
-    if: github.event_name != 'push'
+    # From ios, only a push to main whose fast checks passed; the release's own full tests run below.
+    if: >-
+      github.event_name != 'push' && (github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success'))
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 5
