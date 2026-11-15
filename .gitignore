@@ -13,3 +13,5 @@ app/PRHub/PRHub.entitlements
 
 app/PRHubNotifications/Info.plist
 app/PRHubNotifications/PRHubNotifications.entitlements
+# SwiftLint keeps the parent_config it fetched (DurableNetworking's rules) here.
+.swiftlint/RemoteConfigCache

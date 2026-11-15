@@ -16,6 +16,8 @@ final class PRHubOutboxCheckTests: XCTestCase {
         let port = try XCTUnwrap(worker.flatMap(URL.init(string:))?.port)
         let control = "http://127.0.0.1:\(port + 1)"
         let setWorker: @Sendable (String) async throws -> Void = { state in
+            // The test plays the network here, switching the check's local server; it is not the app reaching a Worker.
+            // swiftlint:disable:next no_direct_networking
             _ = try await URLSession.shared.data(from: XCTUnwrap(URL(string: "\(control)/\(state)")))
         }
         app.launchArguments = ["-PRHubOutboxCheck", worker ?? ""]

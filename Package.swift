@@ -19,7 +19,7 @@ let package = Package(
     ],
     dependencies: [
         // Every request the PR screens make goes through the host's transport from it (its README.md).
-        .package(url: "https://github.com/jai/durable-networking", from: "0.1.0"),
+        .package(url: "https://github.com/jai/durable-networking", from: "0.2.0"),
         // The chat with a coding agent: Ask AI's, and every chat a host draws (its README.md).
         .package(url: "https://github.com/jai/agentchatkit", from: "0.1.0"),
         // Feedback from inside the app (its README.md); FeatureKit is it over PRKit's Worker client.
