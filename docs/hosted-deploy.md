@@ -65,6 +65,12 @@ Then each secret, piped so it is never printed or kept in the shell history:
 
 Until every secret and binding is there, every route but `/` answers `503 not_configured`.
 
+Deploy only with `wrangler deploy` and this config. An upload through the Cloudflare API (a script upload, Executor's
+`cloudflare` tools, the dashboard's editor) does not send the `containers` block, so `AgentContainer` loses its
+container: every Ask and key lines run on the subscription then fails with `AI container: Containers have not been
+enabled for this Durable Object class`. The fix is a `wrangler deploy` as above. `GET
+/accounts/<id>/workers/scripts/prhub/deployments` shows each deploy's `source`; the newest must be `wrangler`.
+
 ## Check
 
 ```sh
