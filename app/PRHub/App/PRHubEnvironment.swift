@@ -1,3 +1,4 @@
+import DurableNetworking
 import FeatureKit
 import Foundation
 import Observation
@@ -81,13 +82,15 @@ final class PRHubEnvironment {
     init(
         connection: WorkerConnection, access: PRViewerAccess = .offline, samples: PRSampleSet? = nil,
         isSample: Bool = false, alertPermission: PRHubAlertPermission = PRHubAlertPermission(),
-        usage: UsageAnalytics = .disabled(), outbox: (any PRKitOutbox)? = nil, update: PRHubUpdate? = nil
+        usage: UsageAnalytics = .disabled(), outbox: (any PRKitOutbox)? = nil, update: PRHubUpdate? = nil,
+        transport: (any HTTPTransport)? = nil
     ) {
         self.alertPermission = alertPermission
         self.update = update ?? PRHubUpdate()
         self.usage = usage
         let host = PRHubPRHost(access: access, samples: samples, usage: usage)
         host.outbox = outbox
+        host.transportOverride = transport
         self.connection = connection
         prs = PRKitController(host: host)
         self.outbox = nil

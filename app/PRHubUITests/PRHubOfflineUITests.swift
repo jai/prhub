@@ -34,6 +34,29 @@ final class PRHubOfflineUITests: XCTestCase {
         XCTAssertFalse(app.descendants(matching: .any)[banner].exists, "no offline banner while online")
     }
 
+    /// The real path: the PRs load from a Worker (the app's stand-in) into the mirror, the app is quit, and it opens
+    /// again with no network on what it saved: the list, and a PR's page.
+    func testWhatLoadedOnlineOpensAgainOfflineAfterARelaunch() {
+        app.launchArguments = ["-PRHubStubWorker", "-PRHubStubWorkerFresh"]
+        app.launch()
+        XCTAssertTrue(savedPR.waitForExistence(timeout: 30), "the PRs, read from the Worker")
+        XCTAssertFalse(app.descendants(matching: .any)[banner].exists, "online")
+        app.terminate()
+
+        app.launchArguments = ["-PRHubStubWorker", "-PRHubOffline"]
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)[banner].waitForExistence(timeout: 10), "the offline banner")
+        XCTAssertTrue(savedPR.waitForExistence(timeout: 5), "the saved PRs, with no network")
+        keep("offline-relaunch-prs")
+
+        let title = app.staticTexts["Show a retry button when checkout fails"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        title.tap()
+        XCTAssertTrue(app.buttons["pr-review-changes"].waitForExistence(timeout: 10), "the saved PR's page")
+        XCTAssertFalse(app.staticTexts["Couldn't read this PR"].exists)
+        keep("offline-relaunch-pr")
+    }
+
     /// A sample PR's row, by its Review button.
     private var savedPR: XCUIElement {
         app.buttons["pr-row-review-acme/web#412"]

@@ -23,7 +23,10 @@ final class PRHubPRHost: PRKitHost {
         self.usage = usage
     }
 
-    var transport: any HTTPTransport { AppNetwork.transport }
+    /// A Debug run's stand-in Worker (`PRHubStubWorker`); set before the PR screens are made, which read it once.
+    var transportOverride: (any HTTPTransport)?
+
+    var transport: any HTTPTransport { transportOverride ?? AppNetwork.transport }
 
     var configuration: PRKitConfiguration {
         Self.configuration(config(), isCheckingInstallations: isCheckingInstallations())
