@@ -55,7 +55,7 @@ let package = Package(
         ),
         .testTarget(
             name: "PRKitTests",
-            dependencies: ["PRKit", .product(name: "DurableNetworking", package: "durable-networking")],
+            dependencies: ["PRKit", "FeatureKit", .product(name: "DurableNetworking", package: "durable-networking")],
             path: "PRKit/Tests/PRKitTests"
         ),
     ]

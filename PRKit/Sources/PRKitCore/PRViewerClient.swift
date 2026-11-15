@@ -280,6 +280,11 @@ public struct PRViewerClient: Sendable {
         try decode(type, from: await get(path: path, query: query), path: path)
     }
 
+    /// A GET's answer as the Worker sent it, for a host that keeps it; a refusal comes back in the Worker's words.
+    public func readData(_ path: String, query: [String: String] = [:]) async throws -> Data {
+        try await get(path: path, query: query)
+    }
+
     /// A POST whose answer is decoded, and whose refusal comes back in the Worker's words.
     public func send<Answer: Decodable>(_ path: String, _ body: some Encodable & Sendable, as type: Answer.Type) async throws
         -> Answer {

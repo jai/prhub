@@ -61,7 +61,8 @@ final class PRHubEnvironment {
         )
         refusals.connection = connection
         navigation = PRHubNavigation(pullRequests: prs)
-        feedback = FeatureRequestsModel(client: FeatureClient(viewer: prs.client))
+        // Its chats as last read, offline too.
+        feedback = FeatureRequestsModel(client: FeatureClient(viewer: prs.client, keptIn: prs.keptFolder))
         isSample = false
         let connection = connection
         host.config = { connection.config }

@@ -37,6 +37,12 @@ public final class PRKitController {
         model.network
     }
 
+    /// Where a host keeps the last good answers of its own reads over `client` (FeatureKit's `keptIn`): beside the PR
+    /// screens' own, so the mirror's prune spares them and Disconnect clears them with the rest.
+    public var keptFolder: URL {
+        model.kept.directory
+    }
+
     /// The pr-worker client the PR screens use, for whatever else of the host talks to the same Worker.
     public var client: PRViewerClient {
         model.client

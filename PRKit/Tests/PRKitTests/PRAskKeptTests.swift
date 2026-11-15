@@ -20,7 +20,8 @@ struct PRAskKeptTests {
             if offline {
                 throw URLError(.notConnectedToInternet)
             }
-            return (Self.chat, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            let ok = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (Self.chat, ok)
         }
     }
 
