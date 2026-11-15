@@ -148,6 +148,8 @@ struct PRsList: View {
         return counts
     }
 
+    /// The fold animations are the rows', not the scroll view's: an animation on the scroll view also moves its insets,
+    /// and one that runs as a pull to refresh ends (new rows, a banner going) leaves the spinner's gap open at the top.
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Space.sm) {
@@ -188,19 +190,19 @@ struct PRsList: View {
                 }
             }
             .padding(.bottom, Space.lg)
+            .animation(AppMotion.fold, value: model.rows)
+            .animation(AppMotion.fold, value: model.errorMessage)
+            .animation(AppMotion.fold, value: model.lateRefusal)
+            .animation(AppMotion.fold, value: orgFilter)
+            .animation(AppMotion.fold, value: page)
+            .animation(AppMotion.fold, value: model.merged)
+            .animation(AppMotion.fold, value: showsMergedHere)
+            .animation(AppMotion.fold, value: model.removedRequests)
+            .animation(AppMotion.fold, value: model.localAnswers)
+            .animation(AppMotion.fold, value: order)
+            .animation(AppMotion.fold, value: grouping)
+            .animation(AppMotion.fold, value: model.isSyncing)
         }
-        .animation(AppMotion.fold, value: model.rows)
-        .animation(AppMotion.fold, value: model.errorMessage)
-        .animation(AppMotion.fold, value: model.lateRefusal)
-        .animation(AppMotion.fold, value: orgFilter)
-        .animation(AppMotion.fold, value: page)
-        .animation(AppMotion.fold, value: model.merged)
-        .animation(AppMotion.fold, value: showsMergedHere)
-        .animation(AppMotion.fold, value: model.removedRequests)
-        .animation(AppMotion.fold, value: model.localAnswers)
-        .animation(AppMotion.fold, value: order)
-        .animation(AppMotion.fold, value: grouping)
-        .animation(AppMotion.fold, value: model.isSyncing)
         .background(Color.groundPage)
         .navigationTitle("PRs")
         .toolbar {
