@@ -3,7 +3,8 @@ import Foundation
 import os
 
 /// Where the PR mirror keeps its files (`PRMirror`): in the app group's container when the host names one, so its
-/// Notification Service Extension writes where the app reads, else in the caches.
+/// Notification Service Extension writes where the app reads, else in the app's own. In Application Support, which
+/// iOS keeps, not the caches, which it may empty when storage runs low: the mirror is what the app shows offline.
 public enum PRMirrorLocation {
     /// The mirror's folder name, as it always was in the caches.
     public static let folderName = "pr-viewer"
@@ -12,22 +13,64 @@ public enum PRMirrorLocation {
     /// The groups already said to have no container: each is said once.
     private static let groupsWithoutContainer = OSAllocatedUnfairLock(initialState: Set<String>())
 
-    /// `Library/Caches/pr-viewer` in the app group's container, or in the app's own caches without a group. A group
-    /// with no container (a build without the entitlement) is said once in the system log, and the caches are used.
+    /// `Library/Application Support/pr-viewer` in the app group's container, or in the app's own without a group. A
+    /// group with no container (a build without the entitlement) is said once in the system log, and the app's own is
+    /// used. A mirror still in a caches folder from an earlier build is moved here the first time, so nothing is
+    /// downloaded again; the folder is left out of backups, as a copy of GitHub.
     public static func directory(
         appGroup: String?,
-        container: (String) -> URL? = { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0) }
+        container: (String) -> URL? = { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0) },
+        own: Library = .app
     ) -> URL {
-        let groupCaches = appGroup.flatMap { group -> URL? in
+        let group = appGroup.flatMap { group -> URL? in
             guard let url = container(group) else {
                 if isFirstMiss(of: group) {
-                    logger.error("PR mirror: app group \(group, privacy: .public) has no container; using the caches")
+                    logger.error("PR mirror: app group \(group, privacy: .public) has no container; using the app's")
                 }
                 return nil
             }
-            return url.appending(path: "Library/Caches", directoryHint: .isDirectory)
+            return url.appending(path: "Library", directoryHint: .isDirectory)
         }
-        return (groupCaches ?? URL.cachesDirectory).appending(path: folderName, directoryHint: .isDirectory)
+        let library = group.map {
+            Library(caches: $0.appending(path: "Caches"), support: $0.appending(path: "Application Support"))
+        } ?? own
+        let kept = library.support.appending(path: folderName, directoryHint: .isDirectory)
+        moveFromCaches([library.caches, own.caches], to: kept)
+        return kept
+    }
+
+    /// A caches folder and the Application Support folder beside it.
+    public struct Library: Sendable {
+        public var caches: URL
+        public var support: URL
+
+        public init(caches: URL, support: URL) {
+            self.caches = caches
+            self.support = support
+        }
+
+        public static var app: Library {
+            Library(caches: .cachesDirectory, support: .applicationSupportDirectory)
+        }
+    }
+
+    /// The first old mirror found is moved to `kept`, unless `kept` is there already. A move that loses to another
+    /// process (the app and its extension) changes nothing.
+    static func moveFromCaches(_ cachesFolders: [URL], to kept: URL) {
+        let manager = FileManager.default
+        if !manager.fileExists(atPath: kept.path(percentEncoded: false)) {
+            try? manager.createDirectory(at: kept.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let old = cachesFolders.map { $0.appending(path: folderName, directoryHint: .isDirectory) }
+                .first { manager.fileExists(atPath: $0.path(percentEncoded: false)) }
+            if let old {
+                try? manager.moveItem(at: old, to: kept)
+            }
+        }
+        try? manager.createDirectory(at: kept, withIntermediateDirectories: true)
+        var folder = kept
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? folder.setResourceValues(values)
     }
 
     /// True the first time `group` is found to have no container.

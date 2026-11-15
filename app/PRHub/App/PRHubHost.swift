@@ -150,20 +150,12 @@ final class PRHubPRHost: PRKitHost {
         samples == nil ? Self.mirrorDirectory() : nil
     }
 
-    /// The mirror in the app group (`PRHubAppGroup` in Info.plist). The first launch with it moves the caches' mirror
-    /// there, so nothing is downloaded again.
+    /// The mirror in the app group (`PRHubAppGroup` in Info.plist), in its Application Support. `PRMirrorLocation`
+    /// moves a mirror from an earlier build's caches there, so nothing is downloaded again.
     nonisolated static func mirrorDirectory(bundle: Bundle = .main) -> URL {
-        // Empty on the Mac (PRHub.xcconfig), whose mirror stays in its own caches.
+        // Empty on the Mac (PRHub.xcconfig), whose mirror stays in its own Application Support.
         let group = (bundle.object(forInfoDictionaryKey: "PRHubAppGroup") as? String).flatMap { $0.isEmpty ? nil : $0 }
-        let shared = PRMirrorLocation.directory(appGroup: group)
-        let old = PRMirrorLocation.directory(appGroup: nil)
-        let manager = FileManager.default
-        if shared != old, !manager.fileExists(atPath: shared.path(percentEncoded: false)),
-           manager.fileExists(atPath: old.path(percentEncoded: false)) {
-            try? manager.createDirectory(at: shared.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? manager.moveItem(at: old, to: shared)
-        }
-        return shared
+        return PRMirrorLocation.directory(appGroup: group)
     }
 }
 
