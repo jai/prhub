@@ -119,6 +119,7 @@ private struct PRHubTabs: View {
         container
             .readableContentWidth()
             .prKitEnvironment(environment.prs)
+            .prKitOfflineBanner(environment.prs)
             .alertsOffer(environment.alertPermission)
             .updateOffer(environment.update)
             .environment(\.loadsAuthorAvatars, !environment.isSample)

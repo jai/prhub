@@ -23,7 +23,8 @@ import UIKit
 ///   PR whose one file is longer than the screen, for the diff's bars; with `-PRHubOpen <link>` it opens that PR as a
 ///   link would (`…/pull/N/files` on its diff); with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View;
 ///   with `-PRHubRefuseFirstReview` the first review sent is refused, so its toast shows Retry, and each review takes
-///   3 seconds to answer. With `-PRHubNewerBuild <n>` it checks for updates, and the config's `app_latest` names this
+///   3 seconds to answer. With `-PRHubOffline` the device counts as offline, under the offline banner. With
+///   `-PRHubNewerBuild <n>` it checks for updates, and the config's `app_latest` names this
 ///   build's version with a build number `n` higher (0: this build); `-PRHubForgetLater` forgets an earlier Later.
 ///
 /// Every one starts at the default diff font, whatever an earlier run chose in Settings; `-prkit.diffFont face:size`
@@ -93,6 +94,9 @@ enum PRHubScreenshots {
         }
         if let index = arguments.firstIndex(of: "-PRHubOpen"), arguments.indices.contains(index + 1) {
             environment.prs.open(text: arguments[index + 1])
+        }
+        if arguments.contains("-PRHubOffline") {
+            environment.prs.network.holdOffline()
         }
         return environment
     }

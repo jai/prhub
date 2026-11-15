@@ -156,7 +156,8 @@ struct PRsList: View {
                 if let since = model.staleSince {
                     banner("Last checked GitHub \(since.formatted(.relative(presentation: .named)))")
                 }
-                if !model.rows.isEmpty, let message = model.errorMessage {
+                // Offline, the host's banner already says why the list is not up to date.
+                if !model.rows.isEmpty, model.network.isOnline, let message = model.errorMessage {
                     banner("Not up to date. \(message)")
                 }
                 if let refused = model.lateRefusal {
@@ -192,6 +193,7 @@ struct PRsList: View {
             .padding(.bottom, Space.lg)
             .animation(AppMotion.fold, value: model.rows)
             .animation(AppMotion.fold, value: model.errorMessage)
+            .animation(AppMotion.fold, value: model.network.isOnline)
             .animation(AppMotion.fold, value: model.lateRefusal)
             .animation(AppMotion.fold, value: orgFilter)
             .animation(AppMotion.fold, value: page)

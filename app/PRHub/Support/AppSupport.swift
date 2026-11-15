@@ -60,9 +60,26 @@ enum AppIdentity {
 enum AppNetwork {
     /// The PR screens' and the Worker client's: 15 s a request, and while someone is looking at the app a request made
     /// with no network waits for one. Nothing is repeated: a review or a comment must not land twice.
-    static let transport = URLSessionTransport(isInForeground: { await appIsInForeground() })
+    static let transport = ReadsFailFastOffline(
+        waiting: URLSessionTransport(isInForeground: { await appIsInForeground() }),
+        quick: URLSessionTransport(policy: .quick),
+        isOnline: { NetworkStatus.shared.isOnline }
+    )
     /// Pairing and the hosted account's calls: one try, the request's own limit, no waiting for a network.
     static let oneTry = URLSessionTransport(policy: SessionPolicy(requestTimeout: 60, waitsForConnectivity: false))
+}
+
+/// A read made while the system says there is no network fails at once, instead of waiting up to two minutes for one:
+/// the screen keeps what it has and the offline banner says why. A write still waits, as before.
+struct ReadsFailFastOffline: HTTPTransport {
+    let waiting: any HTTPTransport
+    let quick: any HTTPTransport
+    let isOnline: @Sendable () -> Bool
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let isRead = (request.httpMethod ?? "GET") == "GET"
+        return try await (isRead && !isOnline() ? quick : waiting).send(request)
+    }
 }
 
 /// Whether someone is looking at the app: a request then waits for a network.

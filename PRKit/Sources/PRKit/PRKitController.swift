@@ -23,12 +23,18 @@ public final class PRKitController {
         model.onEvent = { host.receive($0) }
         model.onEmptyHintLink = { host.opensEmptyHintLink($0) }
         model.logFailures { line in Task { @MainActor in host.log(line) } }
+        model.network.watch()
     }
 
     /// For a test: a model made by hand.
     init(model: PRsModel) {
         self.model = model
         launchOptions = .none
+    }
+
+    /// Whether the device has a network now: what `prKitOfflineBanner` shows.
+    public var network: PRNetwork {
+        model.network
     }
 
     /// The pr-worker client the PR screens use, for whatever else of the host talks to the same Worker.

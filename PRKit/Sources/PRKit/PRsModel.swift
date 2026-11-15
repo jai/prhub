@@ -242,8 +242,10 @@ final class PRsModel {
     var queued: [String: PROutboxJob] = [:]
     /// How long a screen waits for GitHub's answer before the write carries on without it.
     var answerWait: Duration = .seconds(15)
-    /// Whether the device has a network: what a question left in the outbox says while it waits.
-    var isOnline: () -> Bool = { NetworkStatus.shared.isOnline }
+    /// Whether the device has a network now (`PRNetwork`), which the host's offline banner shows too.
+    let network = PRNetwork()
+    /// Whether the device has a network: what a question left in the outbox says while it waits. A test sets its own.
+    @ObservationIgnored var isOnline: @MainActor () -> Bool = { NetworkStatus.shared.isOnline }
     let mirror: PRMirror
     /// The newest sync, and its list fetch while that is out: what a wake waits for, and what a pull waits for.
     private var running: Task<PRSyncOutcome, Never>?
@@ -290,6 +292,7 @@ final class PRsModel {
             errorMessage = samples.notUpToDate
         }
         mirror = PRMirror(directory: directory, client: client, shown: saved)
+        isOnline = { [network] in network.isOnline }
     }
 
     var orgs: [String] {
