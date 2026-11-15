@@ -53,14 +53,15 @@ struct PROfflineBanner: ViewModifier {
     let network: PRNetwork
 
     func body(content: Content) -> some View {
-        content.safeAreaInset(edge: .top, spacing: 0) {
+        // A bar, not an inset: what scrolls under it fades by the system's edge effect, and nothing opaque sits over
+        // a toolbar's glass buttons.
+        content.safeAreaBar(edge: .top, spacing: 0) {
             if !network.isOnline {
                 Label("Offline — showing saved information", systemImage: AppIcon.offline.symbol)
                     .font(.appCaption)
                     .foregroundStyle(Color.toneWaiting)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, Space.xs)
-                    .background(.bar)
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("prkit-offline-banner")
                     .transition(.move(edge: .top).combined(with: .opacity))
