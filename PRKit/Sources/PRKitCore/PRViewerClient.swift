@@ -241,8 +241,14 @@ public struct PRViewerClient: Sendable {
 
     /// The conversation on this PR with its AI agent; empty until the first question.
     public func askChat(_ ref: PullRequestRef) async throws -> PRAskChat {
+        try await askChatAnswer(ref).chat
+    }
+
+    /// `askChat`, with the Worker's answer as it came, for a screen that keeps the last one on the device.
+    public func askChatAnswer(_ ref: PullRequestRef) async throws -> (chat: PRAskChat, data: Data) {
         let path = "prs/\(ref.repo)/\(ref.number)/ask"
-        return try decode(PRAskChat.self, from: await get(path: path), path: path)
+        let data = try await get(path: path)
+        return (try decode(PRAskChat.self, from: data, path: path), data)
     }
 
     /// Once: a retry after a timeout could ask twice. The agent's answer comes through `askChat`.

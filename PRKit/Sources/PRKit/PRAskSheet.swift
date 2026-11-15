@@ -226,7 +226,9 @@ struct PRAskSheet: View {
                 }
             }
             // Offline, the chat can't be read either: the question's own mark already says why.
-            if let problem = session.askError, session.askSend == .idle {
+            // With no network and the saved chat on screen, the host's offline banner says why it isn't newer.
+            if let problem = session.askError, session.askSend == .idle,
+               session.model.network.isOnline || session.askChat == nil {
                 Text(problem.words)
                     .font(.appFootnote)
                     .foregroundStyle(problem.isFailure ? Color.toneBad : Color.secondary)

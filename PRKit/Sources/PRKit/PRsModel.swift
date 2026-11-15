@@ -247,7 +247,8 @@ final class PRsModel {
     /// Whether the device has a network: what a question left in the outbox says while it waits. A test sets its own.
     @ObservationIgnored var isOnline: @MainActor () -> Bool = { NetworkStatus.shared.isOnline }
     let mirror: PRMirror
-    /// Last good answers to the reads the mirror doesn't hold (the merged lists), in the mirror's folder.
+    /// Last good answers to the reads the mirror doesn't hold (the merged lists, each PR's Ask chat), in the mirror's
+    /// folder.
     var kept: ReadStore {
         ReadStore(directory: mirror.directory.appending(path: PRMirror.keptFolder, directoryHint: .isDirectory))
     }
@@ -617,7 +618,21 @@ final class PRsModel {
             return samples.askChat
                 ?? PRAskChat(messages: [], isWorking: false, activity: nil, problem: nil, costCents: nil)
         }
-        return try await client.askChat(ref)
+        let (chat, data) = try await client.askChatAnswer(ref)
+        try? kept.save(KeptAnswer(data: data, savedAt: .now), for: Self.askKey(ref))
+        return chat
+    }
+
+    /// The chat on this PR as last read, on this device: what the sheet shows before the Worker answers, and offline.
+    func keptAskChat(_ ref: PullRequestRef) -> PRAskChat? {
+        guard samples == nil, let saved = kept.load(Self.askKey(ref)) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(PRAskChat.self, from: saved.data)
+    }
+
+    private static func askKey(_ ref: PullRequestRef) -> InboxKey {
+        InboxKey("ask-\(ref.repo)/\(ref.number)")
     }
 
     /// A PR the phone does not hold, its detail and diff side by side: `row` at its version, which the Worker serves

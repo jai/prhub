@@ -125,6 +125,10 @@ extension PRSession {
     /// While the sheet shows: the conversation, every 2 seconds while the agent works or a question is on its way, and
     /// once otherwise. A question in the outbox is on its way, not an error.
     func followAsk() async {
+        // The chat as last read shows at once; the Worker's answer replaces it.
+        if askChat == nil {
+            askChat = model.keptAskChat(ref)
+        }
         while !Task.isCancelled {
             do {
                 let chat = try await model.askChat(ref)
