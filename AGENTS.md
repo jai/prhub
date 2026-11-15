@@ -37,6 +37,12 @@ pairing the phone, and troubleshooting.
 - Run each step's check before the next step. Stop at the first check that fails and use the guide's
   Troubleshooting table.
 
+## Feedback requests
+
+Jai's feedback for PRHub arrives two ways: from the app's Feedback screen (each message starts an agent chat in its
+own worktree of a feedback clone), and as GitHub issues labelled `feedback`. A long-running feedback manager agent
+works new `feedback` issues, checks that each feedback chat's work landed on `main`, and flags anything stuck.
+
 ## If you are changing the code
 
 - Layout: `PRKit/` with the root `Package.swift` (the PR screens as a Swift package), `app/` (the PRHub app,
