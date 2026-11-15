@@ -83,3 +83,72 @@ jobs:
       - name: A wrong key is refused
         run: |
           test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer rks_wrong' -H 'content-type: application/json' -d '{}' "$RELAY_URL/v1/push")" = 401
+
+  # The Feedback tab against FeedbackKit's live Worker as its test app (#51), on the iPhone: a message goes from the
+  # tab, and the runner's echo comes back once it has delivered it. The test app's chats are deleted before and after.
+  # Repo secrets: FEEDBACKKIT_E2E_URL (the Worker's root) and FEEDBACKKIT_E2E_APP_KEY (the test app's key).
+  feedback-ui:
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      FEEDBACKKIT_E2E_URL: ${{ secrets.FEEDBACKKIT_E2E_URL }}
+      FEEDBACKKIT_E2E_APP_KEY: ${{ secrets.FEEDBACKKIT_E2E_APP_KEY }}
+    steps:
+      - name: Xcode 27.2
+        run: sudo xcode-select -s /Applications/Xcode_27.2.app
+      - name: Boot the Simulator
+        run: |
+          udid=$(xcrun simctl list devices -j | jq -r '.devices | to_entries[]
+            | select(.key | endswith("iOS-27-2")) | .value[] | select(.name == "iPhone 17" and .isAvailable) | .udid' | head -1)
+          [ -n "$udid" ] || { echo "no iPhone 17 on iOS 27.2"; exit 1; }
+          xcrun simctl boot "$udid"
+          echo "SIMULATOR=$udid" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v5
+      - name: Generate the project
+        working-directory: app
+        run: |
+          HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install --quiet xcodegen
+          xcodegen generate --spec project.yml --quiet
+          mkdir -p PRHub.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+          cp Package.resolved PRHub.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+      - name: Build the app and its tests
+        working-directory: app
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing -project PRHub.xcodeproj -scheme PRHub \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build/DerivedData \
+            -enableCodeCoverage NO -skipPackagePluginValidation -skipMacroValidation \
+            | grep -E --line-buffered "error:|\*\* (TEST )?BUILD|: (error|failed)" || true
+          ls build/DerivedData/Build/Products/*.xctestrun
+      - name: Delete test chats left by an earlier run
+        run: scripts/feedbackkit-e2e.sh clean
+      - name: The Feedback end-to-end test
+        working-directory: app
+        run: |
+          set -o pipefail
+          token=$(../scripts/feedbackkit-e2e.sh token)
+          echo "::add-mask::$token"
+          # Not skipped here: a skip would pass without checking anything.
+          TEST_RUNNER_FEEDBACKKIT_E2E_URL="$FEEDBACKKIT_E2E_URL" TEST_RUNNER_FEEDBACKKIT_E2E_TOKEN="$token" \
+            xcodebuild test-without-building -xctestrun build/DerivedData/Build/Products/*.xctestrun \
+            -destination "id=$SIMULATOR" -resultBundlePath build/PRHub.xcresult \
+            -only-testing:PRHubUITests/PRHubFeedbackE2ETests \
+            | grep -E --line-buffered "^Test (Suite|Case)|^\s+(Executed|✔|✘)|\*\* TEST|: (error|failed)" || true
+          xcrun xcresulttool get test-results summary --path build/PRHub.xcresult --compact > build/summary.json
+          jq -r '"\(.result): \(.passedTests) passed, \(.failedTests) failed, \(.skippedTests) skipped"' build/summary.json \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          jq -e '.failedTests == 0 and .skippedTests == 0 and .passedTests == 1' build/summary.json > /dev/null
+      - name: Delete this run's test chats
+        if: always()
+        run: scripts/feedbackkit-e2e.sh clean
+      - name: Zip the result bundle
+        if: always()
+        working-directory: app/build
+        run: "[ -d PRHub.xcresult ] && zip -qry PRHub.xcresult.zip PRHub.xcresult || true"
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: xcresult-feedback-e2e
+          path: app/build/PRHub.xcresult.zip
+          retention-days: 7
+          if-no-files-found: ignore

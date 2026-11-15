@@ -83,7 +83,7 @@ final class PRHubEnvironment {
         connection: WorkerConnection, access: PRViewerAccess = .offline, samples: PRSampleSet? = nil,
         isSample: Bool = false, alertPermission: PRHubAlertPermission = PRHubAlertPermission(),
         usage: UsageAnalytics = .disabled(), outbox: (any PRKitOutbox)? = nil, update: PRHubUpdate? = nil,
-        transport: (any HTTPTransport)? = nil
+        transport: (any HTTPTransport)? = nil, feedbackClient: FeatureClient? = nil
     ) {
         self.alertPermission = alertPermission
         self.update = update ?? PRHubUpdate()
@@ -96,7 +96,7 @@ final class PRHubEnvironment {
         self.outbox = nil
         self.isSample = isSample
         navigation = PRHubNavigation(pullRequests: prs)
-        feedback = FeatureRequestsModel(client: FeatureClient(viewer: prs.client))
+        feedback = FeatureRequestsModel(client: feedbackClient ?? FeatureClient(viewer: prs.client))
         host.config = { connection.config }
         host.isCheckingInstallations = { connection.isCheckingInstallations }
         host.leavesForGitHub = { connection.leavesForGitHub($0) }
