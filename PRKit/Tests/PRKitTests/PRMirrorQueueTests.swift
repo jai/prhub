@@ -209,6 +209,24 @@ struct PRMirrorQueueTests {
         #expect(await worker.count("/diff") == 1, "the second sync found the file on disk")
     }
 
+    @Test func pruneKeepsTheKeptReadsAndRemovesAnOldFile() async throws {
+        let rows = [row(1)]
+        await worker.set(list: rows)
+        let directory = Self.ownDirectory()
+        let mirror = mirror(in: directory)
+        let kept = directory.appending(path: PRMirror.keptFolder, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: kept, withIntermediateDirectories: true)
+        try Data("[]".utf8).write(to: kept.appending(path: "merged-mine.json"))
+        try Data("old".utf8).write(to: directory.appending(path: "old-revision.diff"))
+        _ = await mirror.begin(rows, generation: 1)
+        _ = await mirror.sync(generation: 1)
+        let keptFile = kept.appending(path: "merged-mine.json").path(percentEncoded: false)
+        #expect(FileManager.default.fileExists(atPath: keptFile))
+        #expect(!FileManager.default.fileExists(
+            atPath: directory.appending(path: "old-revision.diff").path(percentEncoded: false)
+        ), "this sync did prune")
+    }
+
     @Test func noMoreThanSixFilesDownloadAtOnce() async {
         let rows = (1...20).map { row($0) }
         await worker.set(list: rows, delay: .milliseconds(50))

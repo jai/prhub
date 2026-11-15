@@ -22,6 +22,9 @@ import Foundation
 ///   still downloading.
 actor PRMirror {
     static let parallelDownloads = 6
+    /// Reads other than the PRs' own files, each a last good answer (`PRsModel.kept`): the merged lists. Disconnect
+    /// removes it with the rest.
+    static let keptFolder = "kept"
     static let rowsFile = "rows.json"
 
     struct RetryPolicy: Sendable {
@@ -289,12 +292,14 @@ actor PRMirror {
         await landed(generation, rows, failedRows())
     }
 
-    /// Keeps what the newest list and the shown rows name, every file still downloading, and any file younger than
-    /// `keepsUnlisted`: an alert's PR that the Notification Service Extension fetched (`PRPushPrefetch`) before the list
-    /// named it. Anything else — a file of an old revision, a temporary file left by a crash — goes.
+    /// Keeps what the newest list and the shown rows name, every file still downloading, any file younger than
+    /// `keepsUnlisted` (an alert's PR that the Notification Service Extension fetched before the list named it,
+    /// `PRPushPrefetch`), and the kept reads. Anything else — a file of an old revision, a temporary file left by a
+    /// crash — goes.
     private func prune() {
         let wanted = Set((latest + shown).flatMap(\.files))
-            .union(inFlight.keys).union(ending.values).union([Self.rowsFile, PRPushPrefetchLog.fileName])
+            .union(inFlight.keys).union(ending.values)
+            .union([Self.rowsFile, PRPushPrefetchLog.fileName, Self.keptFolder])
         let manager = FileManager.default
         let keys: Set<URLResourceKey> = [.contentModificationDateKey]
         let files = (try? manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: Array(keys))) ?? []

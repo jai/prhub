@@ -247,6 +247,10 @@ final class PRsModel {
     /// Whether the device has a network: what a question left in the outbox says while it waits. A test sets its own.
     @ObservationIgnored var isOnline: @MainActor () -> Bool = { NetworkStatus.shared.isOnline }
     let mirror: PRMirror
+    /// Last good answers to the reads the mirror doesn't hold (the merged lists), in the mirror's folder.
+    var kept: ReadStore {
+        ReadStore(directory: mirror.directory.appending(path: PRMirror.keptFolder, directoryHint: .isDirectory))
+    }
     /// The newest sync, and its list fetch while that is out: what a wake waits for, and what a pull waits for.
     private var running: Task<PRSyncOutcome, Never>?
     private var listing: Task<PRSyncOutcome, Never>?
@@ -313,9 +317,19 @@ final class PRsModel {
             merged[page] = (sampleMerged[page] ?? []) + samples.merged(reviewed: page == .review)
             return
         }
+        // The last good list shows at once, and stays if this read fails.
+        let key = InboxKey("merged-\(page.rawValue)")
+        if merged[page] == nil, let saved = kept.load(key),
+           let rows = try? JSONDecoder().decode([PullRequestRow].self, from: saved.data) {
+            merged[page] = rows
+        }
         do {
-            merged[page] = try await client.mergedPullRequests(reviewed: page == .review)
+            let rows = try await client.mergedPullRequests(reviewed: page == .review)
+            merged[page] = rows
             mergedError[page] = nil
+            if let data = try? JSONEncoder().encode(rows) {
+                try? kept.save(KeptAnswer(data: data, savedAt: .now), for: key)
+            }
         } catch {
             mergedError[page] = error.localizedDescription
         }

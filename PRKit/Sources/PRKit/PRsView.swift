@@ -187,7 +187,12 @@ struct PRsList: View {
                     arriving
                 }
                 if showsMergedHere, let error = model.mergedError[page] {
-                    banner("Merged PRs didn't load. \(error)")
+                    // Offline, the host's banner says why; the saved list shows, or this says when one will.
+                    if model.network.isOnline {
+                        banner("Merged PRs didn't load. \(error)")
+                    } else if model.merged[page] == nil {
+                        banner("Merged PRs show when you're back online.")
+                    }
                 }
             }
             .padding(.bottom, Space.lg)
@@ -246,7 +251,8 @@ struct PRsList: View {
             await model.refresh(.pull)
             if showsMergedHere { await model.loadMerged(on: page) }
         }
-        .task(id: "\(page.rawValue)-\(showsMergedHere)") {
+        // Again when the network comes back, over the saved list.
+        .task(id: "\(page.rawValue)-\(showsMergedHere)-\(model.network.isOnline)") {
             if showsMergedHere { await model.loadMerged(on: page) }
         }
     }
