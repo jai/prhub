@@ -15,6 +15,8 @@ final class PRHubEnvironment {
 
     let connection: WorkerConnection
     let prs: PRKitController
+    /// PR writes and questions saved on the device until the Worker has them. None for the samples or a check.
+    @ObservationIgnored let outbox: PRHubOutbox?
     let navigation: PRHubNavigation
     /// The Feedback tab's requests, over the PR screens' connection. Kept for the app's life, so drafts outlive the tab.
     let feedback: FeatureRequestsModel
@@ -55,6 +57,11 @@ final class PRHubEnvironment {
             samples: nil, usage: usage
         )
         prs = PRKitController(host: host)
+        let outbox = PRHubOutbox(client: prs.client)
+        host.outbox = outbox
+        outbox.kit = prs
+        outbox.start()
+        self.outbox = outbox
         connection = Self.makeConnection(
             endpoint: endpoint, secrets: secrets, defaults: defaults, build: build, authenticate: authenticate,
             usage: usage, unpair: { [client = prs.client] in try? await client.unpair() }
@@ -83,6 +90,7 @@ final class PRHubEnvironment {
         host.outbox = outbox
         self.connection = connection
         prs = PRKitController(host: host)
+        self.outbox = nil
         self.isSample = isSample
         navigation = PRHubNavigation(pullRequests: prs)
         feedback = FeatureRequestsModel(client: FeatureClient(viewer: prs.client))
@@ -162,6 +170,7 @@ final class PRHubEnvironment {
         }
         if outcome == .newPerson {
             prs.forgetEverything()
+            await outbox?.forget()
         }
     }
 
@@ -188,6 +197,9 @@ final class PRHubEnvironment {
         }
         prs.forgetEverything()
         alertPermission.forgetDecline()
+        if let outbox {
+            Task { await outbox.forget() }
+        }
     }
 
     /// A tapped review alert: its PR on the PRs tab, from the row it carried. Nothing while no Worker is paired, as

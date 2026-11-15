@@ -4,7 +4,7 @@ import DurableNetworking
 import Foundation
 
 /// PRHub's side of the PR screens (`PRKitHost`): the pr-worker it paired with, the features that Worker's
-/// `GET /device/config` serves, and no outbox outside a Debug check.
+/// `GET /device/config` serves, and its writes through `PRHubOutbox`.
 @MainActor
 final class PRHubPRHost: PRKitHost {
     let access: PRViewerAccess
@@ -133,7 +133,8 @@ final class PRHubPRHost: PRKitHost {
         link: PRHubBuild.appInstallURL
     )
 
-    /// None in a release: a write goes to the Worker or not at all. A Debug build's `-PRHubOutboxCheck` sets one.
+    /// `PRHubOutbox` for a paired or signed-in Worker; none for the samples. A Debug build's `-PRHubOutboxCheck` sets
+    /// its own stand-in.
     var outbox: (any PRKitOutbox)?
     var apnsEnvironment: String { APNSEnvironment.current() }
     var launchOptions: PRKitLaunchOptions { .none }

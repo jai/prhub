@@ -6,7 +6,7 @@ import PRKit
 /// Debug builds only. `-PRHubOutboxCheck <worker URL>`: the sample PRs, read from a stand-in Worker at that URL, with an
 /// outbox in front of it, as Agent Pager has. A write or a question is saved here first and tried every 3 seconds until
 /// the Worker answers, so stopping the stand-in shows a job saved and still going, and starting it shows the job land.
-/// For checking the outbox's states on a Simulator; PRHub itself has no outbox.
+/// For checking the outbox's states on a Simulator against a stand-in; PRHub's own is `PRHubOutbox`.
 enum PRHubOutboxCheck {
     @MainActor static func environment(worker: URL) -> PRHubEnvironment {
         let directory = PRHubPRHost.mirrorDirectory()
