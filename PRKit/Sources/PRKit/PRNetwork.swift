@@ -51,11 +51,21 @@ extension View {
 
 struct PROfflineBanner: ViewModifier {
     let network: PRNetwork
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    /// The top, except on an iPad's regular width, whose tab bar floats over the top of every tab.
+    private var edge: VerticalEdge {
+        #if os(iOS)
+        sizeClass == .regular ? .bottom : .top
+        #else
+        .top
+        #endif
+    }
 
     func body(content: Content) -> some View {
         // A bar, not an inset: what scrolls under it fades by the system's edge effect, and nothing opaque sits over
         // a toolbar's glass buttons.
-        content.safeAreaBar(edge: .top, spacing: 0) {
+        content.safeAreaBar(edge: edge, spacing: 0) {
             if !network.isOnline {
                 Label("Offline — showing saved information", systemImage: AppIcon.offline.symbol)
                     .font(.appCaption)
@@ -64,7 +74,7 @@ struct PROfflineBanner: ViewModifier {
                     .padding(.vertical, Space.xs)
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("prkit-offline-banner")
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .transition(.move(edge: edge == .top ? .top : .bottom).combined(with: .opacity))
             }
         }
         .animation(AppMotion.fold, value: network.isOnline)
