@@ -1,3 +1,4 @@
+import PRKit
 import SwiftUI
 
 @main
@@ -53,6 +54,7 @@ struct PRHubApp: App {
         #if os(macOS)
         Window("Feedback", id: PRHubMacFeedback.windowID) {
             PRHubMacFeedback(environment: Self.screenshotEnvironment ?? .shared)
+                .prKitOfflineBanner((Self.screenshotEnvironment ?? .shared).prs)
                 .symbolVariant(DesignTokens.iconVariant)
                 .preferredColorScheme(Self.screenshotColorScheme)
         }

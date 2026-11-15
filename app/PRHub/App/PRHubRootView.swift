@@ -119,7 +119,6 @@ private struct PRHubTabs: View {
         container
             .readableContentWidth()
             .prKitEnvironment(environment.prs)
-            .prKitOfflineBanner(environment.prs)
             .alertsOffer(environment.alertPermission)
             .updateOffer(environment.update)
             .environment(\.loadsAuthorAvatars, !environment.isSample)
@@ -130,6 +129,7 @@ private struct PRHubTabs: View {
     @ViewBuilder private var container: some View {
         #if os(macOS)
         PRHubMacWindow(environment: environment)
+            .prKitOfflineBanner(environment.prs)
         #else
         tabBar
         #endif
@@ -147,16 +147,19 @@ private struct PRHubTabs: View {
             Tab("PRs", systemImage: "arrow.triangle.pull", value: PRHubTab.prs) {
                 PRKitRoot(environment.prs)
                     .compactWidthForUITests()
+                    .prKitOfflineBanner(environment.prs)
             }
             .accessibilityIdentifier(PRHubTab.prs.identifier)
             if tabs.contains(.feedback) {
                 Tab("Feedback", systemImage: AppIcon.conversation.symbol, value: PRHubTab.feedback) {
                     FeatureRequestsView(model: environment.feedback)
+                        .prKitOfflineBanner(environment.prs)
                 }
                 .accessibilityIdentifier(PRHubTab.feedback.identifier)
             }
             Tab("Settings", systemImage: AppIcon.settings.symbol, value: PRHubTab.settings) {
                 PRHubSettingsView(environment: environment, endSample: endSample, signIn: signIn)
+                    .prKitOfflineBanner(environment.prs)
             }
             .accessibilityIdentifier(PRHubTab.settings.identifier)
         }
