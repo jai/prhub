@@ -7,14 +7,15 @@ extension View {
         background {
             Color.groundPage
                 .ignoresSafeArea()
-                .shadow(color: Color.scrim, radius: Space.sm, x: Space.xxs)
         }
         .overlay(alignment: .trailing) {
-            Color.line
-                .frame(width: PRStyle.hairline)
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                Divider()
+            }
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
         }
     }
 
