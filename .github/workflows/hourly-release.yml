@@ -1,5 +1,5 @@
 # PRHub's hourly release, the only thing that starts an Xcode Cloud workflow: none starts there on a push or a pull
-# request. When ios passes on a push to main, on the hourly cron, or by hand, at most once an hour, and only when main changed the app since the last release (release/cadence.mjs decide), it
+# request. Once an hour, and only when main changed the app since the last release (release/cadence.mjs decide), it
 # runs the full tests on GitHub's Macs (ios.yml) on main's head, and when they pass releases that commit
 # (release/cadence.mjs release): ci/release points at it, the next version's tag and GitHub Release
 # (release/version.mjs), and Xcode Cloud's Internal - TestFlight, the Mac's, and PRHub Release when a release commit is
@@ -9,12 +9,6 @@
 name: hourly-release
 
 on:
-  # ios finished on main (a push that changed the app): try a release now instead of waiting for the cron. GitHub skips
-  # scheduled runs for hours at a time, so the cron is the backup. cadence.mjs still allows one release an hour.
-  workflow_run:
-    workflows: [ios]
-    types: [completed]
-    branches: [main]
   schedule:
     - cron: "7 * * * *"
   push:
@@ -41,10 +35,7 @@ jobs:
       - run: node --test release/cadence.test.mjs release/version.test.mjs release/app-latest.test.mjs
 
   decide:
-    # From ios, only a push to main whose fast checks passed; the release's own full tests run below.
-    if: >-
-      github.event_name != 'push' && (github.event_name != 'workflow_run' ||
-      (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success'))
+    if: github.event_name != 'push'
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -81,7 +72,17 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
+    env:
+      HAS_APP_KEY: ${{ secrets.JAI_AGENTS_PRIVATE_KEY != '' }}
     steps:
+      # The jai-agents GitHub App token can tag, and move ci/release to, a commit that changes .github/workflows;
+      # github.token cannot (no workflows permission). github.token is the fallback until the repo has the App's key.
+      - id: app-token
+        if: env.HAS_APP_KEY == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: 5757830
+          private-key: ${{ secrets.JAI_AGENTS_PRIVATE_KEY }}
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
@@ -94,7 +95,7 @@ jobs:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
 
   app-latest:
     if: github.event_name != 'push'
