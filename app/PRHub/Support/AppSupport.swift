@@ -1,3 +1,4 @@
+import DurableNetworking
 import Foundation
 #if os(iOS)
 import UIKit
@@ -53,6 +54,15 @@ enum AppIdentity {
         return { true }
         #endif
     }
+}
+
+/// The app's transports (DurableNetworking): nothing in PRHub makes a `URLSession` of its own.
+enum AppNetwork {
+    /// The PR screens' and the Worker client's: 15 s a request, and while someone is looking at the app a request made
+    /// with no network waits for one. Nothing is repeated: a review or a comment must not land twice.
+    static let transport = URLSessionTransport(isInForeground: { await appIsInForeground() })
+    /// Pairing and the hosted account's calls: one try, the request's own limit, no waiting for a network.
+    static let oneTry = URLSessionTransport(policy: SessionPolicy(requestTimeout: 60, waitsForConnectivity: false))
 }
 
 /// Whether someone is looking at the app: a request then waits for a network.

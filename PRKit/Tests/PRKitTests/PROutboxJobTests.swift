@@ -1,3 +1,4 @@
+import DurableNetworking
 import Foundation
 import Testing
 @testable import PRKit
@@ -32,7 +33,7 @@ struct PROutboxJobTests {
         let launchOptions = PRKitLaunchOptions.none
         private(set) var events: [PRKitEvent] = []
 
-        func isInForeground() async -> Bool { false }
+        let transport: any HTTPTransport = URLSessionTransport.background
         func log(_ line: String) {}
         func receive(_ event: PRKitEvent) { events.append(event) }
     }

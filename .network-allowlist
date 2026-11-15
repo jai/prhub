@@ -1,0 +1,7 @@
+# Paths allowed to reach the network without DurableNetworking (jai/durable-networking scripts/no-direct-networking.sh).
+# Each says why. App, extension and kit code never goes here.
+
+# Release tooling run on a Mac, not shipped: App Store Connect's and Xcode Cloud's APIs.
+release/*.swift
+# A UI test that drives the Debug outbox check's local control server, playing the network, not the app.
+app/PRHubUITests/PRHubOutboxCheckTests.swift

@@ -53,9 +53,9 @@ struct AccountClient: Sendable {
     /// Read per request, as the PR screens' are.
     var worker: @Sendable () -> URL?
     var bearer: @Sendable () throws -> String
-    /// One request, once: `URLSession` in the app, a stand-in in tests.
+    /// One request, once: the app's one-try transport, a stand-in in tests.
     var exchange: @Sendable (URLRequest) async throws -> (Data, URLResponse) = { request in
-        try await URLSession(configuration: .ephemeral).data(for: request)
+        try await AppNetwork.oneTry.send(request)
     }
 
     /// `fresh`: the hosted Worker reads the installations from GitHub before it answers (`?fresh=1`).

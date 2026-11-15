@@ -1,4 +1,4 @@
-import PRKitNetwork
+import DurableNetworking
 import PRKitCore
 import PRKitDesign
 import Foundation

@@ -4,6 +4,10 @@ name: PRHub
 packages:
   PRKit:
     path: ..
+  # Every request the app makes goes through it (jai/durable-networking); PRKit's Package.swift pins the same.
+  DurableNetworking:
+    url: https://github.com/jai/durable-networking
+    from: 0.1.0
   # Usage analytics, behind app/PRHub/Analytics/PostHogAnalytics.swift only. Pinned: a new version is read first.
   PostHog:
     url: https://github.com/PostHog/posthog-ios
@@ -122,6 +126,7 @@ targets:
         product: PRKit
       - package: PRKit
         product: FeatureKit
+      - package: DurableNetworking
       - package: PostHog
         product: PostHog
       - target: PRHubNotifications
@@ -177,6 +182,7 @@ targets:
     dependencies:
       - package: PRKit
         product: PRKitCore
+      - package: DurableNetworking
 
   PRHubTests:
     type: bundle.unit-test

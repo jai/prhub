@@ -1,5 +1,5 @@
+import DurableNetworking
 import Foundation
-import PRKitNetwork
 
 public enum PRReviewEvent: String, Sendable {
     case approve = "APPROVE"
@@ -117,24 +117,21 @@ public struct PRViewerAccess: Sendable {
 }
 
 /// The pr-viewer Worker (`pr-worker/`): Jai's, in a different Cloudflare account from the Pager Worker, or PRHub's own
-/// pr-worker, as `PRViewerAccess` says. The transport is the app's own: 15 s a request, and in the app it waits for a
-/// network. Nothing here repeats a request: a review or a comment must not land twice.
+/// pr-worker, as `PRViewerAccess` says. The transport is the host's (DurableNetworking): PRKit never makes a request of
+/// its own. Nothing here repeats a request that isn't safe to: a review or a comment must not land twice.
 public struct PRViewerClient: Sendable {
-    /// One request, once: the app's `URLSession`, or a test's stand-in.
+    /// One request, once: the host's transport, or a test's stand-in.
     private let exchange: @Sendable (URLRequest) async throws -> (Data, URLResponse)
     public let access: PRViewerAccess
     /// Where each failed request goes (`reporting`); nil reports nothing.
     private var reporter: PRFailureReporter?
 
-    /// `isInForeground` decides whether a request waits for a network: in the app, while someone is looking at it.
-    public init(access: PRViewerAccess, isInForeground: @escaping @Sendable () async -> Bool) {
-        self.init(access: access, transport: PRTransport(isInForeground: isInForeground))
-    }
-
-    package init(access: PRViewerAccess, transport: PRTransport) {
+    /// Over the host's transport: in an app, `URLSessionTransport` (it waits for a network while someone is looking
+    /// at the app).
+    public init(access: PRViewerAccess, transport: any HTTPTransport) {
         self.access = access
         exchange = { request in
-            try await transport.session().data(for: PRTransport.preferringHTTP3(request))
+            try await transport.send(request)
         }
     }
 

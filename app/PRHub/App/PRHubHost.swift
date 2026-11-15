@@ -1,5 +1,6 @@
 // Every file of the app reads PRKit's types (the PR screens, their models and the design parts) without its own import.
 @_exported import PRKit
+import DurableNetworking
 import Foundation
 
 /// PRHub's side of the PR screens (`PRKitHost`): the pr-worker it paired with, the features that Worker's
@@ -22,7 +23,7 @@ final class PRHubPRHost: PRKitHost {
         self.usage = usage
     }
 
-    func isInForeground() async -> Bool { appIsInForeground() }
+    var transport: any HTTPTransport { AppNetwork.transport }
 
     var configuration: PRKitConfiguration {
         Self.configuration(config(), isCheckingInstallations: isCheckingInstallations())
@@ -179,7 +180,7 @@ extension PRViewerAccess {
 extension PRViewerClient {
     /// A client over the app's transport, which waits for a network while someone is looking at the app.
     init(access: PRViewerAccess) {
-        self.init(access: access, isInForeground: { await appIsInForeground() })
+        self.init(access: access, transport: AppNetwork.transport)
     }
 
     /// `DELETE /device/pair`: the Worker forgets this secret. `204`.

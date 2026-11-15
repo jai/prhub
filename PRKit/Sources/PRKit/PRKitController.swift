@@ -13,7 +13,7 @@ public final class PRKitController {
     @ObservationIgnored let launchOptions: PRKitLaunchOptions
 
     public init(host: some PRKitHost) {
-        let client = PRViewerClient(access: host.access, isInForeground: { await host.isInForeground() })
+        let client = PRViewerClient(access: host.access, transport: host.transport)
             .reporting { area, failure in Task { @MainActor in host.receive(.requestFailed(area, failure)) } }
         model = PRsModel(client: client, samples: host.samples, directory: host.mirrorDirectory)
         launchOptions = host.launchOptions

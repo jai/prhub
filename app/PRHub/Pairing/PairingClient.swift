@@ -34,9 +34,9 @@ struct PairingClient: Sendable {
     }
 
     var secret: @Sendable () throws -> String
-    /// One request, once: `URLSession` in the app, a stand-in in tests.
+    /// One request, once: the app's one-try transport, a stand-in in tests.
     var exchange: @Sendable (URLRequest) async throws -> (Data, URLResponse) = { request in
-        try await URLSession(configuration: .ephemeral).data(for: request)
+        try await AppNetwork.oneTry.send(request)
     }
 
     func pair(worker: URL, code: String) async throws -> PairResponse {

@@ -1,4 +1,5 @@
 #if DEBUG
+import DurableNetworking
 import Foundation
 import PRKit
 
@@ -13,7 +14,7 @@ enum PRHubOutboxCheck {
         let rows = PRSampleSet.prHub.seed(in: directory)
         try? JSONEncoder().encode(rows).write(to: directory.appending(path: "rows.json"))
         let access = PRViewerAccess(baseURL: { worker }, bearer: { "outbox-check" }, discard: {})
-        let outbox = Outbox(client: PRViewerClient(access: access, isInForeground: { true }))
+        let outbox = Outbox(client: PRViewerClient(access: access, transport: URLSessionTransport(policy: .waiting)))
         let environment = PRHubEnvironment.offline(
             config: DeviceConfig(features: [.askAI], login: PRSampleSet.prHubLogin), access: access, worker: worker,
             defaultsSuite: "outbox-check", isSample: false, outbox: outbox
@@ -81,10 +82,10 @@ enum PRHubOutboxCheck {
 
         private func send(_ item: Item) async -> (Data, Int)? {
             guard let request = try? await client.outboxRequest(path: item.path, body: item.body),
-                  let (data, response) = try? await URLSession.shared.data(for: request) else {
+                  let (data, response) = try? await AppNetwork.oneTry.send(request) else {
                 return nil
             }
-            return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
+            return (data, response.statusCode)
         }
     }
 }

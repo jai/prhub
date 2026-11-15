@@ -1,4 +1,5 @@
 @_exported import FeedbackKit
+import DurableNetworking
 import PRKitCore
 
 // FeatureKit is FeedbackKit (jai/feedbackkit) over PRKit's Worker client: an app that already has a `PRViewerClient`
@@ -25,10 +26,8 @@ extension FeatureClient {
         self.init(connection: PRViewerFeedbackConnection(viewer: viewer), samples: samples)
     }
 
-    /// `isInForeground` decides whether a request waits for a network: in the app, while someone is looking at it.
-    public init(
-        access: PRViewerAccess, isInForeground: @escaping @Sendable () async -> Bool, samples: FeatureSamples? = nil
-    ) {
-        self.init(viewer: PRViewerClient(access: access, isInForeground: isInForeground), samples: samples)
+    /// Over the host's transport (DurableNetworking).
+    public init(access: PRViewerAccess, transport: any HTTPTransport, samples: FeatureSamples? = nil) {
+        self.init(viewer: PRViewerClient(access: access, transport: transport), samples: samples)
     }
 }

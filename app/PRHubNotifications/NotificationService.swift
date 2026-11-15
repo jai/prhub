@@ -1,3 +1,4 @@
+import DurableNetworking
 import Foundation
 import PRKitCore
 import UserNotifications
@@ -48,7 +49,7 @@ final class NotificationService: UNNotificationServiceExtension, @unchecked Send
             },
             discard: {}
         )
-        let prefetch = PRPushPrefetch(client: PRViewerClient(access: access, isInForeground: { false }), directory: directory)
+        let prefetch = PRPushPrefetch(client: PRViewerClient(access: access, transport: URLSessionTransport(policy: .quick)), directory: directory)
         Task {
             let clock = ContinuousClock()
             let started = clock.now

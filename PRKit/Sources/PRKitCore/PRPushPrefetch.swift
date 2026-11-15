@@ -1,5 +1,5 @@
+import DurableNetworking
 import Foundation
-import PRKitNetwork
 import os
 
 /// Where the PR mirror keeps its files (`PRMirror`): in the app group's container when the host names one, so its

@@ -1,5 +1,4 @@
 import Foundation
-import Network
 import PRKitCore
 
 /// What became of a question handed to the model (`PRsModel.ask`).
@@ -78,28 +77,5 @@ enum PRAskReadProblem: Equatable {
 
     var isFailure: Bool {
         self != .unreachable
-    }
-}
-
-/// Whether the device has a network now, from the system's own path monitor: one for the process.
-final class PRNetworkPath: @unchecked Sendable {
-    static let shared = PRNetworkPath()
-
-    private let monitor = NWPathMonitor()
-    private let lock = NSLock()
-    private var satisfied = true
-
-    private init() {
-        monitor.pathUpdateHandler = { [weak self] path in
-            guard let self else {
-                return
-            }
-            lock.withLock { satisfied = path.status == .satisfied }
-        }
-        monitor.start(queue: DispatchQueue(label: "PRKit.network-path"))
-    }
-
-    var isOnline: Bool {
-        lock.withLock { satisfied }
     }
 }

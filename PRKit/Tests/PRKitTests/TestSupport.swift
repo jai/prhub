@@ -1,5 +1,5 @@
+import DurableNetworking
 import Foundation
-import PRKitNetwork
 @testable import PRKit
 
 /// The worker's golden fixtures (docs/fixtures/), read from the repo. Xcode Cloud's test Mac has the built products and
@@ -18,9 +18,9 @@ enum RepoFixtures {
     }
 }
 
-extension PRTransport {
+extension URLSessionTransport {
     /// A transport that never waits for a network, as in a background wake.
-    static var background: PRTransport {
-        PRTransport(isInForeground: { false })
+    static var background: URLSessionTransport {
+        URLSessionTransport(policy: .quick)
     }
 }

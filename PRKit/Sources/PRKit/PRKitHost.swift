@@ -1,3 +1,4 @@
+import DurableNetworking
 import Foundation
 import PRKitCore
 
@@ -6,8 +7,10 @@ import PRKitCore
 public protocol PRKitHost: AnyObject, Sendable {
     /// Where every request goes and the bearer it carries. Read once, when the kit is made.
     var access: PRViewerAccess { get }
-    /// Whether the app is in front: a request made then waits for a network, one from a background wake does not.
-    func isInForeground() async -> Bool
+    /// Every request the PR screens make goes through it (DurableNetworking): PRKit never makes one of its own. In an
+    /// app, `URLSessionTransport(isInForeground:)`, so a request made while the app is in front waits for a network and
+    /// one from a background wake does not. Read once, when the kit is made.
+    var transport: any HTTPTransport { get }
     /// What the Worker serves and where the org filter starts. Read each time a screen asks, so a new Worker config
     /// shows at once.
     var configuration: PRKitConfiguration { get }

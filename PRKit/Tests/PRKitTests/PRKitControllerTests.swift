@@ -1,3 +1,4 @@
+import DurableNetworking
 import Foundation
 import Testing
 @testable import PRKit
@@ -19,7 +20,7 @@ struct PRKitControllerTests {
             self.samples = samples
         }
 
-        func isInForeground() async -> Bool { false }
+        let transport: any HTTPTransport = URLSessionTransport.background
         func log(_ line: String) {}
         func receive(_ event: PRKitEvent) { events.append(event) }
     }

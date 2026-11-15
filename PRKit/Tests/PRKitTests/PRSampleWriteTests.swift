@@ -1,3 +1,4 @@
+import DurableNetworking
 import Foundation
 import Testing
 @testable import PRKit
@@ -31,7 +32,7 @@ struct PRSampleWriteTests {
             mergedMine: [], answersOnPhone: true
         )
         let directory = URL.temporaryDirectory.appending(path: "pr-sample-writes-\(UUID().uuidString)")
-        let client = PRViewerClient(access: .offline, isInForeground: { false })
+        let client = PRViewerClient(access: .offline, transport: URLSessionTransport.background)
         let model = PRsModel(client: client, samples: samples, directory: directory)
         model.featureSource = {
             var configuration = PRKitConfiguration.everything
