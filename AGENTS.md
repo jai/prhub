@@ -10,14 +10,17 @@ Jai's Macs, read [RULES.md in jai/ci](https://github.com/jai/ci/blob/main/RULES.
 ## Shipping (standard for all of Jai's projects)
 
 - **Push to main.** Work on `main` in your own clone or worktree. No feature branches and
-  no pull requests. The only pull requests are the ones bots open (Dependabot,
-  release-please); they merge themselves once green.
+  no pull requests. The only pull requests are the ones bots open (release-please);
+  they merge themselves once green. Dependabot is off (Jai, 2026-11-15).
 - **Land a change:** commit small (Conventional Commits, signed), `git pull --rebase origin
   main`, run this repo's fast checks, push. A push rejected because main moved means
   someone landed first: rebase, run the checks again, push again. Never force-push.
 - **Main stays green.** Watch the run for your commit (`gh run watch`). If your push turns
   main red, fixing it is your next task: fix forward, or `git revert` your commit, within
   the hour.
+- **Deploy through CI.** For conformance and correctness, production deploys run in the
+  repo's deploy workflow. A manual deploy is fine in an exceptional case or when the user
+  asks for one.
 - **Releases are not yours to cut.** An hourly job tests main's newest commit and releases
   it if it passes. Do not tag or bump versions by hand.
 - **Unfinished work** goes behind a feature flag, not on a branch.
