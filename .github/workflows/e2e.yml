@@ -1,6 +1,8 @@
 # End to end against the deployed test Worker and the shared relay: nightly and by hand, never a pull request's check.
-# Secrets live in the protected `e2e` environment: PRHUB_TEST_URL (the test Worker), PRHUB_TEST_SECRET (a device
-# secret paired there with `npm run pair -- --app ci-e2e`) and PRHUB_RELAY_KEY (a relay key issued for this check).
+# Secrets live in the protected `e2e` environment: PRHUB_E2E_WORKER_URL (the test Worker, prhub-test),
+# PRHUB_E2E_DEVICE_TOKEN (a device secret paired there with `npm run pair -- --app ci-e2e`) and PRHUB_E2E_RELAY_KEY (a
+# relay key issued for this check, label prhub-e2e). Pairing prhub-test without --app (a phone or simulator as its one
+# device) unpairs every app, this one too: the worker job then fails with 401 until ci-e2e is paired again.
 # The test Worker reads real PRs and this repo's logs are public: steps print counts and statuses, never a body.
 name: e2e
 
@@ -25,8 +27,8 @@ jobs:
     timeout-minutes: 15
     environment: e2e
     env:
-      URL: ${{ secrets.PRHUB_TEST_URL }}
-      SECRET: ${{ secrets.PRHUB_TEST_SECRET }}
+      URL: ${{ secrets.PRHUB_E2E_WORKER_URL }}
+      SECRET: ${{ secrets.PRHUB_E2E_DEVICE_TOKEN }}
     steps:
       - name: The device config
         run: |
@@ -72,7 +74,7 @@ jobs:
     steps:
       - name: A push to a made-up device comes back as Apple's BadDeviceToken
         env:
-          KEY: ${{ secrets.PRHUB_RELAY_KEY }}
+          KEY: ${{ secrets.PRHUB_E2E_RELAY_KEY }}
         run: |
           body='{"device_token":"'"$(printf '0%.0s' $(seq 64))"'","apns_env":"sandbox","push_type":"background","priority":5,"payload":{"aps":{"content-available":1},"reason":"pr_sync"}}'
           answer=$(printf 'header = "Authorization: Bearer %s"\n' "$KEY" | curl -sS --fail --config - -H 'content-type: application/json' -d "$body" "$RELAY_URL/v1/push")
