@@ -52,8 +52,8 @@ extension View {
 struct PROfflineBanner: ViewModifier {
     let network: PRNetwork
 
-    /// At the bottom, over the tab bar where there is one: at the top it sat under an iPad's floating tab bar and over a
-    /// pushed screen's navigation bar, which places itself without it.
+    /// At the bottom, over the tab bar where there is one: at the top it sat under an iPad's floating tab bar and over
+    /// a pushed screen's navigation bar, which places itself without it.
     func body(content: Content) -> some View {
         // A bar, not an inset: what scrolls under it fades by the system's edge effect, and nothing opaque covers
         // anything.
