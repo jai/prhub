@@ -1,6 +1,7 @@
 # Offline first
 
-Status: step 1 (audit) done 2026-11-15; steps 2 to 4 not started. Issue: #52.
+Status: step 1 (audit) done 2026-11-15; steps 2 and 3 mostly done 2026-11-16 (see Progress); step 4 under way.
+Issue: #52.
 
 Goal: with no network, PRHub opens on what it last loaded and lets you browse all of it. It says quietly that it is
 offline and showing saved information. It never falls to a blank or error screen.
@@ -54,3 +55,16 @@ There are no widgets, menu bar extra, search screen or repo index.
 3. **Every screen onto it,** most-used first: PR lists, a PR's page and files, reviews, Ask, Feedback. One quiet
    app-wide banner: "Offline — showing saved information".
 4. **Tests:** launch offline after a warm run, and quit and reopen offline, on iPhone and Mac.
+
+## Progress
+
+- Offline banner, "Offline — showing saved information", on every tab and Mac window (`prKitOfflineBanner`). Reads
+  fail at once while the system says there is no network.
+- The PR mirror lives in Application Support, which iOS keeps, left out of backups. An earlier build's mirror moves
+  there once.
+- Kept reads, in the mirror's `kept` folder: the merged lists, each PR's Ask chat, and Feedback's reads
+  (`FeatureClient(viewer:keptIn:)`).
+- Key lines says it needs a network instead of spinning.
+- Writes and questions go through `PRHubOutbox`, DurableNetworking's persistent outbox. Each carries `client_ref`, which
+  the Worker's write receipts answer once.
+- Still memory only: reviewed ticks, and key lines at a context other than the row's.
