@@ -247,8 +247,8 @@ final class PRsModel {
     /// Whether the device has a network: what a question left in the outbox says while it waits. A test sets its own.
     @ObservationIgnored var isOnline: @MainActor () -> Bool = { NetworkStatus.shared.isOnline }
     let mirror: PRMirror
-    /// Last good answers to the reads the mirror doesn't hold (the merged lists, each PR's Ask chat), in the mirror's
-    /// folder.
+    /// Last good answers to the reads the mirror doesn't hold (the merged lists, each PR's Ask chat, key lines at
+    /// other contexts, reviewed ticks), in the mirror's folder.
     var kept: ReadStore {
         ReadStore(directory: mirror.directory.appending(path: PRMirror.keptFolder, directoryHint: .isDirectory))
     }
@@ -502,7 +502,8 @@ final class PRsModel {
 
     /// Asks every few seconds until the Worker's job lands. An answer can be a failure, in the job's own words.
     func aiAnswer<Answer: Decodable>(
-        _ kind: String, ref: PullRequestRef, head: String, context: Int = PRKeyLines.defaultContext, retry: Bool
+        _ kind: String, ref: PullRequestRef, head: String, context: Int = PRKeyLines.defaultContext, retry: Bool,
+        keep key: InboxKey? = nil
     ) async throws -> Answer {
         if let samples {
             guard kind == "key-lines", let data = samples.keyLines(for: ref) else {
@@ -530,7 +531,11 @@ final class PRsModel {
                     }
                     throw PRWorkerError.refused(failure.error)
                 }
-                return try client.decode(Answer.self, from: data, path: path)
+                let answer = try client.decode(Answer.self, from: data, path: path)
+                if let key {
+                    keep(data, as: key)
+                }
+                return answer
             }
             try await Task.sleep(for: .seconds(3))
         }
@@ -633,6 +638,22 @@ final class PRsModel {
 
     private static func askKey(_ ref: PullRequestRef) -> InboxKey {
         InboxKey("ask-\(ref.repo)/\(ref.number)")
+    }
+
+    /// Keeps an answer the Worker sent, for `kept(_:as:)` to give back offline and on the next launch.
+    func keep(_ data: Data, as key: InboxKey) {
+        guard samples == nil else {
+            return
+        }
+        try? kept.save(KeptAnswer(data: data, savedAt: .now), for: key)
+    }
+
+    /// The answer kept under `key`, if there is one this build can read.
+    func kept<Answer: Decodable>(_ key: InboxKey, as type: Answer.Type) -> Answer? {
+        guard samples == nil, let saved = kept.load(key) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(type, from: saved.data)
     }
 
     /// A PR the phone does not hold, its detail and diff side by side: `row` at its version, which the Worker serves

@@ -1,3 +1,4 @@
+import DurableNetworking
 import PRKitCore
 import PRKitDesign
 import Observation
@@ -506,10 +507,17 @@ extension PRSession {
             keyLines = .ready(known)
             return
         }
+        // Read before at this commit and context, on this device: offline too.
+        let key = InboxKey("key-lines-\(ref.repo)/\(ref.number)/\(head)/\(context)")
+        if !retry, let saved = model.kept(key, as: PRKeyLines.self) {
+            keyLinesByContext[context] = saved
+            keyLines = .ready(saved)
+            return
+        }
         keyLines = .working
         do {
             let answer: PRKeyLines = try await model.aiAnswer(
-                "key-lines", ref: ref, head: head, context: context, retry: retry
+                "key-lines", ref: ref, head: head, context: context, retry: retry, keep: key
             )
             keyLinesByContext[context] = answer
             if context == contextLines {

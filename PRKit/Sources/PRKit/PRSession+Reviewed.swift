@@ -1,3 +1,4 @@
+import DurableNetworking
 import PRKitCore
 import PRKitDesign
 import SwiftUI
@@ -23,6 +24,16 @@ extension PRSession {
         "prs/\(ref.repo)/\(ref.number)/key-lines-reviewed"
     }
 
+    private func reviewedKey(_ head: String) -> InboxKey {
+        InboxKey("reviewed-\(ref.repo)/\(ref.number)/\(head)")
+    }
+
+    private func keep(_ answer: PRReviewedKeyLines) {
+        if let data = try? JSONEncoder().encode(answer) {
+            model.keep(data, as: reviewedKey(answer.head))
+        }
+    }
+
     func isReviewed(_ item: PRKeyLines.Item) -> Bool {
         guard let reviewed = reviewedKeyLines, reviewed.head == content?.detail.head else {
             return false
@@ -42,9 +53,16 @@ extension PRSession {
             return
         }
         let marks = keyLineMarks
-        guard let answer = try? await model.client.read(
-            reviewedPath, query: ["head": head], as: PRReviewedKeyLines.self
-        ), marks == keyLineMarks, answer.head == content?.detail.head, answer != reviewedKeyLines else {
+        // The last answer kept on this device stands in when the Worker can't be read: offline, the ticks still show.
+        let key = reviewedKey(head)
+        let answer: PRReviewedKeyLines?
+        if let fresh = try? await model.client.read(reviewedPath, query: ["head": head], as: PRReviewedKeyLines.self) {
+            answer = fresh
+            keep(fresh)
+        } else {
+            answer = model.kept(key, as: PRReviewedKeyLines.self)
+        }
+        guard let answer, marks == keyLineMarks, answer.head == content?.detail.head, answer != reviewedKeyLines else {
             return
         }
         withAnimation(AppMotion.fold) { reviewedKeyLines = answer }
@@ -69,6 +87,7 @@ extension PRSession {
                 if marks == keyLineMarks, answer.head == content?.detail.head {
                     reviewedKeyLines = answer
                 }
+                keep(answer)
             } catch PRWorkerError.notFound {
                 return
             } catch {

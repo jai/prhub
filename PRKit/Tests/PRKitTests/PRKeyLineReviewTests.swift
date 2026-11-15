@@ -9,7 +9,7 @@ import Testing
 struct PRKeyLineReviewTests {
     /// The Worker's `key-lines-reviewed` route, as docs/api.md has it, or a Worker that refuses or lacks it.
     final class Worker: Sendable {
-        enum Mode { case keeps, refuses, lacksRoute }
+        enum Mode { case keeps, refuses, lacksRoute, offline }
 
         private struct State {
             var reviewed: [String: Set<String>] = [:]
@@ -31,6 +31,9 @@ struct PRKeyLineReviewTests {
         }
 
         func exchange(_ request: URLRequest) async throws -> (Data, URLResponse) {
+            if state.withLock({ $0.mode == .offline }) {
+                throw URLError(.notConnectedToInternet)
+            }
             let url = try #require(request.url)
             let answer = { (status: Int, body: String) in
                 (Data(body.utf8), HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!)
@@ -81,11 +84,12 @@ struct PRKeyLineReviewTests {
     ],"context":100,"leftOut":[]}
     """
 
-    private func session(detail: String? = nil) async throws -> PRSession {
+    /// `directory`: the mirror's folder, shared by two sessions as by two launches.
+    private func session(detail: String? = nil, in directory: URL? = nil) async throws -> PRSession {
         let worker = worker
         let access = PRViewerAccess(baseURL: { URL(string: "https://worker.test")! }, bearer: { "t" }, discard: {})
         let client = PRViewerClient(access: access) { try await worker.exchange($0) }
-        let directory = URL.temporaryDirectory.appending(path: "key-line-review-\(UUID().uuidString)")
+        let directory = directory ?? URL.temporaryDirectory.appending(path: "key-line-review-\(UUID().uuidString)")
         let model = PRsModel(client: client, directory: directory)
         var data = try FixtureContractTests.data("detail.json")
         if let detail {
@@ -164,6 +168,19 @@ struct PRKeyLineReviewTests {
         let newer = try await session(detail: String(repeating: "c", count: 40))
         await newer.loadReviewedKeyLines()
         #expect(newer.reviewedKeyLineCount == 0, "a new commit starts the review again")
+    }
+
+    @Test func ticksReadOnlineShowOfflineOnTheNextLaunch() async throws {
+        let directory = URL.temporaryDirectory.appending(path: "key-line-review-\(UUID().uuidString)")
+        let online = try await session(in: directory)
+        worker.seed(["a.swift:RIGHT:1"], at: try head(of: online))
+        await online.loadReviewedKeyLines()
+        #expect(online.reviewedKeyLineCount == 1)
+
+        worker.set(.offline)
+        let relaunched = try await session(in: directory)
+        await relaunched.loadReviewedKeyLines()
+        #expect(relaunched.reviewedKeyLineCount == 1, "the kept ticks, with no network")
     }
 
     @Test func nextAndPreviousSkipTicksUntilAllAreTicked() async throws {
