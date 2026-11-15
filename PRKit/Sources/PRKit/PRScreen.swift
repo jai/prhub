@@ -119,23 +119,38 @@ private struct PRLoadedContent<Content: View>: View {
     @ViewBuilder let content: (PRContent) -> Content
 
     var body: some View {
-        switch session.state {
-        case .reading:
-            Text("Reading this PR from GitHub")
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        case let .failed(reason):
-            ContentUnavailableView {
-                Label("Couldn't read this PR", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(reason)
-            } actions: {
-                Button("Try again") { Task { await session.retry() } }
-                    .buttonStyle(PRButtonStyle(.secondary))
+        Group {
+            switch session.state {
+            case .reading:
+                Text("Reading this PR from GitHub")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .failed where !session.model.network.isOnline:
+                // A PR never read on this device, opened with no network: it comes once the network does.
+                ContentUnavailableView {
+                    Label("This PR isn't saved on this device", systemImage: AppIcon.offline.symbol)
+                } description: {
+                    Text("It opens when you're back online.")
+                }
+                .accessibilityIdentifier("pr-not-saved-offline")
+            case let .failed(reason):
+                ContentUnavailableView {
+                    Label("Couldn't read this PR", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(reason)
+                } actions: {
+                    Button("Try again") { Task { await session.retry() } }
+                        .buttonStyle(PRButtonStyle(.secondary))
+                }
+            case let .ready(content):
+                self.content(content)
+                    .transition(.opacity)
             }
-        case let .ready(content):
-            self.content(content)
-                .transition(.opacity)
+        }
+        .onChange(of: session.model.network.isOnline) { _, isOnline in
+            if isOnline, case .failed = session.state {
+                Task { await session.retry() }
+            }
         }
     }
 }
