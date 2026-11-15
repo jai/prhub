@@ -113,6 +113,12 @@ struct PRKeyLinesList: View {
 
     @ViewBuilder private var content: some View {
         switch session.keyLines {
+        case .working where !session.model.network.isOnline:
+            // The read goes on every few seconds and lands when the network is back; a spinner would say it is coming.
+            Label("Key lines need a network. They show when it's back.", systemImage: AppIcon.offline.symbol)
+                .font(.appCaption)
+                .foregroundStyle(Color.toneWaiting)
+                .accessibilityIdentifier("key-lines-offline")
         case .working:
             HStack(spacing: Space.sm) {
                 ProgressView()
