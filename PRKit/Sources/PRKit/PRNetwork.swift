@@ -43,7 +43,7 @@ public final class PRNetwork {
 }
 
 extension View {
-    /// One quiet line at the top while the device is offline: what is on screen is what was saved.
+    /// One quiet line at the bottom while the device is offline: what is on screen is what was saved.
     public func prKitOfflineBanner(_ controller: PRKitController) -> some View {
         modifier(PROfflineBanner(network: controller.network))
     }
@@ -51,21 +51,13 @@ extension View {
 
 struct PROfflineBanner: ViewModifier {
     let network: PRNetwork
-    @Environment(\.horizontalSizeClass) private var sizeClass
 
-    /// The top, except on an iPad's regular width, whose tab bar floats over the top of every tab.
-    private var edge: VerticalEdge {
-        #if os(iOS)
-        sizeClass == .regular ? .bottom : .top
-        #else
-        .top
-        #endif
-    }
-
+    /// At the bottom, over the tab bar where there is one: at the top it sat under an iPad's floating tab bar and over a
+    /// pushed screen's navigation bar, which places itself without it.
     func body(content: Content) -> some View {
-        // A bar, not an inset: what scrolls under it fades by the system's edge effect, and nothing opaque sits over
-        // a toolbar's glass buttons.
-        content.safeAreaBar(edge: edge, spacing: 0) {
+        // A bar, not an inset: what scrolls under it fades by the system's edge effect, and nothing opaque covers
+        // anything.
+        content.safeAreaBar(edge: .bottom, spacing: 0) {
             if !network.isOnline {
                 Label("Offline — showing saved information", systemImage: AppIcon.offline.symbol)
                     .font(.appCaption)
@@ -74,7 +66,7 @@ struct PROfflineBanner: ViewModifier {
                     .padding(.vertical, Space.xs)
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("prkit-offline-banner")
-                    .transition(.move(edge: edge == .top ? .top : .bottom).combined(with: .opacity))
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .animation(AppMotion.fold, value: network.isOnline)
