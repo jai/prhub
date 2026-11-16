@@ -27,13 +27,13 @@ jobs:
         include:
           - component: ios
             tag: ios-v
-            paths: app PRKit Package.swift Package.resolved DESIGN.md .swiftlint.yml .swiftformat Makefile .github/workflows .gitleaks.toml cliff.toml
+            paths: app PRKit Package.swift Package.resolved DESIGN.md .swiftlint.yml Makefile .github/workflows .gitleaks.toml cliff.toml
           - component: worker
             tag: worker-v
             paths: worker agent deploy/hosted docs/fixtures scripts/ask-trace.sh Makefile .github/workflows .gitleaks.toml cliff.toml
           - component: prkit
             tag: v
-            paths: PRKit Package.swift Package.resolved .swiftlint.yml .swiftformat Makefile .github/workflows .gitleaks.toml cliff.toml
+            paths: PRKit Package.swift Package.resolved .swiftlint.yml Makefile .github/workflows .gitleaks.toml cliff.toml
     steps:
       # The jai-agents App's token: a tag pushed with github.token starts no workflow, so release.yml would not run.
       - id: app-token

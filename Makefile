@@ -3,7 +3,7 @@
 #   make lint-ios                 SwiftFormat, SwiftLint with the DESIGN.md token rules, the design-token check,
 #                                 shellcheck, gitleaks
 #   make lint-prkit               SwiftFormat, SwiftLint with the DESIGN.md token rules, gitleaks
-#   make lint-worker              oxlint, oxfmt, tsc, shellcheck, gitleaks
+#   make lint-worker              oxlint (--type-aware --type-check), oxfmt, shellcheck, gitleaks
 #   make lint-workflows           actionlint
 #   make test-unit-ios            swift test on the app packages (PRHubTests)
 #   make test-unit-prkit          swift test on PRKit (PRKitTests)

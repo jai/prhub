@@ -4,7 +4,7 @@ name: test-unit-prkit
 on:
   push:
     branches: [main]
-    paths: ["PRKit/**", "Package.swift", "Package.resolved", ".swiftlint.yml", ".swiftformat", "Makefile", ".github/workflows/test-unit-prkit.yml"]
+    paths: ["PRKit/**", "Package.swift", "Package.resolved", ".swiftlint.yml", "Makefile", ".github/workflows/test-unit-prkit.yml"]
   workflow_call:
 
 permissions:

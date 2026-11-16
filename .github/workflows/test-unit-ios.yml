@@ -4,7 +4,7 @@ name: test-unit-ios
 on:
   push:
     branches: [main]
-    paths: ["app/**", "PRKit/**", "Package.swift", "Package.resolved", "DESIGN.md", ".swiftlint.yml", ".swiftformat", "Makefile", ".github/workflows/test-unit-ios.yml"]
+    paths: ["app/**", "PRKit/**", "Package.swift", "Package.resolved", "DESIGN.md", ".swiftlint.yml", "Makefile", ".github/workflows/test-unit-ios.yml"]
   workflow_call:
 
 permissions:

@@ -29,21 +29,21 @@ repos:
         entry: make lint-ios
         language: system
         pass_filenames: false
-        files: '^(app/|DESIGN\.md$|\.swiftlint\.yml$|\.swiftformat$)'
+        files: '^(app/|DESIGN\.md$|\.swiftlint\.yml$)'
         stages: [pre-commit]
       - id: lint-prkit
         name: make lint-prkit
         entry: make lint-prkit
         language: system
         pass_filenames: false
-        files: '^(PRKit/|Package\.(swift|resolved)$|\.swiftlint\.yml$|\.swiftformat$)'
+        files: '^(PRKit/|Package\.(swift|resolved)$|\.swiftlint\.yml$)'
         stages: [pre-commit]
       - id: lint-worker
         name: make lint-worker
         entry: make lint-worker
         language: system
         pass_filenames: false
-        files: '^(worker/|agent/|deploy/hosted/|scripts/ask-trace\.sh$)'
+        files: '^(worker/|agent/|deploy/hosted/|docs/fixtures/|scripts/ask-trace\.sh$)'
         stages: [pre-commit]
       - id: lint-workflows
         name: make lint-workflows
@@ -71,7 +71,7 @@ repos:
         entry: make test-unit-worker
         language: system
         pass_filenames: false
-        files: '^(worker/|docs/fixtures/)'
+        files: '^(worker/|agent/|deploy/hosted/|docs/fixtures/|scripts/ask-trace\.sh$)'
         stages: [pre-push]
       # The two work domains are split by quotes, so gitleaks (.gitleaks.toml), which keeps them out of this public
       # repo, passes this file.

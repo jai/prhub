@@ -4,7 +4,7 @@ name: lint-prkit
 on:
   push:
     branches: [main]
-    paths: ["PRKit/**", "Package.swift", "Package.resolved", ".swiftlint.yml", ".swiftformat", "Makefile", ".github/workflows/lint-prkit.yml"]
+    paths: ["PRKit/**", "Package.swift", "Package.resolved", ".swiftlint.yml", ".gitleaks.toml", "Makefile", ".github/workflows/lint-prkit.yml"]
   workflow_call:
 
 permissions:

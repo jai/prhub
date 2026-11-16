@@ -68,9 +68,9 @@ jobs:
           version=${rest#"$component"-v}
           version=${version%-*}
           case $component in
-            ios) tag="ios-v$version"; prefix=ios-v; paths=(app PRKit Package.swift Package.resolved DESIGN.md .swiftlint.yml .swiftformat Makefile .github/workflows .gitleaks.toml cliff.toml) ;;
+            ios) tag="ios-v$version"; prefix=ios-v; paths=(app PRKit Package.swift Package.resolved DESIGN.md .swiftlint.yml Makefile .github/workflows .gitleaks.toml cliff.toml) ;;
             worker) tag="worker-v$version"; prefix=worker-v; paths=(worker agent deploy/hosted docs/fixtures scripts/ask-trace.sh Makefile .github/workflows .gitleaks.toml cliff.toml) ;;
-            prkit) tag="v$version"; prefix=v; paths=(PRKit Package.swift Package.resolved .swiftlint.yml .swiftformat Makefile .github/workflows .gitleaks.toml cliff.toml) ;;
+            prkit) tag="v$version"; prefix=v; paths=(PRKit Package.swift Package.resolved .swiftlint.yml Makefile .github/workflows .gitleaks.toml cliff.toml) ;;
           esac
           include=()
           for path in "${paths[@]}"; do

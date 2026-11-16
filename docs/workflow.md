@@ -98,6 +98,7 @@ These workflows do not follow the `lint-`, `test-` and `deploy-` names in the Wo
 ## Runners
 
 - [ ] CI runs on GitHub's own runners: `ubuntu-latest` for Linux, and `xcode-27` for the Mac. They are free for a public repo.
+- [ ] `lint-ios` and `lint-prkit` run on `ubuntu-24.04`, not `ubuntu-latest` (26.04): SwiftLint's Linux build needs `libxml2.so.2`, which 26.04 no longer has.
 - [ ] No job runs on a self-hosted runner. This repo is public, so outside pull requests would run on Jai's Macs.
 
 ## Components
@@ -140,7 +141,7 @@ These workflows do not follow the `lint-`, `test-` and `deploy-` names in the Wo
 | --- | --- |
 | `make lint-ios` | SwiftFormat, SwiftLint with the DESIGN.md token rules, the design-token check, shellcheck, gitleaks |
 | `make lint-prkit` | SwiftFormat, SwiftLint with the DESIGN.md token rules, gitleaks |
-| `make lint-worker` | oxlint, oxfmt, tsc, shellcheck, gitleaks |
+| `make lint-worker` | oxlint (--type-aware --type-check), oxfmt, shellcheck, gitleaks |
 | `make lint-workflows` | actionlint |
 | `make test-unit-ios` | `swift test` on the app packages |
 | `make test-unit-prkit` | `swift test` on PRKit |

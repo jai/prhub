@@ -1,10 +1,10 @@
-# The worker component's lint (make lint-worker): oxlint, oxfmt, tsc, gitleaks. On each push that changes the Worker, and in each worker release.
+# The worker component's lint (make lint-worker): oxlint (--type-aware --type-check), oxfmt, gitleaks. On each push that changes the Worker, and in each worker release.
 name: lint-worker
 
 on:
   push:
     branches: [main]
-    paths: ["worker/**", "agent/**", "deploy/hosted/**", "docs/fixtures/**", "scripts/ask-trace.sh", "Makefile", ".github/workflows/lint-worker.yml"]
+    paths: ["worker/**", "agent/**", "deploy/hosted/**", "docs/fixtures/**", "scripts/ask-trace.sh", ".gitleaks.toml", "Makefile", ".github/workflows/lint-worker.yml"]
   workflow_call:
 
 permissions:
