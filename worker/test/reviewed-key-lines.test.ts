@@ -3,8 +3,13 @@ import { test } from "node:test";
 import { parseKeyLineMark } from "../src/boundary.ts";
 import type { PrId, Sha } from "../src/ids.ts";
 import {
-  createReviewedKeyLinesTable, forgetReviewedKeyLinesOf, markKeyLine, MAX_REVIEWED_PER_HEAD, pruneReviewedKeyLines,
-  REVIEWED_KEPT_MS, reviewedKeyLines,
+  createReviewedKeyLinesTable,
+  forgetReviewedKeyLinesOf,
+  markKeyLine,
+  MAX_REVIEWED_PER_HEAD,
+  pruneReviewedKeyLines,
+  REVIEWED_KEPT_MS,
+  reviewedKeyLines,
 } from "../src/reviewed-key-lines.ts";
 import { memorySql } from "./memory-sql.ts";
 
@@ -24,11 +29,22 @@ test("a key line checked off on one device is checked off for the next, and unch
   const sql = index();
   assert.deepEqual(reviewedKeyLines(sql, PR, HEAD), { head: HEAD, reviewed: [] });
   markKeyLine(sql, PR, HEAD, "src/b.ts:RIGHT:9", true, 1);
-  assert.deepEqual(markKeyLine(sql, PR, HEAD, "src/a.ts:RIGHT:3", true, 2),
-    { head: HEAD, reviewed: ["src/a.ts:RIGHT:3", "src/b.ts:RIGHT:9"] });
-  assert.deepEqual(markKeyLine(sql, PR, HEAD, "src/a.ts:RIGHT:3", true, 3)?.reviewed.length, 2, "twice is once");
-  assert.deepEqual(markKeyLine(sql, PR, HEAD, "src/b.ts:RIGHT:9", false, 4), { head: HEAD, reviewed: ["src/a.ts:RIGHT:3"] });
-  assert.deepEqual(markKeyLine(sql, PR, HEAD, "src/b.ts:RIGHT:9", false, 5)?.reviewed, ["src/a.ts:RIGHT:3"]);
+  assert.deepEqual(markKeyLine(sql, PR, HEAD, "src/a.ts:RIGHT:3", true, 2), {
+    head: HEAD,
+    reviewed: ["src/a.ts:RIGHT:3", "src/b.ts:RIGHT:9"],
+  });
+  assert.deepEqual(
+    markKeyLine(sql, PR, HEAD, "src/a.ts:RIGHT:3", true, 3)?.reviewed.length,
+    2,
+    "twice is once",
+  );
+  assert.deepEqual(markKeyLine(sql, PR, HEAD, "src/b.ts:RIGHT:9", false, 4), {
+    head: HEAD,
+    reviewed: ["src/a.ts:RIGHT:3"],
+  });
+  assert.deepEqual(markKeyLine(sql, PR, HEAD, "src/b.ts:RIGHT:9", false, 5)?.reviewed, [
+    "src/a.ts:RIGHT:3",
+  ]);
 });
 
 test("a new commit starts the review again, and another PR's ticks are its own", () => {
@@ -45,7 +61,10 @@ test("a head keeps a bounded number of ticks, and a line already ticked still an
     markKeyLine(sql, PR, HEAD, `a:RIGHT:${line}`, true, 1);
   }
   assert.equal(markKeyLine(sql, PR, HEAD, "a:RIGHT:extra", true, 2), null);
-  assert.equal(markKeyLine(sql, PR, HEAD, "a:RIGHT:0", true, 2)?.reviewed.length, MAX_REVIEWED_PER_HEAD);
+  assert.equal(
+    markKeyLine(sql, PR, HEAD, "a:RIGHT:0", true, 2)?.reviewed.length,
+    MAX_REVIEWED_PER_HEAD,
+  );
   assert.equal(markKeyLine(sql, PR, NEXT, "a:RIGHT:extra", true, 2)?.reviewed.length, 1);
 });
 
@@ -71,8 +90,11 @@ test("losing a repo takes its ticks, whatever the case, and leaves a repo whose 
 });
 
 test("a mark names a head commit, a key line and whether it is reviewed", () => {
-  assert.deepEqual(parseKeyLineMark({ head: HEAD, line: "a:RIGHT:1", reviewed: true }),
-    { head: HEAD, line: "a:RIGHT:1", reviewed: true });
+  assert.deepEqual(parseKeyLineMark({ head: HEAD, line: "a:RIGHT:1", reviewed: true }), {
+    head: HEAD,
+    line: "a:RIGHT:1",
+    reviewed: true,
+  });
   assert.equal(parseKeyLineMark({ head: "main", line: "a:RIGHT:1", reviewed: true }), null);
   assert.equal(parseKeyLineMark({ head: HEAD, line: "", reviewed: true }), null);
   assert.equal(parseKeyLineMark({ head: HEAD, line: "a".repeat(1_101), reviewed: true }), null);

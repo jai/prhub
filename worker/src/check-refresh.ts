@@ -29,8 +29,12 @@ export interface PatchedRead {
  * trusted only as long as `.policy.yml` is, and a null one (no policy, or one that could not be read) never.
  */
 export function patchedRead(held: HeldRead, node: ChecksNode, now: number): PatchedRead | null {
-  if (node.headRefOid !== held.head || node.updatedAt !== held.updatedAt || held.people === null
-    || now - held.peopleAt >= POLICY_TTL_MS) {
+  if (
+    node.headRefOid !== held.head ||
+    node.updatedAt !== held.updatedAt ||
+    held.people === null ||
+    now - held.peopleAt >= POLICY_TTL_MS
+  ) {
     return null;
   }
   const { version, checks, review, merge, detail } = checksRead(node, held.people);

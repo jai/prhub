@@ -1,7 +1,12 @@
 import type { Env } from "./env.ts";
 import { fetchFile, getFromGitHub } from "./github.ts";
 import {
-  type Membership, type PeopleDecision, type PeopleNode, factsOf, parsePolicy, peopleDecision,
+  type Membership,
+  type PeopleDecision,
+  type PeopleNode,
+  factsOf,
+  parsePolicy,
+  peopleDecision,
 } from "./policy-people.ts";
 
 /** How long a `.policy.yml` answer stands; a checks-only read trusts a people decision no older (`check-refresh.ts`). */
@@ -38,7 +43,10 @@ const isolateCache = memoryCache();
 
 /** The people part of a `.policy.yml` repo's review, or null where it has none or it can't be read. */
 export async function peopleOf(
-  repo: string, node: PeopleNode, env: Env, cache: GitHubCache = isolateCache,
+  repo: string,
+  node: PeopleNode,
+  env: Env,
+  cache: GitHubCache = isolateCache,
 ): Promise<PeopleDecision | null> {
   const text = await policyText(repo, node.baseRefName, env, cache);
   const policy = text === null ? null : parsePolicy(text);
@@ -49,7 +57,12 @@ export async function peopleOf(
  * Past its TTL an answer is asked again with its ETag: GitHub's 304 says it still stands and costs nothing of the
  * token's hour, so only a change is paid for.
  */
-async function policyText(repo: string, base: string, env: Env, cache: GitHubCache): Promise<string | null> {
+async function policyText(
+  repo: string,
+  base: string,
+  env: Env,
+  cache: GitHubCache,
+): Promise<string | null> {
   const key = `policy:${repo}@${base}`;
   const cached = cache.get<string | null>(key);
   if (cached && Date.now() - cached.at < POLICY_TTL_MS) return cached.value;
@@ -74,7 +87,8 @@ function membership(env: Env, cache: GitHubCache): Membership {
       return cached.value;
     }
     const value = yes.includes(response.status) ? true : response.status === 404 ? false : null;
-    if (value !== null) cache.set(key, { at: Date.now(), etag: response.headers.get("etag"), value });
+    if (value !== null)
+      cache.set(key, { at: Date.now(), etag: response.headers.get("etag"), value });
     return value;
   };
   return {

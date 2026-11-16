@@ -91,7 +91,7 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
             lines.allElementsBoundByIndex.map(\.frame)
                 .filter { $0.minY > positions.header.maxY && $0.maxY < positions.screen.maxY * 0.75 }
         }
-        for _ in 0..<3 where bringingUpCode && below.isEmpty {
+        for _ in 0 ..< 3 where bringingUpCode && below.isEmpty {
             app.tables.firstMatch.swipeUp(velocity: .slow)
             positions = Positions(app)
         }
@@ -106,7 +106,7 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
         // Until the code stops: a snapshot taken mid-scroll can catch the header a frame behind it.
         let first = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH 'diff-line-'")).firstMatch
         var frame = first.frame
-        for _ in 0..<20 {
+        for _ in 0 ..< 20 {
             RunLoop.current.run(until: Date.now.addingTimeInterval(0.15))
             if first.frame == frame {
                 break
@@ -122,7 +122,7 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
         XCTAssertTrue(app.tab(.settings).waitForExistence(timeout: 10))
         // On a wide screen, in the list's own column: the PR's page is beside it.
         let list = app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.7))
-        for _ in 0..<25 where !row.exists || (!isWide && !row.isHittable) {
+        for _ in 0 ..< 25 where !row.exists || (!isWide && !row.isHittable) {
             if isWide {
                 list.press(forDuration: 0.05, thenDragTo: list.withOffset(CGVector(dx: 0, dy: -300)), withVelocity: .slow,
                            thenHoldForDuration: 0.1)

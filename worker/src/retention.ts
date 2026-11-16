@@ -38,7 +38,10 @@ type RetentionBucket = Pick<R2Bucket, "list" | "delete">;
  * many objects went.
  */
 export async function sweepClosedPullRequests(
-  bucket: RetentionBucket, prefix: string, isHeld: (id: PrId) => boolean, cutoff: number,
+  bucket: RetentionBucket,
+  prefix: string,
+  isHeld: (id: PrId) => boolean,
+  cutoff: number,
 ): Promise<number> {
   const byPullRequest = new Map<PrId, { keys: string[]; newest: number }>();
   let cursor: string | undefined;
@@ -55,7 +58,9 @@ export async function sweepClosedPullRequests(
     }
     cursor = listed.truncated ? listed.cursor : undefined;
   } while (cursor);
-  const expired = [...byPullRequest.values()].filter((entry) => entry.newest < cutoff).flatMap((entry) => entry.keys);
+  const expired = [...byPullRequest.values()]
+    .filter((entry) => entry.newest < cutoff)
+    .flatMap((entry) => entry.keys);
   for (let start = 0; start < expired.length; start += 1_000) {
     await bucket.delete(expired.slice(start, start + 1_000));
   }

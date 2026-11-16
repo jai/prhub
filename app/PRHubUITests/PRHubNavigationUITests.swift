@@ -39,7 +39,7 @@ final class PRHubNavigationUITests: XCTestCase {
     }
 
     /// The diff sends a review the way the PR's page does: the bar under the code, its box in the bar's place.
-    func testTheDiffHasTheReviewBarAndSendsAReview() {
+    func testTheDiffHasTheReviewBarAndSendsAReview() throws {
         launch()
         openCheckout()
         app.buttons["pr-files-changed"].tap()
@@ -50,7 +50,7 @@ final class PRHubNavigationUITests: XCTestCase {
         XCTAssertEqual(app.buttons["pr-review-request-changes"].label, "Request changes")
         let widths = ["pr-review-approve", "pr-review-request-changes", "pr-review-comment"]
             .map { app.buttons[$0].frame.width }
-        XCTAssertEqual(widths.max()! - widths.min()!, 0, accuracy: 1, "one bar of equal buttons")
+        XCTAssertEqual(try XCTUnwrap(widths.max()) - XCTUnwrap(widths.min()), 0, accuracy: 1, "one bar of equal buttons")
         try? picture("nav-diff-review-bar")
         let approve = app.buttons["pr-review-approve"]
         let approveLeft = approve.frame.minX

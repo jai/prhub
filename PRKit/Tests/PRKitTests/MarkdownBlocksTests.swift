@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PRKit
+import Testing
 
 /// An agent's Markdown as the thread screen draws it (`MarkdownText`), and as one-line previews read it.
 struct MarkdownBlocksTests {
@@ -37,7 +37,7 @@ struct MarkdownBlocksTests {
             .listItem(marker: "1.", depth: 1), .listItem(marker: "2.", depth: 1),
             .code,
         ])
-        #expect(blocks.map(\.id) == Array(0..<blocks.count))
+        #expect(blocks.map(\.id) == Array(0 ..< blocks.count))
         #expect(Self.plain(blocks[1]) == "Engine fix (ENG-3368): split in two.")
         #expect(Self.plain(blocks[5]) == "Your call")
         #expect(Self.plain(blocks[8]).trimmingCharacters(in: .newlines) == "gh pr merge 666")
@@ -112,7 +112,9 @@ struct MarkdownGitHubTests {
     @Test func aTableIsOneBlockWithItsAlignmentHeaderAndRows() throws {
         let blocks = MarkdownBlocks.parse(PRMarkdown.clean(Self.everything))
         let tables = blocks.compactMap { block -> MarkdownTable? in
-            if case let .table(table) = block.kind { return table }
+            if case let .table(table) = block.kind {
+                return table
+            }
             return nil
         }
         let table = try #require(tables.first)
@@ -133,13 +135,25 @@ struct MarkdownGitHubTests {
         #expect(blocks.contains { $0.kind == .image(URL(string: "https://example.com/screen.png")!) })
         #expect(blocks.contains { $0.kind == .code })
         #expect(blocks.contains { $0.kind == .quote })
-        let details = try #require(blocks.first { if case .details = $0.kind { true } else { false } })
+        let details = try #require(blocks.first {
+            if case .details = $0.kind {
+                true
+            } else {
+                false
+            }
+        })
         #expect(String(details.content.characters) == "Workflow trace")
         guard case let .details(inner) = details.kind else {
             return
         }
         #expect(inner.first?.kind == .listItem(marker: "•", depth: 1))
-        let deeper = try #require(inner.first { if case .details = $0.kind { true } else { false } })
+        let deeper = try #require(inner.first {
+            if case .details = $0.kind {
+                true
+            } else {
+                false
+            }
+        })
         #expect(String(deeper.content.characters) == "Deeper")
         #expect(blocks.last.map { String($0.content.characters) } == "Last line.")
         let ids = blocks.flatMap(\.flattened).map(\.id)

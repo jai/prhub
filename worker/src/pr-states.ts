@@ -1,7 +1,15 @@
 import { type Env, githubLogin } from "./env.ts";
 import {
-  contextsOf, detailState, jaiReview, mergeOf, postGraphql, type RequestEvent, reviewDueAt, reviewRequestedAt,
-  type ReviewWeek, verdictOf,
+  contextsOf,
+  detailState,
+  jaiReview,
+  mergeOf,
+  postGraphql,
+  type RequestEvent,
+  reviewDueAt,
+  reviewRequestedAt,
+  type ReviewWeek,
+  verdictOf,
 } from "./github.ts";
 import { type GitHubCache, peopleOf } from "./policy-github.ts";
 import { parseRepoFullName, prId, type PrId, type RepoFullName, repoParts } from "./ids.ts";
@@ -30,13 +38,20 @@ const FRAGMENT = `fragment State on PullRequest {
   ${PEOPLE_FIELDS}
 }`;
 
-type StateNode = Parameters<typeof verdictOf>[0] & Parameters<typeof jaiReview>[0] & PeopleNode & {
-  title: string; state: string; isDraft: boolean; mergeable: string; mergeStateStatus: string; createdAt: string;
-  author: { login: string; name?: string | null } | null;
-  viewerLatestReview: { state: string; submittedAt: string | null } | null;
-  viewerLatestReviewRequest: { id: string } | null;
-  requestEvents: { nodes: RequestEvent[] };
-};
+type StateNode = Parameters<typeof verdictOf>[0] &
+  Parameters<typeof jaiReview>[0] &
+  PeopleNode & {
+    title: string;
+    state: string;
+    isDraft: boolean;
+    mergeable: string;
+    mergeStateStatus: string;
+    createdAt: string;
+    author: { login: string; name?: string | null } | null;
+    viewerLatestReview: { state: string; submittedAt: string | null } | null;
+    viewerLatestReviewRequest: { id: string } | null;
+    requestEvents: { nodes: RequestEvent[] };
+  };
 
 export interface PrState {
   title: string;
@@ -56,7 +71,10 @@ export interface PrState {
 
 /** A PR's state in the words Agent Pager keeps. An unsent draft review shows only here: the PRs tab asks for none. */
 export function stateOf(
-  node: StateNode, login: string, week: ReviewWeek | null = null, people: PeopleDecision | null = null,
+  node: StateNode,
+  login: string,
+  week: ReviewWeek | null = null,
+  people: PeopleDecision | null = null,
 ): PrState {
   const state = detailState(node);
   const { checks, review } = verdictOf(node, people);
@@ -69,7 +87,8 @@ export function stateOf(
     title: node.title,
     state,
     checks,
-    merge: state === "open" || state === "draft" ? mergeOf(node.mergeable, node.mergeStateStatus) : null,
+    merge:
+      state === "open" || state === "draft" ? mergeOf(node.mergeable, node.mergeStateStatus) : null,
     review,
     author: author.length > 0 && author.length <= AUTHOR_LOGIN_MAX ? author : null,
     author_name: name.length > 0 && name.length <= AUTHOR_NAME_MAX ? name : null,
@@ -77,7 +96,9 @@ export function stateOf(
     jai_review: (mine ?? draft)?.state.toLowerCase() ?? null,
     jai_reviewed_at: (mine ?? draft)?.submittedAt ?? null,
     jai_review_requested: requested,
-    review_due_at: requested ? reviewDueAt(reviewRequestedAt(node.requestEvents.nodes, login), week) : null,
+    review_due_at: requested
+      ? reviewDueAt(reviewRequestedAt(node.requestEvents.nodes, login), week)
+      : null,
   };
 }
 
@@ -87,7 +108,8 @@ export function parseRef(ref: unknown): { id: PrId; repo: RepoFullName; number: 
   const repo = match && parseRepoFullName(`${match[1]}/${match[2]}`);
   const number = Number(match?.[3]);
   return repo && Number.isSafeInteger(number) && number > 0 && prId(repo, number) === ref
-    ? { id: prId(repo, number), repo, number } : null;
+    ? { id: prId(repo, number), repo, number }
+    : null;
 }
 
 /** `refs` as the route takes them, or null if that is not what was sent. */
@@ -104,7 +126,7 @@ export function statesQuery(refs: PrId[]): { query: string; aliases: Map<PrId, [
   const byRepo = new Map<RepoFullName, { id: PrId; number: number }[]>();
   for (const ref of refs.map(parseRef)) {
     if (ref) {
-      byRepo.set(ref.repo, [...byRepo.get(ref.repo) ?? [], ref]);
+      byRepo.set(ref.repo, [...(byRepo.get(ref.repo) ?? []), ref]);
     }
   }
   const aliases = new Map<PrId, [string, string]>();
@@ -133,11 +155,17 @@ export interface StatesAnswer {
 
 /** What one query's answer says of each ref. */
 export function statesFrom(
-  answer: GraphqlAnswer, aliases: Map<PrId, [string, string]>, login: string, week: ReviewWeek | null = null,
+  answer: GraphqlAnswer,
+  aliases: Map<PrId, [string, string]>,
+  login: string,
+  week: ReviewWeek | null = null,
   people: ReadonlyMap<string, PeopleDecision | null> = new Map(),
 ): StatesAnswer {
-  const missing = new Set((answer.errors ?? []).filter((error) => error.type === "NOT_FOUND")
-    .map((error) => (error.path ?? []).slice(0, 2).join(".")));
+  const missing = new Set(
+    (answer.errors ?? [])
+      .filter((error) => error.type === "NOT_FOUND")
+      .map((error) => (error.path ?? []).slice(0, 2).join(".")),
+  );
   const result: StatesAnswer = { states: {}, unanswered: [] };
   for (const [ref, [repo, pull]] of aliases) {
     const node = answer.data?.[repo]?.[pull];
@@ -164,12 +192,23 @@ export class GitHubFailure extends Error {
 
 /** The failure's code from GitHub's answer: its rate limit, its own trouble (5xx), or any other refusal. */
 function failureOf(response: Response): GitHubFailure {
-  const limited = response.status === 429 || (response.status === 403 && response.headers.get("x-ratelimit-remaining") === "0");
-  const code = limited ? "github_rate_limited" : response.status >= 500 ? "github_unavailable" : "github_failed";
+  const limited =
+    response.status === 429 ||
+    (response.status === 403 && response.headers.get("x-ratelimit-remaining") === "0");
+  const code = limited
+    ? "github_rate_limited"
+    : response.status >= 500
+      ? "github_unavailable"
+      : "github_failed";
   return new GitHubFailure(code, `GitHub GraphQL answered ${response.status}`);
 }
 
-async function ask(refs: PrId[], week: ReviewWeek | null, env: Env, cache?: GitHubCache): Promise<StatesAnswer | "refused"> {
+async function ask(
+  refs: PrId[],
+  week: ReviewWeek | null,
+  env: Env,
+  cache?: GitHubCache,
+): Promise<StatesAnswer | "refused"> {
   const { query, aliases } = statesQuery(refs);
   const response = await postGraphql(query, {}, env);
   if (!response.ok) {
@@ -185,11 +224,17 @@ async function ask(refs: PrId[], week: ReviewWeek | null, env: Env, cache?: GitH
     return "refused";
   }
   if (answer.data) {
-    const people = new Map(await Promise.all([...aliases].map(async ([ref, [repo, pull]]) => {
-      const node = answer.data?.[repo]?.[pull];
-      const decision = node ? await peopleOf(parseRef(ref)?.repo ?? "", node, env, cache).catch(() => null) : null;
-      return [ref, decision] as const;
-    })));
+    const people = new Map(
+      await Promise.all(
+        [...aliases].map(async ([ref, [repo, pull]]) => {
+          const node = answer.data?.[repo]?.[pull];
+          const decision = node
+            ? await peopleOf(parseRef(ref)?.repo ?? "", node, env, cache).catch(() => null)
+            : null;
+          return [ref, decision] as const;
+        }),
+      ),
+    );
     return statesFrom(answer, aliases, await githubLogin(env), week, people);
   }
   if (answer.errors?.some((error) => error.type === "RATE_LIMITED")) {
@@ -203,7 +248,10 @@ async function ask(refs: PrId[], week: ReviewWeek | null, env: Env, cache?: GitH
  * keeps `.policy.yml` texts and memberships (`policy-github.ts`): the PR index's own, so a repeat is a hit or a free 304.
  */
 export async function readStates(
-  refs: PrId[], week: ReviewWeek | null, env: Env, cache?: GitHubCache,
+  refs: PrId[],
+  week: ReviewWeek | null,
+  env: Env,
+  cache?: GitHubCache,
 ): Promise<StatesAnswer> {
   const answer = await ask(refs, week, env, cache);
   if (answer !== "refused") {
@@ -223,7 +271,10 @@ export async function readStates(
 }
 
 /** What the PR index answers for `POST /prs/states`: the states, or GitHub's refusal; and the GitHub calls it made (304s and GraphQL included). */
-export type StatesResult = ({ answer: StatesAnswer } | { failure: { code: string; message: string } }) & {
+export type StatesResult = (
+  | { answer: StatesAnswer }
+  | { failure: { code: string; message: string } }
+) & {
   githubCalls: number;
 };
 
@@ -232,7 +283,9 @@ export type StatesResult = ({ answer: StatesAnswer } | { failure: { code: string
  * them (`PrIndex.states`), with its own cache of `.policy.yml` and memberships. `Server-Timing` says the GitHub calls it made.
  */
 export async function statesRoute(
-  request: Request, week: ReviewWeek | null, read: (refs: PrId[], week: ReviewWeek | null) => Promise<StatesResult>,
+  request: Request,
+  week: ReviewWeek | null,
+  read: (refs: PrId[], week: ReviewWeek | null) => Promise<StatesResult>,
 ): Promise<Response> {
   const refs = parseRefs(await request.json().catch(() => null));
   if (!refs) {
@@ -240,9 +293,16 @@ export async function statesRoute(
   }
   const result = await read(refs, week);
   const headers = { "Server-Timing": `github;desc="github calls";dur=${result.githubCalls}` };
-  console.log("states_read", { prs: refs.length, github_calls: result.githubCalls,
-    code: "failure" in result ? result.failure.code : null });
+  console.log("states_read", {
+    prs: refs.length,
+    github_calls: result.githubCalls,
+    code: "failure" in result ? result.failure.code : null,
+  });
   // Agent Pager's envelope, `{error: {code, message}}`, so a caller counts failures by code; `reason` as before.
-  return "answer" in result ? Response.json(result.answer, { headers })
-    : Response.json({ error: result.failure, reason: result.failure.message }, { status: 502, headers });
+  return "answer" in result
+    ? Response.json(result.answer, { headers })
+    : Response.json(
+        { error: result.failure, reason: result.failure.message },
+        { status: 502, headers },
+      );
 }

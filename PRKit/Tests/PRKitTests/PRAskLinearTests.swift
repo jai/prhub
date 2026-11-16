@@ -32,7 +32,7 @@ struct PRAskLinearTests {
         #expect(cards[1].mentions.first?.user == nil)
     }
 
-    @Test func aFailedPostCanBeTriedAgain() throws {
+    @Test func aFailedPostCanBeTriedAgain() {
         let card = PRAskLinearCard(issue: "ENG-12", text: "@Octo Bot hi", mentions: [], problem: nil, state: .failed,
                                    failure: "Linear refused: Issue is archived.")
         #expect(card.canPost)

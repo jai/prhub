@@ -1,7 +1,7 @@
 import DurableNetworking
 import Foundation
-import Testing
 @testable import PRKit
+import Testing
 
 /// A sample PR after a write that stayed on the phone (`PRSampleSet.applying`, `PRsModel.sampleWritten`): the PR and
 /// its row as GitHub would then show them, when the PR opens again too. Each is a bug the 2026-11-10 bug bash found:
@@ -11,12 +11,12 @@ struct PRSampleWriteTests {
     private let ref = PullRequestRef(repo: "acme/web", number: 7)
 
     private static let detail = """
-        {"url":"u","state":"open","head":"h","base":"main","headBranch":"b","author":null,"isAuthor":false,
-        "body":"Old words.","additions":0,"deletions":0,"changedFiles":0,"reviewDecision":"APPROVED",
-        "mergeState":"CLEAN","reviewers":[{"login":"octocat","avatarUrl":null,"state":"APPROVED"}],
-        "labels":[],"checks":[],"comments":{"nodes":[]},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]},
-        "title":null}
-        """
+    {"url":"u","state":"open","head":"h","base":"main","headBranch":"b","author":null,"isAuthor":false,
+    "body":"Old words.","additions":0,"deletions":0,"changedFiles":0,"reviewDecision":"APPROVED",
+    "mergeState":"CLEAN","reviewers":[{"login":"octocat","avatarUrl":null,"state":"APPROVED"}],
+    "labels":[],"checks":[],"comments":{"nodes":[]},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]},
+    "title":null}
+    """
 
     private func model(list: String = "review") -> PRsModel {
         let status = PullRequestRow.Status(

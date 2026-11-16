@@ -226,7 +226,7 @@ final class WorkerConnection {
         let fresh: DeviceConfig
         do {
             fresh = try await fetchConfig(isFresh)
-        } catch AccountClient.Failure.server(let code, 401) where isHosted {
+        } catch let AccountClient.Failure.server(code, 401) where isHosted {
             sessionRefused(code: code)
             return
         } catch {
@@ -362,7 +362,9 @@ final class WorkerConnection {
             await readConfig()
             throw error
         }
-        if let done { usage.record(done) }
+        if let done {
+            usage.record(done)
+        }
         await readConfig()
     }
 

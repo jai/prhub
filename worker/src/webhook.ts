@@ -19,7 +19,10 @@ interface Payload {
 }
 
 const PULL_REQUEST_EVENTS = new Set([
-  "pull_request", "pull_request_review", "pull_request_review_comment", "pull_request_review_thread",
+  "pull_request",
+  "pull_request_review",
+  "pull_request_review_comment",
+  "pull_request_review_thread",
 ]);
 
 function hexBytes(hex: string): Uint8Array<ArrayBuffer> | null {
@@ -30,22 +33,40 @@ function hexBytes(hex: string): Uint8Array<ArrayBuffer> | null {
 }
 
 /** The HMAC of the exact bytes GitHub sent, checked before anything parses them. */
-export async function verifySignature(body: ArrayBuffer, header: string | null, secret: string): Promise<boolean> {
+export async function verifySignature(
+  body: ArrayBuffer,
+  header: string | null,
+  secret: string,
+): Promise<boolean> {
   const signature = header?.startsWith("sha256=") ? hexBytes(header.slice(7)) : null;
   if (!signature) {
     return false;
   }
   const key = await crypto.subtle.importKey(
-    "raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
   return crypto.subtle.verify("HMAC", key, signature, body);
 }
 
-export function parseDelivery(event: string | null, body: string, login: string): PullRequestMark | null {
+export function parseDelivery(
+  event: string | null,
+  body: string,
+  login: string,
+): PullRequestMark | null {
   const isComment = event === "issue_comment";
   if (!event || (!isComment && !PULL_REQUEST_EVENTS.has(event))) {
     return null;
   }
-  const { repository, requested_reviewer: requested, issue, pull_request: pr } = JSON.parse(body) as Payload;
+  const {
+    repository,
+    requested_reviewer: requested,
+    issue,
+    pull_request: pr,
+  } = JSON.parse(body) as Payload;
   const number = isComment ? (issue?.pull_request ? issue.number : undefined) : pr?.number;
   const repo = parseRepoFullName(repository?.full_name);
   if (!repo || !number) {
@@ -54,7 +75,10 @@ export function parseDelivery(event: string | null, body: string, login: string)
   return {
     repo,
     number,
-    involved: pr?.user?.login === login || issue?.user?.login === login || requested?.login === login
-      || (pr?.requested_reviewers ?? []).some((reviewer) => reviewer.login === login),
+    involved:
+      pr?.user?.login === login ||
+      issue?.user?.login === login ||
+      requested?.login === login ||
+      (pr?.requested_reviewers ?? []).some((reviewer) => reviewer.login === login),
   };
 }

@@ -32,7 +32,8 @@ public enum PRPush: Equatable, Sendable {
         case "pr_alert":
             guard let named = userInfo["pr"] as? [String: Any], let repo = named["repo"] as? String,
                   let number = (named["number"] as? NSNumber)?.intValue,
-                  let ref = PRLinkParser.ref(in: "\(repo)#\(number)") else {
+                  let ref = PRLinkParser.ref(in: "\(repo)#\(number)")
+            else {
                 return nil
             }
             self = .alert(kind: AlertKind(userInfo["kind"] as? String ?? ""), pullRequest: ref)
@@ -45,7 +46,8 @@ public enum PRPush: Equatable, Sendable {
     /// stored detail and diff before the tap: nil when the push has none or it is not a row.
     public static func row(in userInfo: [AnyHashable: Any]) -> PullRequestRow? {
         guard let row = userInfo["row"], JSONSerialization.isValidJSONObject(row),
-              let data = try? JSONSerialization.data(withJSONObject: row) else {
+              let data = try? JSONSerialization.data(withJSONObject: row)
+        else {
             return nil
         }
         return try? JSONDecoder().decode(PullRequestRow.self, from: data)

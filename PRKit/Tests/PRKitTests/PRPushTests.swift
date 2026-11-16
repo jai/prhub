@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PRKit
+import Testing
 
 /// A pr-worker push, read where it arrives (docs/api.md, "Alerts").
 struct PRPushTests {
@@ -10,7 +10,7 @@ struct PRPushTests {
     }
 
     @Test(.enabled(if: RepoFixtures.areHere)) func theWorkersAlertOpensItsPR() throws {
-        let push = PRPush(userInfo: try Self.fixture("alert.json"))
+        let push = try PRPush(userInfo: Self.fixture("alert.json"))
         #expect(push == .alert(kind: .reviewRequested, pullRequest: PullRequestRef(repo: "acme/app", number: 7)))
         #expect(push?.openedPullRequest == PullRequestRef(repo: "acme/app", number: 7))
     }

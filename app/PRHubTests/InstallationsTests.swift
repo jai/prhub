@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PRHub
+import Testing
 
 /// Where the PRHub App is installed (`installations` of `GET /device/config`): Settings' GitHub access and what the
 /// empty list says is missing.
@@ -88,12 +88,12 @@ struct InstallationsTests {
         #expect(PRHubPRHost.configuration(selfHosted, isCheckingInstallations: true).emptyHint == nil)
     }
 
-    @Test func theInstallPagesAreTheAppsInstallAndEachInstallationsSettings() {
+    @Test func theInstallPagesAreTheAppsInstallAndEachInstallationsSettings() throws {
         #expect(PRHubBuild.isInstallationPage(PRHubBuild.appInstallURL))
         #expect(PRHubBuild.isInstallationPage(Self.own.settingsURL))
         #expect(PRHubBuild.isInstallationPage(Self.acme.settingsURL))
-        #expect(!PRHubBuild.isInstallationPage(URL(string: "https://github.com/acme/api/pull/7")!))
-        #expect(!PRHubBuild.isInstallationPage(URL(string: "https://example.com/settings/installations/1")!))
+        #expect(try !PRHubBuild.isInstallationPage(#require(URL(string: "https://github.com/acme/api/pull/7"))))
+        #expect(try !PRHubBuild.isInstallationPage(#require(URL(string: "https://example.com/settings/installations/1"))))
     }
 
     @Test func anEmptyListWhereEveryInstallationIsSuspendedOpensItsSettings() {

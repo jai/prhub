@@ -38,55 +38,70 @@ export function isGenerated(path: string): boolean {
 }
 
 function pathOf(section: string): string | null {
-  const target = /^\+\+\+ b\/(.+)$/m.exec(section)?.[1] ?? /^rename to (.+)$/m.exec(section)?.[1]
-    ?? /^--- a\/(.+)$/m.exec(section)?.[1];
+  const target =
+    /^\+\+\+ b\/(.+)$/m.exec(section)?.[1] ??
+    /^rename to (.+)$/m.exec(section)?.[1] ??
+    /^--- a\/(.+)$/m.exec(section)?.[1];
   return target ?? null;
 }
 
 export function parseDiff(diff: string): DiffFile[] {
-  return diff.split(/^diff --git /m).slice(1).flatMap((section) => {
-    const path = pathOf(section);
-    if (!path) {
-      return [];
-    }
-    const file: DiffFile = { path, marked: [], newLines: new Set(), oldLines: new Set(), ranges: [] };
-    let oldLine = 0;
-    let newLine = 0;
-    let isInHunk = false;
-    for (const line of section.split("\n")) {
-      const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
-      if (hunk) {
-        oldLine = Number(hunk[1]);
-        newLine = Number(hunk[2]);
-        isInHunk = true;
-        file.ranges.push([newLine, newLine + Math.max(Number(hunk[3] ?? 1) - 1, 0)]);
-        file.marked.push(line);
-      } else if (isInHunk && line.startsWith("+")) {
-        file.newLines.add(newLine);
-        file.marked.push(`R${newLine}${line}`);
-        newLine += 1;
-      } else if (isInHunk && line.startsWith("-")) {
-        file.oldLines.add(oldLine);
-        file.marked.push(`L${oldLine}${line}`);
-        oldLine += 1;
-      } else if (isInHunk && line.startsWith(" ")) {
-        file.newLines.add(newLine);
-        file.oldLines.add(oldLine);
-        file.marked.push(`R${newLine}${line}`);
-        oldLine += 1;
-        newLine += 1;
+  return diff
+    .split(/^diff --git /m)
+    .slice(1)
+    .flatMap((section) => {
+      const path = pathOf(section);
+      if (!path) {
+        return [];
       }
-    }
-    return file.marked.length > 0 ? [file] : [];
-  });
+      const file: DiffFile = {
+        path,
+        marked: [],
+        newLines: new Set(),
+        oldLines: new Set(),
+        ranges: [],
+      };
+      let oldLine = 0;
+      let newLine = 0;
+      let isInHunk = false;
+      for (const line of section.split("\n")) {
+        const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+        if (hunk) {
+          oldLine = Number(hunk[1]);
+          newLine = Number(hunk[2]);
+          isInHunk = true;
+          file.ranges.push([newLine, newLine + Math.max(Number(hunk[3] ?? 1) - 1, 0)]);
+          file.marked.push(line);
+        } else if (isInHunk && line.startsWith("+")) {
+          file.newLines.add(newLine);
+          file.marked.push(`R${newLine}${line}`);
+          newLine += 1;
+        } else if (isInHunk && line.startsWith("-")) {
+          file.oldLines.add(oldLine);
+          file.marked.push(`L${oldLine}${line}`);
+          oldLine += 1;
+        } else if (isInHunk && line.startsWith(" ")) {
+          file.newLines.add(newLine);
+          file.oldLines.add(oldLine);
+          file.marked.push(`R${newLine}${line}`);
+          oldLine += 1;
+          newLine += 1;
+        }
+      }
+      return file.marked.length > 0 ? [file] : [];
+    });
 }
 
 /** `contextLines` lines either side of each hunk, numbered; -1 is the whole file. */
 export function contextOf(source: string, file: DiffFile, contextLines: number): string {
   const lines = source.split("\n");
-  const windows = contextLines < 0
-    ? [[1, lines.length]]
-    : file.ranges.map(([first, last]) => [Math.max(first - contextLines, 1), Math.min(last + contextLines, lines.length)]);
+  const windows =
+    contextLines < 0
+      ? [[1, lines.length]]
+      : file.ranges.map(([first, last]) => [
+          Math.max(first - contextLines, 1),
+          Math.min(last + contextLines, lines.length),
+        ]);
   const merged: number[][] = [];
   for (const [first, last] of windows.sort((a, b) => a[0] - b[0])) {
     const previous = merged.at(-1);
@@ -97,21 +112,30 @@ export function contextOf(source: string, file: DiffFile, contextLines: number):
     }
   }
   return merged
-    .map(([first, last]) => lines.slice(first - 1, last).map((text, index) => `${first + index}: ${text}`).join("\n"))
+    .map(([first, last]) =>
+      lines
+        .slice(first - 1, last)
+        .map((text, index) => `${first + index}: ${text}`)
+        .join("\n"),
+    )
     .join("\n...\n");
 }
 
 /** Every file that fits, whole, and the names of those that don't: a file is never cut off part way. */
 export function inputFor(
-  files: DiffFile[], sources: Map<string, string>, contextLines: number,
+  files: DiffFile[],
+  sources: Map<string, string>,
+  contextLines: number,
 ): { input: string; leftOut: string[] } {
   const blocks: string[] = [];
   const leftOut: string[] = [];
   let size = 0;
   for (const file of files) {
     const source = sources.get(file.path);
-    const code = contextLines !== 0 && source !== undefined
-      ? `\n<code>\n${contextOf(source, file, contextLines)}\n</code>` : "";
+    const code =
+      contextLines !== 0 && source !== undefined
+        ? `\n<code>\n${contextOf(source, file, contextLines)}\n</code>`
+        : "";
     const block = `<file path=${JSON.stringify(file.path)}>\n<diff>\n${file.marked.join("\n")}\n</diff>${code}\n</file>`;
     if (size + block.length > MAX_INPUT_CHARS) {
       leftOut.push(file.path);
@@ -127,16 +151,18 @@ export function inputFor(
 export function keepReal(items: KeyLine[], files: DiffFile[]): KeyLine[] {
   const byPath = new Map(files.map((file) => [file.path, file]));
   const seen = new Set<string>();
-  return items.filter(({ path, line, side, why }) => {
-    const file = byPath.get(path);
-    const key = `${path}:${side}:${line}`;
-    const isShown = (side === "RIGHT" ? file?.newLines : file?.oldLines)?.has(line) ?? false;
-    if (!isShown || !why.trim() || seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  }).slice(0, MAX_ITEMS);
+  return items
+    .filter(({ path, line, side, why }) => {
+      const file = byPath.get(path);
+      const key = `${path}:${side}:${line}`;
+      const isShown = (side === "RIGHT" ? file?.newLines : file?.oldLines)?.has(line) ?? false;
+      if (!isShown || !why.trim() || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .slice(0, MAX_ITEMS);
 }
 
 /** The body with its `## Description` section's words replaced. A body with no such heading is all description. */

@@ -33,7 +33,10 @@ test("an issued key is shown once and stored only as its SHA-256", async () => {
   const { key_id, key } = (await response.json()) as { key_id: string; key: string };
   assert.match(key_id, /^rk_[0-9a-f]{16}$/);
   assert.match(key, /^rks_[A-Za-z0-9_-]{43}$/);
-  const stored = JSON.stringify([...h.indexStorage.map.values(), ...[...h.keyStores.instances.keys()]]);
+  const stored = JSON.stringify([
+    ...h.indexStorage.map.values(),
+    ...[...h.keyStores.instances.keys()],
+  ]);
   assert.ok(!stored.includes(key));
   assert.ok(stored.includes(await sha256Hex(key)));
   assert.equal((await h.call("POST", "/v1/keys", ADMIN, { label: "" })).status, 400);
@@ -46,12 +49,23 @@ test("the list shows labels, use and the day's count, never the keys", async () 
   await h.issue("second");
   await h.call("POST", "/v1/push", first.key, pushBody());
   await h.call("POST", "/v1/push", first.key, pushBody());
-  const listed = (await (await h.call("GET", "/v1/keys", ADMIN)).json()) as { keys: Record<string, unknown>[] };
+  const listed = (await (await h.call("GET", "/v1/keys", ADMIN)).json()) as {
+    keys: Record<string, unknown>[];
+  };
   assert.deepEqual(
     listed.keys.map((k) => [k.label, k.sent_24h, k.last_used_at !== null]),
-    [["first", 2, true], ["second", 0, false]],
+    [
+      ["first", 2, true],
+      ["second", 0, false],
+    ],
   );
-  assert.deepEqual(Object.keys(listed.keys[0]!).sort(), ["created_at", "key_id", "label", "last_used_at", "sent_24h"]);
+  assert.deepEqual(Object.keys(listed.keys[0]!).sort(), [
+    "created_at",
+    "key_id",
+    "label",
+    "last_used_at",
+    "sent_24h",
+  ]);
   assert.ok(!JSON.stringify(listed).includes(first.key));
 });
 

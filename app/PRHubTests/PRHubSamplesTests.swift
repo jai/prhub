@@ -1,7 +1,7 @@
 import Foundation
-import Testing
 @testable import PRHub
 @testable import PRKit
+import Testing
 
 /// PRHub's "Try with sample PRs" (`PRHubSamples.swift`): made-up PRs that open, show their diff and key lines, and take
 /// a review, with nothing sent anywhere.
@@ -56,7 +56,7 @@ struct PRHubSamplesTests {
     @Test func everyKeyLineIsALineItsDiffShows() throws {
         for sample in PRSampleSet.prHub.samples {
             let document = DiffDocument(data: Data(sample.diff.utf8))
-            let lines = try JSONDecoder().decode(PRKeyLines.self, from: Data(try #require(sample.keyLines).utf8))
+            let lines = try JSONDecoder().decode(PRKeyLines.self, from: Data(#require(sample.keyLines).utf8))
             #expect(!lines.items.isEmpty)
             for item in lines.items {
                 let shown = document.lines.contains {

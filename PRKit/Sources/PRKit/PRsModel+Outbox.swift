@@ -7,13 +7,13 @@ extension PRsModel {
     /// goes on sending it, and the sheet follows it there.
     func ask(_ question: PRAskQuestion, about ref: PullRequestRef) async throws -> PRAskOutcome {
         guard let outbox else {
-            return .answered(try await client.ask(question, about: ref))
+            return try .answered(await client.ask(question, about: ref))
         }
         let job = PROutboxJob.question(question, ref: ref)
         let id = try await outbox.enqueue(job)
         queued[id] = job
         switch try await answer(to: id) {
-        case let .answered(data): return .answered(try JSONDecoder().decode(PRAskChat.self, from: data))
+        case let .answered(data): return try .answered(JSONDecoder().decode(PRAskChat.self, from: data))
         case .stillGoing: return .queued
         }
     }
@@ -70,14 +70,14 @@ extension PRsModel {
         _ write: PRWrite, to ref: PullRequestRef, queued saved: (String) -> Void
     ) async throws -> PRWriteOutcome {
         guard let outbox, write.isQueued else {
-            return .posted(try PullRequestDetail.decode(await client.write(write, to: ref)))
+            return try .posted(PullRequestDetail.decode(await client.write(write, to: ref)))
         }
         let job = PROutboxJob.write(write, ref: ref)
         let id = try await outbox.enqueue(job)
         queued[id] = job
         saved(id)
         switch try await answer(to: id) {
-        case let .answered(data): return .posted(try PullRequestDetail.decode(data))
+        case let .answered(data): return try .posted(PullRequestDetail.decode(data))
         case .stillGoing: return .queued(isOnline() ? .sending : .waitingForNetwork)
         }
     }
@@ -93,7 +93,7 @@ extension PRsModel {
         while true {
             if let outcome = outcomes.removeValue(forKey: id) {
                 queued[id] = nil
-                return .answered(try outcome.get())
+                return try .answered(outcome.get())
             }
             guard clock.now < end else {
                 return .stillGoing

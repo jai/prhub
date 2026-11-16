@@ -117,7 +117,7 @@ extension PRSession {
         defer { isSendingAsk = false }
         let outcome: Result<PRAskOutcome, any Error>
         do {
-            outcome = .success(try await model.ask(question, about: ref))
+            outcome = try .success(await model.ask(question, about: ref))
         } catch {
             outcome = .failure(error)
         }
@@ -182,7 +182,8 @@ extension PRSession {
     /// The newest answer, when it drafted a review not yet used: what "go" posts.
     var pendingAskReview: PRAskChat.Message? {
         guard let last = askChat?.messages.last(where: { !$0.isJai }), last.draft?.reviewEvent != nil,
-              !isUsed(last) else {
+              !isUsed(last)
+        else {
             return nil
         }
         return last
@@ -226,7 +227,9 @@ extension PRSession {
 
 extension PRSession {
     /// One card's name: its answer, then its place under it.
-    static func askLinearKey(_ message: PRAskChat.Message, _ index: Int) -> String { "\(message.id):\(index)" }
+    static func askLinearKey(_ message: PRAskChat.Message, _ index: Int) -> String {
+        "\(message.id):\(index)"
+    }
 
     /// The newest answer's one Linear comment that can post: what "go" posts. Nil with none, or more than one.
     var pendingAskLinear: (PRAskChat.Message, Int)? {
@@ -271,7 +274,8 @@ extension PRAskChat.Message {
     /// The line a question was about, from its `path:line` and side, so a Retry asks about the same line.
     var askedAbout: PRAskQuestion.Anchor? {
         guard let anchor, let colon = anchor.lastIndex(of: ":"),
-              let line = Int(anchor[anchor.index(after: colon)...]) else {
+              let line = Int(anchor[anchor.index(after: colon)...])
+        else {
             return nil
         }
         return PRAskQuestion.Anchor(path: String(anchor[..<colon]), line: line, side: side ?? PRDiffSide.right.rawValue)

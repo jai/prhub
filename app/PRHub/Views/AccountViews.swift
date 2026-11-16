@@ -4,7 +4,9 @@ enum AccountKeyProvider: String {
     case anthropic
     case linear
 
-    var title: String { self == .linear ? "Linear" : "Anthropic" }
+    var title: String {
+        self == .linear ? "Linear" : "Anthropic"
+    }
 }
 
 struct AccountKeySection: View {
@@ -28,10 +30,10 @@ struct AccountKeySection: View {
     private var note: String {
         if provider == .linear {
             return hasKey ? "Ticket titles and statuses come from your Linear account, and Ask AI comments on tickets "
-                    + "as you once you post its card. Disconnect to stop."
+                + "as you once you post its card. Disconnect to stop."
                 : "Show ticket titles and statuses under your PRs, and let Ask AI comment on tickets once you confirm. "
-                    + "Create a personal API key in Linear Settings → Security & access, with Read and Write (or Create "
-                    + "comments) permission for your teams. PRHub keeps it encrypted."
+                + "Create a personal API key in Linear Settings → Security & access, with Read and Write (or Create "
+                + "comments) permission for your teams. PRHub keeps it encrypted."
         }
         return "Key lines, Rewrite and Ask AI run on your own Anthropic key, billed to your Anthropic account. "
             + "Make one at console.anthropic.com. PRHub keeps it encrypted and never shows it again."
@@ -54,8 +56,11 @@ struct AccountKeySection: View {
                 }
                 Button(provider == .linear ? "Disconnect Linear" : "Remove key", systemImage: AppIcon.delete.symbol, role: .destructive) {
                     run {
-                        if provider == .linear { try await connection.removeLinearKey() }
-                        else { try await connection.removeAnthropicKey() }
+                        if provider == .linear {
+                            try await connection.removeLinearKey()
+                        } else {
+                            try await connection.removeAnthropicKey()
+                        }
                     }
                 }
                 .buttonStyle(PRButtonStyle(.secondary))
@@ -73,9 +78,9 @@ struct AccountKeySection: View {
             if !hasKey || isReadOnly {
                 SecureField("Paste your \(provider.title) API key", text: $key)
                     .font(.appFootnote.monospaced())
-                    #if os(iOS)
+                #if os(iOS)
                     .textInputAutocapitalization(.never)
-                    #endif
+                #endif
                     .autocorrectionDisabled()
                     .submitLabel(.done)
                     .onSubmit(save)
@@ -126,8 +131,11 @@ struct AccountKeySection: View {
             return
         }
         run {
-            if provider == .linear { try await connection.setLinearKey(typed) }
-            else { try await connection.setAnthropicKey(typed) }
+            if provider == .linear {
+                try await connection.setLinearKey(typed)
+            } else {
+                try await connection.setAnthropicKey(typed)
+            }
             key = ""
         }
     }
@@ -172,7 +180,7 @@ struct DeleteAccountSheet: View {
                     }
                 }
                 Text("Your PRs, reviews and comments on GitHub stay. So do installs of the PRHub App on your orgs, "
-                     + "until an owner removes them.")
+                    + "until an owner removes them.")
                     .font(.appFootnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

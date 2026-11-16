@@ -48,14 +48,14 @@ final class PRHubOutbox: PRKitOutbox {
         let id = UUID().uuidString
         let ref = job.ref
         let (route, encoded) = switch job {
-        case let .write(write, _): ("write", try JSONEncoder().encode(write))
-        case let .question(question, _): ("ask", try JSONEncoder().encode(question))
+        case let .write(write, _): try ("write", JSONEncoder().encode(write))
+        case let .question(question, _): try ("ask", JSONEncoder().encode(question))
         }
         var fields = try JSONSerialization.jsonObject(with: encoded) as? [String: Any] ?? [:]
         fields["client_ref"] = id
-        let item = OutboxItem(
+        let item = try OutboxItem(
             id: id, lane: Self.lane(ref), path: "prs/\(ref.repo)/\(ref.number)/\(route)",
-            body: try JSONSerialization.data(withJSONObject: fields, options: .sortedKeys), createdAt: .now
+            body: JSONSerialization.data(withJSONObject: fields, options: .sortedKeys), createdAt: .now
         )
         try await outbox.enqueue(item)
         await refresh()
@@ -83,7 +83,7 @@ final class PRHubOutbox: PRKitOutbox {
         item.path.hasSuffix("/ask") ? .question : .write
     }
 
-    nonisolated private static func attempt(
+    private nonisolated static func attempt(
         _ item: OutboxItem, client: PRViewerClient, transport: any HTTPTransport
     ) async -> OutboxVerdict {
         do {

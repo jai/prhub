@@ -1,6 +1,6 @@
+import Foundation
 import PRKitCore
 import PRKitDesign
-import Foundation
 
 /// A diff as its files, each a run of rows: its code from the first hunk, with every review thread and pending comment
 /// under its line. Git's own header lines are left out, because the file's header says what they say. A file with no
@@ -21,7 +21,9 @@ struct DiffRows: Sendable {
         let rows: [Row]
 
         /// In the session's folds.
-        var foldID: String { "file:\(path)" }
+        var foldID: String {
+            "file:\(path)"
+        }
     }
 
     private struct Anchor: Hashable {

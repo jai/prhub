@@ -35,7 +35,7 @@ extension PRMirror {
         _ name: String, check: @Sendable (Data) -> Bool, read: @Sendable () async throws -> Data?
     ) async -> Outcome {
         var wait = policy.first
-        for tries in 1...policy.attempts {
+        for tries in 1 ... policy.attempts {
             switch await attempt(name, check: check, read: read) {
             case .written:
                 return .landed
@@ -48,7 +48,7 @@ extension PRMirror {
                     log.say("PR mirror: \(name) not downloaded after \(tries) tries: \(why)")
                     return .failed
                 }
-                let jitter = Double.random(in: 0.5...1.0)
+                let jitter = Double.random(in: 0.5 ... 1.0)
                 backingOff.insert(name)
                 defer { backingOff.remove(name) }
                 do {

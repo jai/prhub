@@ -19,12 +19,6 @@ struct DeviceSecretStore: Sendable {
     /// `UIApplication.isProtectedDataAvailable` in the app; injected so the rule below can be tested.
     let isProtectedDataAvailable: @Sendable () -> Bool
 
-    init(service: String, account: String, isProtectedDataAvailable: @escaping @Sendable () -> Bool) {
-        self.service = service
-        self.account = account
-        self.isProtectedDataAvailable = isProtectedDataAvailable
-    }
-
     static func live(isProtectedDataAvailable: @escaping @Sendable () -> Bool) -> DeviceSecretStore {
         DeviceSecretStore(
             service: AppIdentity.bundleID,

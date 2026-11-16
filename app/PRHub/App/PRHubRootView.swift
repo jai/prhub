@@ -42,7 +42,7 @@ struct PRHubRootView: View {
                         environment: sample, endSample: { Task { await environment.leaveSample() } },
                         signIn: connection
                     )
-                        .transition(.opacity)
+                    .transition(.opacity)
                 }
             case .tabs:
                 PRHubTabs(environment: environment, endSample: nil)
@@ -75,14 +75,18 @@ struct PRHubRootView: View {
             "Already connected",
             isPresented: Binding(
                 get: { connection.ignoredLinkHost != nil },
-                set: { if !$0 { connection.ignoredLinkHost = nil } }
+                set: {
+                    if !$0 {
+                        connection.ignoredLinkHost = nil
+                    }
+                }
             )
         ) {
             Button("OK", role: .cancel) {}
         } message: {
             Text("This \(AppIdentity.deviceName) is connected to "
-                 + "\(connection.ignoredLinkHost ?? "a pr-worker"). "
-                 + "To use another one, tap Disconnect in Settings first.")
+                + "\(connection.ignoredLinkHost ?? "a pr-worker"). "
+                + "To use another one, tap Disconnect in Settings first.")
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             if phase == .active {
@@ -130,79 +134,79 @@ private struct PRHubTabs: View {
     /// The phone's tab bar; the Mac's window is the PRs, with Settings a window of its own (`PRHubMacSettings`).
     @ViewBuilder private var container: some View {
         #if os(macOS)
-        PRHubMacWindow(environment: environment)
-            .prKitOfflineBanner(environment.prs)
+            PRHubMacWindow(environment: environment)
+                .prKitOfflineBanner(environment.prs)
         #else
-        tabBar
+            tabBar
         #endif
     }
 
     #if os(iOS)
-    private var tabs: [PRHubTab] {
-        environment.connection.config?.isOn(.feedback) == true ? [.prs, .feedback, .settings] : [.prs, .settings]
-    }
+        private var tabs: [PRHubTab] {
+            environment.connection.config?.isOn(.feedback) == true ? [.prs, .feedback, .settings] : [.prs, .settings]
+        }
 
-    private var tabBar: some View {
-        @Bindable var navigation = environment.navigation
-        let tabs = tabs
-        return TabView(selection: $navigation.selectedTab) {
-            Tab("PRs", systemImage: "arrow.triangle.pull", value: PRHubTab.prs) {
-                PRKitRoot(environment.prs)
-                    .compactWidthForUITests()
-                    .prKitOfflineBanner(environment.prs)
-            }
-            .accessibilityIdentifier(PRHubTab.prs.identifier)
-            if tabs.contains(.feedback) {
-                Tab("Feedback", systemImage: AppIcon.conversation.symbol, value: PRHubTab.feedback) {
-                    FeatureRequestsView(model: environment.feedback)
+        private var tabBar: some View {
+            @Bindable var navigation = environment.navigation
+            let tabs = tabs
+            return TabView(selection: $navigation.selectedTab) {
+                Tab("PRs", systemImage: "arrow.triangle.pull", value: PRHubTab.prs) {
+                    PRKitRoot(environment.prs)
+                        .compactWidthForUITests()
                         .prKitOfflineBanner(environment.prs)
                 }
-                .accessibilityIdentifier(PRHubTab.feedback.identifier)
+                .accessibilityIdentifier(PRHubTab.prs.identifier)
+                if tabs.contains(.feedback) {
+                    Tab("Feedback", systemImage: AppIcon.conversation.symbol, value: PRHubTab.feedback) {
+                        FeatureRequestsView(model: environment.feedback)
+                            .prKitOfflineBanner(environment.prs)
+                    }
+                    .accessibilityIdentifier(PRHubTab.feedback.identifier)
+                }
+                Tab("Settings", systemImage: AppIcon.settings.symbol, value: PRHubTab.settings) {
+                    PRHubSettingsView(environment: environment, endSample: endSample, signIn: signIn)
+                        .prKitOfflineBanner(environment.prs)
+                }
+                .accessibilityIdentifier(PRHubTab.settings.identifier)
             }
-            Tab("Settings", systemImage: AppIcon.settings.symbol, value: PRHubTab.settings) {
-                PRHubSettingsView(environment: environment, endSample: endSample, signIn: signIn)
-                    .prKitOfflineBanner(environment.prs)
+            .background(TabBarIdentifiers(identifiers: tabs.map(\.identifier)))
+            // A Worker that stops serving Feedback under it: the PRs instead.
+            .onChange(of: tabs, initial: true) { _, tabs in
+                if !tabs.contains(navigation.selectedTab) {
+                    navigation.selectedTab = .prs
+                }
             }
-            .accessibilityIdentifier(PRHubTab.settings.identifier)
         }
-        .background(TabBarIdentifiers(identifiers: tabs.map(\.identifier)))
-        // A Worker that stops serving Feedback under it: the PRs instead.
-        .onChange(of: tabs, initial: true) { _, tabs in
-            if !tabs.contains(navigation.selectedTab) {
-                navigation.selectedTab = .prs
-            }
-        }
-    }
     #endif
 }
 
-extension View {
+private extension View {
     #if os(iOS)
-    /// A Debug run's `-PRHubCompactWidth`: a narrow Split View's size class, which a UI test can't make with the
-    /// window. Set on the window, so the screens a stack pushes have it too.
-    fileprivate func compactWidthForUITests() -> some View {
-        #if DEBUG
-        onAppear {
-            guard PRHubScreenshots.forcesCompactWidth else {
-                return
-            }
-            for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
-                scene.windows.forEach { $0.traitOverrides.horizontalSizeClass = .compact }
-            }
+        /// A Debug run's `-PRHubCompactWidth`: a narrow Split View's size class, which a UI test can't make with the
+        /// window. Set on the window, so the screens a stack pushes have it too.
+        func compactWidthForUITests() -> some View {
+            #if DEBUG
+                onAppear {
+                    guard PRHubScreenshots.forcesCompactWidth else {
+                        return
+                    }
+                    for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+                        scene.windows.forEach { $0.traitOverrides.horizontalSizeClass = .compact }
+                    }
+                }
+            #else
+                self
+            #endif
         }
-        #else
-        self
-        #endif
-    }
     #endif
 
     /// Update available: a newer build on TestFlight. Update opens TestFlight on PRHub; Later skips that build.
-    fileprivate func updateOffer(_ update: PRHubUpdate) -> some View {
+    func updateOffer(_ update: PRHubUpdate) -> some View {
         modifier(UpdateOffer(update: update))
     }
 
     /// The one offer to turn on review alerts, over the PRs, before the system asks.
-    fileprivate func alertsOffer(_ permission: PRHubAlertPermission) -> some View {
+    func alertsOffer(_ permission: PRHubAlertPermission) -> some View {
         @Bindable var permission = permission
         return alert("Get review alerts?", isPresented: $permission.isOffering) {
             Button("Not now", role: .cancel) { permission.decline() }
@@ -210,7 +214,7 @@ extension View {
                 .keyboardShortcut(.defaultAction)
         } message: {
             Text("PRHub tells you when someone asks for your review, and a tap opens the PR. You can change this in "
-                 + "Settings.")
+                + "Settings.")
         }
     }
 }
@@ -223,7 +227,11 @@ private struct UpdateOffer: ViewModifier {
         let offered = update.offered
         content.alert(
             "Update available: PRHub \(offered?.version ?? "") (\(offered?.build ?? ""))",
-            isPresented: Binding(get: { update.offered != nil }, set: { if !$0 { update.later() } })
+            isPresented: Binding(get: { update.offered != nil }, set: {
+                if !$0 {
+                    update.later()
+                }
+            })
         ) {
             Button("Later", role: .cancel) { update.later() }
             Button("Update") {
@@ -237,9 +245,9 @@ private struct UpdateOffer: ViewModifier {
     }
 }
 
-extension PRHubRootView.Screen {
+private extension PRHubRootView.Screen {
     /// The tabs report their own.
-    fileprivate var analyticsScreen: AnalyticsScreen? {
+    var analyticsScreen: AnalyticsScreen? {
         switch self {
         case .onboarding: .onboarding
         case .samples: .samples
@@ -249,8 +257,8 @@ extension PRHubRootView.Screen {
     }
 }
 
-extension PRHubTab {
-    fileprivate var analyticsScreen: AnalyticsScreen {
+private extension PRHubTab {
+    var analyticsScreen: AnalyticsScreen {
         switch self {
         case .prs: .prs
         case .feedback: .feedback
@@ -259,66 +267,66 @@ extension PRHubTab {
     }
 
     #if os(iOS)
-    /// The tab's accessibility identifier, which the UI tests reach it by (`PRHubPlace`).
-    fileprivate var identifier: String {
-        switch self {
-        case .prs: "prhub-tab-prs"
-        case .feedback: "prhub-tab-feedback"
-        case .settings: "prhub-tab-settings"
+        /// The tab's accessibility identifier, which the UI tests reach it by (`PRHubPlace`).
+        var identifier: String {
+            switch self {
+            case .prs: "prhub-tab-prs"
+            case .feedback: "prhub-tab-feedback"
+            case .settings: "prhub-tab-settings"
+            }
         }
-    }
     #endif
 }
 
 #if os(iOS)
-/// The tabs' accessibility identifiers on a phone's tab bar buttons. `Tab`'s `accessibilityIdentifier` reaches an iPad's
-/// tabs at the top but not a phone's tab bar, whose buttons come from the `UITabBarController`'s items, so this sets
-/// them on the items, in the tabs' order.
-private struct TabBarIdentifiers: UIViewRepresentable {
-    let identifiers: [String]
+    /// The tabs' accessibility identifiers on a phone's tab bar buttons. `Tab`'s `accessibilityIdentifier` reaches an iPad's
+    /// tabs at the top but not a phone's tab bar, whose buttons come from the `UITabBarController`'s items, so this sets
+    /// them on the items, in the tabs' order.
+    private struct TabBarIdentifiers: UIViewRepresentable {
+        let identifiers: [String]
 
-    func makeUIView(context: Context) -> Probe {
-        Probe(identifiers: identifiers)
-    }
-
-    func updateUIView(_ probe: Probe, context: Context) {
-        probe.identifiers = identifiers
-        probe.apply()
-    }
-
-    final class Probe: UIView {
-        var identifiers: [String]
-
-        init(identifiers: [String]) {
-            self.identifiers = identifiers
-            super.init(frame: .zero)
+        func makeUIView(context _: Context) -> Probe {
+            Probe(identifiers: identifiers)
         }
 
-        required init?(coder: NSCoder) {
-            nil
+        func updateUIView(_ probe: Probe, context _: Context) {
+            probe.identifiers = identifiers
+            probe.apply()
         }
 
-        /// After this turn of the run loop: the tab bar controller is not in the window yet when the probe is.
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            DispatchQueue.main.async { [weak self] in self?.apply() }
-        }
+        final class Probe: UIView {
+            var identifiers: [String]
 
-        func apply() {
-            guard let window else {
-                return
+            init(identifiers: [String]) {
+                self.identifiers = identifiers
+                super.init(frame: .zero)
             }
-            var controllers = [window.rootViewController].compactMap(\.self)
-            while let controller = controllers.popLast() {
-                if let tabs = controller as? UITabBarController {
-                    for (item, identifier) in zip(tabs.tabBar.items ?? [], identifiers) {
-                        item.accessibilityIdentifier = identifier
-                    }
+
+            required init?(coder _: NSCoder) {
+                nil
+            }
+
+            /// After this turn of the run loop: the tab bar controller is not in the window yet when the probe is.
+            override func didMoveToWindow() {
+                super.didMoveToWindow()
+                DispatchQueue.main.async { [weak self] in self?.apply() }
+            }
+
+            func apply() {
+                guard let window else {
                     return
                 }
-                controllers += controller.children
+                var controllers = [window.rootViewController].compactMap(\.self)
+                while let controller = controllers.popLast() {
+                    if let tabs = controller as? UITabBarController {
+                        for (item, identifier) in zip(tabs.tabBar.items ?? [], identifiers) {
+                            item.accessibilityIdentifier = identifier
+                        }
+                        return
+                    }
+                    controllers += controller.children
+                }
             }
         }
     }
-}
 #endif

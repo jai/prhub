@@ -21,7 +21,15 @@ export interface PushBody {
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
 
-const PUSH_FIELDS = new Set(["device_token", "apns_env", "push_type", "priority", "collapse_id", "expiration", "payload"]);
+const PUSH_FIELDS = new Set([
+  "device_token",
+  "apns_env",
+  "push_type",
+  "priority",
+  "collapse_id",
+  "expiration",
+  "payload",
+]);
 
 const encoder = new TextEncoder();
 
@@ -29,20 +37,25 @@ const encoder = new TextEncoder();
 export function parsePushBody(text: string): Parsed<PushBody> {
   const body = parseObject(text);
   if (body === null) return { ok: false, error: "invalid_json" };
-  for (const field of Object.keys(body)) if (!PUSH_FIELDS.has(field)) return { ok: false, error: "unknown_field" };
+  for (const field of Object.keys(body))
+    if (!PUSH_FIELDS.has(field)) return { ok: false, error: "unknown_field" };
 
   const { device_token, apns_env, push_type, priority, collapse_id, expiration, payload } = body;
   // Same rule as worker/src/devices.ts for a registered device's token; stored lowercased.
   if (typeof device_token !== "string" || !/^[0-9a-fA-F]{2,200}$/.test(device_token)) {
     return { ok: false, error: "invalid_device_token" };
   }
-  if (apns_env !== "production" && apns_env !== "sandbox") return { ok: false, error: "invalid_apns_env" };
-  if (push_type !== "alert" && push_type !== "background") return { ok: false, error: "invalid_push_type" };
+  if (apns_env !== "production" && apns_env !== "sandbox")
+    return { ok: false, error: "invalid_apns_env" };
+  if (push_type !== "alert" && push_type !== "background")
+    return { ok: false, error: "invalid_push_type" };
   if (priority !== 5 && priority !== 10) return { ok: false, error: "invalid_priority" };
   if (
     collapse_id !== undefined &&
     collapse_id !== null &&
-    (typeof collapse_id !== "string" || collapse_id === "" || encoder.encode(collapse_id).byteLength > COLLAPSE_ID_MAX_BYTES)
+    (typeof collapse_id !== "string" ||
+      collapse_id === "" ||
+      encoder.encode(collapse_id).byteLength > COLLAPSE_ID_MAX_BYTES)
   ) {
     return { ok: false, error: "invalid_collapse_id" };
   }
@@ -53,7 +66,8 @@ export function parsePushBody(text: string): Parsed<PushBody> {
   ) {
     return { ok: false, error: "invalid_expiration" };
   }
-  if (!isPlainObject(payload) || !isPlainObject(payload.aps)) return { ok: false, error: "invalid_payload" };
+  if (!isPlainObject(payload) || !isPlainObject(payload.aps))
+    return { ok: false, error: "invalid_payload" };
   if (encoder.encode(JSON.stringify(payload)).byteLength > PAYLOAD_MAX_BYTES) {
     return { ok: false, error: "payload_too_large" };
   }
@@ -76,7 +90,8 @@ export function parsePushBody(text: string): Parsed<PushBody> {
 export function parseKeyBody(text: string): Parsed<{ label: string }> {
   const body = parseObject(text);
   if (body === null) return { ok: false, error: "invalid_json" };
-  for (const field of Object.keys(body)) if (field !== "label") return { ok: false, error: "unknown_field" };
+  for (const field of Object.keys(body))
+    if (field !== "label") return { ok: false, error: "unknown_field" };
   const label = typeof body.label === "string" ? body.label.trim() : "";
   if (label === "" || label.length > LABEL_MAX_CHARS) return { ok: false, error: "invalid_label" };
   return { ok: true, value: { label } };

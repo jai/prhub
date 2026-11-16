@@ -1,7 +1,7 @@
 import Foundation
+@testable import PRKitCore
 import Synchronization
 import Testing
-@testable import PRKitCore
 
 /// A failed request to the Worker: what it was for, how it failed, the words it shows, and one report per failure.
 struct PRRequestFailureTests {

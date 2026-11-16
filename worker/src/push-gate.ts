@@ -15,8 +15,17 @@ export function createHeldAlertsTable(sql: LimitSql): void {
 
 /** An alert claimed (`alertKey`) and waiting for its PR's files. Holding it twice keeps the first. */
 export function holdAlert(sql: LimitSql, key: string, alert: PrAlert, now: number): void {
-  sql.exec(`INSERT INTO held_alerts (key, kind, repo, number, head, title, held_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT (key) DO NOTHING`, key, alert.kind, alert.repo, alert.number, alert.head, alert.title, now);
+  sql.exec(
+    `INSERT INTO held_alerts (key, kind, repo, number, head, title, held_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (key) DO NOTHING`,
+    key,
+    alert.kind,
+    alert.repo,
+    alert.number,
+    alert.head,
+    alert.title,
+    now,
+  );
 }
 
 /** What the index holds of a PR, as the gate reads it. */
@@ -28,7 +37,13 @@ export type HeldRow = {
 };
 
 type HeldAlertRow = {
-  key: string; kind: AlertKind; repo: RepoFullName; number: number; head: string; title: string; held_at: number;
+  key: string;
+  kind: AlertKind;
+  repo: RepoFullName;
+  number: number;
+  head: string;
+  title: string;
+  held_at: number;
 };
 
 /**
@@ -55,13 +70,24 @@ export interface GateDecision {
  * Takes every alert that may go now out of the table. `keyLinesOn` says whether this index makes key lines for a row;
  * when it does, an alert waits for them too.
  */
-export function releaseAlerts(sql: LimitSql, now: number, keyLinesOn: (row: HeldRow) => boolean): GateDecision {
-  const held = sql.exec<HeldAlertRow>(
-    "SELECT key, kind, repo, number, head, title, held_at FROM held_alerts ORDER BY held_at").toArray();
+export function releaseAlerts(
+  sql: LimitSql,
+  now: number,
+  keyLinesOn: (row: HeldRow) => boolean,
+): GateDecision {
+  const held = sql
+    .exec<HeldAlertRow>(
+      "SELECT key, kind, repo, number, head, title, held_at FROM held_alerts ORDER BY held_at",
+    )
+    .toArray();
   const decision: GateDecision = { release: [], dropped: [], nextAt: null };
   for (const { key, held_at: heldAt, ...alert } of held) {
-    const row = sql.exec<HeldRow>("SELECT head, diff_state, key_lines_ready, list FROM pull_requests WHERE id = ?",
-      prId(alert.repo, alert.number)).toArray()[0];
+    const row = sql
+      .exec<HeldRow>(
+        "SELECT head, diff_state, key_lines_ready, list FROM pull_requests WHERE id = ?",
+        prId(alert.repo, alert.number),
+      )
+      .toArray()[0];
     const reason = row ? reasonToGo(row, alert.head, keyLinesOn(row), now - heldAt) : null;
     if (row && reason === null) {
       const deadline = heldAt + ALERT_HOLD_MAX_MS;
@@ -78,7 +104,12 @@ export function releaseAlerts(sql: LimitSql, now: number, keyLinesOn: (row: Held
   return decision;
 }
 
-function reasonToGo(row: HeldRow, head: string, wantsKeyLines: boolean, heldMs: number): ReleaseReason | null {
+function reasonToGo(
+  row: HeldRow,
+  head: string,
+  wantsKeyLines: boolean,
+  heldMs: number,
+): ReleaseReason | null {
   if (row.head !== head) {
     return "moved";
   }

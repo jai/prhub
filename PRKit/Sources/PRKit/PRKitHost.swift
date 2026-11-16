@@ -34,9 +34,12 @@ public protocol PRKitHost: AnyObject, Sendable {
     func opensEmptyHintLink(_ url: URL)
 }
 
-extension PRKitHost {
-    public var mirrorDirectory: URL? { nil }
-    public func opensEmptyHintLink(_ url: URL) {}
+public extension PRKitHost {
+    var mirrorDirectory: URL? {
+        nil
+    }
+
+    func opensEmptyHintLink(_: URL) {}
 }
 
 /// The features the PR screens follow and the org filter's starting point. Agent Pager's is `everything`; PRHub's
@@ -156,7 +159,9 @@ public struct PRKitLaunchOptions: Sendable {
 
     public static let none = PRKitLaunchOptions()
 
-    var isEmpty: Bool { benchmarkRow == nil && linkAfterOpening == nil }
+    var isEmpty: Bool {
+        benchmarkRow == nil && linkAfterOpening == nil
+    }
 }
 
 /// What PRKit tells its host (`PRKitHost.receive`).

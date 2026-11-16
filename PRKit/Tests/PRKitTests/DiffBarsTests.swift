@@ -1,12 +1,12 @@
 import CoreGraphics
-import Testing
 @testable import PRKit
+import Testing
 
 /// When the diff's bars leave and come back (`DiffBars`): never gone with no scroll to bring them back.
 struct DiffBarsTests {
     /// A phone's diff: 116 pt of bars over a 791 pt list, 60 pt under the last line for the floating controls.
     private func scroll(
-        offset: CGFloat, moved: CGFloat = 0, content: CGFloat = 3_000, byFinger: Bool = true,
+        offset: CGFloat, moved: CGFloat = 0, content: CGFloat = 3000, byFinger: Bool = true,
         topInset: CGFloat = 116, isKeyboardUp: Bool = false
     ) -> DiffBars.Scroll {
         DiffBars.Scroll(
@@ -50,7 +50,7 @@ struct DiffBarsTests {
     }
 
     @Test func theBounceAtTheEndIsNotGoingBack() {
-        let bottom: CGFloat = 3_000 + 60 - 791
+        let bottom: CGFloat = 3000 + 60 - 791
         #expect(DiffBars.decide(scroll(offset: bottom + 10, moved: -20)) == .keep)
         #expect(DiffBars.decide(scroll(offset: bottom, moved: -20)) == .keep)
     }

@@ -24,7 +24,12 @@ export interface RequesterNode {
 
 /** `BOT_AUTHORS`, lowercased: accounts GitHub calls users that open PRs for someone else. */
 export function botAuthorsOf(env: Pick<Env, "BOT_AUTHORS">): Set<string> {
-  return new Set((env.BOT_AUTHORS ?? "").split(",").map((login) => login.trim().toLowerCase()).filter(Boolean));
+  return new Set(
+    (env.BOT_AUTHORS ?? "")
+      .split(",")
+      .map((login) => login.trim().toLowerCase())
+      .filter(Boolean),
+  );
 }
 
 /** A GitHub App's account, a `[bot]` login, or one `BOT_AUTHORS` names. */
@@ -56,7 +61,11 @@ function coAuthor(node: RequesterNode, bots: ReadonlySet<string>): RequestedBy |
   for (const { commit } of [...(node.trailers?.nodes ?? [])].reverse()) {
     for (const [, name, email] of commit.message.matchAll(CO_AUTHOR)) {
       const login = NOREPLY.exec(email)?.[1] ?? null;
-      if (AGENT_NAME.test(name) || AGENT_EMAIL.test(email) || (login && bots.has(login.toLowerCase()))) {
+      if (
+        AGENT_NAME.test(name) ||
+        AGENT_EMAIL.test(email) ||
+        (login && bots.has(login.toLowerCase()))
+      ) {
         continue;
       }
       return { login, name, avatarUrl: login ? avatarOf(login) : null, source: "co_author" };
@@ -75,15 +84,23 @@ function requestedInBody(body: string): RequestedBy | null {
     return { login, name: null, avatarUrl: avatarOf(login), source: "body" };
   }
   // A name, its Markdown and any link dropped: "**Art Doe**", "[Art Doe](https://…)".
-  const name = said.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*_`]/g, "").trim().slice(0, 80);
+  const name = said
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/[*_`]/g, "")
+    .trim()
+    .slice(0, 80);
   return name ? { login: null, name, avatarUrl: null, source: "body" } : null;
 }
 
 function assignee(node: RequesterNode, bots: ReadonlySet<string>): RequestedBy | null {
   const person = node.assignees?.nodes.find((candidate) => !isBotAuthor(candidate, bots));
   return person
-    ? { login: person.login, name: person.name ?? null, avatarUrl: person.avatarUrl ?? avatarOf(person.login),
-      source: "assignee" }
+    ? {
+        login: person.login,
+        name: person.name ?? null,
+        avatarUrl: person.avatarUrl ?? avatarOf(person.login),
+        source: "assignee",
+      }
     : null;
 }
 

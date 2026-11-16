@@ -4,7 +4,13 @@
 import { AskFailure, askEvent, errorWords, failedLine, scrubbed, sideOf } from "./ask-trace.ts";
 import { type AgentAnswer, askContainer } from "./agent-container.ts";
 import {
-  type AskChat, type AskChatMessage, type AskInput, type AskMessage, askPrompt, askRecordKey, draftOf,
+  type AskChat,
+  type AskChatMessage,
+  type AskInput,
+  type AskMessage,
+  askPrompt,
+  askRecordKey,
+  draftOf,
 } from "./ask-chat.ts";
 import { type LinearPosted, type LinearProposal, proposalRef } from "./linear-act.ts";
 import type { AskGrant } from "./app-token.ts";
@@ -15,7 +21,8 @@ import { isRevisionOf, type RepoFullName, type Sha } from "./ids.ts";
 import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models.ts";
 
 /** Said with every question: a session begun before the diff file existed reads only its first system prompt. */
-const DIFF_NOTE = "The PR's diff at this head is in .prhub-pr.diff at the repository's root. Read it first.";
+const DIFF_NOTE =
+  "The PR's diff at this head is in .prhub-pr.diff at the repository's root. Read it first.";
 
 /**
  * The container a person's questions run in: their own, so one person's checkouts and clones are never on the disk
@@ -59,7 +66,11 @@ interface AskAnswer extends Partial<Omit<AgentAnswer, "output" | "tokens">> {
 }
 
 export function isSubscriptionRecord(record: unknown): record is SubscriptionRecord {
-  return typeof record === "object" && record !== null && (record as { kind?: unknown }).kind === "subscription";
+  return (
+    typeof record === "object" &&
+    record !== null &&
+    (record as { kind?: unknown }).kind === "subscription"
+  );
 }
 
 /**
@@ -67,7 +78,9 @@ export function isSubscriptionRecord(record: unknown): record is SubscriptionRec
  * the turns would have cost on the API, and each `ai_run` line logs it.
  */
 export function subscriptionChat(
-  record: SubscriptionRecord, now: number, posted: Record<string, LinearPosted> = {},
+  record: SubscriptionRecord,
+  now: number,
+  posted: Record<string, LinearPosted> = {},
 ): AskChat {
   const lost = record.workingSince !== null && now - record.workingSince >= TURN_LOST_MS;
   const isWorking = record.workingSince !== null && !lost;
@@ -83,7 +96,10 @@ export function subscriptionChat(
 }
 
 /** An answer's proposed Linear comments as cards, each with where it stands; the URLs that make mentions stay here. */
-function withCards({ linear, ...message }: AskMessage, posted: Record<string, LinearPosted>): AskChatMessage {
+function withCards(
+  { linear, ...message }: AskMessage,
+  posted: Record<string, LinearPosted>,
+): AskChatMessage {
   if (!linear?.length) {
     return message;
   }
@@ -92,15 +108,24 @@ function withCards({ linear, ...message }: AskMessage, posted: Record<string, Li
     linear: linear.map((one, index) => {
       const done = posted[proposalRef(message.id, index)];
       return {
-        issue: one.issue, text: one.text, mentions: one.mentions, problem: one.problem,
-        state: done?.state ?? "proposed", url: done?.url ?? null, failure: done?.state === "failed" ? done.problem : null,
+        issue: one.issue,
+        text: one.text,
+        mentions: one.mentions,
+        problem: one.problem,
+        state: done?.state ?? "proposed",
+        url: done?.url ?? null,
+        failure: done?.state === "failed" ? done.problem : null,
         session: done?.session ?? null,
       };
     }),
   };
 }
 
-function transcriptKey(repo: RepoFullName, number: number, env: Pick<Env, "SIGNED_IN_USER_ID">): string {
+function transcriptKey(
+  repo: RepoFullName,
+  number: number,
+  env: Pick<Env, "SIGNED_IN_USER_ID">,
+): string {
   return scopedKey(env, `ask-sessions/${repo}/${number}.json`);
 }
 
@@ -114,11 +139,19 @@ const STOPS: Record<string, string> = {
  * another model or effort than the chat's starts a new chat, as on Managed Agents.
  */
 export async function askOnSubscription(
-  repo: RepoFullName, number: number, input: AskInput, choice: ModelChoice, env: Env,
+  repo: RepoFullName,
+  number: number,
+  input: AskInput,
+  choice: ModelChoice,
+  env: Env,
   services: {
-    system: () => Promise<string>; grant: () => Promise<AskGrant>; diff: () => Promise<string>; budgetUsd: number;
+    system: () => Promise<string>;
+    grant: () => Promise<AskGrant>;
+    diff: () => Promise<string>;
+    budgetUsd: number;
     /** Whether the token is read only by how it was made: only then may the agent's tools reach GitHub with it. */
-    readOnly: boolean; now?: () => number;
+    readOnly: boolean;
+    now?: () => number;
     /** The turn's id, the question's own: its `ask_event` lines and its failure line carry it. */
     turn?: string;
     /** Does one action on GitHub as the reviewer: null when GitHub took it, else why not. */
@@ -133,50 +166,101 @@ export async function askOnSubscription(
   const trace = { pr: `${repo}#${number}`, user_id: env.SIGNED_IN_USER_ID ?? null };
   const key = askRecordKey(repo, number, env);
   const stored = await (await env.DIFFS.get(key))?.json<unknown>();
-  const known = isSubscriptionRecord(stored) && sameChoice(stored.choice ?? BUILT_IN_DEFAULTS.ask, choice) ? stored : null;
+  const known =
+    isSubscriptionRecord(stored) && sameChoice(stored.choice ?? BUILT_IN_DEFAULTS.ask, choice)
+      ? stored
+      : null;
   // A turn a deploy cut short runs again from the queue: its question is already in the chat, so it is not added twice,
   // and a turn whose answer is already there is done: the model is not asked again.
   const at = known?.messages.findIndex((message) => message.id === turn) ?? -1;
   const resumed = at >= 0;
   if (resumed && known!.messages.slice(at + 1).some((message) => message.role === "agent")) {
-    askEvent("resumed", turn, { pr: `${repo}#${number}`, user_id: env.SIGNED_IN_USER_ID ?? null, already_answered: true });
+    askEvent("resumed", turn, {
+      pr: `${repo}#${number}`,
+      user_id: env.SIGNED_IN_USER_ID ?? null,
+      already_answered: true,
+    });
     return;
   }
   const asked: AskMessage = {
-    id: turn, role: "you", text: input.question,
+    id: turn,
+    role: "you",
+    text: input.question,
     anchor: input.anchor ? `${input.anchor.path}:${input.anchor.line}` : null,
     ...(input.anchor ? { side: input.anchor.side } : {}),
   };
-  askEvent(resumed ? "resumed" : "handed_over", turn, { ...trace, model: choice.model, effort: choice.effort });
+  askEvent(resumed ? "resumed" : "handed_over", turn, {
+    ...trace,
+    model: choice.model,
+    effort: choice.effort,
+  });
   // A question after one that failed is its Retry, or its words edited: it takes the failed one's place.
   const before = known?.messages ?? [];
-  const ended = known != null && (known.workingSince === null ? known.problem != null : now() - known.workingSince >= TURN_LOST_MS);
+  const ended =
+    known != null &&
+    (known.workingSince === null
+      ? known.problem != null
+      : now() - known.workingSince >= TURN_LOST_MS);
   const failedLast = !resumed && ended && before.at(-1)?.role === "you";
   let record: SubscriptionRecord = {
-    kind: "subscription", session: known?.session ?? null, head: input.head, choice,
-    messages: resumed ? before : [...(failedLast ? before.slice(0, -1) : before), asked], workingSince: now(), problem: null,
-    costCents: known?.costCents ?? null, model: known?.model ?? null,
+    kind: "subscription",
+    session: known?.session ?? null,
+    head: input.head,
+    choice,
+    messages: resumed ? before : [...(failedLast ? before.slice(0, -1) : before), asked],
+    workingSince: now(),
+    problem: null,
+    costCents: known?.costCents ?? null,
+    model: known?.model ?? null,
   };
   await env.DIFFS.put(key, JSON.stringify(record));
   let token: string | null = null;
   try {
-    const entries = record.session ? await (await env.DIFFS.get(transcriptKey(repo, number, env)))?.json<unknown[]>() : [];
+    const entries = record.session
+      ? await (await env.DIFFS.get(transcriptKey(repo, number, env)))?.json<unknown[]>()
+      : [];
     const grant = await grantWithRetry(services.grant);
     token = grant.token;
     const readOnly = grant.readOnly ?? services.readOnly;
-    askEvent("grant", turn, { ...trace, ms: now() - started, read_only: readOnly, repos: grant.repos?.length ?? null,
-      checked_by: grant.checkedBy ?? null });
-    const answer = await askContainer<AskAnswer>("/ask", JSON.stringify({
-      system: await services.system(), prompt: `${DIFF_NOTE}\n${askPrompt(input, null)}`, model: choice.model, effort: choice.effort,
-      scope: env.SIGNED_IN_USER_ID ?? "self", repo, number,
-      head: input.head, token: grant.token, readOnly,
-      reachable: grant.repos, diff: await services.diff(), session: record.session, entries: entries ?? [],
-      budgetUsd: services.budgetUsd,
-    }), env.AGENT!, undefined, askInstance(env));
+    askEvent("grant", turn, {
+      ...trace,
+      ms: now() - started,
+      read_only: readOnly,
+      repos: grant.repos?.length ?? null,
+      checked_by: grant.checkedBy ?? null,
+    });
+    const answer = await askContainer<AskAnswer>(
+      "/ask",
+      JSON.stringify({
+        system: await services.system(),
+        prompt: `${DIFF_NOTE}\n${askPrompt(input, null)}`,
+        model: choice.model,
+        effort: choice.effort,
+        scope: env.SIGNED_IN_USER_ID ?? "self",
+        repo,
+        number,
+        head: input.head,
+        token: grant.token,
+        readOnly,
+        reachable: grant.repos,
+        diff: await services.diff(),
+        session: record.session,
+        entries: entries ?? [],
+        budgetUsd: services.budgetUsd,
+      }),
+      env.AGENT!,
+      undefined,
+      askInstance(env),
+    );
     if (answer.error) {
       throw new AskFailure(MODEL_TROUBLE.test(answer.error) ? "model" : "container", answer.error);
     }
-    askEvent("container", turn, { ...trace, ms: now() - started, subtype: answer.subtype ?? null, tools: answer.tools ?? null });
+    askEvent("container", turn, {
+      ...trace,
+      ms: now() - started,
+      subtype: answer.subtype ?? null,
+      tools: answer.tools ?? null,
+    });
     if (answer.session && answer.entries) {
       await env.DIFFS.put(transcriptKey(repo, number, env), JSON.stringify(answer.entries));
     }
@@ -185,51 +269,105 @@ export async function askOnSubscription(
     if (done) {
       answer.text = `${answer.text?.trim() ?? ""}\n\n${done}`.trim();
     }
-    const linear = answer.linear?.length && services.linear ? await services.linear(answer.linear) : [];
-    const spent = answer.costUsd === null || answer.costUsd === undefined ? null : Math.round(answer.costUsd * 10_000) / 100;
+    const linear =
+      answer.linear?.length && services.linear ? await services.linear(answer.linear) : [];
+    const spent =
+      answer.costUsd === null || answer.costUsd === undefined
+        ? null
+        : Math.round(answer.costUsd * 10_000) / 100;
     record = {
-      ...record, session: answer.session ?? record.session, workingSince: null,
+      ...record,
+      session: answer.session ?? record.session,
+      workingSince: null,
       messages: answered(record.messages, answer, linear),
-      problem: answer.subtype === "success" ? null : STOPS[answer.subtype ?? ""] ?? "The agent stopped before it answered.",
-      costCents: spent === null ? record.costCents : (record.costCents ?? 0) + spent, model: answer.model ?? record.model,
+      problem:
+        answer.subtype === "success"
+          ? null
+          : (STOPS[answer.subtype ?? ""] ?? "The agent stopped before it answered."),
+      costCents: spent === null ? record.costCents : (record.costCents ?? 0) + spent,
+      model: answer.model ?? record.model,
     };
     console.log("ai_run", {
-      feature: "ask", repo, number, auth: "subscription", user_id: env.SIGNED_IN_USER_ID ?? null, model: record.model,
-      effort: choice.effort, session: record.session, cost_cents: spent, read_only: readOnly,
-      reachable: grant.repos?.length ?? null, tools: answer.tools ?? null,
+      feature: "ask",
+      repo,
+      number,
+      auth: "subscription",
+      user_id: env.SIGNED_IN_USER_ID ?? null,
+      model: record.model,
+      effort: choice.effort,
+      session: record.session,
+      cost_cents: spent,
+      read_only: readOnly,
+      reachable: grant.repos?.length ?? null,
+      tools: answer.tools ?? null,
     });
-    askEvent("answered", turn, { ...trace, ms: now() - started, model: record.model, cost_cents: spent });
+    askEvent("answered", turn, {
+      ...trace,
+      ms: now() - started,
+      model: record.model,
+      cost_cents: spent,
+    });
   } catch (error) {
     const known = [token];
     record = { ...record, workingSince: null, problem: failedLine(error, turn, known) };
-    askEvent("failed", turn, { ...trace, ms: now() - started, side: sideOf(error), reason: errorWords(error, known),
-      status: error instanceof AskFailure ? error.status : null });
-    console.error("ask on subscription failed", errorWords(error, known),
-      scrubbed(error instanceof Error ? error.stack ?? "" : "", known));
+    askEvent("failed", turn, {
+      ...trace,
+      ms: now() - started,
+      side: sideOf(error),
+      reason: errorWords(error, known),
+      status: error instanceof AskFailure ? error.status : null,
+    });
+    console.error(
+      "ask on subscription failed",
+      errorWords(error, known),
+      scrubbed(error instanceof Error ? (error.stack ?? "") : "", known),
+    );
   }
   await env.DIFFS.put(key, JSON.stringify(record));
 }
 
 /** What an action did, in the reviewer's words. */
 function actionWords(action: unknown): string {
-  const { kind, event, method } = (action ?? {}) as { kind?: unknown; event?: unknown; method?: unknown };
+  const { kind, event, method } = (action ?? {}) as {
+    kind?: unknown;
+    event?: unknown;
+    method?: unknown;
+  };
   switch (kind) {
     case "review":
-      return event === "APPROVE" ? "Approved" : event === "REQUEST_CHANGES" ? "Requested changes" : "Posted a review";
-    case "comment": return "Commented";
-    case "line": return "Commented on a line";
-    case "merge": return `Merged (${String(method)})`;
-    case "update_branch": return "Updated the branch";
-    default: return `Did ${String(kind)}`;
+      return event === "APPROVE"
+        ? "Approved"
+        : event === "REQUEST_CHANGES"
+          ? "Requested changes"
+          : "Posted a review";
+    case "comment":
+      return "Commented";
+    case "line":
+      return "Commented on a line";
+    case "merge":
+      return `Merged (${String(method)})`;
+    case "update_branch":
+      return "Updated the branch";
+    default:
+      return `Did ${String(kind)}`;
   }
 }
 
 /** Each action in turn, as the reviewer; a line per action for the chat, or null when there were none. */
-async function actOn(actions: unknown[], act: (action: unknown) => Promise<string | null>): Promise<string | null> {
+async function actOn(
+  actions: unknown[],
+  act: (action: unknown) => Promise<string | null>,
+): Promise<string | null> {
   const lines: string[] = [];
   for (const action of actions.slice(0, 10)) {
-    const refused = await act(action).catch((error: unknown) => (error instanceof Error ? error.message : String(error)));
-    lines.push(refused === null ? `- ✅ ${actionWords(action)}` : `- ❌ ${actionWords(action)}: GitHub refused. ${refused}`);
+    const refused = await act(action).catch((error: unknown) =>
+      error instanceof Error ? error.message : String(error),
+    );
+    lines.push(
+      refused === null
+        ? `- ✅ ${actionWords(action)}`
+        : `- ❌ ${actionWords(action)}: GitHub refused. ${refused}`,
+    );
   }
   return lines.length > 0 ? `**On GitHub, as you:**\n${lines.join("\n")}` : null;
 }
@@ -238,18 +376,37 @@ async function actOn(actions: unknown[], act: (action: unknown) => Promise<strin
  * The chat with the turn's answer, and the review and Linear comments it drafted under it: a draft with no words still
  * shows.
  */
-function answered(messages: AskMessage[], answer: AskAnswer, linear: LinearProposal[] = []): AskMessage[] {
+function answered(
+  messages: AskMessage[],
+  answer: AskAnswer,
+  linear: LinearProposal[] = [],
+): AskMessage[] {
   const draft = draftOf(answer.draft);
-  const text = answer.text?.trim() ? answer.text
-    : draft ? "I drafted a review." : linear.length > 0 ? `I drafted a comment on ${linear[0].issue}.` : null;
-  return text === null ? messages : [...messages, {
-    id: crypto.randomUUID(), role: "agent", text, anchor: null, ...(draft ? { draft } : {}),
-    ...(linear.length > 0 ? { linear } : {}),
-  }];
+  const text = answer.text?.trim()
+    ? answer.text
+    : draft
+      ? "I drafted a review."
+      : linear.length > 0
+        ? `I drafted a comment on ${linear[0].issue}.`
+        : null;
+  return text === null
+    ? messages
+    : [
+        ...messages,
+        {
+          id: crypto.randomUUID(),
+          role: "agent",
+          text,
+          anchor: null,
+          ...(draft ? { draft } : {}),
+          ...(linear.length > 0 ? { linear } : {}),
+        },
+      ];
 }
 
 /** What the model's side says when it, not the container, stopped the turn. */
-const MODEL_TROUBLE = /usage limit|rate.?limit|overloaded|\b(429|529)\b|credit|invalid.*(token|api key)|authentication/i;
+const MODEL_TROUBLE =
+  /usage limit|rate.?limit|overloaded|\b(429|529)\b|credit|invalid.*(token|api key)|authentication/i;
 
 /** GitHub's token for the turn: a refusal says why at once; anything else, a blip, gets one more try. */
 async function grantWithRetry(grant: () => Promise<AskGrant>): Promise<AskGrant> {
@@ -265,22 +422,41 @@ async function grantWithRetry(grant: () => Promise<AskGrant>): Promise<AskGrant>
 }
 
 /** The PR's title, author, branches, link, state and description, as the token reads them; null when GitHub won't say. */
-export async function prFacts(repo: RepoFullName, number: number, env: Env): Promise<PrFacts | null> {
+export async function prFacts(
+  repo: RepoFullName,
+  number: number,
+  env: Env,
+): Promise<PrFacts | null> {
   try {
     const response = await getFromGitHub(`/repos/${repo}/pulls/${number}`, env);
     if (!response.ok) {
       await response.body?.cancel();
       return null;
     }
-    const pull = await response.json() as {
-      title?: string; user?: { login?: string } | null; base?: { ref?: string }; head?: { ref?: string; label?: string };
-      html_url?: string; state?: string; merged?: boolean; draft?: boolean; body?: string | null;
+    const pull = (await response.json()) as {
+      title?: string;
+      user?: { login?: string } | null;
+      base?: { ref?: string };
+      head?: { ref?: string; label?: string };
+      html_url?: string;
+      state?: string;
+      merged?: boolean;
+      draft?: boolean;
+      body?: string | null;
     };
-    const state = pull.merged ? "merged" : pull.draft && pull.state === "open" ? "draft" : pull.state ?? null;
+    const state = pull.merged
+      ? "merged"
+      : pull.draft && pull.state === "open"
+        ? "draft"
+        : (pull.state ?? null);
     return {
-      title: pull.title ?? "", author: pull.user?.login ?? null, base: pull.base?.ref ?? null,
-      head: pull.head?.label ?? pull.head?.ref ?? null, url: pull.html_url ?? `https://github.com/${repo}/pull/${number}`,
-      state, body: pull.body ?? "",
+      title: pull.title ?? "",
+      author: pull.user?.login ?? null,
+      base: pull.base?.ref ?? null,
+      head: pull.head?.label ?? pull.head?.ref ?? null,
+      url: pull.html_url ?? `https://github.com/${repo}/pull/${number}`,
+      state,
+      body: pull.body ?? "",
     };
   } catch {
     return null;
@@ -294,7 +470,12 @@ const DIFF_KEPT = 400_000;
  * The PR's diff at `head`, read no further than `DIFF_KEPT` bytes. Empty when GitHub won't give one, or when the PR has
  * moved past `head`: a newer commit's diff beside an older checkout would mislead.
  */
-export async function prDiff(repo: RepoFullName, number: number, head: Sha, env: Env): Promise<string> {
+export async function prDiff(
+  repo: RepoFullName,
+  number: number,
+  head: Sha,
+  env: Env,
+): Promise<string> {
   const { response, version } = await liveDiff(repo, number, env);
   if (!response.ok || !response.body || !version || !isRevisionOf(version, head)) {
     await response.body?.cancel();

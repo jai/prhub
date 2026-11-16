@@ -8,9 +8,11 @@ public struct PrAuthorAvatar: View {
     public let pullRequest: PRListPullRequest
     @Environment(\.loadsAuthorAvatars) private var loadsAvatars
     #if os(macOS)
-    private var size: CGFloat { 32 * MacTextSize.layoutScale }
+        private var size: CGFloat {
+            32 * MacTextSize.layoutScale
+        }
     #else
-    @ScaledMetric(relativeTo: .subheadline) private var size: CGFloat = 32
+        @ScaledMetric(relativeTo: .subheadline) private var size: CGFloat = 32
     #endif
 
     public var body: some View {
@@ -51,7 +53,7 @@ public struct PrAuthorAvatar: View {
     }
 }
 
-extension EnvironmentValues {
+public extension EnvironmentValues {
     /// Off over PRHub's sample PRs: their authors are made up, so no picture is fetched from GitHub for them.
-    @Entry public var loadsAuthorAvatars = true
+    @Entry var loadsAuthorAvatars = true
 }

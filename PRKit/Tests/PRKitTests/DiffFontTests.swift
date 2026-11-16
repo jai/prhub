@@ -1,9 +1,9 @@
 import CoreText
 import Foundation
-import SwiftUI
-import Testing
 @testable import PRKit
 import PRKitDesign
+import SwiftUI
+import Testing
 
 /// The diff's font setting: today's font until someone changes it, kept on the device, and every face it offers
 /// installed and monospaced.
@@ -97,12 +97,12 @@ struct DiffFontTests {
     }
 
     #if os(iOS)
-    @Test(arguments: [CGFloat(9), 12, 20])
-    func theViewedMarkIsATapTargetAtEverySize(size: CGFloat) {
-        let metrics = DiffMetrics(DiffFont(face: .menlo, size: size), scale: 1)
-        #expect(metrics.viewedTarget >= DiffMetrics.minimumTapTarget)
-        #expect(metrics.fileHeaderHeight >= DiffMetrics.minimumTapTarget)
-    }
+        @Test(arguments: [CGFloat(9), 12, 20])
+        func theViewedMarkIsATapTargetAtEverySize(size: CGFloat) {
+            let metrics = DiffMetrics(DiffFont(face: .menlo, size: size), scale: 1)
+            #expect(metrics.viewedTarget >= DiffMetrics.minimumTapTarget)
+            #expect(metrics.fileHeaderHeight >= DiffMetrics.minimumTapTarget)
+        }
     #endif
 
     private func postScriptName(_ font: PlatformFont) -> String {
@@ -116,6 +116,6 @@ struct DiffFontTests {
         CTFontGetGlyphsForCharacters(ctFont, characters, &glyphs, characters.count)
         var sizes = [CGSize](repeating: .zero, count: glyphs.count)
         CTFontGetAdvancesForGlyphs(ctFont, .horizontal, glyphs, &sizes, glyphs.count)
-        return sizes.map { ($0.width * 1_000).rounded() / 1_000 }
+        return sizes.map { ($0.width * 1000).rounded() / 1000 }
     }
 }

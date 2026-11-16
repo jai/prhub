@@ -20,7 +20,9 @@ public enum PRSyncOutcome: Sendable {
 enum PRListPage: String, CaseIterable, Identifiable {
     case review, mine
 
-    var id: Self { self }
+    var id: Self {
+        self
+    }
 
     func holds(_ row: PullRequestRow) -> Bool {
         (row.isReviewRequest || row.isAnswered) == (self == .review)
@@ -101,7 +103,9 @@ enum PRListPage: String, CaseIterable, Identifiable {
 enum PRListOrder: String, CaseIterable, Identifiable {
     case sla, oldest, newest
 
-    var id: Self { self }
+    var id: Self {
+        self
+    }
 
     var title: String {
         switch self {
@@ -116,7 +120,9 @@ enum PRListOrder: String, CaseIterable, Identifiable {
 enum PRListGrouping: String, CaseIterable, Identifiable {
     case none, repo, author
 
-    var id: Self { self }
+    var id: Self {
+        self
+    }
 
     var title: String {
         switch self {
@@ -222,6 +228,7 @@ final class PRsModel {
         get { outboxSource() }
         set { outboxSource = { newValue } }
     }
+
     /// The APNs environment the push token is registered under (`PRKitHost.apnsEnvironment`).
     @ObservationIgnored var apnsEnvironment = ""
     /// Where `PRKitEvent`s go: the host.
@@ -252,6 +259,7 @@ final class PRsModel {
     var kept: ReadStore {
         ReadStore(directory: mirror.directory.appending(path: PRMirror.keptFolder, directoryHint: .isDirectory))
     }
+
     /// The newest sync, and its list fetch while that is out: what a wake waits for, and what a pull waits for.
     private var running: Task<PRSyncOutcome, Never>?
     private var listing: Task<PRSyncOutcome, Never>?
@@ -265,15 +273,20 @@ final class PRsModel {
     private(set) var listedCount = 0
 
     /// A sync is running: on a first sign-in, the only sign the list is coming.
-    var isSyncing: Bool { running != nil }
+    var isSyncing: Bool {
+        running != nil
+    }
 
     /// PRs the running sync has listed and not yet shown.
-    var arrivingCount: Int { isSyncing ? max(0, listedCount - rows.count) : 0 }
+    var arrivingCount: Int {
+        isSyncing ? max(0, listedCount - rows.count) : 0
+    }
 
     /// Where the mirror says a download or a write failed for good: the host's event log.
     func logFailures(to log: @escaping @Sendable (String) -> Void) {
         mirror.log.set(log)
     }
+
     private var apnsToken: String?
     /// What the Worker serves, which the PR screens follow: everything in Jai's build; PRHub's pr-worker's
     /// `GET /device/config`. Read through (`PRKitHost.configuration`), so a view that reads it follows a new config.
@@ -321,7 +334,8 @@ final class PRsModel {
         // The last good list shows at once, and stays if this read fails.
         let key = InboxKey("merged-\(page.rawValue)")
         if merged[page] == nil, let saved = kept.load(key),
-           let rows = try? JSONDecoder().decode([PullRequestRow].self, from: saved.data) {
+           let rows = try? JSONDecoder().decode([PullRequestRow].self, from: saved.data)
+        {
             merged[page] = rows
         }
         do {
@@ -440,9 +454,9 @@ final class PRsModel {
     /// The phone's alone: the Worker reads a sync as the phone being up to date, which decides its pushes.
     func report(_ event: some Encodable & Sendable) async {
         #if os(macOS)
-        return
+            return
         #else
-        await post(event, to: "device/event")
+            await post(event, to: "device/event")
         #endif
     }
 
@@ -711,7 +725,8 @@ extension PRsModel {
             workerSyncedAt = Date(timeIntervalSince1970: list.synced_at / 1000)
             listedCount = list.prs.count
             if let shown = await mirror.begin(list.prs, generation: generation, retry: retry),
-               generation == self.generation {
+               generation == self.generation
+            {
                 rows = shown
                 if retry {
                     notUpdated = []
@@ -825,5 +840,7 @@ struct PROpenEvent: Encodable, Sendable {
 
 /// A sample PR's Linear ticket is made up: nothing posts.
 struct SamplesPostNothing: LocalizedError {
-    var errorDescription: String? { "Sample PRs don't post to Linear." }
+    var errorDescription: String? {
+        "Sample PRs don't post to Linear."
+    }
 }

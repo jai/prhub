@@ -100,7 +100,7 @@ struct PRStatusCard: View {
     }
 
     private func reviewer(_ person: PullRequestDetail.Reviewer) -> some View {
-        let state: Status = switch person.state {
+        let state = switch person.state {
         case "APPROVED": Status(AppIcon.reviewApproved.symbol, Color.toneGood, "Approved")
         case "CHANGES_REQUESTED": Status(AppIcon.reviewChangesRequested.symbol, Color.toneBad, "Changes requested")
         case "COMMENTED": Status(AppIcon.reviewCommented.symbol, .secondary, "Commented")
@@ -124,11 +124,22 @@ struct PRStatusCard: View {
         .padding(.vertical, PRStyle.listRowPadding)
     }
 
-    private var deciding: [PullRequestDetail.Check] { detail.decidingChecks }
+    private var deciding: [PullRequestDetail.Check] {
+        detail.decidingChecks
+    }
 
-    private var failing: Int { deciding.filter { $0.state == "failure" }.count }
-    private var pending: Int { deciding.filter { $0.state == "pending" }.count }
-    private var isOpen: Bool { folds.isFlipped("checks") != (failing > 0) }
+    private var failing: Int {
+        deciding.filter { $0.state == "failure" }.count
+    }
+
+    private var pending: Int {
+        deciding.filter { $0.state == "pending" }.count
+    }
+
+    private var isOpen: Bool {
+        folds.isFlipped("checks") != (failing > 0)
+    }
+
     private var symbol: String {
         if deciding.isEmpty {
             return AppIcon.checksNone.symbol
@@ -227,7 +238,7 @@ private struct PRCheckLines: View {
         }
     }
 
-    @ViewBuilder var body: some View {
+    var body: some View {
         if group.isGroup {
             let isOpen = folds.isFlipped("check-group:\(group.id)") != (group.state == "failure")
             Button { folds.toggle("check-group:\(group.id)") } label: {

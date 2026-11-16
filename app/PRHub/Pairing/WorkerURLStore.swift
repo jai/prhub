@@ -103,7 +103,7 @@ final class WorkerEndpoint: Sendable {
             return nil
         }
         return state.withLock { state in
-            if case .read(let url) = state {
+            if case let .read(url) = state {
                 return url
             }
             do {

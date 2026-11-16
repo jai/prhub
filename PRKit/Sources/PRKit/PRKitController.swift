@@ -137,29 +137,29 @@ final class PRNavigation {
     /// A PR opened from a link or an alert anywhere in the app: the PRs tab shows it, then sets this back to `nil`.
     var pending: PRPendingOpen?
     #if os(macOS)
-    /// What `macPath` last took off the stack, nearest first: a `TabStack` coming back to the tab empties the path,
-    /// then sets what it had open again.
-    private var popped: [PRRoute] = []
+        /// What `macPath` last took off the stack, nearest first: a `TabStack` coming back to the tab empties the path,
+        /// then sets what it had open again.
+        private var popped: [PRRoute] = []
 
-    /// `routes` as the Mac's stack binds them. A Mac window's tabs share one navigation column, and SwiftUI traps
-    /// (`AnyNavigationPath.Error.comparisonTypeMismatch`) when a tab binds a path of another type than the tab before
-    /// it, so the PRs tab binds a `NavigationPath`, as a host's tabs do. Its screens are pushed by `routes`; SwiftUI
-    /// only takes them off (Back), and `TabStack` puts them back.
-    var macPath: NavigationPath {
-        get { NavigationPath(routes) }
-        set {
-            if newValue.count <= routes.count {
-                popped = Array((routes.dropFirst(newValue.count) + popped).prefix(Self.poppedLimit))
-                routes = Array(routes.prefix(newValue.count))
-            } else {
-                let restored = popped.prefix(newValue.count - routes.count)
-                routes += restored
-                popped.removeFirst(restored.count)
+        /// `routes` as the Mac's stack binds them. A Mac window's tabs share one navigation column, and SwiftUI traps
+        /// (`AnyNavigationPath.Error.comparisonTypeMismatch`) when a tab binds a path of another type than the tab before
+        /// it, so the PRs tab binds a `NavigationPath`, as a host's tabs do. Its screens are pushed by `routes`; SwiftUI
+        /// only takes them off (Back), and `TabStack` puts them back.
+        var macPath: NavigationPath {
+            get { NavigationPath(routes) }
+            set {
+                if newValue.count <= routes.count {
+                    popped = Array((routes.dropFirst(newValue.count) + popped).prefix(Self.poppedLimit))
+                    routes = Array(routes.prefix(newValue.count))
+                } else {
+                    let restored = popped.prefix(newValue.count - routes.count)
+                    routes += restored
+                    popped.removeFirst(restored.count)
+                }
             }
         }
-    }
 
-    private static let poppedLimit = 20
+        private static let poppedLimit = 20
     #endif
 
     /// The PR beside the list on a wide screen.
@@ -204,22 +204,22 @@ public struct PRKitRoot: View {
     }
 }
 
-extension View {
+public extension View {
     /// On the host's root, over every tab: a PR link on any of them can then open the PR there
     /// (`opensPullRequestLinks`).
-    public func prKitEnvironment(_ kit: PRKitController) -> some View {
+    func prKitEnvironment(_ kit: PRKitController) -> some View {
         environment(kit.model)
             .chatTheme(.prHub)
     }
 
     /// On a `NavigationStack`: PR links in it push the PR on this stack (the phone); elsewhere they open as links. A
     /// link to a PR's files pushes its diff over it, and a PR row's Review shortcut does the same.
-    public func opensPullRequestLinks(in path: Binding<NavigationPath>, backGoesToRoot: Bool = false) -> some View {
+    func opensPullRequestLinks(in path: Binding<NavigationPath>, backGoesToRoot: Bool = false) -> some View {
         opensPullRequestLinks(on: .path(path, backGoesToRoot: backGoesToRoot))
     }
 
     /// Inside that stack: where those PRs and their diffs land.
-    public func showsPullRequests() -> some View {
+    func showsPullRequests() -> some View {
         modifier(PullRequestDestination())
     }
 }

@@ -15,7 +15,10 @@ export function appManifest(origin: string, name: string): object {
     public: false,
     default_permissions: { metadata: "read", pull_requests: "read", issues: "read" },
     default_events: [
-      "pull_request", "pull_request_review", "pull_request_review_comment", "pull_request_review_thread",
+      "pull_request",
+      "pull_request_review",
+      "pull_request_review_comment",
+      "pull_request_review_thread",
       "issue_comment",
     ],
   };
@@ -23,7 +26,8 @@ export function appManifest(origin: string, name: string): object {
 
 /** Where the form goes: an org's new-App page, or the user's own. */
 export function newAppUrl(owner: string | undefined, state: string): string {
-  const base = isSet(owner) ? `https://github.com/organizations/${encodeURIComponent(owner)}/settings/apps/new`
+  const base = isSet(owner)
+    ? `https://github.com/organizations/${encodeURIComponent(owner)}/settings/apps/new`
     : "https://github.com/settings/apps/new";
   return `${base}?state=${encodeURIComponent(state)}`;
 }
@@ -33,23 +37,35 @@ function isSetupRequest(params: URLSearchParams, env: Env): boolean {
 }
 
 function escapeHtml(text: string): string {
-  return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("'", "&#39;")
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("'", "&#39;")
     .replaceAll('"', "&quot;");
 }
 
-export async function createAppPage(request: Request, params: URLSearchParams, env: Env): Promise<Response> {
+export async function createAppPage(
+  request: Request,
+  params: URLSearchParams,
+  env: Env,
+): Promise<Response> {
   if (!isSetupRequest(params, env)) {
     return new Response("not found\n", { status: 404 });
   }
   const origin = new URL(request.url).origin;
-  const name = isSet(env.GITHUB_APP_NAME) ? env.GITHUB_APP_NAME : `${await githubLogin(env)}-pr-review`.slice(0, 34);
+  const name = isSet(env.GITHUB_APP_NAME)
+    ? env.GITHUB_APP_NAME
+    : `${await githubLogin(env)}-pr-review`.slice(0, 34);
   const where = isSet(env.GITHUB_APP_OWNER) ? env.GITHUB_APP_OWNER : "your account";
   const manifest = escapeHtml(JSON.stringify(appManifest(origin, name)));
-  return new Response(`<!doctype html><meta name="viewport" content="width=device-width">
+  return new Response(
+    `<!doctype html><meta name="viewport" content="width=device-width">
     <form method="post" action="${escapeHtml(newAppUrl(env.GITHUB_APP_OWNER, env.SETUP_STATE ?? ""))}">
     <input type="hidden" name="manifest" value="${manifest}">
     <button style="font-size:20px;padding:16px">Create ${escapeHtml(name)} on ${escapeHtml(where)}</button></form>`,
-  { headers: { "Content-Type": "text/html" } });
+    { headers: { "Content-Type": "text/html" } },
+  );
 }
 
 /** Keeps what GitHub returns until it is read once and set as Worker secrets (docs/api.md). */

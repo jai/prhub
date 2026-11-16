@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PRHub
+import Testing
 
 /// Update available (`PRHubUpdate`): a newer build for this build's TestFlight group, at most hourly, and Later.
 @MainActor
@@ -60,10 +60,10 @@ struct PRHubUpdateTests {
         #expect(update.offered?.build == "202")
     }
 
-    @Test func theOfferAndTheAnswerAreReported() {
+    @Test func theOfferAndTheAnswerAreReported() throws {
         let sink = AnalyticsTests.RecordingAnalytics()
-        let update = PRHubUpdate(
-            running: Self.running, defaults: UserDefaults(suiteName: "prhub-update-\(UUID().uuidString)")!,
+        let update = try PRHubUpdate(
+            running: Self.running, defaults: #require(UserDefaults(suiteName: "prhub-update-\(UUID().uuidString)")),
             isEnabled: true, usage: AnalyticsTests.usage(sink)
         )
         update.check(Self.config(public: "201"))

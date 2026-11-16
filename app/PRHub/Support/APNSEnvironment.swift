@@ -19,9 +19,9 @@ enum APNSEnvironment {
     /// Compiled in: a Simulator build and a device build are different binaries.
     static var isSimulator: Bool {
         #if targetEnvironment(simulator)
-        true
+            true
         #else
-        false
+            false
         #endif
     }
 
@@ -46,9 +46,9 @@ enum APNSEnvironment {
     static func apsEnvironment(inProfile profileData: Data?) -> String? {
         guard let data = profileData,
               let start = data.range(of: Data("<?xml".utf8)),
-              let end = data.range(of: Data("</plist>".utf8), in: start.lowerBound..<data.endIndex),
+              let end = data.range(of: Data("</plist>".utf8), in: start.lowerBound ..< data.endIndex),
               let plist = try? PropertyListSerialization.propertyList(
-                  from: data[start.lowerBound..<end.upperBound], options: [], format: nil
+                  from: data[start.lowerBound ..< end.upperBound], options: [], format: nil
               ) as? [String: Any],
               let entitlements = plist["Entitlements"] as? [String: Any]
         else {

@@ -6,14 +6,8 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "allowImportingTsExtensions": true
   },
-  "include": [
-    "tests",
-    "e2e.config.ts",
-    "e2e.bugbash.config.ts"
-  ]
+  "include": ["tests", "e2e.config.ts", "e2e.bugbash.config.ts"]
 }

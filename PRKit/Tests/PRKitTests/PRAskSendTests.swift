@@ -1,7 +1,7 @@
 import DurableNetworking
 import Foundation
-import Testing
 @testable import PRKit
+import Testing
 
 /// A question to the PR's AI between its send and the chat having it: slow, offline, failed and answered.
 @MainActor
@@ -20,7 +20,7 @@ struct PRAskSendTests {
             return ids[ids.count - 1]
         }
 
-        func isQueued(_ kind: PROutboxJob.Kind, about ref: PullRequestRef) -> Bool {
+        func isQueued(_ kind: PROutboxJob.Kind, about _: PullRequestRef) -> Bool {
             kind == .question && isHolding && !ids.isEmpty
         }
     }
@@ -30,14 +30,17 @@ struct PRAskSendTests {
         let access = PRViewerAccess.offline
         let configuration = PRKitConfiguration.everything
         let held = Outbox()
-        var outbox: (any PRKitOutbox)? { held }
+        var outbox: (any PRKitOutbox)? {
+            held
+        }
+
         let apnsEnvironment = "sandbox"
         let samples: PRSampleSet? = PRSampleSet(samples: [], mergedReviewed: [], mergedMine: [], answersOnPhone: true)
         let launchOptions = PRKitLaunchOptions.none
 
         let transport: any HTTPTransport = URLSessionTransport.background
-        func log(_ line: String) {}
-        func receive(_ event: PRKitEvent) {}
+        func log(_: String) {}
+        func receive(_: PRKitEvent) {}
     }
 
     private let ref = PullRequestRef(repo: "acme/api", number: 7)
@@ -75,9 +78,9 @@ struct PRAskSendTests {
             await Task.yield()
         }
         kit.outboxAnswered(id: "ask-1", data: Data("""
-            {"messages":[{"id":"m1","role":"you","text":"Is it tested?","anchor":null}],"isWorking":true,\
-            "activity":null,"problem":null,"costCents":null}
-            """.utf8))
+        {"messages":[{"id":"m1","role":"you","text":"Is it tested?","anchor":null}],"isWorking":true,\
+        "activity":null,"problem":null,"costCents":null}
+        """.utf8))
         let outcome = try await asked.value
         #expect(outcome == .answered(chat))
         #expect(PRAskSend.after(.success(outcome), of: question, isOnline: true) == .idle)

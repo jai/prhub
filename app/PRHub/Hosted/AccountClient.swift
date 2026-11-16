@@ -61,13 +61,13 @@ struct AccountClient: Sendable {
     /// `fresh`: the hosted Worker reads the installations from GitHub before it answers (`?fresh=1`).
     func deviceConfig(fresh: Bool = false) async throws(Failure) -> DeviceConfig {
         let query = fresh ? [URLQueryItem(name: "fresh", value: "1")] : []
-        return try decode(DeviceConfig.self, try await send("GET", "device/config", query: query))
+        return try decode(DeviceConfig.self, await send("GET", "device/config", query: query))
     }
 
     /// `POST /auth/github/finish`, with no bearer: the code and the verifier are the proof.
     func finish(code: String, verifier: String) async throws(Failure) -> SignInResult {
         let body = try encode(["code": code, "code_verifier": verifier])
-        return try decode(SignInResult.self, try await send("POST", "auth/github/finish", body: body, authorized: false))
+        return try decode(SignInResult.self, await send("POST", "auth/github/finish", body: body, authorized: false))
     }
 
     /// `POST /auth/signout`: this phone's session ends. `204`.
@@ -77,13 +77,13 @@ struct AccountClient: Sendable {
 
     /// `DELETE /account` (App Review 5.1.1(v)).
     func deleteAccount() async throws(Failure) -> Deleted {
-        try decode(Deleted.self, try await send("DELETE", "account"))
+        try decode(Deleted.self, await send("DELETE", "account"))
     }
 
     /// `PUT /account/anthropic-key`. The key goes in this body and nowhere else.
     func setAnthropicKey(_ key: String) async throws(Failure) -> KeySet {
         let body = try encode(["key": key])
-        return try decode(KeySet.self, try await send("PUT", "account/anthropic-key", body: body))
+        return try decode(KeySet.self, await send("PUT", "account/anthropic-key", body: body))
     }
 
     /// `DELETE /account/anthropic-key`. `204`.
@@ -93,12 +93,12 @@ struct AccountClient: Sendable {
 
     func setLinearKey(_ key: String) async throws(Failure) {
         let answer = try decode(LinearConnection.self,
-                                try await send("PUT", "account/linear-key", body: encode(["key": key])))
+                                await send("PUT", "account/linear-key", body: encode(["key": key])))
         guard answer.linearKey else { throw .decoding }
     }
 
     func removeLinearKey() async throws(Failure) {
-        let answer = try decode(LinearConnection.self, try await send("DELETE", "account/linear-key"))
+        let answer = try decode(LinearConnection.self, await send("DELETE", "account/linear-key"))
         guard !answer.linearKey else { throw .decoding }
     }
 
@@ -137,7 +137,7 @@ struct AccountClient: Sendable {
         guard let http = response as? HTTPURLResponse else {
             throw .transport
         }
-        guard (200..<300).contains(http.statusCode) else {
+        guard (200 ..< 300).contains(http.statusCode) else {
             throw .server((try? JSONDecoder().decode(ErrorBody.self, from: data))?.error?.code, http.statusCode)
         }
         return data
@@ -187,7 +187,7 @@ enum AccountActionError: Error, Equatable, Sendable {
         case .server("anthropic_key_invalid", _): self = .keyRefused
         case .server("anthropic_unavailable", _): self = .anthropicUnavailable
         case .server(_, 401): self = .signedOut
-        case .server(_, let status): self = .server(status: status)
+        case let .server(_, status): self = .server(status: status)
         case .transport, .notConnected: self = .unreachable
         case .decoding: self = .unreadable
         }

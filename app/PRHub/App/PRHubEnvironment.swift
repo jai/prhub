@@ -37,8 +37,8 @@ final class PRHubEnvironment {
     /// Update available, when TestFlight has a newer build than this one.
     let update: PRHubUpdate
     #if os(iOS)
-    /// The battery soak's MetricKit reports, when the Worker asks for them. None for the samples, a check or a test.
-    @ObservationIgnored let metricKit: PRHubMetricKit?
+        /// The battery soak's MetricKit reports, when the Worker asks for them. None for the samples, a check or a test.
+        @ObservationIgnored let metricKit: PRHubMetricKit?
     #endif
     /// Set as the notification center's delegate at launch (`AppDelegate`), which holds it weakly.
     @ObservationIgnored private(set) lazy var notificationDelegate = PRHubNotificationDelegate(
@@ -89,12 +89,12 @@ final class PRHubEnvironment {
         host.isCheckingInstallations = { connection.isCheckingInstallations }
         host.leavesForGitHub = { connection.leavesForGitHub($0) }
         #if os(iOS)
-        let reports = PRHubMetricReports(directory: Self.metricKitDirectory) { [client = prs.client] report in
-            try await client.post("device/metrics", report)
-        }
-        metricKit = AppIdentity.isRunningTests ? nil : PRHubMetricKit(reports: reports)
-        // The config as last read: MetricKit hands its payloads early in a launch, a wake's too.
-        metricKit?.update(isOn: connection.config?.metricKit == true)
+            let reports = PRHubMetricReports(directory: Self.metricKitDirectory) { [client = prs.client] report in
+                try await client.post("device/metrics", report)
+            }
+            metricKit = AppIdentity.isRunningTests ? nil : PRHubMetricKit(reports: reports)
+            // The config as last read: MetricKit hands its payloads early in a launch, a wake's too.
+            metricKit?.update(isOn: connection.config?.metricKit == true)
         #endif
     }
 
@@ -118,7 +118,7 @@ final class PRHubEnvironment {
         navigation = PRHubNavigation(pullRequests: prs)
         feedback = FeatureRequestsModel(client: feedbackClient ?? FeatureClient(viewer: prs.client))
         #if os(iOS)
-        metricKit = nil
+            metricKit = nil
         #endif
         host.config = { connection.config }
         host.isCheckingInstallations = { connection.isCheckingInstallations }
@@ -288,8 +288,8 @@ final class PRHubEnvironment {
         await prs.refresh(.foreground)
         await offerAlertsIfDue()
         #if os(iOS)
-        metricKit?.update(isOn: connection.config?.metricKit == true)
-        await metricKit?.flush()
+            metricKit?.update(isOn: connection.config?.metricKit == true)
+            await metricKit?.flush()
         #endif
     }
 }

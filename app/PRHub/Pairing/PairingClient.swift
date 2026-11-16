@@ -42,7 +42,7 @@ struct PairingClient: Sendable {
     func pair(worker: URL, code: String) async throws -> PairResponse {
         var request = URLRequest(url: worker.appending(path: "device/pair"), timeoutInterval: 15)
         request.httpMethod = "POST"
-        request.setValue("Bearer \(try secret())", forHTTPHeaderField: "Authorization")
+        try request.setValue("Bearer \(secret())", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(["code": code])
         let data: Data
@@ -55,7 +55,7 @@ struct PairingClient: Sendable {
         guard let http = response as? HTTPURLResponse else {
             throw Failure.transport
         }
-        guard (200..<300).contains(http.statusCode) else {
+        guard (200 ..< 300).contains(http.statusCode) else {
             throw Failure.server((try? JSONDecoder().decode(ErrorBody.self, from: data))?.error?.code, http.statusCode)
         }
         do {

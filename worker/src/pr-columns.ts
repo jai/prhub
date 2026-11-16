@@ -18,7 +18,12 @@ const ADDED_COLUMNS: [name: string, type: string][] = [
 ];
 
 export function addMissingColumns(sql: LimitSql): void {
-  const have = new Set(sql.exec<{ name: string }>("PRAGMA table_info(pull_requests)").toArray().map(({ name }) => name));
+  const have = new Set(
+    sql
+      .exec<{ name: string }>("PRAGMA table_info(pull_requests)")
+      .toArray()
+      .map(({ name }) => name),
+  );
   for (const [name, type] of ADDED_COLUMNS) {
     if (!have.has(name)) {
       sql.exec(`ALTER TABLE pull_requests ADD COLUMN ${name} ${type}`);

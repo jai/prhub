@@ -9,9 +9,7 @@ import { acceptAsk, askPr, withQueued } from "./ask-queue";
 import { bodyOf, parseAskInput, parseKeyLineMark } from "./boundary";
 import { eventRoute, registerRoute, unpairRoute } from "./devices";
 import { metricsRoute } from "./metrickit.ts";
-import {
-  aiConfigOf, askConfigured, deviceConfig, featureKitConfigured,
-} from "./config";
+import { aiConfigOf, askConfigured, deviceConfig, featureKitConfigured } from "./config";
 import { makesAnswers } from "./agent-container";
 import { askEvent } from "./ask-trace";
 import { counted } from "./github-calls";
@@ -19,15 +17,33 @@ import { AgentContainer } from "./agent-container-object";
 import { aiJobs, askQueue, type Env, githubLogin, isSet, prIndex, scopedKey } from "./env";
 import { aiStoreKey, isStaleFailure } from "./ai-run";
 import {
-  detailVersionOf, fetchDiff, liveDiff, mergedPullRequests, pullRequestSummary, readPullRequests, reviewWeek,
+  detailVersionOf,
+  fetchDiff,
+  liveDiff,
+  mergedPullRequests,
+  pullRequestSummary,
+  readPullRequests,
+  reviewWeek,
 } from "./github";
 import { parseRepoFullName, parseSha, prId, type RepoFullName } from "./ids";
 import { DEFAULT_CONTEXT } from "./key-lines";
 import { type AiConfig, type AiFeature, resolveChoice } from "./models";
 import { detailKey, diffKey, PrIndex } from "./pr-index";
-import { codeHashOf, deviceSecretOf, fingerprintOf, isPairedSecret, normalizePairingCode, sha256Hex } from "./pairing";
 import {
-  fetchRepoIndex, isRepoIndex, rankRepos, type RepoIndex, REPOS_FORCED_GAP_MS, REPOS_KEY, REPOS_RETRY_GAP_MS,
+  codeHashOf,
+  deviceSecretOf,
+  fingerprintOf,
+  isPairedSecret,
+  normalizePairingCode,
+} from "./pairing";
+import {
+  fetchRepoIndex,
+  isRepoIndex,
+  rankRepos,
+  type RepoIndex,
+  REPOS_FORCED_GAP_MS,
+  REPOS_KEY,
+  REPOS_RETRY_GAP_MS,
   REPOS_STALE_MS,
 } from "./repos";
 import { createAppPage, finishAppCreation } from "./setup";
@@ -40,7 +56,14 @@ import { feedbackTokenRoute } from "./feedback-token.ts";
 
 import { Installation, IpLimit, SignIn, UserAccount } from "./account";
 import {
-  accountOf, authenticate, configInstallations, hostedAccountConfig, hostedMode, publicHostedRoute, servicesOf, userEnv,
+  accountOf,
+  authenticate,
+  configInstallations,
+  hostedAccountConfig,
+  hostedMode,
+  publicHostedRoute,
+  servicesOf,
+  userEnv,
 } from "./hosted";
 import { pairingLimitAnswer, personLimitAnswer, reportedLimitsOf } from "./limit-enforcement";
 import { LimitName } from "./limits";
@@ -62,13 +85,18 @@ function hasToken(request: Request, token: string | undefined): boolean {
   const encoder = new TextEncoder();
   const sent = encoder.encode(request.headers.get("Authorization") ?? "");
   const expected = encoder.encode(`Bearer ${token}`);
-  const subtle = crypto.subtle as SubtleCrypto & { timingSafeEqual(a: ArrayBufferView, b: ArrayBufferView): boolean };
+  const subtle = crypto.subtle as SubtleCrypto & {
+    timingSafeEqual(a: ArrayBufferView, b: ArrayBufferView): boolean;
+  };
   return sent.byteLength === expected.byteLength && subtle.timingSafeEqual(sent, expected);
 }
 
 /** Jai's app's `APP_TOKEN`, as ever, or the device secret of an app paired with this Worker, asked of the index. */
 async function isAuthorized(request: Request, env: Env): Promise<boolean> {
-  return hasToken(request, env.APP_TOKEN) || isPairedSecret(request.headers.get("Authorization"), prIndex(env));
+  return (
+    hasToken(request, env.APP_TOKEN) ||
+    isPairedSecret(request.headers.get("Authorization"), prIndex(env))
+  );
 }
 
 function errorAnswer(status: number, code: string, message: string): Response {
@@ -85,7 +113,7 @@ async function pairRoute(request: Request, env: Env): Promise<Response> {
   if (limited) {
     return limited;
   }
-  const body = await request.json().catch(() => null) as { code?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as { code?: unknown } | null;
   const code = normalizePairingCode(body?.code);
   if (!code) {
     return errorAnswer(400, "validation_error", "code must be the 8-character pairing code");
@@ -115,17 +143,29 @@ function aiConfig(env: Env, context: ExecutionContext): AiConfig {
 
 /** The request's `model` and `effort` within what this Worker allows, or a 400 saying what is. */
 function choiceOf(
-  feature: AiFeature, requested: { model?: unknown; effort?: unknown }, env: Env, context: ExecutionContext,
+  feature: AiFeature,
+  requested: { model?: unknown; effort?: unknown },
+  env: Env,
+  context: ExecutionContext,
 ) {
   const result = resolveChoice(aiConfig(env, context), feature, requested);
-  return result.ok ? result : { ok: false as const, answer: errorAnswer(400, "invalid_model_choice", result.error) };
+  return result.ok
+    ? result
+    : { ok: false as const, answer: errorAnswer(400, "invalid_model_choice", result.error) };
 }
 
-async function configRoute(env: Env, context: ExecutionContext, extra: object = {}): Promise<Response> {
+async function configRoute(
+  env: Env,
+  context: ExecutionContext,
+  extra: object = {},
+): Promise<Response> {
   aiConfig(env, context);
   reportedLimitsOf(env, (promise) => context.waitUntil(promise));
   const [login, latest] = await Promise.all([githubLogin(env).catch(() => null), appLatest(env)]);
-  return Response.json({ ...deviceConfig(env, login, latest), ...extra }, { headers: { "Cache-Control": "no-store" } });
+  return Response.json(
+    { ...deviceConfig(env, login, latest), ...extra },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }
 
 function notConfigured(what: string): Response {
@@ -138,7 +178,9 @@ async function receiveWebhook(request: Request, env: Env): Promise<Response> {
     return new Response("not found\n", { status: 404 });
   }
   const body = await request.arrayBuffer();
-  if (!(await verifySignature(body, request.headers.get("X-Hub-Signature-256"), env.WEBHOOK_SECRET))) {
+  if (
+    !(await verifySignature(body, request.headers.get("X-Hub-Signature-256"), env.WEBHOOK_SECRET))
+  ) {
     return new Response("unauthenticated\n", { status: 401 });
   }
   const text = new TextDecoder().decode(body);
@@ -155,14 +197,24 @@ async function liveDetail(repo: RepoFullName, number: number, env: Env): Promise
   const pr = (await readPullRequests([{ id, repo, number }], env)).get(id);
   return pr
     ? {
-      response: Response.json({ ...pr.detail, title: pr.title, revision: pr.revision, version: pr.version }),
-      version: await detailVersionOf(pr),
-    }
+        response: Response.json({
+          ...pr.detail,
+          title: pr.title,
+          revision: pr.revision,
+          version: pr.version,
+        }),
+        version: await detailVersionOf(pr),
+      }
     : { response: new Response("not found\n", { status: 404 }), version: null };
 }
 
 /** With a version, the stored copy. Without one, GitHub now: a PR on an agent's list need not be on Jai's. */
-async function write(repo: RepoFullName, number: number, request: Request, env: Env): Promise<Response> {
+async function write(
+  repo: RepoFullName,
+  number: number,
+  request: Request,
+  env: Env,
+): Promise<Response> {
   const body = await bodyOf(request);
   if (!body) {
     return Response.json({ error: "That is not something the viewer can post." }, { status: 400 });
@@ -179,7 +231,11 @@ async function write(repo: RepoFullName, number: number, request: Request, env: 
       return (await liveDetail(repo, number, env)).response;
     }
   }
-  const limited = await personLimitAnswer(env, [LimitName.WritesPerMinute, LimitName.WritesPerHour], receipt);
+  const limited = await personLimitAnswer(
+    env,
+    [LimitName.WritesPerMinute, LimitName.WritesPerHour],
+    receipt,
+  );
   if (limited) {
     if (receipt) {
       await prIndex(env).finishWrite(receipt, false, Date.now());
@@ -220,7 +276,11 @@ async function aiAnswer(job: AiJob, isRetry: boolean, env: Env): Promise<Respons
 }
 
 function aiRoute(
-  kind: "key_lines" | "rewrite", repo: RepoFullName, number: number, params: URLSearchParams, env: Env,
+  kind: "key_lines" | "rewrite",
+  repo: RepoFullName,
+  number: number,
+  params: URLSearchParams,
+  env: Env,
   executionContext: ExecutionContext,
 ): Promise<Response> {
   const head = parseSha(params.get("head"));
@@ -233,7 +293,11 @@ function aiRoute(
   if (!chosen.ok) {
     return Promise.resolve(chosen.answer);
   }
-  return aiAnswer({ kind, repo, number, head, context, choice: chosen.choice }, params.get("retry") === "1", env);
+  return aiAnswer(
+    { kind, repo, number, head, context, choice: chosen.choice },
+    params.get("retry") === "1",
+    env,
+  );
 }
 
 /**
@@ -241,40 +305,74 @@ function aiRoute(
  * off at a head, kept in the index so each of the person's devices shows the same ticks.
  */
 async function reviewedRoute(
-  repo: RepoFullName, number: number, params: URLSearchParams, request: Request, env: Env,
+  repo: RepoFullName,
+  number: number,
+  params: URLSearchParams,
+  request: Request,
+  env: Env,
 ): Promise<Response> {
   const pr = prId(repo, number);
   if (request.method !== "POST") {
     const head = parseSha(params.get("head"));
     return head
-      ? Response.json(await prIndex(env).reviewedKeyLines(pr, head), { headers: { "Cache-Control": "no-store" } })
+      ? Response.json(await prIndex(env).reviewedKeyLines(pr, head), {
+          headers: { "Cache-Control": "no-store" },
+        })
       : errorAnswer(400, "validation_error", "head must be the PR's head commit");
   }
   const mark = parseKeyLineMark((await bodyOf(request))?.value);
   if (!mark) {
     return errorAnswer(400, "validation_error", "send {head, line, reviewed}");
   }
-  const marked = await prIndex(env).markKeyLine(pr, mark.head, mark.line, mark.reviewed, Date.now());
-  return marked ? Response.json(marked) : errorAnswer(400, "too_many", "this PR has as many reviewed lines as it keeps");
+  const marked = await prIndex(env).markKeyLine(
+    pr,
+    mark.head,
+    mark.line,
+    mark.reviewed,
+    Date.now(),
+  );
+  return marked
+    ? Response.json(marked)
+    : errorAnswer(400, "too_many", "this PR has as many reviewed lines as it keeps");
 }
 
 /** The person's yes to a Linear comment an Ask answer proposed: it posts with their Linear key, once. */
-async function askLinearRoute(repo: RepoFullName, number: number, request: Request, env: Env): Promise<Response> {
-  const { message, index } = ((await bodyOf(request))?.value ?? {}) as { message?: unknown; index?: unknown };
-  if (typeof message !== "string" || !message || message.length > 100 || !Number.isInteger(index)
-    || (index as number) < 0) {
+async function askLinearRoute(
+  repo: RepoFullName,
+  number: number,
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const { message, index } = ((await bodyOf(request))?.value ?? {}) as {
+    message?: unknown;
+    index?: unknown;
+  };
+  if (
+    typeof message !== "string" ||
+    !message ||
+    message.length > 100 ||
+    !Number.isInteger(index) ||
+    (index as number) < 0
+  ) {
     return errorAnswer(400, "validation_error", "send {message, index}");
   }
-  const userId = isSet(env.SIGNED_IN_USER_ID) && env.USER_ACCOUNTS !== undefined ? env.SIGNED_IN_USER_ID : null;
-  const { status, body } = await postAskLinear(repo, number, { message, index: index as number }, env, {
-    claim: async (key) => prIndex(env).claimWrite(key, Date.now()),
-    finish: async (key, sent) => prIndex(env).finishWrite(key, sent, Date.now()),
-    readOnly: async () => {
-      if (userId) {
-        await accountOf(env, userId).linearCannotComment();
-      }
+  const userId =
+    isSet(env.SIGNED_IN_USER_ID) && env.USER_ACCOUNTS !== undefined ? env.SIGNED_IN_USER_ID : null;
+  const { status, body } = await postAskLinear(
+    repo,
+    number,
+    { message, index: index as number },
+    env,
+    {
+      claim: async (key) => prIndex(env).claimWrite(key, Date.now()),
+      finish: async (key, sent) => prIndex(env).finishWrite(key, sent, Date.now()),
+      readOnly: async () => {
+        if (userId) {
+          await accountOf(env, userId).linearCannotComment();
+        }
+      },
     },
-  });
+  );
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 }
 
@@ -284,7 +382,11 @@ async function askLinearRoute(repo: RepoFullName, number: number, request: Reque
  * the agent.
  */
 async function askRoute(
-  repo: RepoFullName, number: number, request: Request, env: Env, context: ExecutionContext,
+  repo: RepoFullName,
+  number: number,
+  request: Request,
+  env: Env,
+  context: ExecutionContext,
 ): Promise<Response> {
   const pr = askPr(repo, number);
   if (request.method !== "POST") {
@@ -309,20 +411,35 @@ async function askRoute(
   const ref = clientRefOf(body);
   const receipt = ref && `ask:${prId(repo, number)}:${ref}`;
   const question = {
-    id: ref ?? crypto.randomUUID(), repo, number, input, choice: chosen.choice, at: Date.now(), error: null,
+    id: ref ?? crypto.randomUUID(),
+    repo,
+    number,
+    input,
+    choice: chosen.choice,
+    at: Date.now(),
+    error: null,
   };
   const userId = isSet(env.SIGNED_IN_USER_ID) ? env.SIGNED_IN_USER_ID : null;
-  return acceptAsk({
-    claim: (key) => prIndex(env).claimWrite(key, Date.now()),
-    finish: (key, sent) => prIndex(env).finishWrite(key, sent, Date.now()),
-    limited: (key) => personLimitAnswer(env, [LimitName.AskQuestionsPerHour, LimitName.AskQuestionsPerDay], key),
-    queue: async (stored) => {
-      const view = await askQueue(env).queueAsk(stored, pr, userId);
-      askEvent(stored ? "queued" : "received", question.id, { pr, user_id: userId, repeat: stored === null });
-      return view;
+  return acceptAsk(
+    {
+      claim: (key) => prIndex(env).claimWrite(key, Date.now()),
+      finish: (key, sent) => prIndex(env).finishWrite(key, sent, Date.now()),
+      limited: (key) =>
+        personLimitAnswer(env, [LimitName.AskQuestionsPerHour, LimitName.AskQuestionsPerDay], key),
+      queue: async (stored) => {
+        const view = await askQueue(env).queueAsk(stored, pr, userId);
+        askEvent(stored ? "queued" : "received", question.id, {
+          pr,
+          user_id: userId,
+          repeat: stored === null,
+        });
+        return view;
+      },
+      busy: busyAnswer,
     },
-    busy: busyAnswer,
-  }, question, receipt);
+    question,
+    receipt,
+  );
 }
 
 const FEEDBACK_PATH = /^\/feedback(?:\/([^/]+))?$/;
@@ -332,13 +449,17 @@ async function featureKitRoute(pathname: string, request: Request, env: Env): Pr
   try {
     // The public URL even through the binding: FeedbackKit links issue screenshots to the origin it was asked at.
     // Through the binding the host is only a name; FeedbackKit links screenshots to its own PUBLIC_URL.
-    const base = env.FEEDBACKKIT ? "https://featurekit" : (env.FEEDBACKKIT_URL ?? "").replace(/\/$/, "");
+    const base = env.FEEDBACKKIT
+      ? "https://featurekit"
+      : (env.FEEDBACKKIT_URL ?? "").replace(/\/$/, "");
     const send = env.FEEDBACKKIT ? env.FEEDBACKKIT.fetch.bind(env.FEEDBACKKIT) : fetch;
     const answer = await send(`${base}${pathname}`, {
       method: request.method,
       headers: {
-        Authorization: `Bearer ${env.FEEDBACKKIT_TOKEN}`, "Content-Type": "application/json",
-        "X-FeedbackKit-App": env.FEEDBACKKIT_APP!, "X-FeedbackKit-Login": await githubLogin(env),
+        Authorization: `Bearer ${env.FEEDBACKKIT_TOKEN}`,
+        "Content-Type": "application/json",
+        "X-FeedbackKit-App": env.FEEDBACKKIT_APP!,
+        "X-FeedbackKit-Login": await githubLogin(env),
       },
       body: request.method === "POST" ? await request.text() : undefined,
     });
@@ -347,13 +468,15 @@ async function featureKitRoute(pathname: string, request: Request, env: Env): Pr
       console.error("featurekit answered", answer.status, (await answer.text()).slice(0, 200));
       return Response.json({ error: "Feedback can't be reached. Try again." }, { status: 502 });
     }
-    return new Response(answer.body, { status: answer.status, headers: { "Content-Type": "application/json" } });
+    return new Response(answer.body, {
+      status: answer.status,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (error) {
     console.error("featurekit unreachable", error);
     return Response.json({ error: "Feedback can't be reached. Try again." }, { status: 502 });
   }
 }
-
 
 /** `GET /prs/{owner}/{repo}/{n}/summary`: a picker row for any PR, read live, so a typed number shows what it opens. */
 async function summaryRoute(repo: RepoFullName, number: number, env: Env): Promise<Response> {
@@ -377,7 +500,9 @@ async function storedRepoIndex(env: Env): Promise<RepoIndex | null> {
 
 async function refreshRepoIndex(env: Env, now: number): Promise<RepoIndex> {
   const index = await fetchRepoIndex(env, now);
-  await env.DIFFS.put(scopedKey(env, REPOS_KEY), JSON.stringify(index), { httpMetadata: { contentType: "application/json" } });
+  await env.DIFFS.put(scopedKey(env, REPOS_KEY), JSON.stringify(index), {
+    httpMetadata: { contentType: "application/json" },
+  });
   return index;
 }
 
@@ -385,12 +510,16 @@ async function refreshRepoIndex(env: Env, now: number): Promise<RepoIndex> {
  * `GET /repos` (docs/api.md, "Quick jump"). The copy in R2 answers at once; one over six hours old is read
  * again behind the answer, and `?refresh=1` reads it again first, at most every five minutes.
  */
-async function reposRoute(params: URLSearchParams, env: Env, context: ExecutionContext): Promise<Response> {
+async function reposRoute(
+  params: URLSearchParams,
+  env: Env,
+  context: ExecutionContext,
+): Promise<Response> {
   const now = Date.now();
   const index = prIndex(env);
   let current = await storedRepoIndex(env);
   const isForced = params.get("refresh") === "1";
-  if (!current || (isForced && await index.claimRepoRefresh(now, REPOS_FORCED_GAP_MS))) {
+  if (!current || (isForced && (await index.claimRepoRefresh(now, REPOS_FORCED_GAP_MS)))) {
     if (!current) {
       await index.claimRepoRefresh(now, 0);
     }
@@ -402,16 +531,24 @@ async function reposRoute(params: URLSearchParams, env: Env, context: ExecutionC
         return errorAnswer(502, "github_unavailable", "GitHub could not be asked for the repos");
       }
     }
-  } else if (now - Date.parse(current.updatedAt) >= REPOS_STALE_MS
-    && await index.claimRepoRefresh(now, REPOS_RETRY_GAP_MS)) {
-    context.waitUntil(refreshRepoIndex(env, now).catch((error) => console.error("repo index failed", error)));
+  } else if (
+    now - Date.parse(current.updatedAt) >= REPOS_STALE_MS &&
+    (await index.claimRepoRefresh(now, REPOS_RETRY_GAP_MS))
+  ) {
+    context.waitUntil(
+      refreshRepoIndex(env, now).catch((error) => console.error("repo index failed", error)),
+    );
   }
   const listed = new Map(Object.entries(await index.listedCounts()));
   return Response.json(rankRepos(current, listed), { headers: { "Cache-Control": "no-store" } });
 }
 
 function pullRequestRoute(
-  match: RegExpExecArray, params: URLSearchParams, request: Request, env: Env, context: ExecutionContext,
+  match: RegExpExecArray,
+  params: URLSearchParams,
+  request: Request,
+  env: Env,
+  context: ExecutionContext,
 ): Promise<Response> {
   const kind = match[4];
   // What a PR's screen reads says what it cost GitHub, so the apps' share of the token's hour can be measured.
@@ -421,7 +558,11 @@ function pullRequestRoute(
 }
 
 function pullRequestRead(
-  match: RegExpExecArray, params: URLSearchParams, request: Request, env: Env, context: ExecutionContext,
+  match: RegExpExecArray,
+  params: URLSearchParams,
+  request: Request,
+  env: Env,
+  context: ExecutionContext,
 ): Promise<Response> {
   const [, owner, name, number, kind] = match;
   const repo = parseRepoFullName(`${owner}/${name}`);
@@ -433,15 +574,19 @@ function pullRequestRead(
     return summaryRoute(repo, pr, env);
   }
   if (kind === "write") {
-    return request.method === "POST" ? write(repo, pr, request, env)
+    return request.method === "POST"
+      ? write(repo, pr, request, env)
       : Promise.resolve(new Response("not found\n", { status: 404 }));
   }
   if (kind === "ask/linear") {
-    return request.method === "POST" ? askLinearRoute(repo, pr, request, env)
+    return request.method === "POST"
+      ? askLinearRoute(repo, pr, request, env)
       : Promise.resolve(new Response("not found\n", { status: 404 }));
   }
   if (kind === "ask") {
-    return askConfigured(env) ? askRoute(repo, pr, request, env, context) : Promise.resolve(notConfigured("Ask AI"));
+    return askConfigured(env)
+      ? askRoute(repo, pr, request, env, context)
+      : Promise.resolve(notConfigured("Ask AI"));
   }
   if (kind === "key-lines-reviewed") {
     return reviewedRoute(repo, pr, params, request, env);
@@ -458,18 +603,35 @@ function pullRequestRead(
     const revision = params.get("revision");
     const load = () => liveDiff(repo, pr, env);
     return revision && VERSION.test(revision)
-      ? serveVersioned(env.DIFFS, scopedKey(env, diffKey(repo, pr, revision)), revision, "text/plain", load, waitUntil)
+      ? serveVersioned(
+          env.DIFFS,
+          scopedKey(env, diffKey(repo, pr, revision)),
+          revision,
+          "text/plain",
+          load,
+          waitUntil,
+        )
       : fetchDiff(repo, pr, env);
   }
   const version = params.get("version");
   const load = () => liveDetail(repo, pr, env);
   return version && VERSION.test(version)
-    ? serveVersioned(env.DIFFS, scopedKey(env, detailKey(repo, pr, version)), version, "application/json", load, waitUntil)
+    ? serveVersioned(
+        env.DIFFS,
+        scopedKey(env, detailKey(repo, pr, version)),
+        version,
+        "application/json",
+        load,
+        waitUntil,
+      )
     : load().then((live) => live.response);
 }
 
 async function deviceRoute(
-  pathname: string, request: Request, env: Env, context: ExecutionContext,
+  pathname: string,
+  request: Request,
+  env: Env,
+  context: ExecutionContext,
 ): Promise<Response | null> {
   if (pathname === "/device/config" && request.method === "GET") {
     return configRoute(env, context);
@@ -493,7 +655,11 @@ async function deviceRoute(
 }
 
 /** Every route behind a bearer, for whoever `env` acts as: the operator, or one signed-in hosted person. */
-async function serveAuthorized(request: Request, env: Env, context: ExecutionContext): Promise<Response> {
+async function serveAuthorized(
+  request: Request,
+  env: Env,
+  context: ExecutionContext,
+): Promise<Response> {
   const { pathname, searchParams } = new URL(request.url);
   if (pathname === "/prs/merged") {
     const kind = searchParams.get("of") === "reviewed" ? "reviewed" : "mine";
@@ -525,12 +691,15 @@ async function serveAuthorized(request: Request, env: Env, context: ExecutionCon
     return device;
   }
   if (pathname === "/feedback/token") {
-    return request.method === "POST" ? feedbackTokenRoute(env, await githubLogin(env))
+    return request.method === "POST"
+      ? feedbackTokenRoute(env, await githubLogin(env))
       : new Response("method not allowed\n", { status: 405 });
   }
   const feedback = FEEDBACK_PATH.exec(pathname);
   if (feedback) {
-    return featureKitConfigured(env) ? featureKitRoute(pathname, request, env) : notConfigured("Feedback");
+    return featureKitConfigured(env)
+      ? featureKitRoute(pathname, request, env)
+      : notConfigured("Feedback");
   }
   const pullRequest = PULL_REQUEST_PATH.exec(pathname);
   if (pullRequest) {
@@ -544,10 +713,15 @@ async function serveAuthorized(request: Request, env: Env, context: ExecutionCon
  * with their token. `GET /device/config` answers a signed-out session too, with `account.state`, so the app can say why.
  */
 async function serveHosted(
-  request: Request, env: Env, context: ExecutionContext, app: { clientId: string; clientSecret: string },
+  request: Request,
+  env: Env,
+  context: ExecutionContext,
+  app: { clientId: string; clientSecret: string },
 ): Promise<Response> {
   const services = servicesOf(env);
-  const open = publicHostedRoute(request, env, services, app, (promise) => context.waitUntil(promise));
+  const open = publicHostedRoute(request, env, services, app, (promise) =>
+    context.waitUntil(promise),
+  );
   if (open) {
     return open;
   }
@@ -560,8 +734,9 @@ async function serveHosted(
       : auth.answer;
   }
   if (isConfig) {
-    const installations = await configInstallations(request, auth.session, services,
-      (promise) => context.waitUntil(promise));
+    const installations = await configInstallations(request, auth.session, services, (promise) =>
+      context.waitUntil(promise),
+    );
     return configRoute(auth.env, context, hostedAccountConfig(auth.session, installations));
   }
   return serveAuthorized(request, auth.env, context);
@@ -576,8 +751,10 @@ export default {
     const hosted = hostedMode(env);
     if (hosted.kind === "misconfigured") {
       console.error("HOSTED=on without", hosted.missing);
-      return Response.json({ error: { code: "not_configured", message: "This Worker's hosted mode is not set up." } },
-        { status: 503 });
+      return Response.json(
+        { error: { code: "not_configured", message: "This Worker's hosted mode is not set up." } },
+        { status: 503 },
+      );
     }
     if (hosted.kind === "on") {
       return serveHosted(request, env, context, hosted.app);
@@ -603,7 +780,10 @@ export function tickOwnerIndex(env: Env, time: number): Promise<void> {
  * caller with its own credentials; the routes that carry their own (webhook, hub, `APP_TOKEN`) still check them.
  */
 export async function serveOwner(
-  request: Request, env: Env, context: ExecutionContext, isHostAuthorized: boolean,
+  request: Request,
+  env: Env,
+  context: ExecutionContext,
+  isHostAuthorized: boolean,
 ): Promise<Response> {
   const { pathname, searchParams } = new URL(request.url);
   if (pathname === "/github/webhook" && request.method === "POST") {
@@ -619,7 +799,8 @@ export async function serveOwner(
     return finishAppCreation(searchParams, env);
   }
   if (pathname === "/prs/states" && request.method === "POST") {
-    return hasToken(request, env.HUB_TOKEN) ? statesRoute(request, reviewWeek(env), (refs, week) => prIndex(env).states(refs, week))
+    return hasToken(request, env.HUB_TOKEN)
+      ? statesRoute(request, reviewWeek(env), (refs, week) => prIndex(env).states(refs, week))
       : new Response("unauthorized\n", { status: 401 });
   }
   if (!isHostAuthorized && !(await isAuthorized(request, env))) {

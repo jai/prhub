@@ -68,4 +68,3 @@ public enum ChipStyle {
     public static let horizontal = Space.sm
     public static let vertical: CGFloat = 3
 }
-

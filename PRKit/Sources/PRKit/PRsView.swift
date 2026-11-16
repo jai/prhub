@@ -10,7 +10,7 @@ struct PRsView: View {
     @Bindable var navigation: PRNavigation
     let launchOptions: PRKitLaunchOptions
     #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var sizeClass
+        @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
 
     var body: some View {
@@ -43,23 +43,23 @@ struct PRsView: View {
 
     @ViewBuilder private var layout: some View {
         #if os(iOS)
-        if sizeClass == .regular {
-            PRsSplitView(model: model, navigation: navigation)
-        } else {
-            stack
-        }
+            if sizeClass == .regular {
+                PRsSplitView(model: model, navigation: navigation)
+            } else {
+                stack
+            }
         #else
-        stack
+            stack
         #endif
     }
 
     private var stack: some View {
         #if os(macOS)
-        TabStack(path: $navigation.macPath) { stackRoot }
-            .opensPullRequestLinks(on: .routes($navigation.routes))
+            TabStack(path: $navigation.macPath) { stackRoot }
+                .opensPullRequestLinks(on: .routes($navigation.routes))
         #else
-        TabStack(path: $navigation.routes) { stackRoot }
-            .opensPullRequestLinks(on: .routes($navigation.routes))
+            TabStack(path: $navigation.routes) { stackRoot }
+                .opensPullRequestLinks(on: .routes($navigation.routes))
         #endif
     }
 
@@ -81,9 +81,9 @@ struct PRsView: View {
             return
         }
         #if DEBUG
-        let showsDiff = UserDefaults.standard.string(forKey: "prPage") == "Diff"
+            let showsDiff = UserDefaults.standard.string(forKey: "prPage") == "Diff"
         #else
-        let showsDiff = false
+            let showsDiff = false
         #endif
         navigation.routes = PRRoute.opening(model.session(for: row), showsDiff: showsDiff)
     }
@@ -136,7 +136,9 @@ struct PRsList: View {
         page == .mine ? showsMyMerged : showsReviewedMerged
     }
 
-    private var showsMergedHere: Bool { showsMerged(on: page) }
+    private var showsMergedHere: Bool {
+        showsMerged(on: page)
+    }
 
     private var showsMergedBinding: Binding<Bool> {
         page == .mine ? $showsMyMerged : $showsReviewedMerged
@@ -240,7 +242,8 @@ struct PRsList: View {
                 )
                 .transition(.opacity)
             } else if model.rows.isEmpty, model.workerSyncedAt != nil || model.samples != nil,
-                      let hint = model.configuration.emptyHint {
+                      let hint = model.configuration.emptyHint
+            {
                 emptyHint(hint)
                     .transition(.opacity)
             } else if !model.rows.isEmpty, rows(on: page).isEmpty, !showsMergedHere || model.mergedError[page] == nil {
@@ -267,7 +270,9 @@ struct PRsList: View {
         }
         // Again when the network comes back, over the saved list.
         .task(id: "\(page.rawValue)-\(showsMergedHere)-\(model.network.isOnline)") {
-            if showsMergedHere { await model.loadMerged(on: page) }
+            if showsMergedHere {
+                await model.loadMerged(on: page)
+            }
         }
     }
 
@@ -277,7 +282,9 @@ struct PRsList: View {
         let rowsBefore = model.rows.count
         model.onEvent(refreshWatch.began(rows: rowsBefore))
         let synced = await model.refresh(.pull)
-        if showsMergedHere { await model.loadMerged(on: page) }
+        if showsMergedHere {
+            await model.loadMerged(on: page)
+        }
         let outcome: PRListRefreshOutcome = if Task.isCancelled {
             .cancelled
         } else if synced == .failed {
@@ -365,7 +372,7 @@ struct PRsList: View {
                 showsMerged: showsMergedBinding, order: page == .review && !showsMergedHere ? $order : nil,
                 grouping: $grouping
             )
-                .presentationCompactAdaptation(.popover)
+            .presentationCompactAdaptation(.popover)
         }
     }
 
@@ -522,7 +529,6 @@ struct PRFilterPanel: View {
     private func name(of repo: String) -> String {
         filter.selected.count > 1 ? repo : String(repo.drop { $0 != "/" }.dropFirst())
     }
-
 
     private func row(
         _ title: String, count: Int? = nil, isOn: Bool, id: String, action: @escaping () -> Void

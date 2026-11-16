@@ -1,6 +1,6 @@
+import Foundation
 import PRKitCore
 import PRKitDesign
-import Foundation
 
 /// PRs with no Worker behind them: each row with its description, diff and key lines, written where the mirror would
 /// have put them. Jai's Debug `-UXFixtures` has one (`UXFixtures+PRs.swift`), and so does PRHub's "Try with sample PRs"
@@ -187,7 +187,7 @@ private extension PRReviewEvent {
     }
 }
 
-extension PRViewerAccess {
+public extension PRViewerAccess {
     /// No Worker: every request fails as `notPaired` before anything is sent. The sample PRs' client.
-    public static let offline = PRViewerAccess(baseURL: { nil }, bearer: { "" }, discard: {})
+    static let offline = PRViewerAccess(baseURL: { nil }, bearer: { "" }, discard: {})
 }

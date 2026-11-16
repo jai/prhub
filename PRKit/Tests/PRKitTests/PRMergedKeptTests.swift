@@ -1,8 +1,8 @@
 import DurableNetworking
 import Foundation
-import Testing
 @testable import PRKit
 @testable import PRKitCore
+import Testing
 
 /// The merged lists keep their last good answer: it shows at once on the next launch and stays when a read fails.
 @MainActor
@@ -23,7 +23,7 @@ struct PRMergedKeptTests {
             }
             let listed = request.url!.path().hasSuffix("/prs/merged") ? rows : []
             let body = try JSONSerialization.data(withJSONObject: [
-                "prs": try JSONSerialization.jsonObject(with: JSONEncoder().encode(listed)), "synced_at": 0,
+                "prs": JSONSerialization.jsonObject(with: JSONEncoder().encode(listed)), "synced_at": 0,
             ])
             return (body, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
         }

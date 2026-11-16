@@ -13,18 +13,25 @@ struct PRAskSheet: View {
     private var messages: [PRAskChat.Message] {
         let sent = session.askChat?.messages ?? []
         guard let question = session.askSend.question,
-              sent.last(where: \.isJai)?.text != question.question else {
+              sent.last(where: \.isJai)?.text != question.question
+        else {
             return sent
         }
         let anchor = question.anchor.map { "\($0.path):\($0.line)" }
         return sent + [PRAskChat.Message(id: "pending", role: "you", text: question.question, anchor: anchor)]
     }
+
     /// Whether Jai was reading the end of the chat when he last scrolled it: a new message then keeps him there.
     @State private var readsEnd = true
     /// How many questions the chat shows: one more is one he sent, and the sheet goes to the end with it.
-    private var asked: Int { messages.count(where: \.isJai) }
+    private var asked: Int {
+        messages.count(where: \.isJai)
+    }
+
     /// The agent at work on a question it has. A question still on its way says so instead.
-    private var isWorking: Bool { session.askSend == .idle && session.askChat?.isWorking == true }
+    private var isWorking: Bool {
+        session.askSend == .idle && session.askChat?.isWorking == true
+    }
 
     var body: some View {
         NavigationStack {
@@ -96,7 +103,8 @@ struct PRAskSheet: View {
     /// The review an answer drafted, under it: post it, or add it to his drafts to change first.
     @ViewBuilder private func reviewCard(for chatMessage: ChatMessage) -> some View {
         if let index = Int(chatMessage.id.dropFirst("ask-".count)), messages.indices.contains(index),
-           let draft = messages[index].draft, let event = draft.reviewEvent {
+           let draft = messages[index].draft, let event = draft.reviewEvent
+        {
             let message = messages[index]
             PRAskReviewCard(
                 draft: draft, event: event, isUsed: session.isUsed(message),
@@ -112,7 +120,8 @@ struct PRAskSheet: View {
     /// The Linear comments an answer proposed, under it: each posts as Jai once he says yes.
     @ViewBuilder private func linearCards(for chatMessage: ChatMessage) -> some View {
         if let index = Int(chatMessage.id.dropFirst("ask-".count)), messages.indices.contains(index),
-           let cards = messages[index].linear, !cards.isEmpty {
+           let cards = messages[index].linear, !cards.isEmpty
+        {
             let message = messages[index]
             ForEach(Array(cards.enumerated()), id: \.offset) { place, card in
                 let key = PRSession.askLinearKey(message, place)
@@ -228,7 +237,8 @@ struct PRAskSheet: View {
             // Offline, the chat can't be read either: the question's own mark already says why.
             // With no network and the saved chat on screen, the host's offline banner says why it isn't newer.
             if let problem = session.askError, session.askSend == .idle,
-               session.model.network.isOnline || session.askChat == nil {
+               session.model.network.isOnline || session.askChat == nil
+            {
                 Text(problem.words)
                     .font(.appFootnote)
                     .foregroundStyle(problem.isFailure ? Color.toneBad : Color.secondary)
@@ -463,9 +473,9 @@ struct PRAskLinearCommentCard: View {
 private extension View {
     @ViewBuilder func askSheetSize() -> some View {
         #if os(iOS)
-        presentationDetents([.medium, .large])
+            presentationDetents([.medium, .large])
         #else
-        frame(minWidth: 560, minHeight: 560)
+            frame(minWidth: 560, minHeight: 560)
         #endif
     }
 }

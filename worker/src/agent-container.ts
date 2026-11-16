@@ -42,7 +42,10 @@ const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  * under it (exit 143), go again after a pause, up to `CONTAINER_TRIES` tries.
  */
 export async function askContainer<Answer extends { error?: string }>(
-  path: "/run" | "/ask", body: string, agent: NonNullable<Env["AGENT"]>, wait: (ms: number) => Promise<void> = pause,
+  path: "/run" | "/ask",
+  body: string,
+  agent: NonNullable<Env["AGENT"]>,
+  wait: (ms: number) => Promise<void> = pause,
   instance = "ai",
 ): Promise<Answer> {
   let failure = "";
@@ -51,7 +54,9 @@ export async function askContainer<Answer extends { error?: string }>(
     let text: string;
     try {
       response = await agent.get(agent.idFromName(instance)).fetch(`http://agent${path}`, {
-        method: "POST", headers: { "content-type": "application/json" }, body,
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
       });
       text = await response.text();
     } catch (error) {
@@ -81,12 +86,32 @@ export async function askContainer<Answer extends { error?: string }>(
 
 /** One structured answer from the container. Throws with the container's own words when it fails. */
 export async function runOnSubscription(
-  system: string, prompt: string, schema: Record<string, unknown>, choice: ModelChoice, env: Env, wait = pause,
+  system: string,
+  prompt: string,
+  schema: Record<string, unknown>,
+  choice: ModelChoice,
+  env: Env,
+  wait = pause,
 ): Promise<AgentAnswer> {
-  const body = { system, prompt, model: choice.model, effort: choice.effort satisfies Effort, schema };
-  const answer = await askContainer<ContainerAnswer>("/run", JSON.stringify(body), env.AGENT!, wait);
+  const body = {
+    system,
+    prompt,
+    model: choice.model,
+    effort: choice.effort satisfies Effort,
+    schema,
+  };
+  const answer = await askContainer<ContainerAnswer>(
+    "/run",
+    JSON.stringify(body),
+    env.AGENT!,
+    wait,
+  );
   if (answer.error) {
-    console.error("agent_container_failed", { path: "/run", model: choice.model, reason: scrubbed(answer.error) });
+    console.error("agent_container_failed", {
+      path: "/run",
+      model: choice.model,
+      reason: scrubbed(answer.error),
+    });
     throw new Error(`The AI container failed: ${answer.error}`);
   }
   if (answer.subtype !== "success" || answer.output === null || answer.output === undefined) {

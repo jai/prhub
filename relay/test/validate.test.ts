@@ -64,7 +64,10 @@ test("unknown fields, bad JSON and non-objects are refused", () => {
 test("a payload of 4096 bytes passes and 4097 does not", () => {
   const base = JSON.stringify({ aps: {}, pad: "" }).length;
   assert.ok(parse(pushBody({ payload: { aps: {}, pad: "x".repeat(4096 - base) } })).ok);
-  assert.equal(errorOf(pushBody({ payload: { aps: {}, pad: "x".repeat(4097 - base) } })), "payload_too_large");
+  assert.equal(
+    errorOf(pushBody({ payload: { aps: {}, pad: "x".repeat(4097 - base) } })),
+    "payload_too_large",
+  );
 });
 
 test("a key body is a non-empty label and nothing else", () => {

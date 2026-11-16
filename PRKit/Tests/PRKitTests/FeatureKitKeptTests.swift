@@ -1,8 +1,8 @@
 import DurableNetworking
-import Foundation
-import Testing
 @testable import FeatureKit
+import Foundation
 @testable import PRKitCore
+import Testing
 
 /// Feedback's reads keep their last good answer, which answers the same read while there is no network.
 struct FeatureKitKeptTests {
@@ -18,7 +18,7 @@ struct FeatureKitKeptTests {
     private func connection(_ answer: @escaping @Sendable () throws -> Data) -> PRViewerFeedbackConnection {
         let access = PRViewerAccess(baseURL: { URL(string: "https://worker.test")! }, bearer: { "t" }, discard: {})
         let viewer = PRViewerClient(access: access) { request in
-            (try answer(), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            try (answer(), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
         }
         return PRViewerFeedbackConnection(viewer: viewer, kept: kept)
     }

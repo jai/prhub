@@ -10,7 +10,10 @@ const INDEX_NAME = "index";
 export function createRelay(deps: Deps) {
   let memo: CachedJwt | null = null;
 
-  async function providerToken(env: Env, nowSeconds: number): Promise<CachedJwt | { error: string }> {
+  async function providerToken(
+    env: Env,
+    nowSeconds: number,
+  ): Promise<CachedJwt | { error: string }> {
     if (env.APNS_KEY_ID && isFreshJwt(memo, env.APNS_KEY_ID, nowSeconds)) return memo;
     const result = await index(env).jwt(nowSeconds);
     if ("token" in result) memo = result;
@@ -24,12 +27,14 @@ export function createRelay(deps: Deps) {
     const nowSeconds = Math.floor(deps.now() / 1000);
 
     const text = await readBody(request);
-    const parsed = text === null ? ({ ok: false, error: "body_too_large" } as const) : parsePushBody(text);
+    const parsed =
+      text === null ? ({ ok: false, error: "body_too_large" } as const) : parsePushBody(text);
     // A bad body is still 401 for a bad key, and never counts against a good one.
     const auth = await keyStore.authorize(nowSeconds, parsed.ok);
     if (auth.status === 401) return error(401, "unauthorized");
     if (!parsed.ok) return error(400, parsed.error);
-    if (auth.status === 429) return json(429, { error: "rate_limited", retry_after: auth.retry_after });
+    if (auth.status === 429)
+      return json(429, { error: "rate_limited", retry_after: auth.retry_after });
 
     const body = parsed.value;
     const jwt = await providerToken(env, nowSeconds);
@@ -58,7 +63,8 @@ export function createRelay(deps: Deps) {
 
   async function issueKey(request: Request, env: Env): Promise<Response> {
     const text = await readBody(request);
-    const parsed = text === null ? ({ ok: false, error: "body_too_large" } as const) : parseKeyBody(text);
+    const parsed =
+      text === null ? ({ ok: false, error: "body_too_large" } as const) : parseKeyBody(text);
     if (!parsed.ok) return error(400, parsed.error);
     const { keyId, key } = newKey();
     const hash = await sha256Hex(key);
@@ -79,7 +85,9 @@ export function createRelay(deps: Deps) {
     const entries = await index(env).list();
     const keys = await Promise.all(
       entries.map(async (entry) => {
-        const stats = await env.RELAY_KEY.get(env.RELAY_KEY.idFromName(entry.hash)).stats(nowSeconds);
+        const stats = await env.RELAY_KEY.get(env.RELAY_KEY.idFromName(entry.hash)).stats(
+          nowSeconds,
+        );
         return { key_id: entry.key_id, label: entry.label, created_at: entry.created_at, ...stats };
       }),
     );
@@ -137,7 +145,10 @@ async function readBody(request: Request): Promise<string | null> {
 }
 
 function json(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 function error(status: number, code: string): Response {

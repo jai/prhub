@@ -7,7 +7,9 @@ struct SignedOutView: View {
     let environment: PRHubEnvironment
     @State private var signingOut = false
 
-    private var connection: WorkerConnection { environment.connection }
+    private var connection: WorkerConnection {
+        environment.connection
+    }
 
     var body: some View {
         ScrollView {
@@ -21,7 +23,7 @@ struct SignedOutView: View {
                     SignInWithGitHubButton(isWorking: connection.phase == .working(.signingIn)) {
                         Task { await environment.signIn() }
                     }
-                    if case .signInFailed(let error) = connection.phase, let message = error.message {
+                    if case let .signInFailed(error) = connection.phase, let message = error.message {
                         ProblemLine(message: message)
                             .accessibilityIdentifier("signedOutStatus")
                             .transition(.fold)

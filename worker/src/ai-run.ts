@@ -9,20 +9,34 @@ import { type AiJob, aiKey, BUILT_IN_DEFAULTS, sameChoice } from "./models.ts";
  * (`aiStoreKey`), so one person's answers are never another's. An answer is put only when it is of the job's own head:
  * `generateKeyLines` and `generateRewrite` refuse a PR that has moved on. True when the list's key lines are now ready.
  */
-export async function runAiJob(job: AiJob, env: Env, store: Pick<R2Bucket, "put">): Promise<boolean> {
+export async function runAiJob(
+  job: AiJob,
+  env: Env,
+  store: Pick<R2Bucket, "put">,
+): Promise<boolean> {
   const key = aiStoreKey(job, env);
   const { repo, number, head, context } = job;
   const choice = job.choice ?? BUILT_IN_DEFAULTS[job.kind];
   try {
-    const answer = job.kind === "key_lines"
-      ? await generateKeyLines(repo, number, head, context, choice, env)
-      : await generateRewrite(repo, number, head, choice, env);
+    const answer =
+      job.kind === "key_lines"
+        ? await generateKeyLines(repo, number, head, context, choice, env)
+        : await generateRewrite(repo, number, head, choice, env);
     await store.put(key, JSON.stringify(answer));
-    return job.kind === "key_lines" && context === DEFAULT_CONTEXT
-      && sameChoice(choice, aiConfigOf(env).defaults.key_lines);
+    return (
+      job.kind === "key_lines" &&
+      context === DEFAULT_CONTEXT &&
+      sameChoice(choice, aiConfigOf(env).defaults.key_lines)
+    );
   } catch (error) {
     // `moved`: the app reads the PR at its newest commit and asks again, rather than show the failure.
-    await store.put(key, JSON.stringify({ error: String(error), ...(error instanceof HeadMoved ? { moved: true } : {}) }));
+    await store.put(
+      key,
+      JSON.stringify({
+        error: String(error),
+        ...(error instanceof HeadMoved ? { moved: true } : {}),
+      }),
+    );
     return false;
   }
 }

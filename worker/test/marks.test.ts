@@ -3,8 +3,16 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { prId, type RepoFullName } from "../src/ids.ts";
 import {
-  BUSY_WINDOW_MS, CHECKS_WINDOW_MS, createMarkTables, dueMarks, finishRead, mark, nextDueAt, PR_EVENT_WINDOW_MS,
-  type Scope, throttledDue,
+  BUSY_WINDOW_MS,
+  CHECKS_WINDOW_MS,
+  createMarkTables,
+  dueMarks,
+  finishRead,
+  mark,
+  nextDueAt,
+  PR_EVENT_WINDOW_MS,
+  type Scope,
+  throttledDue,
 } from "../src/marks.ts";
 import { memorySql } from "./memory-sql.ts";
 
@@ -16,7 +24,8 @@ function index() {
   const sql = memorySql();
   createMarkTables(sql);
   /** A delivery at `at`, marked as the index marks one. */
-  const deliver = (scope: Scope, at: number) => mark(sql, pr, scope, throttledDue(sql, pr.id, scope, at));
+  const deliver = (scope: Scope, at: number) =>
+    mark(sql, pr, scope, throttledDue(sql, pr.id, scope, at));
   /** An alarm at `at`: the reads due then, each finished. */
   const alarm = (scope: Scope, at: number) => {
     const due = dueMarks(sql, scope, at, 25);
@@ -31,7 +40,11 @@ function index() {
 test("a CI run's check events for one head are one checks read per window, the first a moment after quiet", () => {
   const { sql, deliver, alarm } = index();
   deliver("checks", T0);
-  assert.equal(nextDueAt(sql), T0 + BUSY_WINDOW_MS, "the first event after quiet is read in seconds");
+  assert.equal(
+    nextDueAt(sql),
+    T0 + BUSY_WINDOW_MS,
+    "the first event after quiet is read in seconds",
+  );
   let reads = 0;
   // 120 check suites and statuses over ten minutes, one every five seconds, with an alarm at every due time.
   for (let at = T0; at < T0 + 600_000; at += 5_000) {
@@ -42,7 +55,10 @@ test("a CI run's check events for one head are one checks read per window, the f
     }
   }
   assert.ok(reads <= 600_000 / CHECKS_WINDOW_MS + 1, `${reads} reads for 120 events`);
-  assert.ok(reads >= 600_000 / CHECKS_WINDOW_MS - 1, "and never starved: one a window while they keep coming");
+  assert.ok(
+    reads >= 600_000 / CHECKS_WINDOW_MS - 1,
+    "and never starved: one a window while they keep coming",
+  );
 });
 
 test("more deliveries never push a waiting read back", () => {
@@ -60,11 +76,19 @@ test("a full read covers the checks marked before it, and a checks mark waits be
   const { sql, deliver, alarm } = index();
   deliver("full", T0);
   deliver("checks", T0);
-  assert.equal(dueMarks(sql, "checks", T0 + BUSY_WINDOW_MS, 25).length, 0, "the full read will see the checks too");
+  assert.equal(
+    dueMarks(sql, "checks", T0 + BUSY_WINDOW_MS, 25).length,
+    0,
+    "the full read will see the checks too",
+  );
   assert.equal(alarm("full", T0 + BUSY_WINDOW_MS), 1);
   assert.equal(nextDueAt(sql), null, "nothing left: the checks were read with it");
   deliver("checks", T0 + 5_000);
-  assert.equal(nextDueAt(sql), T0 + BUSY_WINDOW_MS + CHECKS_WINDOW_MS, "a full read starts the checks window too");
+  assert.equal(
+    nextDueAt(sql),
+    T0 + BUSY_WINDOW_MS + CHECKS_WINDOW_MS,
+    "a full read starts the checks window too",
+  );
 });
 
 test("a delivery during a read survives it", () => {
@@ -86,12 +110,18 @@ test("the person's own write that lands during a read stays prompt", () => {
   const [again] = dueMarks(sql, "full", T0 + 4_000, 25);
   mark(sql, pr, "full", T0 + 4_500);
   finishRead(sql, "full", again!, T0 + 5_000);
-  assert.equal(nextDueAt(sql), T0 + 5_000 + PR_EVENT_WINDOW_MS, "a webhook after the write waits its window again");
+  assert.equal(
+    nextDueAt(sql),
+    T0 + 5_000 + PR_EVENT_WINDOW_MS,
+    "a webhook after the write waits its window again",
+  );
 });
 
 test("a dirty table from before due_at gains it, its marks due at once", () => {
   const sql = memorySql();
-  sql.exec("CREATE TABLE dirty (id TEXT PRIMARY KEY, repo TEXT, number INTEGER, generation INTEGER)");
+  sql.exec(
+    "CREATE TABLE dirty (id TEXT PRIMARY KEY, repo TEXT, number INTEGER, generation INTEGER)",
+  );
   sql.exec("INSERT INTO dirty (id, repo, number, generation) VALUES (?, ?, ?, 1)", pr.id, repo, 7);
   createMarkTables(sql);
   assert.equal(nextDueAt(sql), 0);

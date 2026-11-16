@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PRHub
+import Testing
 
 /// The setup link pr-worker's `npm run pair` prints (docs/api.md), read as the app reads a scan, a paste or a tap.
 struct SetupLinkTests {

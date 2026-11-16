@@ -57,19 +57,19 @@ public struct PullRequestStatus: Decodable, Equatable, Sendable {
     }
 }
 
-extension PullRequestStatus {
+public extension PullRequestStatus {
     /// This PR as a list holds one, so that it is drawn with the list's parts.
-    public var listPullRequest: PRListPullRequest {
+    var listPullRequest: PRListPullRequest {
         PRListPullRequest(status: self, author: author, authorName: authorName, found: true)
     }
 
     /// "web-app#6743": the repository's name without its owner, and the number.
-    public var reference: String {
+    var reference: String {
         "\(repo.split(separator: "/").last.map(String.init) ?? repo)#\(number)"
     }
 
     /// "merged", or for an open PR what stands between it and a merge: "open, checks failing, behind".
-    public var statusText: String {
+    var statusText: String {
         guard let state else {
             return "unknown"
         }
@@ -81,8 +81,8 @@ extension PullRequestStatus {
     }
 }
 
-extension PullRequestStatus.Checks {
-    public var phrase: String? {
+public extension PullRequestStatus.Checks {
+    var phrase: String? {
         switch self {
         case .passing: "checks passing"
         case .failing: "checks failing"
@@ -92,8 +92,8 @@ extension PullRequestStatus.Checks {
     }
 }
 
-extension PullRequestStatus.Merge {
-    public var phrase: String? {
+public extension PullRequestStatus.Merge {
+    var phrase: String? {
         switch self {
         case .behind: "behind"
         case .blocked: "blocked"
@@ -104,8 +104,8 @@ extension PullRequestStatus.Merge {
     }
 }
 
-extension PullRequestStatus.Review {
-    public var phrase: String? {
+public extension PullRequestStatus.Review {
+    var phrase: String? {
         switch self {
         case .approved: "approved"
         case .changesRequested: "changes requested"

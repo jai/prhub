@@ -35,7 +35,9 @@ struct OnboardingView: View {
     private static let manualFold = "manual"
     private static let ownWorkerFold = "own-worker"
 
-    private var build: PRHubBuild { connection.build }
+    private var build: PRHubBuild {
+        connection.build
+    }
 
     /// Sign-in's own status goes under its button; pairing's under the Worker's blocks.
     private var isSignInStatus: Bool {
@@ -101,8 +103,8 @@ struct OnboardingView: View {
             message: build.signInWithGitHub
                 ? "PRHub lists the PRs waiting on you, and lets you read the diff, comment, approve and merge."
                 : "When your agent set up your pr-worker from github.com/jai/prhub, it printed a setup link and a "
-                    + "QR code. Scan the code or paste the link to connect this \(AppIdentity.deviceName). For a new "
-                    + "one, run npm run pair there again."
+                + "QR code. Scan the code or paste the link to connect this \(AppIdentity.deviceName). For a new "
+                + "one, run npm run pair there again."
         )
     }
 
@@ -112,7 +114,7 @@ struct OnboardingView: View {
         PRPageBlock {
             SignInWithGitHubButton(isWorking: connection.phase == .working(.signingIn), action: signIn)
             Text("PRHub reads your PRs through the PRHub GitHub App, with your own GitHub access. Each org needs the "
-                 + "App installed once, by an owner.")
+                + "App installed once, by an owner.")
                 .font(.appFootnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -135,7 +137,7 @@ struct OnboardingView: View {
 
     // MARK: - Scan
 
-    @ViewBuilder private var scanBlock: some View {
+    private var scanBlock: some View {
         PRPageBlock("Scan the QR code") {
             switch scanner {
             case .closed:
@@ -144,18 +146,18 @@ struct OnboardingView: View {
                     .accessibilityIdentifier("onboardingScan")
             case .open:
                 #if os(iOS)
-                SetupCodeScanner { payload in
-                    scanner = .closed
-                    link = payload
-                    Task { await connection.connect(text: payload) }
-                }
-                .frame(height: 280)
-                .clipShape(.rect(cornerRadius: Radius.sm))
-                .transition(.fold)
+                    SetupCodeScanner { payload in
+                        scanner = .closed
+                        link = payload
+                        Task { await connection.connect(text: payload) }
+                    }
+                    .frame(height: 280)
+                    .clipShape(.rect(cornerRadius: Radius.sm))
+                    .transition(.fold)
                 #endif
                 Button("Cancel") { scanner = .closed }
                     .buttonStyle(PRButtonStyle(.secondary))
-            case .unavailable(let reason):
+            case let .unavailable(reason):
                 Text(reason)
                     .font(.appFootnote)
                     .foregroundStyle(.secondary)
@@ -168,17 +170,17 @@ struct OnboardingView: View {
 
     private func openScanner() {
         #if os(iOS)
-        Task {
-            switch await SetupCodeScanner.availability() {
-            case .available: scanner = .open
-            case .unsupported: scanner = .unavailable("This device can't scan codes. Paste the link instead.")
-            case .denied:
-                scanner = .unavailable("Camera access is off for PRHub. Turn it on in Settings, or paste the "
-                                       + "link instead.")
+            Task {
+                switch await SetupCodeScanner.availability() {
+                case .available: scanner = .open
+                case .unsupported: scanner = .unavailable("This device can't scan codes. Paste the link instead.")
+                case .denied:
+                    scanner = .unavailable("Camera access is off for PRHub. Turn it on in Settings, or paste the "
+                        + "link instead.")
+                }
             }
-        }
         #else
-        scanner = .unavailable("This Mac can't scan codes. Paste the link instead.")
+            scanner = .unavailable("This Mac can't scan codes. Paste the link instead.")
         #endif
     }
 
@@ -188,7 +190,7 @@ struct OnboardingView: View {
         PRPageBlock("Or paste the setup link") {
             TextField("prhub://setup?worker=…&code=…", text: $link, axis: .vertical)
                 .font(.appFootnote.monospaced())
-                .lineLimit(1...4)
+                .lineLimit(1 ... 4)
                 .plainEntry()
                 .focused($focusedField, equals: .link)
                 .prField(isFocused: focusedField == .link)
@@ -259,12 +261,12 @@ struct OnboardingView: View {
 
     // MARK: - Status
 
-    @ViewBuilder private var statusBlock: some View {
+    private var statusBlock: some View {
         PRPageBlock {
             switch connection.phase {
             case .idle:
                 EmptyView()
-            case .working(let step):
+            case let .working(step):
                 HStack(spacing: Space.md) {
                     ProgressView()
                     Text(Self.words(for: step))
@@ -272,15 +274,15 @@ struct OnboardingView: View {
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("onboardingStatus")
-            case .invalidLink(let failure):
+            case let .invalidLink(failure):
                 failureLabel(failure.message)
-            case .failed(let error):
+            case let .failed(error):
                 failureLabel(error.message)
-            case .signInFailed(let error):
+            case let .signInFailed(error):
                 failureLabel(error.message ?? "")
             case .selfHostedOff:
                 failureLabel("This build of PRHub doesn't connect to self-hosted Workers. Sign in with GitHub "
-                             + "instead.")
+                    + "instead.")
             }
         }
     }
@@ -298,22 +300,19 @@ struct OnboardingView: View {
             "Signing in with GitHub…"
         }
     }
-
 }
 
 private extension View {
     /// A field for a link, an address or a code: no capitals, no corrections, the keyboard that suits it.
     func plainEntry(isURL: Bool = false, isCode: Bool = false) -> some View {
         #if os(iOS)
-        self
-            .textInputAutocapitalization(isCode ? .characters : .never)
-            .autocorrectionDisabled()
-            .keyboardType(isURL ? .URL : .asciiCapable)
-            .textFieldStyle(.plain)
+            textInputAutocapitalization(isCode ? .characters : .never)
+                .autocorrectionDisabled()
+                .keyboardType(isURL ? .URL : .asciiCapable)
+                .textFieldStyle(.plain)
         #else
-        self
-            .autocorrectionDisabled()
-            .textFieldStyle(.plain)
+            autocorrectionDisabled()
+                .textFieldStyle(.plain)
         #endif
     }
 }

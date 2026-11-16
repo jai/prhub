@@ -7,7 +7,13 @@ import { askGitHubReach, askGrant, askRepoToken, InstallationTokenRefused } from
 import { onApiKey, onSubscription } from "./agent-container";
 import { askSubscriptionPrompt } from "./ask-setup";
 import { AskFailure } from "./ask-trace";
-import { askOnSubscription, isSubscriptionRecord, prDiff, prFacts, subscriptionChat } from "./ask-subscription";
+import {
+  askOnSubscription,
+  isSubscriptionRecord,
+  prDiff,
+  prFacts,
+  subscriptionChat,
+} from "./ask-subscription";
 import { askBudgetOf, limitsOf } from "./limits";
 import { writeToGitHub } from "./write";
 import { proposalsOf } from "./linear-act";
@@ -45,11 +51,11 @@ interface AskRecord {
 
 export class AskRefused extends Error {}
 
-
 function client(env: Env): Anthropic {
-  return new Anthropic({ apiKey: isSet(env.ASK_ANTHROPIC_API_KEY) ? env.ASK_ANTHROPIC_API_KEY : env.ANTHROPIC_API_KEY });
+  return new Anthropic({
+    apiKey: isSet(env.ASK_ANTHROPIC_API_KEY) ? env.ASK_ANTHROPIC_API_KEY : env.ANTHROPIC_API_KEY,
+  });
 }
-
 
 async function readRecord(repo: RepoFullName, number: number, env: Env): Promise<AskRecord | null> {
   const stored = await env.DIFFS.get(askRecordKey(repo, number, env));
@@ -57,20 +63,34 @@ async function readRecord(repo: RepoFullName, number: number, env: Env): Promise
 }
 
 async function startSession(
-  repo: RepoFullName, number: number, head: string, token: string, choice: ModelChoice, env: Env,
+  repo: RepoFullName,
+  number: number,
+  head: string,
+  token: string,
+  choice: ModelChoice,
+  env: Env,
 ): Promise<AskRecord> {
   const session = await client(env).beta.sessions.create({
     agent: {
-      type: "agent_with_overrides", id: env.ASK_AGENT_ID!, model: { id: choice.model, effort: choice.effort },
+      type: "agent_with_overrides",
+      id: env.ASK_AGENT_ID!,
+      model: { id: choice.model, effort: choice.effort },
     },
     environment_id: env.ASK_ENVIRONMENT_ID!,
     vault_ids: [env.ASK_VAULT_ID!],
     title: prId(repo, number),
-    budget: { type: "limit", max_list_cost: { amount: String(askBudgetOf(limitsOf(env))), currency: "USD" } },
-    resources: [{
-      type: "github_repository", url: `https://github.com/${repo}`, authorization_token: token,
-      checkout: { type: "commit", sha: head },
-    }],
+    budget: {
+      type: "limit",
+      max_list_cost: { amount: String(askBudgetOf(limitsOf(env))), currency: "USD" },
+    },
+    resources: [
+      {
+        type: "github_repository",
+        url: `https://github.com/${repo}`,
+        authorization_token: token,
+        checkout: { type: "commit", sha: head },
+      },
+    ],
   });
   const resource = session.resources.find((one) => one.type === "github_repository");
   if (!resource) {
@@ -83,19 +103,30 @@ async function startSession(
  * This PR's session with a fresh token, or a new one when it has ended or runs at another model or effort: a repo's token
  * lasts an hour.
  */
-async function liveRecord(repo: RepoFullName, number: number, head: string, choice: ModelChoice, env: Env): Promise<AskRecord> {
+async function liveRecord(
+  repo: RepoFullName,
+  number: number,
+  head: string,
+  choice: ModelChoice,
+  env: Env,
+): Promise<AskRecord> {
   const token = await askRepoToken(repo, number, env).catch((error: unknown) => {
     throw error instanceof InstallationTokenRefused ? new AskRefused(error.message) : error;
   });
   await client(env).beta.vaults.credentials.update(env.ASK_CREDENTIAL_ID!, {
-    vault_id: env.ASK_VAULT_ID!, auth: { type: "environment_variable", secret_value: token },
+    vault_id: env.ASK_VAULT_ID!,
+    auth: { type: "environment_variable", secret_value: token },
   });
   const known = await readRecord(repo, number, env);
-  if (known?.version === RECORD_VERSION && sameChoice(known.choice ?? BUILT_IN_DEFAULTS.ask, choice)) {
+  if (
+    known?.version === RECORD_VERSION &&
+    sameChoice(known.choice ?? BUILT_IN_DEFAULTS.ask, choice)
+  ) {
     const { status } = await client(env).beta.sessions.retrieve(known.session);
     if (status !== "terminated") {
       await client(env).beta.sessions.resources.update(known.resource, {
-        session_id: known.session, authorization_token: token,
+        session_id: known.session,
+        authorization_token: token,
       });
       return known;
     }
@@ -106,14 +137,21 @@ async function liveRecord(repo: RepoFullName, number: number, head: string, choi
 export async function askChat(repo: RepoFullName, number: number, env: Env): Promise<AskChat> {
   const record = await readRecord(repo, number, env);
   if (isSubscriptionRecord(record)) {
-    return subscriptionChat(record, Date.now(), await linearPostedNow(repo, number, env, record.messages));
+    return subscriptionChat(
+      record,
+      Date.now(),
+      await linearPostedNow(repo, number, env, record.messages),
+    );
   }
   if (!record) {
     return chatOf([], null);
   }
   if (!onApiKey(env)) {
     // A chat from Managed Agents, which ran on an API key: not read while that is off.
-    return { ...chatOf([], null), problem: "This chat ran on an API key, which is off for now. Ask again to start a new one." };
+    return {
+      ...chatOf([], null),
+      problem: "This chat ran on an API key, which is off for now. Ask again to start a new one.",
+    };
   }
   const events = [];
   for await (const event of client(env).beta.sessions.events.list(record.session)) {
@@ -124,7 +162,9 @@ export async function askChat(repo: RepoFullName, number: number, env: Env): Pro
   const { id: model, effort } = session.agent.model;
   const level = typeof effort === "string" ? effort : effort?.type;
   return chatOf(
-    events as Parameters<typeof chatOf>[0], cost === undefined ? null : Number(cost), QUESTION,
+    events as Parameters<typeof chatOf>[0],
+    cost === undefined ? null : Number(cost),
+    QUESTION,
     { model, effort: level ?? null },
   );
 }
@@ -134,29 +174,55 @@ export async function askChat(repo: RepoFullName, number: number, env: Env): Pro
  * question is one `ai_run` log line; its cost is the session's, read from Anthropic, as the turn has not run yet.
  */
 export async function ask(
-  repo: RepoFullName, number: number, input: AskInput, choice: ModelChoice, env: Env, turn?: string,
+  repo: RepoFullName,
+  number: number,
+  input: AskInput,
+  choice: ModelChoice,
+  env: Env,
+  turn?: string,
 ): Promise<void> {
   if (onSubscription(env)) {
-    const grant = () => askGrant(repo, number, env).catch((error: unknown) => {
-      throw error instanceof InstallationTokenRefused ? new AskFailure("github", error.message, error.status) : error;
-    });
+    const grant = () =>
+      askGrant(repo, number, env).catch((error: unknown) => {
+        throw error instanceof InstallationTokenRefused
+          ? new AskFailure("github", error.message, error.status)
+          : error;
+      });
     const reach = askGitHubReach(env);
     return askOnSubscription(repo, number, input, choice, env, {
-      system: async () => askSubscriptionPrompt({
-        reviewer: env.GITHUB_LOGIN ?? null, repo, number, pr: await prFacts(repo, number, env), reach,
-      }),
-      grant, readOnly: reach !== "none", diff: () => prDiff(repo, number, input.head, env),
-      budgetUsd: askBudgetOf(limitsOf(env)) / 100, turn,
+      system: async () =>
+        askSubscriptionPrompt({
+          reviewer: env.GITHUB_LOGIN ?? null,
+          repo,
+          number,
+          pr: await prFacts(repo, number, env),
+          reach,
+        }),
+      grant,
+      readOnly: reach !== "none",
+      diff: () => prDiff(repo, number, input.head, env),
+      budgetUsd: askBudgetOf(limitsOf(env)) / 100,
+      turn,
       // As the person, with their own sign-in: the way the app's own buttons write.
       act: async (action) => {
         const refused = await writeToGitHub(repo, number, action, env);
-        return refused ? ((await refused.json().catch(() => null)) as { error?: string } | null)?.error ?? `HTTP ${refused.status}` : null;
+        return refused
+          ? (((await refused.json().catch(() => null)) as { error?: string } | null)?.error ??
+              `HTTP ${refused.status}`)
+          : null;
       },
       // Cards only: each posts when the person confirms it (`postAskLinear`), with their own Linear key.
-      linear: (raw) => proposalsOf(raw, async () => {
-        const pr = await prFacts(repo, number, env);
-        return pr ? allKeys(ticketKeysOf(pr.title, (pr.head ?? "").replace(/^[^:]*:/, ""), pr.body)) : [];
-      }, env),
+      linear: (raw) =>
+        proposalsOf(
+          raw,
+          async () => {
+            const pr = await prFacts(repo, number, env);
+            return pr
+              ? allKeys(ticketKeysOf(pr.title, (pr.head ?? "").replace(/^[^:]*:/, ""), pr.body))
+              : [];
+          },
+          env,
+        ),
     });
   }
   if (!onApiKey(env)) {
@@ -164,12 +230,21 @@ export async function ask(
   }
   const record = await liveRecord(repo, number, input.head, choice, env);
   await client(env).beta.sessions.events.send(record.session, {
-    events: [{ type: "user.message", content: [{ type: "text", text: askPrompt(input, record.head) }] }],
+    events: [
+      { type: "user.message", content: [{ type: "text", text: askPrompt(input, record.head) }] },
+    ],
   });
   console.log("ai_run", {
-    feature: "ask", repo, number, user_id: env.SIGNED_IN_USER_ID ?? null, model: choice.model, effort: choice.effort,
+    feature: "ask",
+    repo,
+    number,
+    user_id: env.SIGNED_IN_USER_ID ?? null,
+    model: choice.model,
+    effort: choice.effort,
     session: record.session,
   });
-  await env.DIFFS.put(askRecordKey(repo, number, env), JSON.stringify({ ...record, head: input.head }));
+  await env.DIFFS.put(
+    askRecordKey(repo, number, env),
+    JSON.stringify({ ...record, head: input.head }),
+  );
 }
-

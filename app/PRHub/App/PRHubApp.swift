@@ -4,37 +4,37 @@ import SwiftUI
 @main
 struct PRHubApp: App {
     #if os(iOS)
-    // The phone's launch wiring: pushes and the notification delegate. The Mac gets no pushes.
-    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+        /// The phone's launch wiring: pushes and the notification delegate. The Mac gets no pushes.
+        @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     #endif
 
     /// `-PRHubPaired` (with `-PRHubNoAI` or `-PRHubSettings`): PRHub over the sample PRs as if paired, for the UI
     /// tests' screenshots. Debug only.
     @MainActor private static let screenshotEnvironment: PRHubEnvironment? = {
         #if DEBUG
-        PRHubScreenshots.environment()
+            PRHubScreenshots.environment()
         #else
-        nil
+            nil
         #endif
     }()
 
     /// `-PRHubAppearance dark` or `light`: the UI tests' pictures in the look they name. Debug only.
     private static let screenshotColorScheme: ColorScheme? = {
         #if DEBUG
-        PRHubScreenshots.colorScheme()
+            PRHubScreenshots.colorScheme()
         #else
-        nil
+            nil
         #endif
     }()
 
     #if os(macOS) && DEBUG
-    init() {
-        PRHubMacSnapshot.openWindowIfNoneOpened {
-            PRHubRootView(environment: Self.screenshotEnvironment ?? .shared)
-                .symbolVariant(DesignTokens.iconVariant)
-                .task { await PRHubMacSnapshot.runIfAsked() }
+        init() {
+            PRHubMacSnapshot.openWindowIfNoneOpened {
+                PRHubRootView(environment: Self.screenshotEnvironment ?? .shared)
+                    .symbolVariant(DesignTokens.iconVariant)
+                    .task { await PRHubMacSnapshot.runIfAsked() }
+            }
         }
-    }
     #endif
 
     var body: some Scene {
@@ -43,28 +43,28 @@ struct PRHubApp: App {
                 // DESIGN.md's icon style, for every symbol in the app.
                 .symbolVariant(DesignTokens.iconVariant)
                 .preferredColorScheme(Self.screenshotColorScheme)
-                #if os(macOS) && DEBUG
+            #if os(macOS) && DEBUG
                 .task { await PRHubMacSnapshot.runIfAsked() }
-                #endif
+            #endif
         }
         #if os(macOS)
-        .defaultSize(width: 1_200, height: 800)
+        .defaultSize(width: 1200, height: 800)
         .commands { MacTextSizeCommands() }
         #endif
         #if os(macOS)
-        Window("Feedback", id: PRHubMacFeedback.windowID) {
-            PRHubMacFeedback(environment: Self.screenshotEnvironment ?? .shared)
-                .prKitOfflineBanner((Self.screenshotEnvironment ?? .shared).prs)
-                .symbolVariant(DesignTokens.iconVariant)
-                .preferredColorScheme(Self.screenshotColorScheme)
-        }
-        .defaultSize(width: 560, height: 720)
-        .keyboardShortcut("f", modifiers: [.command, .shift])
-        Settings {
-            PRHubMacSettings(environment: Self.screenshotEnvironment ?? .shared)
-                .symbolVariant(DesignTokens.iconVariant)
-                .preferredColorScheme(Self.screenshotColorScheme)
-        }
+            Window("Feedback", id: PRHubMacFeedback.windowID) {
+                PRHubMacFeedback(environment: Self.screenshotEnvironment ?? .shared)
+                    .prKitOfflineBanner((Self.screenshotEnvironment ?? .shared).prs)
+                    .symbolVariant(DesignTokens.iconVariant)
+                    .preferredColorScheme(Self.screenshotColorScheme)
+            }
+            .defaultSize(width: 560, height: 720)
+            .keyboardShortcut("f", modifiers: [.command, .shift])
+            Settings {
+                PRHubMacSettings(environment: Self.screenshotEnvironment ?? .shared)
+                    .symbolVariant(DesignTokens.iconVariant)
+                    .preferredColorScheme(Self.screenshotColorScheme)
+            }
         #endif
     }
 

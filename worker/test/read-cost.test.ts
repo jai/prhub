@@ -18,7 +18,15 @@ const ETAG = '"policy-1"';
 const env = { GITHUB_TOKEN: "t", GITHUB_LOGIN: "jai" } as Env;
 const repo = "acme/app" as RepoFullName;
 const ref = (number: number) => ({ id: prId(repo, number), repo, number });
-const approved = { nodes: [{ author: { login: "sam", avatarUrl: "a" }, state: "APPROVED", submittedAt: "2026-11-06T04:00:00Z" }] };
+const approved = {
+  nodes: [
+    {
+      author: { login: "sam", avatarUrl: "a" },
+      state: "APPROVED",
+      submittedAt: "2026-11-06T04:00:00Z",
+    },
+  ],
+};
 const noTickets = async () => new Map();
 const realFetch = globalThis.fetch;
 
@@ -32,16 +40,25 @@ function stubGitHub() {
       const { query } = JSON.parse(String(init?.body)) as { query: string };
       calls.push({ kind: "graphql", counted: true });
       const aliases = [...query.matchAll(/(p\d+): repository/g)].map((match) => match[1] as string);
-      return Response.json({ data: Object.fromEntries(aliases.map((alias, index) =>
-        [alias, { pullRequest: prNode({ number: 7 + index, latestReviews: approved }) }])) });
+      return Response.json({
+        data: Object.fromEntries(
+          aliases.map((alias, index) => [
+            alias,
+            { pullRequest: prNode({ number: 7 + index, latestReviews: approved }) },
+          ]),
+        ),
+      });
     }
     if (url.pathname.endsWith("/contents/.policy.yml")) {
       calls.push({ kind: "policy", counted: etag !== ETAG });
-      return etag === ETAG ? new Response(null, { status: 304 }) : new Response(POLICY, { headers: { ETag: ETAG } });
+      return etag === ETAG
+        ? new Response(null, { status: 304 })
+        : new Response(POLICY, { headers: { ETag: ETAG } });
     }
     if (url.pathname.includes("/teams/")) {
       calls.push({ kind: "membership", counted: etag !== '"team-1"' });
-      return etag === '"team-1"' ? new Response(null, { status: 304 })
+      return etag === '"team-1"'
+        ? new Response(null, { status: 304 })
         : Response.json({ state: "active" }, { headers: { ETag: '"team-1"' } });
     }
     throw new Error(`unexpected ${url}`);
@@ -58,11 +75,18 @@ test("a full read of one dirty PR costs a GraphQL query plus .policy.yml and a m
   const cache = memoryCache();
   const read = await readPullRequests([ref(7)], env, new Set(), noTickets, cache);
   assert.equal(read.get(ref(7).id)?.people, "APPROVED", "sam is in acme/backend and approved");
-  assert.deepEqual(calls.map((call) => call.kind), ["graphql", "policy", "membership"]);
+  assert.deepEqual(
+    calls.map((call) => call.kind),
+    ["graphql", "policy", "membership"],
+  );
 
   calls.length = 0;
   await readPullRequests([ref(7)], env, new Set(), noTickets, cache);
-  assert.deepEqual(calls.map((call) => call.kind), ["graphql"], "within their TTLs the answers are cached");
+  assert.deepEqual(
+    calls.map((call) => call.kind),
+    ["graphql"],
+    "within their TTLs the answers are cached",
+  );
 });
 
 test("past their TTLs the answers are asked again with their ETags, and GitHub's 304s cost nothing", async () => {
@@ -76,7 +100,9 @@ test("past their TTLs the answers are asked again with their ETags, and GitHub's
   const read = await readPullRequests([ref(7)], env, new Set(), noTickets, cache);
   assert.equal(read.get(ref(7).id)?.people, "APPROVED");
   assert.deepEqual(calls, [
-    { kind: "graphql", counted: true }, { kind: "policy", counted: false }, { kind: "membership", counted: false },
+    { kind: "graphql", counted: true },
+    { kind: "policy", counted: false },
+    { kind: "membership", counted: false },
   ]);
 });
 
@@ -84,9 +110,11 @@ test("one PR GitHub refuses fails only its own part of a checks read", async () 
   stubGitHub();
   const answered = globalThis.fetch;
   globalThis.fetch = (async (input: string, init?: RequestInit) => {
-    const body = await (await answered(input, init)).json() as { data: Record<string, unknown> };
-    return Response.json({ data: { ...body.data, p1: null },
-      errors: [{ type: "FORBIDDEN", path: ["p1"], message: "SAML enforcement" }] });
+    const body = (await (await answered(input, init)).json()) as { data: Record<string, unknown> };
+    return Response.json({
+      data: { ...body.data, p1: null },
+      errors: [{ type: "FORBIDDEN", path: ["p1"], message: "SAML enforcement" }],
+    });
   }) as typeof fetch;
   const read = await readChecks([ref(7), ref(8), ref(9)], env);
   assert.equal(read.get(ref(8).id), "error");
@@ -100,5 +128,8 @@ test("a checks-only read of many PRs is one GraphQL query and no REST call", asy
   assert.equal(read.size, 3);
   const eight = read.get(ref(8).id);
   assert.equal(typeof eight === "object" ? eight?.mergeStateStatus : eight, "BLOCKED");
-  assert.deepEqual(calls.map((call) => call.kind), ["graphql"]);
+  assert.deepEqual(
+    calls.map((call) => call.kind),
+    ["graphql"],
+  );
 });

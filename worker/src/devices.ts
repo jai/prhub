@@ -7,7 +7,10 @@ import { bearerOf, deviceSecretOf, fingerprintOf } from "./pairing.ts";
 /** The part of the PR index these routes use; a test passes a fake. */
 export interface DeviceIndex {
   registerDevice(token: DeviceToken, host: ApnsHost, fingerprint: Fingerprint): unknown;
-  record(kind: string, detail: { changed?: string[]; complete?: boolean } & Record<string, unknown>): unknown;
+  record(
+    kind: string,
+    detail: { changed?: string[]; complete?: boolean } & Record<string, unknown>,
+  ): unknown;
   unpair(fingerprint: Fingerprint): unknown;
 }
 
@@ -26,8 +29,10 @@ export async function registerRoute(request: Request, index: DeviceIndex): Promi
   }
   const bearer = bearerOf(request.headers.get("Authorization"));
   if (!bearer) {
-    return Response.json({ error: { code: "unauthorized", message: "send the device secret as the bearer" } },
-      { status: 401 });
+    return Response.json(
+      { error: { code: "unauthorized", message: "send the device secret as the bearer" } },
+      { status: 401 },
+    );
   }
   await index.registerDevice(device.token, device.host, await fingerprintOf(bearer));
   return new Response(null, { status: 204 });

@@ -79,7 +79,7 @@ final class PRHubFoldUITests: XCTestCase {
         var tops: [CGFloat] = []
         let end = Date.now.addingTimeInterval(seconds)
         while Date.now < end {
-            tops.append(header.exists && header.isHittable ? header.frame.minY : -10_000)
+            tops.append(header.exists && header.isHittable ? header.frame.minY : -10000)
         }
         return tops
     }

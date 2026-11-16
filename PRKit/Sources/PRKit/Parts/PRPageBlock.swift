@@ -95,8 +95,8 @@ public struct PRValueLine<Value: View>: View {
     }
 }
 
-extension PRValueLine where Value == Text {
-    public init(_ name: String, value: String) {
+public extension PRValueLine where Value == Text {
+    init(_ name: String, value: String) {
         self.init(name) { Text(value) }
     }
 }

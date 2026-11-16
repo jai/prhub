@@ -5,7 +5,7 @@ import SwiftUI
 struct EqualWidths: Layout {
     let spacing: CGFloat
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
         guard !subviews.isEmpty else {
             return .zero
         }
@@ -17,7 +17,7 @@ struct EqualWidths: Layout {
         return CGSize(width: width, height: height)
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
         let width = share(of: bounds.width, subviews.count)
         for (index, subview) in subviews.enumerated() {
             let leading = bounds.minX + (width + spacing) * CGFloat(index)

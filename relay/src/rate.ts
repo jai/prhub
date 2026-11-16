@@ -20,18 +20,22 @@ export function emptyCounters(): Counters {
 export function consume(counters: Counters, nowSeconds: number): ConsumeResult {
   const minute = Math.floor(nowSeconds / 60);
   const hour = Math.floor(nowSeconds / 3600);
-  const minutes = counters.minutes.filter(([index]) => index > minute - 60).sort((a, b) => a[0] - b[0]);
+  const minutes = counters.minutes
+    .filter(([index]) => index > minute - 60)
+    .sort((a, b) => a[0] - b[0]);
   const hours = counters.hours.filter(([index]) => index > hour - 24);
 
   const thisMinute = minutes.find(([index]) => index === minute)?.[1] ?? 0;
-  if (thisMinute >= MINUTE_LIMIT) return { ok: false, retryAfter: Math.max(1, (minute + 1) * 60 - nowSeconds) };
+  if (thisMinute >= MINUTE_LIMIT)
+    return { ok: false, retryAfter: Math.max(1, (minute + 1) * 60 - nowSeconds) };
 
   let lastHour = minutes.reduce((sum, [, count]) => sum + count, 0);
   if (lastHour >= HOUR_LIMIT) {
     // Wait until enough of the oldest buckets leave the window to bring the count under the limit.
     for (const [index, count] of minutes) {
       lastHour -= count;
-      if (lastHour < HOUR_LIMIT) return { ok: false, retryAfter: Math.max(1, (index + 60) * 60 - nowSeconds) };
+      if (lastHour < HOUR_LIMIT)
+        return { ok: false, retryAfter: Math.max(1, (index + 60) * 60 - nowSeconds) };
     }
   }
 
@@ -41,7 +45,9 @@ export function consume(counters: Counters, nowSeconds: number): ConsumeResult {
 /** Pushes counted in the hour buckets of the last 24 hours. */
 export function sentLastDay(counters: Counters, nowSeconds: number): number {
   const hour = Math.floor(nowSeconds / 3600);
-  return counters.hours.filter(([index]) => index > hour - 24).reduce((sum, [, count]) => sum + count, 0);
+  return counters.hours
+    .filter(([index]) => index > hour - 24)
+    .reduce((sum, [, count]) => sum + count, 0);
 }
 
 function bump(buckets: [number, number][], index: number): [number, number][] {

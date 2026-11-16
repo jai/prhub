@@ -1,7 +1,7 @@
 import Foundation
-import Testing
 @testable import PRHub
 @testable import PRKit
+import Testing
 
 private let prHubSecret = "prhub-device-secret-0123456789"
 
@@ -81,7 +81,7 @@ struct PRHubTests {
         #expect(config.login == nil && config.orgs == nil)
     }
 
-    @Test func thePRScreensFollowTheWorkersAIFeatures() async {
+    @Test func thePRScreensFollowTheWorkersAIFeatures() {
         let none = Self.model(DeviceConfig(features: [.push]))
         let session = none.session(for: PullRequestRef(repo: "acme/api", number: 7))
         #expect(!session.offersAsk && !session.offersKeyLines && !session.offersRewrite)
@@ -139,7 +139,7 @@ struct PRHubTests {
 
     @Test func aPRWorkerAdmitsThePhoneAtOnceAndItsConfigIsReadBeforeThePRsShow() async throws {
         let endpoint = try Self.endpoint()
-        let defaults = UserDefaults(suiteName: "prhub-tests-\(UUID().uuidString)")!
+        let defaults = try #require(UserDefaults(suiteName: "prhub-tests-\(UUID().uuidString)"))
         let config = DeviceConfig(features: [.askAI, .push], login: "alex", orgs: ["acme"])
         let connection = Self.connection(
             endpoint: endpoint, config: config, unpaired: Shared(0), forgotten: Shared(0), defaults: defaults
@@ -188,12 +188,12 @@ struct PRHubTests {
         #expect(endpoint.url == nil)
     }
 
-    @Test func aLinkInAnotherSchemeIsNotFollowed() async throws {
+    @Test func aLinkInAnotherSchemeIsNotFollowed() throws {
         let endpoint = try Self.endpoint()
         let connection = Self.connection(
             endpoint: endpoint, config: DeviceConfig(features: []), unpaired: Shared(0), forgotten: Shared(0)
         )
-        connection.open(URL(string: "agentpager://setup?worker=https%3A%2F%2Fa.example&code=7KQ2M9XA")!)
+        try connection.open(#require(URL(string: "agentpager://setup?worker=https%3A%2F%2Fa.example&code=7KQ2M9XA")))
         #expect(connection.phase == .idle)
         #expect(!connection.isWorking)
         try endpoint.clear()
@@ -205,7 +205,7 @@ struct PRHubTests {
             endpoint: endpoint, config: DeviceConfig(features: []), unpaired: Shared(0), forgotten: Shared(0)
         )
         await connection.connect(worker: "pr-review.alex.workers.dev", code: "7KQ2M9XA")
-        connection.open(URL(string: "prhub://setup?worker=https%3A%2F%2Fother.example&code=7KQ2M9XA")!)
+        try connection.open(#require(URL(string: "prhub://setup?worker=https%3A%2F%2Fother.example&code=7KQ2M9XA")))
         #expect(connection.ignoredLinkHost == "pr-review.alex.workers.dev")
         #expect(connection.host == "pr-review.alex.workers.dev")
         try endpoint.clear()

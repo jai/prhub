@@ -1,10 +1,10 @@
 import Foundation
-import Testing
 @testable import PRKit
+import Testing
 
 /// Line comments waiting to go with a review (`PRDraftStore`).
 struct PRDraftsTests {
-    @Test func draftsOutliveTheSessionAndGoWhenCleared() throws {
+    @Test func draftsOutliveTheSessionAndGoWhenCleared() {
         let directory = URL.temporaryDirectory.appending(path: UUID().uuidString)
         let store = PRDraftStore(directory: directory)
         let ref = PullRequestRef(repo: "o/r", number: 7)

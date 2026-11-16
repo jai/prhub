@@ -30,9 +30,9 @@ enum TestFlightGroup: String, CaseIterable, Sendable {
 
     static var current: TestFlightGroup {
         #if PRHUB_INTERNAL_TESTFLIGHT
-        .internal
+            .internal
         #else
-        .public
+            .public
         #endif
     }
 }
@@ -75,9 +75,9 @@ final class PRHubUpdate {
 
     static var isReleaseBuild: Bool {
         #if DEBUG
-        false
+            false
         #else
-        true
+            true
         #endif
     }
 
@@ -92,7 +92,8 @@ final class PRHubUpdate {
         }
         checkedAt = time
         guard let latest = config.appLatest?.build(for: group), latest.isNewer(than: running),
-              defaults.string(forKey: Self.laterKey) != latest.build else {
+              defaults.string(forKey: Self.laterKey) != latest.build
+        else {
             return
         }
         offered = latest

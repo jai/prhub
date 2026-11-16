@@ -248,7 +248,7 @@ public struct PRViewerClient: Sendable {
     public func askChatAnswer(_ ref: PullRequestRef) async throws -> (chat: PRAskChat, data: Data) {
         let path = "prs/\(ref.repo)/\(ref.number)/ask"
         let data = try await get(path: path)
-        return (try decode(PRAskChat.self, from: data, path: path), data)
+        return try (decode(PRAskChat.self, from: data, path: path), data)
     }
 
     /// Once: a retry after a timeout could ask twice. The agent's answer comes through `askChat`.
@@ -287,7 +287,8 @@ public struct PRViewerClient: Sendable {
 
     /// A POST whose answer is decoded, and whose refusal comes back in the Worker's words.
     public func send<Answer: Decodable>(_ path: String, _ body: some Encodable & Sendable, as type: Answer.Type) async throws
-        -> Answer {
+        -> Answer
+    {
         var request = try await authorized(path: path, query: [:])
         request.httpMethod = "POST"
         request.httpBody = try JSONEncoder().encode(body)
@@ -321,7 +322,7 @@ public struct PRViewerClient: Sendable {
         let items = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         let url = base.appending(path: path, directoryHint: .notDirectory).appending(queryItems: items)
         var request = URLRequest(url: url)
-        request.setValue("Bearer \(try await access.bearer())", forHTTPHeaderField: "Authorization")
+        try request.setValue("Bearer \(await access.bearer())", forHTTPHeaderField: "Authorization")
         return request
     }
 
@@ -346,7 +347,7 @@ public struct PRViewerClient: Sendable {
     /// A refusal in the Worker's words where its body has them (`{"error": "…"}`), else what the status means.
     private func check(_ response: URLResponse, body: Data, path: String) async throws {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard (200..<300).contains(status) else {
+        guard (200 ..< 300).contains(status) else {
             reportFailure(path: path, .status(status))
             if status == 401 {
                 await access.discard()

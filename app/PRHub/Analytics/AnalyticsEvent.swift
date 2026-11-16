@@ -240,8 +240,8 @@ extension AnalyticsEvent {
     }
 }
 
-extension PRSyncOutcome {
-    fileprivate var analyticsWord: String {
+private extension PRSyncOutcome {
+    var analyticsWord: String {
         switch self {
         case .changed: "changed"
         case .unchanged: "unchanged"
@@ -265,9 +265,9 @@ enum RequestFailureKind: String, CaseIterable, Sendable {
     }
 }
 
-extension PRRequestFailure {
+private extension PRRequestFailure {
     /// The HTTP status, when there was one.
-    fileprivate var status: Int? {
+    var status: Int? {
         if case let .status(code) = self {
             return code
         }

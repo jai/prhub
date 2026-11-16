@@ -1,7 +1,7 @@
 import Foundation
+@testable import PRHub
 import PRKitCore
 import Testing
-@testable import PRHub
 
 /// The battery soak's MetricKit reports (`PRHubMetricReports`): kept on disk until sent, sent once, and nothing while off.
 @MainActor
@@ -14,7 +14,8 @@ struct PRHubMetricKitTests {
     ) -> PRHubMetricReports {
         let directory = FileManager.default.temporaryDirectory.appending(path: "metrickit-\(UUID().uuidString)")
         return PRHubMetricReports(directory: directory, defaults: defaults, build: "1.0 (301)", os: "iOS 27.2",
-                                  device: "iPhone13,3") { report in
+                                  device: "iPhone13,3")
+        { report in
             if let error = failing.with({ $0 }) {
                 throw error
             }
@@ -70,7 +71,7 @@ struct PRHubMetricKitTests {
     @Test func atMostSixtyWait() {
         let reports = Self.reports()
         reports.set(isOn: true)
-        for index in 0..<(PRHubMetricReports.waitingMax + 5) {
+        for index in 0 ..< (PRHubMetricReports.waitingMax + 5) {
             reports.keep(.metric, json: Data(#"{"n":\#(index)}"#.utf8))
         }
         #expect(reports.waiting().count == PRHubMetricReports.waitingMax)

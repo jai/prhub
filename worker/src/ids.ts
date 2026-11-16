@@ -17,7 +17,7 @@ const SHA = /^[0-9a-f]{40}$/;
 
 /** A commit sent by a client or read from storage; null when it is not one. */
 export function parseSha(raw: unknown): Sha | null {
-  return typeof raw === "string" && SHA.test(raw) ? raw as Sha : null;
+  return typeof raw === "string" && SHA.test(raw) ? (raw as Sha) : null;
 }
 
 /** A commit GitHub named. Anything else means its answer is not what this code reads, so the read fails. */
@@ -58,14 +58,16 @@ const REPO = /^([\w.-]+)\/([\w.-]+)$/;
 
 /** A repo named by a client, a URL or storage; null when it is not `owner/name`. */
 export function parseRepoFullName(raw: unknown): RepoFullName | null {
-  return typeof raw === "string" && REPO.test(raw) ? raw as RepoFullName : null;
+  return typeof raw === "string" && REPO.test(raw) ? (raw as RepoFullName) : null;
 }
 
 /** A repo GitHub named. Anything else means its answer is not what this code reads, so the read fails. */
 export function repoOf(raw: string): RepoFullName {
   const repo = parseRepoFullName(raw);
   if (!repo) {
-    throw new Error(`GitHub named a repo that is not owner/name: ${JSON.stringify(raw).slice(0, 120)}`);
+    throw new Error(
+      `GitHub named a repo that is not owner/name: ${JSON.stringify(raw).slice(0, 120)}`,
+    );
   }
   return repo;
 }

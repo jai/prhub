@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PRHub
+import Testing
 
 /// Usage analytics (AGENTS.md, "Analytics"): what each event carries, PRKit's events, the switch in Settings, and that
 /// a build without a project, a Debug build and the tests send nothing.
@@ -80,7 +80,7 @@ struct AnalyticsTests {
     // MARK: - What an event can carry
 
     @Test func everyCaseIsListed() {
-        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0...24))
+        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0 ... 24))
     }
 
     @Test func eachEventHasItsOwnSnakeCaseName() {

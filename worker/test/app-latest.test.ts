@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { APP_LATEST_URL, appLatest, forgetAppLatest, parseAppLatest } from "../src/app-latest.ts";
 
-const published = { internal: { version: "1.0", build: "212" }, public: { version: "1.0", build: "198" } };
+const published = {
+  internal: { version: "1.0", build: "212" },
+  public: { version: "1.0", build: "198" },
+};
 
 function answering(...answers: (object | Error)[]) {
   const urls: string[] = [];
@@ -19,8 +22,13 @@ function answering(...answers: (object | Error)[]) {
 
 test("the published file's groups are kept only when well formed", () => {
   assert.deepEqual(parseAppLatest(published), published);
-  assert.deepEqual(parseAppLatest({ public: { version: "1.2.3", build: "7" }, internal: { version: "1", build: 8 } }),
-    { public: { version: "1.2.3", build: "7" } });
+  assert.deepEqual(
+    parseAppLatest({
+      public: { version: "1.2.3", build: "7" },
+      internal: { version: "1", build: 8 },
+    }),
+    { public: { version: "1.2.3", build: "7" } },
+  );
   assert.equal(parseAppLatest({ internal: { version: "beta", build: "1" } }), undefined);
   assert.equal(parseAppLatest([]), undefined);
   assert.equal(parseAppLatest(null), undefined);
@@ -51,7 +59,11 @@ test("kept 10 minutes; a failed read answers the last one and is tried again a m
   assert.deepEqual(await appLatest({}, reads.fetchImpl, 9 * 60_000), published);
   assert.equal(reads.urls.length, 1);
   assert.deepEqual(await appLatest({}, reads.fetchImpl, 10 * 60_000), published, "the read failed");
-  assert.deepEqual(await appLatest({}, reads.fetchImpl, 10 * 60_000 + 30_000), published, "not asked again yet");
+  assert.deepEqual(
+    await appLatest({}, reads.fetchImpl, 10 * 60_000 + 30_000),
+    published,
+    "not asked again yet",
+  );
   assert.equal(reads.urls.length, 2);
   assert.deepEqual(await appLatest({}, reads.fetchImpl, 11 * 60_000), newer);
   assert.equal(reads.urls.length, 3);

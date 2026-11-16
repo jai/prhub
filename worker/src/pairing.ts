@@ -42,12 +42,12 @@ export async function sha256Hex(text: string): Promise<string> {
 }
 
 export async function fingerprintOf(secret: string): Promise<Fingerprint> {
-  return await sha256Hex(secret) as Fingerprint;
+  return (await sha256Hex(secret)) as Fingerprint;
 }
 
 /** `code` as `normalizePairingCode` gives it. */
 export async function codeHashOf(code: string): Promise<CodeHash> {
-  return await sha256Hex(code) as CodeHash;
+  return (await sha256Hex(code)) as CodeHash;
 }
 
 export function pairingKey(codeHash: CodeHash): string {
@@ -73,7 +73,10 @@ export interface PairedDevices {
  * Whether a request's bearer is a paired device secret. Asked of the index every time, with no copy kept in the isolate,
  * so a secret unpaired on one isolate stops working on all of them at once.
  */
-export async function isPairedSecret(authorization: string | null, devices: PairedDevices): Promise<boolean> {
+export async function isPairedSecret(
+  authorization: string | null,
+  devices: PairedDevices,
+): Promise<boolean> {
   const secret = deviceSecretOf(authorization);
-  return secret !== null && await devices.isPaired(await fingerprintOf(secret));
+  return secret !== null && (await devices.isPaired(await fingerprintOf(secret)));
 }

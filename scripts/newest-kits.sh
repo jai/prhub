@@ -31,16 +31,20 @@ for pin in json.loads(text)["pins"]:
 open(path, "w").write(text)
 PY
 
-kits=$(python3 - <<'PY'
+kits=$(
+	python3 - <<'PY'
 import json
 pins = json.load(open("Package.resolved"))["pins"]
 print(", ".join(p["identity"] + " " + str(p["state"].get("version")) for p in pins))
 PY
 )
 if git diff --quiet -- Package.resolved app/Package.resolved; then
-  echo "the kits are the newest already: $kits"
-  [ -n "${GITHUB_OUTPUT:-}" ] && { echo "changed=false"; echo "kits=$kits"; } >> "$GITHUB_OUTPUT"
-  exit 0
+	echo "the kits are the newest already: $kits"
+	[ -n "${GITHUB_OUTPUT:-}" ] && {
+		echo "changed=false"
+		echo "kits=$kits"
+	} >>"$GITHUB_OUTPUT"
+	exit 0
 fi
 echo "newest: $kits"
 [ "${1:-}" = "--local" ] && exit 0
@@ -51,8 +55,8 @@ head=$(git rev-parse HEAD)
 tree=$(gh api "repos/$repo/git/commits/$head" -q .tree.sha)
 entries=()
 for file in Package.resolved app/Package.resolved; do
-  blob=$(gh api "repos/$repo/git/blobs" -f encoding=base64 -f content="$(base64 < "$file" | tr -d '\n')" -q .sha)
-  entries+=(-f "tree[][path]=$file" -f "tree[][mode]=100644" -f "tree[][type]=blob" -f "tree[][sha]=$blob")
+	blob=$(gh api "repos/$repo/git/blobs" -f encoding=base64 -f content="$(base64 <"$file" | tr -d '\n')" -q .sha)
+	entries+=(-f "tree[][path]=$file" -f "tree[][mode]=100644" -f "tree[][type]=blob" -f "tree[][sha]=$blob")
 done
 new_tree=$(gh api "repos/$repo/git/trees" -f base_tree="$tree" "${entries[@]}" -q .sha)
 message="fix(deps): newest kits: $kits
@@ -60,6 +64,9 @@ message="fix(deps): newest kits: $kits
 The hourly release resolved Package.swift's ranges to the newest versions (#54); the
 release's tests run on this commit."
 commit=$(gh api "repos/$repo/git/commits" -f message="$message" -f tree="$new_tree" -f "parents[]=$head" -q .sha)
-gh api -X PATCH "repos/$repo/git/refs/heads/main" -f sha="$commit" -F force=false > /dev/null
+gh api -X PATCH "repos/$repo/git/refs/heads/main" -f sha="$commit" -F force=false >/dev/null
 echo "committed ${commit:0:7} on main"
-{ echo "changed=true"; echo "kits=$kits"; } >> "$GITHUB_OUTPUT"
+{
+	echo "changed=true"
+	echo "kits=$kits"
+} >>"$GITHUB_OUTPUT"

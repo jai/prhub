@@ -1,7 +1,7 @@
 import Foundation
-import Testing
 @testable import PRHub
 @testable import PRKit
+import Testing
 
 struct PRHubOpenLinkTests {
     private static func incoming(_ target: String) throws -> URL {
@@ -15,10 +15,10 @@ struct PRHubOpenLinkTests {
     @Test(arguments: ["", "/files", "/changes"])
     func theOriginalGitHubURLAndItsPageAreKept(_ suffix: String) throws {
         let target = "https://github.com/acme/web/pull/412\(suffix)?w=1#diff-abcR12"
-        let destination = try #require(PRHubOpenLink(try Self.incoming(target)))
+        let destination = try #require(try PRHubOpenLink(Self.incoming(target)))
         #expect(destination.url.absoluteString == target)
         #expect(destination.link == PRLink(ref: PullRequestRef(repo: "acme/web", number: 412),
-                                          showsDiff: !suffix.isEmpty))
+                                           showsDiff: !suffix.isEmpty))
     }
 
     @Test(arguments: [
@@ -34,7 +34,7 @@ struct PRHubOpenLinkTests {
         "javascript:alert(1)",
     ])
     func onlyAGitHubHTTPSPullRequestIsAccepted(_ target: String) throws {
-        #expect(PRHubOpenLink(try Self.incoming(target)) == nil)
+        #expect(try PRHubOpenLink(Self.incoming(target)) == nil)
     }
 
     @Test(arguments: [
@@ -50,7 +50,7 @@ struct PRHubOpenLinkTests {
         "https://open?url=https%3A%2F%2Fgithub.com%2Facme%2Fweb%2Fpull%2F412",
     ])
     func aMalformedOrAmbiguousHandoffIsRejected(_ text: String) throws {
-        #expect(PRHubOpenLink(try #require(URL(string: text))) == nil)
+        #expect(try PRHubOpenLink(#require(URL(string: text))) == nil)
     }
 
     @MainActor @Test func aHandoffSelectsThePRsTabAndOpensItsDiff() throws {
@@ -83,7 +83,7 @@ struct PRHubOpenLinkTests {
     @MainActor @Test func aRefusedHandoffChangesNeitherTheTabNorItsOpenPR() throws {
         let environment = PRHubEnvironment.sample()
         environment.navigation.selectedTab = .settings
-        #expect(!environment.openPullRequestLink(try Self.incoming("https://github.com/acme/web/issues/412")))
+        #expect(try !environment.openPullRequestLink(Self.incoming("https://github.com/acme/web/issues/412")))
         #expect(environment.navigation.selectedTab == .settings)
         #expect(environment.prs.navigation.pending == nil)
     }

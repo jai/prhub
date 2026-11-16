@@ -10,7 +10,7 @@
 import type { Brand } from "./ids.ts";
 
 export const WorkerMode = { Hosted: "hosted", SelfHosted: "self_hosted" } as const;
-export type WorkerMode = typeof WorkerMode[keyof typeof WorkerMode];
+export type WorkerMode = (typeof WorkerMode)[keyof typeof WorkerMode];
 
 export const LimitName = {
   SignInStartsPerIpPerMinute: "sign_in_starts_per_ip_per_minute",
@@ -36,7 +36,7 @@ export const LimitName = {
   SignInMinutes: "sign_in_minutes",
   SignInCodeMinutes: "sign_in_code_minutes",
 } as const;
-export type LimitName = typeof LimitName[keyof typeof LimitName];
+export type LimitName = (typeof LimitName)[keyof typeof LimitName];
 
 const LimitUnit = {
   PerMinute: "per_minute",
@@ -49,7 +49,7 @@ const LimitUnit = {
   Percent: "percent",
   Count: "count",
 } as const;
-type LimitUnit = typeof LimitUnit[keyof typeof LimitUnit];
+type LimitUnit = (typeof LimitUnit)[keyof typeof LimitUnit];
 
 export type Milliseconds = Brand<number, "Milliseconds">;
 export type Count = Brand<number, "Count">;
@@ -89,104 +89,202 @@ const RATE = { canTurnOff: true, min: 1, max: 100_000 } as const;
 
 const LIMIT_SPECS = {
   [LimitName.SignInStartsPerIpPerMinute]: {
-    variable: "LIMIT_SIGN_IN_STARTS_PER_IP_PER_MINUTE", unit: LimitUnit.PerMinute, modes: HOSTED,
-    defaults: { hosted: 10, self_hosted: null }, ...RATE,
+    variable: "LIMIT_SIGN_IN_STARTS_PER_IP_PER_MINUTE",
+    unit: LimitUnit.PerMinute,
+    modes: HOSTED,
+    defaults: { hosted: 10, self_hosted: null },
+    ...RATE,
   },
   [LimitName.SignInFinishesPerIpPerMinute]: {
-    variable: "LIMIT_SIGN_IN_FINISHES_PER_IP_PER_MINUTE", unit: LimitUnit.PerMinute, modes: HOSTED,
-    defaults: { hosted: 10, self_hosted: null }, ...RATE,
+    variable: "LIMIT_SIGN_IN_FINISHES_PER_IP_PER_MINUTE",
+    unit: LimitUnit.PerMinute,
+    modes: HOSTED,
+    defaults: { hosted: 10, self_hosted: null },
+    ...RATE,
   },
   [LimitName.PairingAttemptsPerIpPerHour]: {
-    variable: "LIMIT_PAIRING_ATTEMPTS_PER_IP_PER_HOUR", unit: LimitUnit.PerHour, modes: SELF_HOSTED,
-    defaults: { hosted: null, self_hosted: 30 }, ...RATE,
+    variable: "LIMIT_PAIRING_ATTEMPTS_PER_IP_PER_HOUR",
+    unit: LimitUnit.PerHour,
+    modes: SELF_HOSTED,
+    defaults: { hosted: null, self_hosted: 30 },
+    ...RATE,
   },
   [LimitName.WritesPerMinute]: {
-    variable: "LIMIT_WRITES_PER_MINUTE", unit: LimitUnit.PerMinute, modes: BOTH,
-    defaults: { hosted: 20, self_hosted: null }, ...RATE,
+    variable: "LIMIT_WRITES_PER_MINUTE",
+    unit: LimitUnit.PerMinute,
+    modes: BOTH,
+    defaults: { hosted: 20, self_hosted: null },
+    ...RATE,
   },
   [LimitName.WritesPerHour]: {
-    variable: "LIMIT_WRITES_PER_HOUR", unit: LimitUnit.PerHour, modes: BOTH,
-    defaults: { hosted: 200, self_hosted: null }, ...RATE,
+    variable: "LIMIT_WRITES_PER_HOUR",
+    unit: LimitUnit.PerHour,
+    modes: BOTH,
+    defaults: { hosted: 200, self_hosted: null },
+    ...RATE,
   },
   [LimitName.AskQuestionsPerHour]: {
-    variable: "LIMIT_ASK_QUESTIONS_PER_HOUR", unit: LimitUnit.PerHour, modes: BOTH,
-    defaults: { hosted: 30, self_hosted: null }, ...RATE,
+    variable: "LIMIT_ASK_QUESTIONS_PER_HOUR",
+    unit: LimitUnit.PerHour,
+    modes: BOTH,
+    defaults: { hosted: 30, self_hosted: null },
+    ...RATE,
   },
   [LimitName.AskQuestionsPerDay]: {
-    variable: "LIMIT_ASK_QUESTIONS_PER_DAY", unit: LimitUnit.PerDay, modes: BOTH,
-    defaults: { hosted: 150, self_hosted: null }, ...RATE,
+    variable: "LIMIT_ASK_QUESTIONS_PER_DAY",
+    unit: LimitUnit.PerDay,
+    modes: BOTH,
+    defaults: { hosted: 150, self_hosted: null },
+    ...RATE,
   },
   [LimitName.AiJobsPerHour]: {
-    variable: "LIMIT_AI_JOBS_PER_HOUR", unit: LimitUnit.PerHour, modes: BOTH,
-    defaults: { hosted: 60, self_hosted: null }, ...RATE,
+    variable: "LIMIT_AI_JOBS_PER_HOUR",
+    unit: LimitUnit.PerHour,
+    modes: BOTH,
+    defaults: { hosted: 60, self_hosted: null },
+    ...RATE,
   },
   [LimitName.AskSessionBudgetCents]: {
-    variable: "LIMIT_ASK_SESSION_BUDGET_CENTS", unit: LimitUnit.Cents, modes: BOTH,
-    defaults: { hosted: 200, self_hosted: 200 }, canTurnOff: false, min: 1, max: 100_000,
+    variable: "LIMIT_ASK_SESSION_BUDGET_CENTS",
+    unit: LimitUnit.Cents,
+    modes: BOTH,
+    defaults: { hosted: 200, self_hosted: 200 },
+    canTurnOff: false,
+    min: 1,
+    max: 100_000,
   },
   [LimitName.GitHubReservePercent]: {
-    variable: "LIMIT_GITHUB_RESERVE_PERCENT", unit: LimitUnit.Percent, modes: BOTH,
-    defaults: { hosted: 10, self_hosted: 10 }, canTurnOff: false, min: 0, max: 90,
+    variable: "LIMIT_GITHUB_RESERVE_PERCENT",
+    unit: LimitUnit.Percent,
+    modes: BOTH,
+    defaults: { hosted: 10, self_hosted: 10 },
+    canTurnOff: false,
+    min: 0,
+    max: 90,
   },
   [LimitName.GitHubReserveMinimum]: {
-    variable: "LIMIT_GITHUB_RESERVE_MINIMUM", unit: LimitUnit.Count, modes: BOTH,
-    defaults: { hosted: 100, self_hosted: 100 }, canTurnOff: false, min: 0, max: 5_000,
+    variable: "LIMIT_GITHUB_RESERVE_MINIMUM",
+    unit: LimitUnit.Count,
+    modes: BOTH,
+    defaults: { hosted: 100, self_hosted: 100 },
+    canTurnOff: false,
+    min: 0,
+    max: 5_000,
   },
   [LimitName.PollIntervalMinutes]: {
-    variable: "LIMIT_POLL_INTERVAL_MINUTES", unit: LimitUnit.Minutes, modes: HOSTED,
-    defaults: { hosted: 10, self_hosted: 10 }, canTurnOff: false, min: 1, max: 1_440,
+    variable: "LIMIT_POLL_INTERVAL_MINUTES",
+    unit: LimitUnit.Minutes,
+    modes: HOSTED,
+    defaults: { hosted: 10, self_hosted: 10 },
+    canTurnOff: false,
+    min: 1,
+    max: 1_440,
   },
   [LimitName.InstallationSyncHours]: {
-    variable: "LIMIT_INSTALLATION_SYNC_HOURS", unit: LimitUnit.Hours, modes: HOSTED,
-    defaults: { hosted: 6, self_hosted: 6 }, canTurnOff: false, min: 1, max: 168,
+    variable: "LIMIT_INSTALLATION_SYNC_HOURS",
+    unit: LimitUnit.Hours,
+    modes: HOSTED,
+    defaults: { hosted: 6, self_hosted: 6 },
+    canTurnOff: false,
+    min: 1,
+    max: 168,
   },
   [LimitName.InstallationSyncOnOpenMinutes]: {
-    variable: "LIMIT_INSTALLATION_SYNC_ON_OPEN_MINUTES", unit: LimitUnit.Minutes, modes: HOSTED,
-    defaults: { hosted: 10, self_hosted: 10 }, canTurnOff: false, min: 1, max: 1_440,
+    variable: "LIMIT_INSTALLATION_SYNC_ON_OPEN_MINUTES",
+    unit: LimitUnit.Minutes,
+    modes: HOSTED,
+    defaults: { hosted: 10, self_hosted: 10 },
+    canTurnOff: false,
+    min: 1,
+    max: 1_440,
   },
   [LimitName.InstallationReadsNowPerMinute]: {
-    variable: "LIMIT_INSTALLATION_READS_NOW_PER_MINUTE", unit: LimitUnit.PerMinute, modes: HOSTED,
-    defaults: { hosted: 6, self_hosted: null }, ...RATE,
+    variable: "LIMIT_INSTALLATION_READS_NOW_PER_MINUTE",
+    unit: LimitUnit.PerMinute,
+    modes: HOSTED,
+    defaults: { hosted: 6, self_hosted: null },
+    ...RATE,
   },
   [LimitName.IndexedPullRequestsMax]: {
-    variable: "LIMIT_INDEXED_PULL_REQUESTS_MAX", unit: LimitUnit.Count, modes: BOTH,
-    defaults: { hosted: 500, self_hosted: null }, canTurnOff: true, min: 1, max: 100_000,
+    variable: "LIMIT_INDEXED_PULL_REQUESTS_MAX",
+    unit: LimitUnit.Count,
+    modes: BOTH,
+    defaults: { hosted: 500, self_hosted: null },
+    canTurnOff: true,
+    min: 1,
+    max: 100_000,
   },
   [LimitName.IndexedReposMax]: {
-    variable: "LIMIT_INDEXED_REPOS_MAX", unit: LimitUnit.Count, modes: BOTH,
-    defaults: { hosted: 3_000, self_hosted: 3_000 }, canTurnOff: false, min: 1, max: 20_000,
+    variable: "LIMIT_INDEXED_REPOS_MAX",
+    unit: LimitUnit.Count,
+    modes: BOTH,
+    defaults: { hosted: 3_000, self_hosted: 3_000 },
+    canTurnOff: false,
+    min: 1,
+    max: 20_000,
   },
   [LimitName.ClosedPullRequestRetentionDays]: {
-    variable: "LIMIT_CLOSED_PULL_REQUEST_RETENTION_DAYS", unit: LimitUnit.Days, modes: BOTH,
-    defaults: { hosted: 30, self_hosted: null }, canTurnOff: true, min: 1, max: 3_650,
+    variable: "LIMIT_CLOSED_PULL_REQUEST_RETENTION_DAYS",
+    unit: LimitUnit.Days,
+    modes: BOTH,
+    defaults: { hosted: 30, self_hosted: null },
+    canTurnOff: true,
+    min: 1,
+    max: 3_650,
   },
   [LimitName.SessionLifetimeDays]: {
-    variable: "LIMIT_SESSION_LIFETIME_DAYS", unit: LimitUnit.Days, modes: HOSTED,
-    defaults: { hosted: 180, self_hosted: 180 }, canTurnOff: false, min: 1, max: 3_650,
+    variable: "LIMIT_SESSION_LIFETIME_DAYS",
+    unit: LimitUnit.Days,
+    modes: HOSTED,
+    defaults: { hosted: 180, self_hosted: 180 },
+    canTurnOff: false,
+    min: 1,
+    max: 3_650,
   },
   [LimitName.SessionsMax]: {
-    variable: "LIMIT_SESSIONS_MAX", unit: LimitUnit.Count, modes: HOSTED,
-    defaults: { hosted: 20, self_hosted: 20 }, canTurnOff: false, min: 1, max: 1_000,
+    variable: "LIMIT_SESSIONS_MAX",
+    unit: LimitUnit.Count,
+    modes: HOSTED,
+    defaults: { hosted: 20, self_hosted: 20 },
+    canTurnOff: false,
+    min: 1,
+    max: 1_000,
   },
   [LimitName.SignInMinutes]: {
-    variable: "LIMIT_SIGN_IN_MINUTES", unit: LimitUnit.Minutes, modes: HOSTED,
-    defaults: { hosted: 10, self_hosted: 10 }, canTurnOff: false, min: 1, max: 60,
+    variable: "LIMIT_SIGN_IN_MINUTES",
+    unit: LimitUnit.Minutes,
+    modes: HOSTED,
+    defaults: { hosted: 10, self_hosted: 10 },
+    canTurnOff: false,
+    min: 1,
+    max: 60,
   },
   [LimitName.SignInCodeMinutes]: {
-    variable: "LIMIT_SIGN_IN_CODE_MINUTES", unit: LimitUnit.Minutes, modes: HOSTED,
-    defaults: { hosted: 5, self_hosted: 5 }, canTurnOff: false, min: 1, max: 60,
+    variable: "LIMIT_SIGN_IN_CODE_MINUTES",
+    unit: LimitUnit.Minutes,
+    modes: HOSTED,
+    defaults: { hosted: 5, self_hosted: 5 },
+    canTurnOff: false,
+    min: 1,
+    max: 60,
   },
 } as const satisfies Readonly<Record<LimitName, LimitSpec>>;
 
 type Specs = typeof LIMIT_SPECS;
 
 /** Counted per person or per IP over a window (`limit-counter.ts`). */
-export type RateLimitName = { [N in LimitName]: Specs[N]["unit"] extends RateUnit ? N : never }[LimitName];
+export type RateLimitName = {
+  [N in LimitName]: Specs[N]["unit"] extends RateUnit ? N : never;
+}[LimitName];
 /** Limits that `off` turns off. */
-type OptionalLimitName = { [N in LimitName]: Specs[N]["canTurnOff"] extends true ? N : never }[LimitName];
+type OptionalLimitName = {
+  [N in LimitName]: Specs[N]["canTurnOff"] extends true ? N : never;
+}[LimitName];
 /** Limits that always have a value. */
 type FixedLimitName = Exclude<LimitName, OptionalLimitName>;
-type FixedDurationName = { [N in FixedLimitName]: Specs[N]["unit"] extends DurationUnit ? N : never }[FixedLimitName];
+type FixedDurationName = {
+  [N in FixedLimitName]: Specs[N]["unit"] extends DurationUnit ? N : never;
+}[FixedLimitName];
 type FixedCountName = Exclude<FixedLimitName, FixedDurationName>;
 
 type LimitVariable = Specs[LimitName]["variable"];
@@ -217,7 +315,12 @@ function isOptional(name: LimitName): name is OptionalLimitName {
   return LIMIT_SPECS[name].canTurnOff;
 }
 
-function parseSetting(name: LimitName, raw: string | undefined, mode: WorkerMode, problems: LimitsConfigProblem[]): Setting {
+function parseSetting(
+  name: LimitName,
+  raw: string | undefined,
+  mode: WorkerMode,
+  problems: LimitsConfigProblem[],
+): Setting {
   const spec = LIMIT_SPECS[name];
   const fallback = spec.defaults[mode];
   const value = (raw ?? "").trim();
@@ -242,7 +345,10 @@ function parseSetting(name: LimitName, raw: string | undefined, mode: WorkerMode
 }
 
 /** A record with every key filled by `valueOf`. */
-function recordOf<Key extends string, Value>(keys: readonly Key[], valueOf: (key: Key) => Value): Record<Key, Value> {
+function recordOf<Key extends string, Value>(
+  keys: readonly Key[],
+  valueOf: (key: Key) => Value,
+): Record<Key, Value> {
   return Object.fromEntries(keys.map((key) => [key, valueOf(key)])) as Record<Key, Value>;
 }
 
@@ -252,9 +358,13 @@ const FIXED_NAMES = LIMIT_NAMES.filter((name): name is FixedLimitName => !isOpti
 /** Every limit for a Worker in `mode`: each var parsed once, a bad one replaced by the default and named in `problems`. */
 export function parseLimits(vars: LimitVars, mode: WorkerMode): Limits {
   const problems: LimitsConfigProblem[] = [];
-  const settingFor = (name: LimitName) => parseSetting(name, vars[LIMIT_SPECS[name].variable], mode, problems);
+  const settingFor = (name: LimitName) =>
+    parseSetting(name, vars[LIMIT_SPECS[name].variable], mode, problems);
   const optional = recordOf(OPTIONAL_NAMES, settingFor);
-  const fixed = recordOf(FIXED_NAMES, (name) => settingFor(name) ?? LIMIT_SPECS[name].defaults[mode]);
+  const fixed = recordOf(
+    FIXED_NAMES,
+    (name) => settingFor(name) ?? LIMIT_SPECS[name].defaults[mode],
+  );
   return { mode, optional, fixed, problems };
 }
 
@@ -267,7 +377,10 @@ let parsed: { key: string; limits: Limits } | null = null;
 /** The Worker's limits, parsed once per isolate and per value of their vars. */
 export function limitsOf(env: LimitVars & { HOSTED?: string }): Limits {
   const mode = workerModeOf(env);
-  const key = JSON.stringify([mode, ...LIMIT_NAMES.map((name) => env[LIMIT_SPECS[name].variable] ?? null)]);
+  const key = JSON.stringify([
+    mode,
+    ...LIMIT_NAMES.map((name) => env[LIMIT_SPECS[name].variable] ?? null),
+  ]);
   if (parsed?.key !== key) {
     parsed = { key, limits: parseLimits(env, mode) };
   }
@@ -281,11 +394,13 @@ function settingOf(limits: Limits, name: LimitName): number | null {
 /** A counted limit's count and window; null when it is off. */
 export function rateWindowOf(limits: Limits, name: RateLimitName): RateWindow | null {
   const count = limits.optional[name];
-  return count === null ? null : { count: count as Count, windowMs: UNIT_MS[LIMIT_SPECS[name].unit] as Milliseconds };
+  return count === null
+    ? null
+    : { count: count as Count, windowMs: UNIT_MS[LIMIT_SPECS[name].unit] as Milliseconds };
 }
 
 export function durationOf(limits: Limits, name: FixedDurationName): Milliseconds {
-  return limits.fixed[name] * UNIT_MS[LIMIT_SPECS[name].unit] as Milliseconds;
+  return (limits.fixed[name] * UNIT_MS[LIMIT_SPECS[name].unit]) as Milliseconds;
 }
 
 /**
@@ -304,7 +419,7 @@ export function countOf(limits: Limits, name: FixedCountName): Count {
 /** How long a closed PR's stored diffs, details and AI answers are kept; null keeps them. */
 export function retentionOf(limits: Limits): Milliseconds | null {
   const days = limits.optional[LimitName.ClosedPullRequestRetentionDays];
-  return days === null ? null : days * UNIT_MS[LimitUnit.Days] as Milliseconds;
+  return days === null ? null : ((days * UNIT_MS[LimitUnit.Days]) as Milliseconds);
 }
 
 /** The most PRs one index holds; null holds every one. */
@@ -331,16 +446,25 @@ export function gitHubReserveOf(limits: Limits): GitHubReserve {
 
 /** `GET /device/config`'s `limits`: each limit that applies in this mode, by name, in its unit; null is off. */
 export function limitsConfig(limits: Limits): Partial<Record<LimitName, number | null>> {
-  return Object.fromEntries(LIMIT_NAMES
-    .filter((name) => (LIMIT_SPECS[name].modes as readonly WorkerMode[]).includes(limits.mode))
-    .map((name) => [name, settingOf(limits, name)]));
+  return Object.fromEntries(
+    LIMIT_NAMES.filter((name) =>
+      (LIMIT_SPECS[name].modes as readonly WorkerMode[]).includes(limits.mode),
+    ).map((name) => [name, settingOf(limits, name)]),
+  );
 }
 
 /** `429 limit_reached`: which limit, and when it lets the request through again. */
 export function limitReachedAnswer(name: LimitName, retryAfterMs: number): Response {
   const retryAfter = Math.max(1, Math.ceil(retryAfterMs / 1_000));
-  return Response.json({
-    error: { code: "limit_reached", message: `${name} reached; try again in ${retryAfter} s`, limit: name,
-      retry_after: retryAfter },
-  }, { status: 429, headers: { "Retry-After": String(retryAfter), "Cache-Control": "no-store" } });
+  return Response.json(
+    {
+      error: {
+        code: "limit_reached",
+        message: `${name} reached; try again in ${retryAfter} s`,
+        limit: name,
+        retry_after: retryAfter,
+      },
+    },
+    { status: 429, headers: { "Retry-After": String(retryAfter), "Cache-Control": "no-store" } },
+  );
 }

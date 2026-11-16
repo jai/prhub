@@ -12,7 +12,9 @@ extension PRSession {
     }
 
     /// The Worker's AI features, as `GET /device/config` has them in PRHub; all three in Jai's build.
-    var offersKeyLines: Bool { model.configuration.isOn(.keyLines) }
+    var offersKeyLines: Bool {
+        model.configuration.isOn(.keyLines)
+    }
 
     /// The PR at a glance, for its page, from key lines this session already holds: the ones on the phone when the PR
     /// opened, or the ones its diff asked for. The page never asks for them: on an API key, asking is what makes them.
@@ -27,11 +29,22 @@ extension PRSession {
     }
 
     /// Why key lines are off and how to turn them on, while they are (`PRKitConfiguration.keyLinesHint`).
-    var keyLinesHint: PREmptyHint? { offersKeyLines ? nil : model.configuration.keyLinesHint }
-    var offersAsk: Bool { model.configuration.isOn(.askAI) }
+    var keyLinesHint: PREmptyHint? {
+        offersKeyLines ? nil : model.configuration.keyLinesHint
+    }
+
+    var offersAsk: Bool {
+        model.configuration.isOn(.askAI)
+    }
+
     /// Your standing review, which the review bar shows as chosen.
-    var yourReview: PRJaiReview? { model.yourReview(on: ref) }
-    var offersRewrite: Bool { model.configuration.isOn(.rewrite) }
+    var yourReview: PRJaiReview? {
+        model.yourReview(on: ref)
+    }
+
+    var offersRewrite: Bool {
+        model.configuration.isOn(.rewrite)
+    }
 
     /// Previous or next key line not yet checked off, going round; every one once all are. With none selected, next
     /// is the first and previous the last.
@@ -47,7 +60,7 @@ extension PRSession {
             return
         }
         // From the one on show, which may itself be checked off, to the next stop in the list's order.
-        for offset in 1...items.count {
+        for offset in 1 ... items.count {
             let item = items[((current + step * offset) % items.count + items.count) % items.count]
             if stops.contains(where: { $0.id == item.id }) {
                 show(item)

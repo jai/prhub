@@ -3,9 +3,17 @@ import { test } from "node:test";
 import { gitHubReason, parseWrite, refusalWords, toggleTask } from "../src/write-input.ts";
 
 test("an approval needs no words, every other write does", () => {
-  assert.deepEqual(parseWrite({ kind: "review", event: "APPROVE", body: "", commit: "c" }),
-    { kind: "review", event: "APPROVE", body: "", commit: "c", comments: [] });
-  assert.equal(parseWrite({ kind: "review", event: "REQUEST_CHANGES", body: "", commit: "c" }), null);
+  assert.deepEqual(parseWrite({ kind: "review", event: "APPROVE", body: "", commit: "c" }), {
+    kind: "review",
+    event: "APPROVE",
+    body: "",
+    commit: "c",
+    comments: [],
+  });
+  assert.equal(
+    parseWrite({ kind: "review", event: "REQUEST_CHANGES", body: "", commit: "c" }),
+    null,
+  );
   assert.equal(parseWrite({ kind: "comment", body: "" }), null);
   assert.equal(parseWrite({ kind: "reply", body: "", thread: "t" }), null);
 });
@@ -27,8 +35,11 @@ test("a review may carry line comments, and they stand in for its words", () => 
 });
 
 test("resolving names a thread and says which way", () => {
-  assert.deepEqual(parseWrite({ kind: "resolve", thread: "t", resolved: true }),
-    { kind: "resolve", thread: "t", resolved: true });
+  assert.deepEqual(parseWrite({ kind: "resolve", thread: "t", resolved: true }), {
+    kind: "resolve",
+    thread: "t",
+    resolved: true,
+  });
   assert.equal(parseWrite({ kind: "resolve", thread: "t" }), null);
   assert.equal(parseWrite({ kind: "resolve", thread: "", resolved: false }), null);
 });
@@ -41,21 +52,36 @@ test("a review must be one of GitHub's three events on a known commit", () => {
 });
 
 test("the PR actions take what GitHub needs and nothing else", () => {
-  assert.deepEqual(parseWrite({ kind: "update_branch", commit: "abc" }), { kind: "update_branch", commit: "abc" });
+  assert.deepEqual(parseWrite({ kind: "update_branch", commit: "abc" }), {
+    kind: "update_branch",
+    commit: "abc",
+  });
   assert.equal(parseWrite({ kind: "update_branch" }), null);
   assert.deepEqual(parseWrite({ kind: "remove_request" }), { kind: "remove_request" });
-  assert.deepEqual(parseWrite({ kind: "checkbox", index: 2, checked: true }),
-    { kind: "checkbox", index: 2, checked: true, task: null });
+  assert.deepEqual(parseWrite({ kind: "checkbox", index: 2, checked: true }), {
+    kind: "checkbox",
+    index: 2,
+    checked: true,
+    task: null,
+  });
   assert.equal(parseWrite({ kind: "checkbox", index: 1.5, checked: true }), null);
-  assert.deepEqual(parseWrite({ kind: "edit_body", body: "" }), { kind: "edit_body", body: "", base: null });
+  assert.deepEqual(parseWrite({ kind: "edit_body", body: "" }), {
+    kind: "edit_body",
+    body: "",
+    base: null,
+  });
   assert.equal(parseWrite({ kind: "edit_body" }), null);
-  assert.deepEqual(parseWrite({ kind: "merge", method: "squash", commit: "abc" }),
-    { kind: "merge", method: "squash", commit: "abc" });
+  assert.deepEqual(parseWrite({ kind: "merge", method: "squash", commit: "abc" }), {
+    kind: "merge",
+    method: "squash",
+    commit: "abc",
+  });
   assert.equal(parseWrite({ kind: "merge", method: "force", commit: "abc" }), null);
 });
 
 test("a task is counted as the phone draws it", () => {
-  const body = "<!-- - [ ] template -->\n- [ ] one\r\n```\n- [ ] code\n```\n  * [x] two\n<!--\n- [ ] hidden\n-->\n- [ ] three";
+  const body =
+    "<!-- - [ ] template -->\n- [ ] one\r\n```\n- [ ] code\n```\n  * [x] two\n<!--\n- [ ] hidden\n-->\n- [ ] three";
   assert.equal(toggleTask(body, 0, true), body.replace("- [ ] one", "- [x] one"));
   assert.equal(toggleTask(body, 1, false), body.replace("* [x] two", "* [ ] two"));
   assert.equal(toggleTask(body, 2, true), body.replace("- [ ] three", "- [x] three"));
@@ -70,10 +96,22 @@ test("a late tap can't tick a task that has moved into its place", () => {
 });
 
 test("a description edit and a checkbox carry what the phone saw, when it sends it", () => {
-  assert.deepEqual(parseWrite({ kind: "edit_body", body: "new", base: "old" }), { kind: "edit_body", body: "new", base: "old" });
-  assert.deepEqual(parseWrite({ kind: "edit_body", body: "new" }), { kind: "edit_body", body: "new", base: null });
-  assert.deepEqual(parseWrite({ kind: "checkbox", index: 0, checked: true, task: "ship it" }),
-    { kind: "checkbox", index: 0, checked: true, task: "ship it" });
+  assert.deepEqual(parseWrite({ kind: "edit_body", body: "new", base: "old" }), {
+    kind: "edit_body",
+    body: "new",
+    base: "old",
+  });
+  assert.deepEqual(parseWrite({ kind: "edit_body", body: "new" }), {
+    kind: "edit_body",
+    body: "new",
+    base: null,
+  });
+  assert.deepEqual(parseWrite({ kind: "checkbox", index: 0, checked: true, task: "ship it" }), {
+    kind: "checkbox",
+    index: 0,
+    checked: true,
+    task: "ship it",
+  });
 });
 
 test("a refusal without GitHub's words says what happened and what to do, never a status", () => {
@@ -87,9 +125,17 @@ test("a refusal without GitHub's words says what happened and what to do, never 
 });
 
 test("GitHub's reason reads its errors' words, not their objects", () => {
-  assert.equal(gitHubReason({ message: "Validation Failed", errors: [{ resource: "Issue", code: "custom",
-    message: "Body is too long" }, { code: "missing_field" }, "plain"] }),
-  "Validation Failed: Body is too long: missing_field: plain");
+  assert.equal(
+    gitHubReason({
+      message: "Validation Failed",
+      errors: [
+        { resource: "Issue", code: "custom", message: "Body is too long" },
+        { code: "missing_field" },
+        "plain",
+      ],
+    }),
+    "Validation Failed: Body is too long: missing_field: plain",
+  );
   assert.equal(gitHubReason({ message: "Not Found" }), "Not Found");
   assert.equal(gitHubReason(null), "");
 });

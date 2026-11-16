@@ -55,26 +55,43 @@ export const PR_BODY_KEPT = 6_000;
  * token (`reach`, from `askGitHubReach`) other repos and GitHub's API too, through tools that only read. The PR's
  * description goes in fenced as data: its author, not the reviewer, wrote it.
  */
-export function askSubscriptionPrompt(
-  { reviewer, repo, number, pr, reach }: {
-    reviewer: string | null; repo: string; number: number; pr: PrFacts | null; reach: "none" | "installation" | "wide";
-  },
-): string {
+export function askSubscriptionPrompt({
+  reviewer,
+  repo,
+  number,
+  pr,
+  reach,
+}: {
+  reviewer: string | null;
+  repo: string;
+  number: number;
+  pr: PrFacts | null;
+  reach: "none" | "installation" | "wide";
+}): string {
   const whose = reviewer ? ` The reviewer you help is \`${reviewer}\`.` : "";
   const about = pr
     ? [
-      `The PR is ${repo}#${number}, "${pr.title}"${pr.author ? ` by \`${pr.author}\`` : ""}${
-        pr.head && pr.base ? `, from \`${pr.head}\` into \`${pr.base}\`` : ""}${pr.state ? ` (${pr.state})` : ""}: ${pr.url}.${whose}`,
-    ]
-    : [`The PR is ${repo}#${number}: https://github.com/${repo}/pull/${number}. GitHub did not give its title or description.${whose}`];
-  const tools = reach !== "none"
-    ? `- \`clone_repo\`: clone another GitHub repo to read it, such as a shared actions or library repo the PR uses, at a branch, tag or commit. Then read it with Read, Grep and Glob at the directory it names, or with \`git\` and \`repo\`.
-- \`github_api\`: GET a path on GitHub's REST API: this PR's reviews, comments and review comments, other PRs and issues, releases and tags, commits and compare, check runs and workflow runs.${reach === "installation"
-      ? `\nYour GitHub token reads the repos of \`${repo.split("/")[0]}\` that the reviewer can see and PRHub's GitHub App is installed on, and public repos. Any other repo answers 404 or fails to clone: say you can't access it, because the reviewer can't see it or the App isn't installed there.`
-      : ""}`
-    : "This Worker gives you no read-only GitHub token, so you can't clone other repos or read GitHub's API: say so when the question needs them.";
+        `The PR is ${repo}#${number}, "${pr.title}"${pr.author ? ` by \`${pr.author}\`` : ""}${
+          pr.head && pr.base ? `, from \`${pr.head}\` into \`${pr.base}\`` : ""
+        }${pr.state ? ` (${pr.state})` : ""}: ${pr.url}.${whose}`,
+      ]
+    : [
+        `The PR is ${repo}#${number}: https://github.com/${repo}/pull/${number}. GitHub did not give its title or description.${whose}`,
+      ];
+  const tools =
+    reach !== "none"
+      ? `- \`clone_repo\`: clone another GitHub repo to read it, such as a shared actions or library repo the PR uses, at a branch, tag or commit. Then read it with Read, Grep and Glob at the directory it names, or with \`git\` and \`repo\`.
+- \`github_api\`: GET a path on GitHub's REST API: this PR's reviews, comments and review comments, other PRs and issues, releases and tags, commits and compare, check runs and workflow runs.${
+          reach === "installation"
+            ? `\nYour GitHub token reads the repos of \`${repo.split("/")[0]}\` that the reviewer can see and PRHub's GitHub App is installed on, and public repos. Any other repo answers 404 or fails to clone: say you can't access it, because the reviewer can't see it or the App isn't installed there.`
+            : ""
+        }`
+      : "This Worker gives you no read-only GitHub token, so you can't clone other repos or read GitHub's API: say so when the question needs them.";
   const body = pr?.body.trim()
-    ? (pr.body.length > PR_BODY_KEPT ? `${pr.body.slice(0, PR_BODY_KEPT)}\n[cut]` : pr.body).replaceAll("</pr-description>", "")
+    ? (pr.body.length > PR_BODY_KEPT
+        ? `${pr.body.slice(0, PR_BODY_KEPT)}\n[cut]`
+        : pr.body
+      ).replaceAll("</pr-description>", "")
     : "(none)";
   return `You help a senior engineer review a pull request, on their phone.
 
@@ -118,7 +135,10 @@ ${body}
 }
 
 /** Makes the four resources in the key's org. Each call makes new ones. */
-export async function createAskResources(apiKey: string, reviewer: string | null): Promise<AskResources> {
+export async function createAskResources(
+  apiKey: string,
+  reviewer: string | null,
+): Promise<AskResources> {
   const client = new Anthropic({ apiKey });
   const environment = await client.beta.environments.create({
     name: "pr-ask-github",
@@ -130,7 +150,9 @@ export async function createAskResources(apiKey: string, reviewer: string | null
   const credential = await client.beta.vaults.credentials.create(vault.id, {
     display_name: "GitHub, read only",
     auth: {
-      type: "environment_variable", secret_name: "GH_TOKEN", secret_value: "unset",
+      type: "environment_variable",
+      secret_name: "GH_TOKEN",
+      secret_value: "unset",
       networking: { type: "limited", allowed_hosts: ["api.github.com"] },
     },
   } as Parameters<typeof client.beta.vaults.credentials.create>[1]);
@@ -138,20 +160,29 @@ export async function createAskResources(apiKey: string, reviewer: string | null
     name: "PR reviewer's helper",
     model: "claude-opus-5-5",
     system: askSystemPrompt(reviewer),
-    tools: [{
-      type: "agent_toolset_20260401",
-      default_config: { enabled: true, permission_policy: { type: "always_allow" } },
-      configs: ["write", "edit", "web_fetch", "web_search"].map((name) => ({ name, enabled: false })),
-    }],
+    tools: [
+      {
+        type: "agent_toolset_20260401",
+        default_config: { enabled: true, permission_policy: { type: "always_allow" } },
+        configs: ["write", "edit", "web_fetch", "web_search"].map((name) => ({
+          name,
+          enabled: false,
+        })),
+      },
+    ],
   } as Parameters<typeof client.beta.agents.create>[0]);
   return {
-    agent_id: agent.id, environment_id: environment.id, vault_id: vault.id, credential_id: credential.id,
+    agent_id: agent.id,
+    environment_id: environment.id,
+    vault_id: vault.id,
+    credential_id: credential.id,
   };
 }
 
 /** Whether Anthropic takes the key: one list of models. `invalid` for 401 or 403, `unavailable` for anything else. */
 export async function checkAnthropicKey(
-  apiKey: string, fetcher: Fetch = (input, init) => fetch(input, init),
+  apiKey: string,
+  fetcher: Fetch = (input, init) => fetch(input, init),
 ): Promise<"ok" | "invalid" | "unavailable"> {
   try {
     const response = await fetcher("https://api.anthropic.com/v1/models?limit=1", {

@@ -10,7 +10,10 @@ cd "$(dirname "$0")"
 PRHUB_E2E_SIMS=$(xcrun simctl list devices | grep 'PRHub E2E' | grep Booted | grep -oE '[0-9A-F-]{36}' | head -n "${BUGBASH_PARALLEL:-2}" | paste -sd, -)
 export PRHUB_E2E_SIMS
 SIMS=$(echo "$PRHUB_E2E_SIMS" | tr ',' '\n' | grep -c .)
-[ "$SIMS" -gt 0 ] || { echo "No 'PRHub E2E' simulators: run ./sims.sh first" >&2; exit 2; }
+[ "$SIMS" -gt 0 ] || {
+	echo "No 'PRHub E2E' simulators: run ./sims.sh first" >&2
+	exit 2
+}
 OUT=.e2e/bugbash/${BUGBASH_RUN:-$(date +%Y%m%d-%H%M)}
 mkdir -p "$OUT"
 rm -rf .e2e/bugbash/sim-*.lock .e2e/bugbash/sim-*.started
@@ -18,8 +21,8 @@ CHARTERS=${1:-charters.txt}
 # Each charter takes the next simulator: the target `<mode>-<n>`.
 n=0
 grep -v '^#' "$CHARTERS" | grep . | while IFS='|' read -r slug mode agent charter; do
-  n=$((n % SIMS + 1))
-  printf '%s\0%s\0%s\0%s\0' "$slug" "$mode-$n" "$agent" "$charter"
+	n=$((n % SIMS + 1))
+	printf '%s\0%s\0%s\0%s\0' "$slug" "$mode-$n" "$agent" "$charter"
 done | xargs -0 -n 4 -P "$SIMS" sh -c '
   # A slot holds one simulator: wait while another charter on it still runs.
   sim=${2##*-}; lock=".e2e/bugbash/sim-$sim.lock"; while ! mkdir "$lock" 2>/dev/null; do sleep 5; done

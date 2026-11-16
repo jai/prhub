@@ -57,6 +57,7 @@ nesting:
   type_level: 3
 
 disabled_rules:
+  - opening_brace # SwiftFormat owns brace placement: it puts a multi-line condition's brace on its own line.
   - todo
   # SwiftFormat owns layout: commas (.swiftformat --commas always) and where an else goes.
   - trailing_comma

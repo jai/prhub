@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PRHub
+import Testing
 
 /// `POST /device/pair` (docs/api.md, "Pairing"): the request, and every answer the contract names as the words the
 /// onboarding screen shows.
@@ -26,7 +26,7 @@ struct PairingTests {
         #expect(request.httpMethod == "POST")
         #expect(request.url?.absoluteString == "https://pr-review.alex.workers.dev/device/pair")
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer \(Self.secret)")
-        let body = try JSONSerialization.jsonObject(with: try #require(request.httpBody)) as? [String: String]
+        let body = try JSONSerialization.jsonObject(with: #require(request.httpBody)) as? [String: String]
         #expect(body == ["code": "7KQ2M9XA"])
     }
 

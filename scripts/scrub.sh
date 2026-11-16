@@ -13,7 +13,8 @@ cd "$root"
 [ $# -gt 0 ] || set -- .
 
 # Each line: a Perl regex. A match anywhere in a file fails the scrub.
-patterns=$(cat <<'EOF'
+patterns=$(
+	cat <<'EOF'
 (?i)EWA-Services|ewa-services\.com|finn-app\.com|EWA-Actions
 (?i)\bfinn\b|\bfinn[-_]|[-_]finn\b
 \bEWA\b|\bewa-|-ewa\b
@@ -39,7 +40,7 @@ EOF
 allowed='https://(agent-pager-relay|prhub)\.jai-f89\.workers\.dev|\bprhub\.jai-f89\.workers\.dev'
 
 files=$(find "$@" \( -name .git -o -name node_modules -o -name .build -o -name DerivedData -o -name build -o -name tmp -o -name .e2e \) -prune -o \
-  -type f ! -name package-lock.json ! -name Package.resolved ! -path ./scripts/scrub.sh ! -path scripts/scrub.sh -print)
+	-type f ! -name package-lock.json ! -name Package.resolved ! -path ./scripts/scrub.sh ! -path scripts/scrub.sh -print)
 
 # shellcheck disable=SC2086
 PATTERNS="$patterns" ALLOWED="$allowed" perl -e '

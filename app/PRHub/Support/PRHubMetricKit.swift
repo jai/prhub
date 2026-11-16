@@ -1,9 +1,9 @@
 import CryptoKit
 import Foundation
-#if os(iOS)
-import MetricKit
-#endif
 import PRKitCore
+#if os(iOS)
+    import MetricKit
+#endif
 
 /// One MetricKit payload on its way to the Worker's `POST /device/metrics` (docs/api.md, "MetricKit reports").
 struct PRHubMetricReport: Codable, Equatable, Sendable {
@@ -144,64 +144,64 @@ final class PRHubMetricReports {
 }
 
 #if os(iOS)
-/// MetricKit's side: subscribes while the reports are on, and hands each payload to `PRHubMetricReports`, the ones iOS
-/// still holds from the past week too (each sent once).
-@MainActor
-final class PRHubMetricKit {
-    let reports: PRHubMetricReports
-    private var subscriber: Subscriber?
-
-    init(reports: PRHubMetricReports) {
-        self.reports = reports
-    }
-
-    func update(isOn: Bool) {
-        reports.set(isOn: isOn)
-        if isOn, subscriber == nil {
-            let subscriber = Subscriber(reports: reports)
-            self.subscriber = subscriber
-            MXMetricManager.shared.add(subscriber)
-            for json in MXMetricManager.shared.pastPayloads.map({ $0.jsonRepresentation() }) {
-                reports.keep(.metric, json: json)
-            }
-            for json in MXMetricManager.shared.pastDiagnosticPayloads.map({ $0.jsonRepresentation() }) {
-                reports.keep(.diagnostic, json: json)
-            }
-        } else if !isOn, let subscriber {
-            MXMetricManager.shared.remove(subscriber)
-            self.subscriber = nil
-        }
-    }
-
-    func flush() async {
-        await reports.flush()
-    }
-
-    /// MetricKit calls it on a queue of its own; the payloads become JSON there, and are kept on the main actor.
-    private final class Subscriber: NSObject, MXMetricManagerSubscriber, Sendable {
+    /// MetricKit's side: subscribes while the reports are on, and hands each payload to `PRHubMetricReports`, the ones iOS
+    /// still holds from the past week too (each sent once).
+    @MainActor
+    final class PRHubMetricKit {
         let reports: PRHubMetricReports
+        private var subscriber: Subscriber?
 
         init(reports: PRHubMetricReports) {
             self.reports = reports
         }
 
-        func didReceive(_ payloads: [MXMetricPayload]) {
-            hand(.metric, payloads.map { $0.jsonRepresentation() })
-        }
-
-        func didReceive(_ payloads: [MXDiagnosticPayload]) {
-            hand(.diagnostic, payloads.map { $0.jsonRepresentation() })
-        }
-
-        private func hand(_ kind: PRHubMetricReport.Kind, _ jsons: [Data]) {
-            let reports = reports
-            Task { @MainActor in
-                for json in jsons {
-                    reports.keep(kind, json: json)
+        func update(isOn: Bool) {
+            reports.set(isOn: isOn)
+            if isOn, subscriber == nil {
+                let subscriber = Subscriber(reports: reports)
+                self.subscriber = subscriber
+                MXMetricManager.shared.add(subscriber)
+                for json in MXMetricManager.shared.pastPayloads.map({ $0.jsonRepresentation() }) {
+                    reports.keep(.metric, json: json)
                 }
-                await reports.flush()
+                for json in MXMetricManager.shared.pastDiagnosticPayloads.map({ $0.jsonRepresentation() }) {
+                    reports.keep(.diagnostic, json: json)
+                }
+            } else if !isOn, let subscriber {
+                MXMetricManager.shared.remove(subscriber)
+                self.subscriber = nil
+            }
+        }
+
+        func flush() async {
+            await reports.flush()
+        }
+
+        /// MetricKit calls it on a queue of its own; the payloads become JSON there, and are kept on the main actor.
+        private final class Subscriber: NSObject, MXMetricManagerSubscriber, Sendable {
+            let reports: PRHubMetricReports
+
+            init(reports: PRHubMetricReports) {
+                self.reports = reports
+            }
+
+            func didReceive(_ payloads: [MXMetricPayload]) {
+                hand(.metric, payloads.map { $0.jsonRepresentation() })
+            }
+
+            func didReceive(_ payloads: [MXDiagnosticPayload]) {
+                hand(.diagnostic, payloads.map { $0.jsonRepresentation() })
+            }
+
+            private func hand(_ kind: PRHubMetricReport.Kind, _ jsons: [Data]) {
+                let reports = reports
+                Task { @MainActor in
+                    for json in jsons {
+                        reports.keep(kind, json: json)
+                    }
+                    await reports.flush()
+                }
             }
         }
     }
-}
 #endif

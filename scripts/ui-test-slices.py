@@ -22,8 +22,8 @@ from pathlib import Path
 
 TESTS = Path(__file__).resolve().parent.parent / "app" / "PRHubUITests"
 TIMES = TESTS / "times.txt"
-CLASS = re.compile(r"^\s*(?:final\s+)?class\s+(\w+)\s*:\s*XCTestCase", re.M)
-TEST = re.compile(r"^\s*func\s+(test\w*)\s*\(", re.M)
+CLASS = re.compile(r"^\s*(?:final\s+)?class\s+(\w+)\s*:\s*XCTestCase", re.MULTILINE)
+TEST = re.compile(r"^\s*func\s+(test\w*)\s*\(", re.MULTILINE)
 
 
 def tests() -> list[str]:

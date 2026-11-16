@@ -1,6 +1,6 @@
 import SwiftUI
 #if os(iOS)
-import UIKit
+    import UIKit
 #endif
 
 /// PRHub's one other screen. Signed in with GitHub: the account, where the GitHub App is installed, the person's own
@@ -17,14 +17,16 @@ struct PRHubSettingsView: View {
     @State private var confirmsDelete = false
     @State private var signingOut = false
 
-    private var connection: WorkerConnection { environment.connection }
+    private var connection: WorkerConnection {
+        environment.connection
+    }
 
     var body: some View {
         #if os(iOS)
-        NavigationStack { page }
+            NavigationStack { page }
         #else
-        // A window of its own on the Mac (`PRHubMacSettings`), with nothing to push.
-        page
+            // A window of its own on the Mac (`PRHubMacSettings`), with nothing to push.
+            page
         #endif
     }
 
@@ -67,7 +69,7 @@ struct PRHubSettingsView: View {
             note: connection.build.signInWithGitHub
                 ? "Sign in with GitHub to see your own PRs."
                 : "PRHub shows your own PRs through a pr-worker that you deploy to your Cloudflare account. "
-                    + "The guide is at github.com/jai/prhub."
+                + "The guide is at github.com/jai/prhub."
         ) {
             Text("You're looking at sample PRs in made-up repos. Nothing you do here reaches GitHub.")
                 .font(.appFootnote)
@@ -182,7 +184,7 @@ struct PRHubSettingsView: View {
                     Button("Disconnect", role: .destructive) { Task { await environment.disconnect() } }
                 } message: {
                     Text("PRHub forgets this Worker and its PRs. To connect again, run npm run pair on your "
-                         + "pr-worker for a new setup link.")
+                        + "pr-worker for a new setup link.")
                 }
         }
         .padding(.top, Space.lg)
@@ -202,14 +204,14 @@ struct PRHubSettingsView: View {
             .accessibilityIdentifier("prhub-turn-on-alerts")
         case .denied:
             #if os(iOS)
-            Button("Review alerts are off in iOS Settings", systemImage: AppIcon.alertsOff.symbol) {
-                if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
-                    UIApplication.shared.open(url)
+                Button("Review alerts are off in iOS Settings", systemImage: AppIcon.alertsOff.symbol) {
+                    if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
                 }
-            }
-            .buttonStyle(PRButtonStyle(.secondary))
+                .buttonStyle(PRButtonStyle(.secondary))
             #else
-            PRValueLine("Review alerts", value: "Off in System Settings")
+                PRValueLine("Review alerts", value: "Off in System Settings")
             #endif
         case .unknown:
             PRValueLine("Review alerts", value: "…")

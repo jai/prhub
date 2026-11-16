@@ -116,11 +116,11 @@ final class PRHubHostedUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Show a retry button when checkout fails"].waitForExistence(timeout: 10))
     }
 
-    func testASetupLinkSaysSelfHostingIsOff() {
+    func testASetupLinkSaysSelfHostingIsOff() throws {
         app.launchArguments = ["-PRHubFirstRun"]
         app.launch()
         XCTAssertTrue(app.buttons["onboardingSignIn"].waitForExistence(timeout: 10))
-        app.open(URL(string: "prhub://setup?worker=https%3A%2F%2Fpr-review.example.workers.dev&code=7KQ2M9XA")!)
+        try app.open(XCTUnwrap(URL(string: "prhub://setup?worker=https%3A%2F%2Fpr-review.example.workers.dev&code=7KQ2M9XA")))
         let status = app.descendants(matching: .any)["onboardingStatus"]
         XCTAssertTrue(status.waitForExistence(timeout: 5))
         XCTAssertTrue(status.label.contains("self-hosted"), status.label)

@@ -1,6 +1,6 @@
+import Foundation
 import PRKitCore
 import PRKitDesign
-import Foundation
 
 /// A PR's description, status and conversation, as the Worker stores them (`Detail` in worker/src/github.ts).
 public struct PullRequestDetail: Decodable, Sendable {
@@ -64,7 +64,9 @@ public struct PullRequestDetail: Decodable, Sendable {
         public let name: String
         public let color: String
 
-        public var id: String { name }
+        public var id: String {
+            name
+        }
     }
 
     public struct Check: Decodable, Identifiable, Sendable {
@@ -76,7 +78,9 @@ public struct PullRequestDetail: Decodable, Sendable {
         /// The Actions workflow that ran it: null for a commit status, absent in a detail saved before the Worker said.
         public var workflow: String?
 
-        public var id: String { "\(workflow ?? "")\n\(name)\(url ?? "")" }
+        public var id: String {
+            "\(workflow ?? "")\n\(name)\(url ?? "")"
+        }
     }
 
     /// PolicyBot's status on the head, where the repo uses it: the real gate, not GitHub's `reviewDecision`.
@@ -105,7 +109,10 @@ public struct PullRequestDetail: Decodable, Sendable {
                 : first.name.localizedCaseInsensitiveCompare(second.name) == .orderedAscending
         }
     }
-    private var knowsRequired: Bool { checks.contains { $0.required != nil } }
+
+    private var knowsRequired: Bool {
+        checks.contains { $0.required != nil }
+    }
 
     /// The checks that decide anything: the required ones. A detail saved before the Worker said has only all.
     public var decidingChecks: [Check] {
@@ -127,7 +134,9 @@ public struct PullRequestDetail: Decodable, Sendable {
         public let avatarUrl: String?
         public let state: String
 
-        public var id: String { login }
+        public var id: String {
+            login
+        }
     }
 
     /// Absent only in a sample detail. GitHub's own id, which marking a file viewed needs.
@@ -264,10 +273,10 @@ public enum PRMarkdown {
     }
 }
 
-extension PullRequestDetail {
+public extension PullRequestDetail {
     /// Who the PR is from, in a person's words: the human a bot opened it for and the bot, a bot alone, or the author.
     /// A bot always says it is one.
-    public var byline: String {
+    var byline: String {
         let author = author.map { $0.name ?? $0.login } ?? "ghost"
         guard authorIsBot == true else {
             return author
@@ -280,7 +289,7 @@ extension PullRequestDetail {
     }
 
     /// The face beside the byline: the human a bot opened it for, else the author.
-    public var bylineAvatar: Author? {
+    var bylineAvatar: Author? {
         guard authorIsBot == true, let human = requestedBy, let login = human.login ?? human.name else {
             return author
         }
@@ -289,7 +298,7 @@ extension PullRequestDetail {
 
     /// The title without the brackets naming tickets the page shows: `[ENG-1686] [CORE-12] Count it once` is "Count it
     /// once" over ENG-1686 and CORE-12. A bracket naming anything else stays.
-    public func title(_ title: String) -> String {
+    func title(_ title: String) -> String {
         let shown = Set((tickets ?? []).map { $0.key.uppercased() })
         guard !shown.isEmpty else {
             return title

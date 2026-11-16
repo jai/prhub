@@ -1,6 +1,6 @@
+import Foundation
 import PRKitCore
 import PRKitDesign
-import Foundation
 
 /// A unified diff as a table of lines over its bytes. A line is decoded when it is drawn, so the cost of opening a diff
 /// is one pass over the bytes, whatever its size.
@@ -52,7 +52,7 @@ struct DiffDocument: Sendable {
     // Lossy on purpose, here and in the parser: a line of a file that is not UTF-8 still shows.
     func text(of line: Line, limit: Int? = nil) -> String {
         let start = data.startIndex + line.start
-        return String(decoding: data[start..<(start + min(line.length, limit ?? line.length))], as: UTF8.self)
+        return String(decoding: data[start ..< (start + min(line.length, limit ?? line.length))], as: UTF8.self)
     }
 }
 
@@ -74,7 +74,7 @@ private struct Parser {
                 while end < bytes.count, bytes[end] != 0x0A {
                     end += 1
                 }
-                append(UnsafeRawBufferPointer(rebasing: bytes[start..<end]), start: start)
+                append(UnsafeRawBufferPointer(rebasing: bytes[start ..< end]), start: start)
                 start = end + 1
             }
         }
@@ -153,4 +153,5 @@ private struct Parser {
         newLine = Int(fields[2].dropFirst().prefix { $0 != "," }) ?? 0
     }
 }
+
 // swiftlint:enable optional_data_string_conversion

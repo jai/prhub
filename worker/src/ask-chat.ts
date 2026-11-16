@@ -4,7 +4,11 @@ import type { RepoFullName, Sha } from "./ids.ts";
 import type { LinearMention, LinearProposal, LinearSession } from "./linear-act.ts";
 
 /** Where a PR's Ask session is named: under `users/<id>/` for a hosted person, so nobody else's chat can find it. */
-export function askRecordKey(repo: RepoFullName, number: number, env: Pick<Env, "SIGNED_IN_USER_ID">): string {
+export function askRecordKey(
+  repo: RepoFullName,
+  number: number,
+  env: Pick<Env, "SIGNED_IN_USER_ID">,
+): string {
   return scopedKey(env, `ask/${repo}/${number}.json`);
 }
 
@@ -47,17 +51,34 @@ export function draftOf(value: unknown): AskDraft | null {
   if (typeof value !== "object" || value === null) {
     return null;
   }
-  const { event, body, comments } = value as { event?: unknown; body?: unknown; comments?: unknown };
-  if (typeof event !== "string" || !EVENTS.has(event) || typeof body !== "string" || !Array.isArray(comments)) {
+  const { event, body, comments } = value as {
+    event?: unknown;
+    body?: unknown;
+    comments?: unknown;
+  };
+  if (
+    typeof event !== "string" ||
+    !EVENTS.has(event) ||
+    typeof body !== "string" ||
+    !Array.isArray(comments)
+  ) {
     return null;
   }
   const kept = comments.slice(0, DRAFT_COMMENTS).flatMap((one): AskDraftComment[] => {
     const { path, line, side, body: words } = (one ?? {}) as Record<string, unknown>;
-    return typeof path === "string" && path && Number.isInteger(line) && (line as number) > 0
-      && (side === "LEFT" || side === "RIGHT") && typeof words === "string" && words.trim()
-      ? [{ path, line: line as number, side, body: words }] : [];
+    return typeof path === "string" &&
+      path &&
+      Number.isInteger(line) &&
+      (line as number) > 0 &&
+      (side === "LEFT" || side === "RIGHT") &&
+      typeof words === "string" &&
+      words.trim()
+      ? [{ path, line: line as number, side, body: words }]
+      : [];
   });
-  return body.trim() || kept.length > 0 ? { event: event as AskDraft["event"], body, comments: kept } : null;
+  return body.trim() || kept.length > 0
+    ? { event: event as AskDraft["event"], body, comments: kept }
+    : null;
 }
 
 export interface AskMessage {
@@ -117,11 +138,15 @@ export { parseAskInput } from "./boundary.ts";
 export function askPrompt({ question, head, anchor }: AskInput, movedFrom: string | null): string {
   const context = [`The PR's head is ${head}.`];
   if (movedFrom && movedFrom !== head) {
-    context.push(`It has moved since the last question: run git fetch origin ${head} && git checkout ${head} first.`);
+    context.push(
+      `It has moved since the last question: run git fetch origin ${head} && git checkout ${head} first.`,
+    );
   }
   if (anchor) {
     const code = anchor.code ? `: ${anchor.code}` : "";
-    context.push(`Asked about ${anchor.path}:${anchor.line} on the ${anchor.side === "LEFT" ? "old" : "new"} side${code}`);
+    context.push(
+      `Asked about ${anchor.path}:${anchor.line} on the ${anchor.side === "LEFT" ? "old" : "new"} side${code}`,
+    );
   }
   return `${context.join("\n")}${QUESTION}${question}`;
 }
@@ -137,12 +162,16 @@ interface SessionEvent {
 }
 
 function textOf(event: SessionEvent): string {
-  return (event.content ?? []).flatMap((block) => (block.type === "text" && block.text ? [block.text] : [])).join("\n");
+  return (event.content ?? [])
+    .flatMap((block) => (block.type === "text" && block.text ? [block.text] : []))
+    .join("\n");
 }
 
 function activityOf(event: SessionEvent): string {
   const target = event.input?.file_path ?? event.input?.path ?? event.input?.pattern;
-  return event.name === "bash" || !target ? "Reading the repo" : `Reading ${target.split("/").pop()}`;
+  return event.name === "bash" || !target
+    ? "Reading the repo"
+    : `Reading ${target.split("/").pop()}`;
 }
 
 const STOPS: Record<string, string> = {
@@ -152,7 +181,9 @@ const STOPS: Record<string, string> = {
 
 /** Working from the question until the session goes idle: right after a send it can still read idle from before. */
 export function chatOf(
-  events: SessionEvent[], costCents: number | null, marker = QUESTION,
+  events: SessionEvent[],
+  costCents: number | null,
+  marker = QUESTION,
   run: { model: string; effort: string | null } | null = null,
 ): AskChat {
   const messages: AskChatMessage[] = [];
@@ -165,7 +196,9 @@ export function chatOf(
       const split = text.indexOf(marker);
       const anchor = ANCHOR.exec(text);
       messages.push({
-        id: event.id, role: "you", text: split < 0 ? text : text.slice(split + marker.length),
+        id: event.id,
+        role: "you",
+        text: split < 0 ? text : text.slice(split + marker.length),
         anchor: anchor ? `${anchor[1]}:${anchor[2]}` : null,
       });
       isWorking = true;
@@ -177,7 +210,10 @@ export function chatOf(
       activity = activityOf(event);
     } else if (event.type === "session.error") {
       problem = event.error?.message ?? "The agent hit an error.";
-    } else if (event.type === "session.status_idle" && event.stop_reason?.type !== "requires_action") {
+    } else if (
+      event.type === "session.status_idle" &&
+      event.stop_reason?.type !== "requires_action"
+    ) {
       isWorking = false;
       activity = null;
       problem = STOPS[event.stop_reason?.type ?? ""] ?? null;
@@ -187,5 +223,13 @@ export function chatOf(
       problem = "This chat has ended. The next question starts a new one.";
     }
   }
-  return { messages, isWorking, activity, problem, costCents, model: run?.model ?? null, effort: run?.effort ?? null };
+  return {
+    messages,
+    isWorking,
+    activity,
+    problem,
+    costCents,
+    model: run?.model ?? null,
+    effort: run?.effort ?? null,
+  };
 }

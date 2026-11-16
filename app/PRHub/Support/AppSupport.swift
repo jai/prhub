@@ -1,7 +1,7 @@
 import DurableNetworking
 import Foundation
 #if os(iOS)
-import UIKit
+    import UIKit
 #endif
 
 /// The app's bundle ID: the keychain service its device secret and Worker URL live under. Installs from earlier PRHub
@@ -17,9 +17,9 @@ enum AppIdentity {
     /// What the app's words call the device it runs on.
     static var deviceName: String {
         #if os(macOS)
-        "Mac"
+            "Mac"
         #else
-        "phone"
+            "phone"
         #endif
     }
 
@@ -31,9 +31,9 @@ enum AppIdentity {
     /// Whether a push can reach this app: the phone registers for them at launch (`AppDelegate`); the Mac does not.
     static var receivesPushes: Bool {
         #if os(iOS)
-        true
+            true
         #else
-        false
+            false
         #endif
     }
 
@@ -48,10 +48,10 @@ enum AppIdentity {
     /// first unlock) has been seen to answer not-found (`DeviceSecretStore.loadOrCreate`).
     @MainActor static func protectedDataAvailability() -> @Sendable () -> Bool {
         #if os(iOS)
-        let application = UIApplication.shared
-        return { application.isProtectedDataAvailable }
+            let application = UIApplication.shared
+            return { application.isProtectedDataAvailable }
         #else
-        return { true }
+            return { true }
         #endif
     }
 }
@@ -86,8 +86,8 @@ struct ReadsFailFastOffline: HTTPTransport {
 @MainActor
 func appIsInForeground() -> Bool {
     #if os(iOS)
-    UIApplication.shared.applicationState != .background
+        UIApplication.shared.applicationState != .background
     #else
-    true
+        true
     #endif
 }

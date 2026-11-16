@@ -9,19 +9,38 @@ import type { Fetch } from "./oauth.ts";
 
 /** What the hosted webhook can do with one delivery. */
 export type AppDelivery =
-  | { kind: "installation"; installationId: string; action: string; account: string | null; repos: string[];
-    senderId: number | null }
-  | { kind: "installation_repositories"; installationId: string; action: string; added: string[]; removed: string[];
-    senderId: number | null }
+  | {
+      kind: "installation";
+      installationId: string;
+      action: string;
+      account: string | null;
+      repos: string[];
+      senderId: number | null;
+    }
+  | {
+      kind: "installation_repositories";
+      installationId: string;
+      action: string;
+      added: string[];
+      removed: string[];
+      senderId: number | null;
+    }
   | { kind: "target"; installationId: string; target: DeliveryTarget };
 
 const PULL_REQUEST_EVENTS = new Set([
-  "pull_request", "pull_request_review", "pull_request_review_comment", "pull_request_review_thread",
+  "pull_request",
+  "pull_request_review",
+  "pull_request_review_comment",
+  "pull_request_review_thread",
 ]);
 
 const Login = z.object({ login: z.string() }).nullish();
-const RepoNames = z.array(z.object({ full_name: z.string() })).nullish()
-  .transform((repos) => (repos ?? []).flatMap(({ full_name: name }) => parseRepoFullName(name) ? [name] : []));
+const RepoNames = z
+  .array(z.object({ full_name: z.string() }))
+  .nullish()
+  .transform((repos) =>
+    (repos ?? []).flatMap(({ full_name: name }) => (parseRepoFullName(name) ? [name] : [])),
+  );
 const Base = z.object({
   action: z.string().nullish(),
   installation: z.object({ id: z.number().int().positive(), account: Login }).nullish(),
@@ -29,14 +48,23 @@ const Base = z.object({
   repository: z.object({ full_name: z.string() }).nullish(),
 });
 const PullRequestPayload = Base.extend({
-  pull_request: z.object({
-    number: z.number().int().positive(), user: Login, requested_reviewers: z.array(z.object({ login: z.string().nullish() }).loose()).nullish(),
-  }).nullish(),
-  issue: z.object({ number: z.number().int().positive(), pull_request: z.unknown(), user: Login }).nullish(),
+  pull_request: z
+    .object({
+      number: z.number().int().positive(),
+      user: Login,
+      requested_reviewers: z.array(z.object({ login: z.string().nullish() }).loose()).nullish(),
+    })
+    .nullish(),
+  issue: z
+    .object({ number: z.number().int().positive(), pull_request: z.unknown(), user: Login })
+    .nullish(),
   requested_reviewer: Login,
 });
 const InstallationPayload = Base.extend({ repositories: RepoNames });
-const InstallationReposPayload = Base.extend({ repositories_added: RepoNames, repositories_removed: RepoNames });
+const InstallationReposPayload = Base.extend({
+  repositories_added: RepoNames,
+  repositories_removed: RepoNames,
+});
 const CheckSuitePayload = Base.extend({ check_suite: z.object({ head_sha: z.string() }) });
 const StatusPayload = Base.extend({ sha: z.string() });
 
@@ -51,17 +79,29 @@ export function parseAppDelivery(event: string | null, payload: unknown): AppDel
   const action = base.data.action ?? "";
   if (event === "installation") {
     const parsed = InstallationPayload.safeParse(payload);
-    return parsed.success ? {
-      kind: "installation", installationId, action, account: base.data.installation.account?.login ?? null,
-      repos: parsed.data.repositories, senderId,
-    } : null;
+    return parsed.success
+      ? {
+          kind: "installation",
+          installationId,
+          action,
+          account: base.data.installation.account?.login ?? null,
+          repos: parsed.data.repositories,
+          senderId,
+        }
+      : null;
   }
   if (event === "installation_repositories") {
     const parsed = InstallationReposPayload.safeParse(payload);
-    return parsed.success ? {
-      kind: "installation_repositories", installationId, action, added: parsed.data.repositories_added,
-      removed: parsed.data.repositories_removed, senderId,
-    } : null;
+    return parsed.success
+      ? {
+          kind: "installation_repositories",
+          installationId,
+          action,
+          added: parsed.data.repositories_added,
+          removed: parsed.data.repositories_removed,
+          senderId,
+        }
+      : null;
   }
   const repo = parseRepoFullName(base.data.repository?.full_name);
   if (!repo) {
@@ -73,8 +113,13 @@ export function parseAppDelivery(event: string | null, payload: unknown): AppDel
 
 function targetOf(event: string, repo: RepoFullName, payload: unknown): DeliveryTarget | null {
   if (event === "check_suite" || event === "status") {
-    const parsed = event === "status" ? StatusPayload.safeParse(payload) : CheckSuitePayload.safeParse(payload);
-    const raw = parsed.success ? ("sha" in parsed.data ? parsed.data.sha : parsed.data.check_suite.head_sha) : null;
+    const parsed =
+      event === "status" ? StatusPayload.safeParse(payload) : CheckSuitePayload.safeParse(payload);
+    const raw = parsed.success
+      ? "sha" in parsed.data
+        ? parsed.data.sha
+        : parsed.data.check_suite.head_sha
+      : null;
     const sha = parseSha(raw);
     return sha ? { kind: "head", repo, sha } : null;
   }
@@ -87,20 +132,27 @@ function targetOf(event: string, repo: RepoFullName, payload: unknown): Delivery
   }
   const { pull_request: pr, issue, requested_reviewer: requested } = parsed.data;
   if (event === "issue_comment") {
-    return issue?.pull_request ? { kind: "pr", repo, number: issue.number, author: issue.user?.login ?? null, reviewers: [] }
+    return issue?.pull_request
+      ? { kind: "pr", repo, number: issue.number, author: issue.user?.login ?? null, reviewers: [] }
       : null;
   }
   if (!pr) {
     return null;
   }
-  const reviewers = [...(pr.requested_reviewers ?? []).map((reviewer) => reviewer.login), requested?.login]
-    .filter((login): login is string => typeof login === "string");
+  const reviewers = [
+    ...(pr.requested_reviewers ?? []).map((reviewer) => reviewer.login),
+    requested?.login,
+  ].filter((login): login is string => typeof login === "string");
   return { kind: "pr", repo, number: pr.number, author: pr.user?.login ?? null, reviewers };
 }
 
 /** Pages read of each list; past them a person sees the rest through the poll. */
 const MAX_PAGES = 20;
-const HEADERS = { Accept: "application/vnd.github+json", "User-Agent": "pr-viewer", "X-GitHub-Api-Version": "2022-11-28" };
+const HEADERS = {
+  Accept: "application/vnd.github+json",
+  "User-Agent": "pr-viewer",
+  "X-GitHub-Api-Version": "2022-11-28",
+};
 
 /**
  * One installation the person reaches, as `GET /device/config` names it (docs/api.md): whose it is, its picture, and
@@ -122,17 +174,27 @@ export type InstallationAccount = z.infer<typeof InstallationAccountSchema>;
  * An installation in `GET /user/installations`. An enterprise's, or one GitHub sends without its account, is no account
  * of the person's to show.
  */
-const InstallationItem = z.object({
-  id: z.number().int().positive(),
-  account: z.object({
-    login: z.string(), type: z.string().nullish(), avatar_url: z.string().nullish(),
-  }).loose().nullish(),
-  repository_selection: z.string().nullish(),
-  suspended_at: z.string().nullish(),
-}).loose();
+const InstallationItem = z
+  .object({
+    id: z.number().int().positive(),
+    account: z
+      .object({
+        login: z.string(),
+        type: z.string().nullish(),
+        avatar_url: z.string().nullish(),
+      })
+      .loose()
+      .nullish(),
+    repository_selection: z.string().nullish(),
+    suspended_at: z.string().nullish(),
+  })
+  .loose();
 const InstallationsPage = z.object({ installations: z.array(InstallationItem) });
 
-function accountOf(item: z.infer<typeof InstallationItem>, repos: string[] | null): InstallationAccount | null {
+function accountOf(
+  item: z.infer<typeof InstallationItem>,
+  repos: string[] | null,
+): InstallationAccount | null {
   const parsed = InstallationAccountSchema.safeParse({
     account: item.account?.login,
     account_type: item.account?.type,
@@ -147,7 +209,10 @@ function accountOf(item: z.infer<typeof InstallationItem>, repos: string[] | nul
 const ReposPage = z.object({ repositories: z.array(z.object({ full_name: z.string() }).loose()) });
 
 async function pages<Item>(
-  url: string, token: string, fetcher: Fetch, itemsOf: (body: unknown) => Item[] | null,
+  url: string,
+  token: string,
+  fetcher: Fetch,
+  itemsOf: (body: unknown) => Item[] | null,
 ): Promise<Item[] | null> {
   const items: Item[] = [];
   for (let page = 1; page <= MAX_PAGES; page += 1) {
@@ -185,11 +250,19 @@ export interface ListedInstallation {
  * `GET /user/installations/{id}/repositories`. Null when GitHub could not answer all of it, so nothing is dropped on a
  * partial answer.
  */
-export async function listInstallations(token: string, fetcher: Fetch): Promise<Map<string, ListedInstallation> | null> {
-  const installations = await pages("https://api.github.com/user/installations", token, fetcher, (body) => {
-    const parsed = InstallationsPage.safeParse(body);
-    return parsed.success ? parsed.data.installations : null;
-  });
+export async function listInstallations(
+  token: string,
+  fetcher: Fetch,
+): Promise<Map<string, ListedInstallation> | null> {
+  const installations = await pages(
+    "https://api.github.com/user/installations",
+    token,
+    fetcher,
+    (body) => {
+      const parsed = InstallationsPage.safeParse(body);
+      return parsed.success ? parsed.data.installations : null;
+    },
+  );
   if (!installations) {
     return null;
   }
@@ -197,21 +270,32 @@ export async function listInstallations(token: string, fetcher: Fetch): Promise<
   for (const installation of installations) {
     if (installation.suspended_at) {
       listed.set(String(installation.id), {
-        account: installation.account?.login ?? null, repos: null, summary: accountOf(installation, null),
+        account: installation.account?.login ?? null,
+        repos: null,
+        summary: accountOf(installation, null),
       });
       continue;
     }
-    const repos = await pages(`https://api.github.com/user/installations/${installation.id}/repositories`, token,
-      fetcher, (body) => {
+    const repos = await pages(
+      `https://api.github.com/user/installations/${installation.id}/repositories`,
+      token,
+      fetcher,
+      (body) => {
         const parsed = ReposPage.safeParse(body);
         return parsed.success
-          ? parsed.data.repositories.flatMap(({ full_name: name }) => parseRepoFullName(name) ? [name] : []) : null;
-      });
+          ? parsed.data.repositories.flatMap(({ full_name: name }) =>
+              parseRepoFullName(name) ? [name] : [],
+            )
+          : null;
+      },
+    );
     if (!repos) {
       return null;
     }
     listed.set(String(installation.id), {
-      account: installation.account?.login ?? null, repos, summary: accountOf(installation, repos),
+      account: installation.account?.login ?? null,
+      repos,
+      summary: accountOf(installation, repos),
     });
   }
   return listed;
@@ -219,14 +303,25 @@ export async function listInstallations(token: string, fetcher: Fetch): Promise<
 
 /** The parts of a person's account and of an installation that a sync needs. */
 export interface SyncAccount {
-  accessToken(): Promise<{ kind: "ok"; token: string; login: string; userId: string } | { kind: string }>;
+  accessToken(): Promise<
+    { kind: "ok"; token: string; login: string; userId: string } | { kind: string }
+  >;
   claimInstallationSync(now: number, gapMs: number): Promise<boolean> | boolean;
   installationIds(): Promise<string[]> | string[];
-  setInstallations(ids: string[], now: number, accounts: InstallationAccount[]): Promise<void> | void;
+  setInstallations(
+    ids: string[],
+    now: number,
+    accounts: InstallationAccount[],
+  ): Promise<void> | void;
 }
 
 export interface InstallationApi {
-  join(member: Pick<Member, "user_id" | "login">, repos: string[], account: string | null, now: number): unknown;
+  join(
+    member: Pick<Member, "user_id" | "login">,
+    repos: string[],
+    account: string | null,
+    now: number,
+  ): unknown;
   leave(userId: string): unknown;
   reposAdded(repos: string[], now: number): unknown;
   reposRemoved(repos: string[]): unknown;
@@ -242,7 +337,11 @@ export interface InstallationApi {
  * GitHub did not answer.
  */
 export async function syncInstallations(
-  account: SyncAccount, installation: (id: string) => InstallationApi, fetcher: Fetch, now: number, gapMs: number,
+  account: SyncAccount,
+  installation: (id: string) => InstallationApi,
+  fetcher: Fetch,
+  now: number,
+  gapMs: number,
 ): Promise<boolean> {
   if (!(await account.claimInstallationSync(now, gapMs))) {
     return false;
@@ -266,14 +365,18 @@ export async function syncInstallations(
       await installation(id).leave(answer.userId);
     }
   }
-  const accounts = [...listed.values()].flatMap(({ summary }) => summary ? [summary] : []);
+  const accounts = [...listed.values()].flatMap(({ summary }) => (summary ? [summary] : []));
   await account.setInstallations([...listed.keys()], now, sortedAccounts(accounts, answer.login));
   return true;
 }
 
 /** The person's own account first, then the rest by name. */
 function sortedAccounts(accounts: InstallationAccount[], login: string): InstallationAccount[] {
-  const own = (entry: InstallationAccount) => entry.account.toLowerCase() === login.toLowerCase() ? 0 : 1;
-  return accounts.toSorted((left, right) => own(left) - own(right)
-    || left.account.localeCompare(right.account, "en", { sensitivity: "base" }));
+  const own = (entry: InstallationAccount) =>
+    entry.account.toLowerCase() === login.toLowerCase() ? 0 : 1;
+  return accounts.toSorted(
+    (left, right) =>
+      own(left) - own(right) ||
+      left.account.localeCompare(right.account, "en", { sensitivity: "base" }),
+  );
 }

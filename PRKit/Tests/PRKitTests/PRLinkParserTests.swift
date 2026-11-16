@@ -1,5 +1,5 @@
-import Testing
 @testable import PRKit
+import Testing
 
 /// What a PR is named by, wherever words come from: a link, and later the clipboard, a share sheet or a quick jump.
 struct PRLinkParserTests {

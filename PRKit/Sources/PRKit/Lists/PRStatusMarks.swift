@@ -1,16 +1,16 @@
 import PRKitCore
 import PRKitDesign
 
-extension PullRequestStatus {
+public extension PullRequestStatus {
     /// Merged or closed alone. Open: its checks, its review, then what stands in the merge's way — `Blocked` only
     /// where neither of the others shows why. A draft says so first and leaves the merge out: it cannot merge.
-    public var statusMarks: [PrStatusMark] {
+    var statusMarks: [PrStatusMark] {
         Self.marks(state: state, checks: checks, review: review, merge: merge)
     }
 
     /// What a list says under a PR's title: `statusMarks` without the state, which has its own place. A merged or closed
     /// PR has none, and a draft keeps Conflicts.
-    public var signalMarks: [PrStatusMark] {
+    var signalMarks: [PrStatusMark] {
         switch state {
         case .merged, .closed, nil: []
         case .open: statusMarks
@@ -18,7 +18,7 @@ extension PullRequestStatus {
         }
     }
 
-    public static func marks(state: State?, checks: Checks?, review: Review?, merge: Merge?) -> [PrStatusMark] {
+    static func marks(state: State?, checks: Checks?, review: Review?, merge: Merge?) -> [PrStatusMark] {
         switch state {
         case .merged: return [PrStatusMark(symbol: AppIcon.merged.symbol, text: "Merged", tone: .merged)]
         case .closed: return [PrStatusMark(symbol: AppIcon.closed.symbol, text: "Closed", tone: .quiet)]
@@ -32,8 +32,8 @@ extension PullRequestStatus {
     }
 }
 
-extension PullRequestStatus.Checks {
-    public var mark: PrStatusMark? {
+public extension PullRequestStatus.Checks {
+    var mark: PrStatusMark? {
         switch self {
         case .passing: PrStatusMark(symbol: AppIcon.checksPass.symbol, text: "Checks pass", tone: .good)
         case .failing: PrStatusMark(symbol: AppIcon.checksFail.symbol, text: "Checks fail", tone: .bad)
@@ -43,8 +43,8 @@ extension PullRequestStatus.Checks {
     }
 }
 
-extension PullRequestStatus.Review {
-    public var mark: PrStatusMark? {
+public extension PullRequestStatus.Review {
+    var mark: PrStatusMark? {
         switch self {
         case .approved: PrStatusMark(symbol: AppIcon.reviewApproved.symbol, text: "Approved", tone: .good)
         case .changesRequested:
@@ -56,9 +56,9 @@ extension PullRequestStatus.Review {
     }
 }
 
-extension PullRequestStatus.Merge {
+public extension PullRequestStatus.Merge {
     /// GitHub's merge state; `unstable` (a check that is not required failing or running) is left to the checks.
-    public var mark: PrStatusMark? {
+    var mark: PrStatusMark? {
         switch self {
         case .clean: PrStatusMark(symbol: AppIcon.merged.symbol, text: "Ready to merge", tone: .good)
         case .behind: PrStatusMark(symbol: AppIcon.outOfDate.symbol, text: "Out of date", tone: .waiting)

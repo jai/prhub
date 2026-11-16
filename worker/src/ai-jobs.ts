@@ -3,7 +3,13 @@ import { aiStoreKey, runAiJob } from "./ai-run";
 import { ask, AskRefused } from "./ask";
 import type { AskChat } from "./ask-chat";
 import {
-  askView, type AskView, createAskTables, drainAsks, type QueuedAsk, queueAsk, rememberChat,
+  askView,
+  type AskView,
+  createAskTables,
+  drainAsks,
+  type QueuedAsk,
+  queueAsk,
+  rememberChat,
 } from "./ask-queue";
 import { actingEnvFor } from "./hosted";
 import { parseAiJob } from "./boundary";
@@ -43,7 +49,7 @@ export class AiJobs extends DurableObject<Env> {
         await this.ctx.storage.put("user_id", userId);
       }
       queueAsk(this.sql, question);
-      if (await this.ctx.storage.getAlarm() === null) {
+      if ((await this.ctx.storage.getAlarm()) === null) {
         await this.ctx.storage.setAlarm(Date.now());
       }
     }
@@ -61,8 +67,12 @@ export class AiJobs extends DurableObject<Env> {
     if (userId !== null) {
       await this.ctx.storage.put("user_id", userId);
     }
-    this.sql.exec("INSERT OR IGNORE INTO jobs (key, job) VALUES (?, ?)", aiKey(job), JSON.stringify(job));
-    if (await this.ctx.storage.getAlarm() === null) {
+    this.sql.exec(
+      "INSERT OR IGNORE INTO jobs (key, job) VALUES (?, ?)",
+      aiKey(job),
+      JSON.stringify(job),
+    );
+    if ((await this.ctx.storage.getAlarm()) === null) {
       await this.ctx.storage.setAlarm(Date.now());
     }
   }
@@ -75,7 +85,7 @@ export class AiJobs extends DurableObject<Env> {
   /** What `exportCarried` gave on the Worker before, added where missing; a queued question is handed over as usual. */
   async importCarried(state: CarriedAskState): Promise<{ asks: number; askChats: number }> {
     const counts = writeCarriedAskState(this.sql, state);
-    if (counts.asks > 0 && await this.ctx.storage.getAlarm() === null) {
+    if (counts.asks > 0 && (await this.ctx.storage.getAlarm()) === null) {
       await this.ctx.storage.setAlarm(Date.now());
     }
     return counts;
@@ -92,14 +102,18 @@ export class AiJobs extends DurableObject<Env> {
 
   override async alarm(): Promise<void> {
     await drainAsks(this.sql, (question) => this.handOver(question));
-    const rows = this.sql.exec<{ key: string; job: string }>("SELECT key, job FROM jobs LIMIT ?", JOBS_AT_ONCE).toArray();
-    await Promise.all(rows.map(async ({ key, job }) => {
-      const parsed = parseAiJob(job);
-      if (parsed) {
-        await this.run(parsed);
-      }
-      this.sql.exec("DELETE FROM jobs WHERE key = ?", key);
-    }));
+    const rows = this.sql
+      .exec<{ key: string; job: string }>("SELECT key, job FROM jobs LIMIT ?", JOBS_AT_ONCE)
+      .toArray();
+    await Promise.all(
+      rows.map(async ({ key, job }) => {
+        const parsed = parseAiJob(job);
+        if (parsed) {
+          await this.run(parsed);
+        }
+        this.sql.exec("DELETE FROM jobs WHERE key = ?", key);
+      }),
+    );
     if (this.sql.exec("SELECT 1 FROM jobs LIMIT 1").toArray().length > 0) {
       await this.ctx.storage.setAlarm(Date.now());
     }
@@ -118,9 +132,16 @@ export class AiJobs extends DurableObject<Env> {
       if (error instanceof AskRefused) {
         return error.message;
       }
-      console.error("ask failed", errorWords(error), scrubbed(error instanceof Error ? error.stack ?? "" : ""));
-      askEvent("failed", question.id, { pr: `${question.repo}#${question.number}`, side: sideOf(error),
-        reason: errorWords(error) });
+      console.error(
+        "ask failed",
+        errorWords(error),
+        scrubbed(error instanceof Error ? (error.stack ?? "") : ""),
+      );
+      askEvent("failed", question.id, {
+        pr: `${question.repo}#${question.number}`,
+        side: sideOf(error),
+        reason: errorWords(error),
+      });
       return failedLine(error, question.id);
     }
   }
@@ -136,8 +157,10 @@ export class AiJobs extends DurableObject<Env> {
     // A hosted person with no token or key now (signed out, or the key removed) runs nothing: never on anyone else's.
     const env = await this.actingEnv();
     if (!env || !makesAnswers(env)) {
-      await this.env.DIFFS.put(aiStoreKey(job, { SIGNED_IN_USER_ID: userId }),
-        JSON.stringify({ error: "Sign in and set your Anthropic key to use AI." }));
+      await this.env.DIFFS.put(
+        aiStoreKey(job, { SIGNED_IN_USER_ID: userId }),
+        JSON.stringify({ error: "Sign in and set your Anthropic key to use AI." }),
+      );
       return;
     }
     if (await runAiJob(job, env, env.DIFFS)) {

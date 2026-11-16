@@ -1,5 +1,5 @@
-@_exported import FeedbackKit
 import DurableNetworking
+@_exported import FeedbackKit
 import Foundation
 import PRKitCore
 
@@ -25,7 +25,8 @@ struct PRViewerFeedbackConnection: FeedbackConnection {
             return answer
         } catch {
             guard ReadFailure.of(error) == .offline, let saved = kept.load(key),
-                  let answer = try? JSONDecoder().decode(type, from: saved.data) else {
+                  let answer = try? JSONDecoder().decode(type, from: saved.data)
+            else {
                 throw error
             }
             return answer
@@ -39,16 +40,16 @@ struct PRViewerFeedbackConnection: FeedbackConnection {
     }
 }
 
-extension FeatureClient {
+public extension FeatureClient {
     /// Over a client the host already has (PRKit's), sharing its connection. With `keptIn`, each read's last good
     /// answer is kept in that folder and shown while there is no network.
-    public init(viewer: PRViewerClient, samples: FeatureSamples? = nil, keptIn folder: URL? = nil) {
+    init(viewer: PRViewerClient, samples: FeatureSamples? = nil, keptIn folder: URL? = nil) {
         let kept = folder.map { ReadStore(directory: $0) }
         self.init(connection: PRViewerFeedbackConnection(viewer: viewer, kept: kept), samples: samples)
     }
 
     /// Over the host's transport (DurableNetworking).
-    public init(access: PRViewerAccess, transport: any HTTPTransport, samples: FeatureSamples? = nil) {
+    init(access: PRViewerAccess, transport: any HTTPTransport, samples: FeatureSamples? = nil) {
         self.init(viewer: PRViewerClient(access: access, transport: transport), samples: samples)
     }
 }

@@ -34,10 +34,13 @@ public struct PrListBlock: View {
         self.onOpen = onOpen
         self.folds = folds
     }
+
     #if os(macOS)
-    private var avatarSize: CGFloat { PrListGrid.avatar * MacTextSize.layoutScale }
+        private var avatarSize: CGFloat {
+            PrListGrid.avatar * MacTextSize.layoutScale
+        }
     #else
-    @ScaledMetric(relativeTo: .subheadline) private var avatarSize = PrListGrid.avatar
+        @ScaledMetric(relativeTo: .subheadline) private var avatarSize = PrListGrid.avatar
     #endif
 
     /// Where text starts: past the avatar, which grows with the text.
@@ -89,7 +92,11 @@ public struct PrListBlock: View {
     private func pullRequestRow(_ pullRequest: PRListPullRequest) -> some View {
         let url = PrListLinks.openable(pullRequest.url)
         let ref = url.flatMap(PRLink.init(url:))?.ref
-        let review: (() -> Void)? = if let ref, let opener { { opener.review(ref) } } else { nil }
+        let review: (() -> Void)? = if let ref, let opener {
+            { opener.review(ref) }
+        } else {
+            nil
+        }
         return pullRequestLink(pullRequest, leavesStateColumn: review != nil)
             .overlay(alignment: .topTrailing) {
                 if let review, let ref {
@@ -264,7 +271,7 @@ private struct TicketRail: Shape {
     let ends: [CGRect]
     private static let gap: CGFloat = 4
 
-    func path(in rect: CGRect) -> Path {
+    func path(in _: CGRect) -> Path {
         var path = Path()
         guard let last = ends.map(\.midY).max() else {
             return path

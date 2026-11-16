@@ -22,7 +22,11 @@ test("an alert goes to the production host with the contract's headers and the f
 test("a background push to sandbox omits the headers it was not given", async () => {
   const h = await harness();
   const { key } = await h.issue();
-  const { collapse_id: _c, expiration: _e, ...body } = pushBody({ apns_env: "sandbox", push_type: "background", priority: 5 });
+  const {
+    collapse_id: _c,
+    expiration: _e,
+    ...body
+  } = pushBody({ apns_env: "sandbox", push_type: "background", priority: 5 });
   await h.call("POST", "/v1/push", key, body);
   const [sent] = h.sent;
   assert.equal(sent!.url, `https://api.sandbox.push.apple.com/3/device/${"ab".repeat(32)}`);
@@ -36,21 +40,30 @@ test("the provider token's header and claims name the key and team", async () =>
   const h = await harness();
   const { key } = await h.issue();
   await h.call("POST", "/v1/push", key, pushBody());
-  const [header, claims] = h.sent[0]!.headers.authorization!.slice(7).split(".").slice(0, 2).map((part) =>
-    JSON.parse(atob(part.replace(/-/g, "+").replace(/_/g, "/"))),
-  );
+  const [header, claims] = h.sent[0]!.headers.authorization!.slice(7)
+    .split(".")
+    .slice(0, 2)
+    .map((part) => JSON.parse(atob(part.replace(/-/g, "+").replace(/_/g, "/"))));
   assert.deepEqual(header, { alg: "ES256", kid: "KEYID12345" });
   assert.deepEqual(claims, { iss: "TEAM123456", iat: Math.floor(h.clock.ms / 1000) });
 });
 
 test("APNs refusals pass through with a 200", async () => {
   const h = await harness({
-    apns: () => new Response(JSON.stringify({ reason: "Unregistered" }), { status: 410, headers: { "apns-id": "id-2" } }),
+    apns: () =>
+      new Response(JSON.stringify({ reason: "Unregistered" }), {
+        status: 410,
+        headers: { "apns-id": "id-2" },
+      }),
   });
   const { key } = await h.issue();
   const response = await h.call("POST", "/v1/push", key, pushBody());
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { apns_status: 410, apns_id: "id-2", reason: "Unregistered" });
+  assert.deepEqual(await response.json(), {
+    apns_status: 410,
+    apns_id: "id-2",
+    reason: "Unregistered",
+  });
 });
 
 test("a body-less APNs error is http_<status>, a thrown fetch is fetch_error", async () => {
@@ -126,7 +139,8 @@ test("the 61st push in a minute is 429 with retry_after, and other keys are unaf
   const h = await harness();
   const first = await h.issue("first");
   const second = await h.issue("second");
-  for (let i = 0; i < 60; i++) assert.equal((await h.call("POST", "/v1/push", first.key, pushBody())).status, 200);
+  for (let i = 0; i < 60; i++)
+    assert.equal((await h.call("POST", "/v1/push", first.key, pushBody())).status, 200);
   const limited = await h.call("POST", "/v1/push", first.key, pushBody());
   assert.equal(limited.status, 429);
   assert.deepEqual(await limited.json(), { error: "rate_limited", retry_after: 30 });

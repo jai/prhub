@@ -31,7 +31,7 @@ final class PRHubDiffFontUITests: XCTestCase {
 
     /// The mark takes its own tap: the file doesn't fold under it, and nothing in the header moves. (Over these
     /// samples the Worker refuses the write, so the mark goes back to off.)
-    func testTheViewedMarkTakesItsTapWithoutMovingTheHeader() throws {
+    func testTheViewedMarkTakesItsTapWithoutMovingTheHeader() {
         openDiff(font: "system:12", appearance: .light)
         let header = app.buttons["file-header-0"]
         let viewed = app.buttons["file-viewed-0"]
@@ -55,7 +55,7 @@ final class PRHubDiffFontUITests: XCTestCase {
         XCTAssertTrue(app.scrollSettings(to: preview))
         try picture("diff-font-settings-before")
         let bigger = app.descendants(matching: .any)["diff-font-size"].buttons["Bigger"]
-        for _ in 0..<4 {
+        for _ in 0 ..< 4 {
             bigger.tap()
         }
         let face = app.buttons["diff-font-jetBrainsMono"]

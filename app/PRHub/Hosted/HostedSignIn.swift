@@ -10,7 +10,7 @@ struct SignInAttempt: Equatable, Sendable {
     /// 32 random bytes each, base64url: 43 characters of `A-Z a-z 0-9 - _`, inside both the state's and the
     /// verifier's alphabets and lengths.
     static func make() throws -> SignInAttempt {
-        SignInAttempt(state: try DeviceSecretStore.generateSecret(), verifier: try DeviceSecretStore.generateSecret())
+        try SignInAttempt(state: DeviceSecretStore.generateSecret(), verifier: DeviceSecretStore.generateSecret())
     }
 
     /// `BASE64URL(SHA256(verifier))`, the S256 challenge.
@@ -38,7 +38,8 @@ struct SignInAttempt: Equatable, Sendable {
     /// GitHub's refusal, in the contract's words.
     func code(from callback: URL) throws(SignInError) -> String {
         guard let parts = URLComponents(url: callback, resolvingAgainstBaseURL: false),
-              parts.path == Self.callbackPath else {
+              parts.path == Self.callbackPath
+        else {
             throw .unreadable
         }
         let items = Dictionary(
@@ -176,7 +177,7 @@ extension SignInError {
         case .server(_, 401), .server("sign_in_invalid", _): self = .expired
         case .server(_, 429): self = .rateLimited
         case .server(_, 503): self = .githubUnavailable
-        case .server(_, let status): self = .server(status: status)
+        case let .server(_, status): self = .server(status: status)
         case .transport, .notConnected: self = .unreachable
         case .decoding: self = .unreadable
         }

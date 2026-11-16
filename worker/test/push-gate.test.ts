@@ -4,12 +4,24 @@ import test from "node:test";
 import type { PrAlert } from "../src/alerts.ts";
 import { alertMessage } from "../src/alerts.ts";
 import type { RepoFullName } from "../src/ids.ts";
-import { ALERT_HOLD_MAX_MS, createHeldAlertsTable, type HeldRow, holdAlert, releaseAlerts } from "../src/push-gate.ts";
+import {
+  ALERT_HOLD_MAX_MS,
+  createHeldAlertsTable,
+  type HeldRow,
+  holdAlert,
+  releaseAlerts,
+} from "../src/push-gate.ts";
 import { memorySql } from "./memory-sql.ts";
 
 const HEAD = "a".repeat(40);
 const NOW = Date.parse("2026-11-08T07:00:00Z");
-const alert: PrAlert = { kind: "review_requested", repo: "acme/api" as RepoFullName, number: 7, head: HEAD, title: "Add retries" };
+const alert: PrAlert = {
+  kind: "review_requested",
+  repo: "acme/api" as RepoFullName,
+  number: 7,
+  head: HEAD,
+  title: "Add retries",
+};
 const noKeyLines = () => false;
 const keyLinesOnReview = (row: HeldRow) => row.list === "review" && row.diff_state === "ready";
 
@@ -19,8 +31,14 @@ function index(row: Partial<HeldRow> | null) {
     list TEXT)`);
   createHeldAlertsTable(sql);
   if (row) {
-    sql.exec("INSERT INTO pull_requests (id, head, diff_state, key_lines_ready, list) VALUES (?, ?, ?, ?, ?)",
-      "acme/api#7", row.head ?? HEAD, row.diff_state ?? "pending", row.key_lines_ready ?? null, row.list ?? "review");
+    sql.exec(
+      "INSERT INTO pull_requests (id, head, diff_state, key_lines_ready, list) VALUES (?, ?, ?, ?, ?)",
+      "acme/api#7",
+      row.head ?? HEAD,
+      row.diff_state ?? "pending",
+      row.key_lines_ready ?? null,
+      row.list ?? "review",
+    );
   }
   holdAlert(sql, "review_requested:acme/api#7@a", alert, NOW);
   const setRow = (fields: Partial<HeldRow>) => {
@@ -52,7 +70,11 @@ test("with key lines on, an alert waits for them at its head too", () => {
   const { sql, setRow } = index({ diff_state: "ready" });
   assert.deepEqual(releaseAlerts(sql, NOW + 2_000, keyLinesOnReview).release, []);
   setRow({ key_lines_ready: "b".repeat(40) });
-  assert.deepEqual(releaseAlerts(sql, NOW + 3_000, keyLinesOnReview).release, [], "another head's key lines");
+  assert.deepEqual(
+    releaseAlerts(sql, NOW + 3_000, keyLinesOnReview).release,
+    [],
+    "another head's key lines",
+  );
   setRow({ key_lines_ready: HEAD });
   assert.equal(releaseAlerts(sql, NOW + 6_000, keyLinesOnReview).release[0]?.heldMs, 6_000);
 });
@@ -60,8 +82,9 @@ test("with key lines on, an alert waits for them at its head too", () => {
 test("past the bounded wait an alert goes anyway, timed out", () => {
   const { sql } = index({ diff_state: "pending" });
   assert.deepEqual(releaseAlerts(sql, NOW + ALERT_HOLD_MAX_MS - 1, noKeyLines).release, []);
-  assert.deepEqual(releaseAlerts(sql, NOW + ALERT_HOLD_MAX_MS, noKeyLines).release,
-    [{ alert, heldMs: ALERT_HOLD_MAX_MS, reason: "timed_out" }]);
+  assert.deepEqual(releaseAlerts(sql, NOW + ALERT_HOLD_MAX_MS, noKeyLines).release, [
+    { alert, heldMs: ALERT_HOLD_MAX_MS, reason: "timed_out" },
+  ]);
 });
 
 test("a head that moved on releases the alert at once; a PR off every list drops it", () => {
@@ -82,8 +105,17 @@ test("holding the same alert twice keeps the first wait", () => {
 });
 
 test("an alert carries its row for the phone's prefetch, and leaves it out when it would not fit", () => {
-  const row = { repo: "acme/api", number: 7, title: "Add retries", head: HEAD, revision: `${HEAD}-main`, diff: "ready",
-    detail: "2026-11-08T07:00:00Z.SUCCESS.0123456789abcdef", status: null, keyLines: null };
+  const row = {
+    repo: "acme/api",
+    number: 7,
+    title: "Add retries",
+    head: HEAD,
+    revision: `${HEAD}-main`,
+    diff: "ready",
+    detail: "2026-11-08T07:00:00Z.SUCCESS.0123456789abcdef",
+    status: null,
+    keyLines: null,
+  };
   const message = alertMessage(alert, row);
   assert.deepEqual(message.payload.row, row);
   assert.equal((message.payload.aps as Record<string, unknown>)["mutable-content"], 1);

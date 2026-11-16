@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  bodyOf, parseAiJob, parseAskInput, parseDeviceEvent, parseDeviceRegistration, parseRowStatus, parseWrite,
+  bodyOf,
+  parseAiJob,
+  parseAskInput,
+  parseDeviceEvent,
+  parseDeviceRegistration,
+  parseRowStatus,
+  parseWrite,
 } from "../src/boundary.ts";
 import { type DeviceIndex, eventRoute, registerRoute, unpairRoute } from "../src/devices.ts";
 import type { Fingerprint } from "../src/ids.ts";
@@ -24,7 +30,10 @@ function fakeIndex() {
   return { index, devices, events, paired };
 }
 
-function post(body: string, headers: Record<string, string> = { Authorization: `Bearer ${SECRET}` }): Request {
+function post(
+  body: string,
+  headers: Record<string, string> = { Authorization: `Bearer ${SECRET}` },
+): Request {
   return new Request("https://worker/device/x", { method: "POST", body, headers });
 }
 
@@ -47,23 +56,42 @@ test("a junk device token is refused with a 400 and never stored", async () => {
     assert.equal((await registerRoute(post(body), index)).status, 400, body);
   }
   assert.equal(devices.size, 0);
-  assert.equal((await registerRoute(post(JSON.stringify({ token: TOKEN.toUpperCase(), host: "sandbox" })), index)).status, 204);
-  assert.deepEqual([...devices], [[TOKEN, { host: "sandbox", fingerprint: await fingerprintOf(SECRET) }]],
-    "kept lowercased, as the relay keeps it, with the device that sent it");
+  assert.equal(
+    (
+      await registerRoute(
+        post(JSON.stringify({ token: TOKEN.toUpperCase(), host: "sandbox" })),
+        index,
+      )
+    ).status,
+    204,
+  );
+  assert.deepEqual(
+    [...devices],
+    [[TOKEN, { host: "sandbox", fingerprint: await fingerprintOf(SECRET) }]],
+    "kept lowercased, as the relay keeps it, with the device that sent it",
+  );
   const anonymous = post(JSON.stringify({ token: TOKEN, host: "sandbox" }), {});
   assert.equal((await registerRoute(anonymous, index)).status, 401);
 });
 
 test("a device event is an object with a kind; changed, when sent, a list of ids", async () => {
   const { index, events } = fakeIndex();
-  assert.equal((await eventRoute(post(JSON.stringify({ kind: "sync", changed: "acme/app#1" })), index)).status, 400);
+  assert.equal(
+    (await eventRoute(post(JSON.stringify({ kind: "sync", changed: "acme/app#1" })), index)).status,
+    400,
+  );
   assert.equal((await eventRoute(post(JSON.stringify({ changed: [] })), index)).status, 400);
   assert.equal((await eventRoute(post("[]"), index)).status, 400);
   assert.equal(events.length, 0);
   const sync = { kind: "sync", trigger: "push", rows: 3, changed: ["acme/app#1"], complete: true };
   assert.equal((await eventRoute(post(JSON.stringify(sync)), index)).status, 204);
-  assert.deepEqual(events, [{ kind: "sync", detail: { trigger: "push", rows: 3, changed: ["acme/app#1"], complete: true } }]);
-  assert.deepEqual(parseDeviceEvent({ kind: "open", milliseconds: 12 }), { kind: "open", detail: { milliseconds: 12 } });
+  assert.deepEqual(events, [
+    { kind: "sync", detail: { trigger: "push", rows: 3, changed: ["acme/app#1"], complete: true } },
+  ]);
+  assert.deepEqual(parseDeviceEvent({ kind: "open", milliseconds: 12 }), {
+    kind: "open",
+    detail: { milliseconds: 12 },
+  });
 });
 
 test("after an unpair the secret is refused on the very next request", async () => {
@@ -71,7 +99,10 @@ test("after an unpair the secret is refused on the very next request", async () 
   const authorization = `Bearer ${SECRET}`;
   paired.add(await fingerprintOf(SECRET));
   assert.equal(await isPairedSecret(authorization, index), true);
-  const unpair = new Request("https://worker/device/pair", { method: "DELETE", headers: { Authorization: authorization } });
+  const unpair = new Request("https://worker/device/pair", {
+    method: "DELETE",
+    headers: { Authorization: authorization },
+  });
   assert.equal((await unpairRoute(unpair, index)).status, 204);
   assert.equal(await isPairedSecret(authorization, index), false);
   assert.equal(await isPairedSecret(null, index), false);
@@ -79,8 +110,15 @@ test("after an unpair the secret is refused on the very next request", async () 
 
 test("a stored status in an old shape reads as no status", () => {
   const today = {
-    list: "review", author: "alex", checks: "passing", review: "required", merge: "clean", jaiReview: null,
-    jaiReviewedAt: null, requestedAt: "2026-11-06T02:00:00Z", reviewDueAt: "2026-11-07T02:00:00Z",
+    list: "review",
+    author: "alex",
+    checks: "passing",
+    review: "required",
+    merge: "clean",
+    jaiReview: null,
+    jaiReviewedAt: null,
+    requestedAt: "2026-11-06T02:00:00Z",
+    reviewDueAt: "2026-11-07T02:00:00Z",
   };
   assert.deepEqual(parseRowStatus(JSON.stringify(today)), today);
   const { reviewDueAt: _, ...beforeDueTimes } = today;
@@ -98,13 +136,21 @@ test("a queued AI job is read back only in its own shape", () => {
   const choice = { model: "claude-haiku-5-5", effort: "low" };
   assert.deepEqual(parseAiJob(JSON.stringify({ ...job, choice }))?.choice, choice);
   assert.equal(parseAiJob(JSON.stringify({ ...job, head: "main" })), null);
-  assert.equal(parseAiJob(JSON.stringify({ ...job, choice: { model: "claude-fable-5", effort: "max" } })), null);
+  assert.equal(
+    parseAiJob(JSON.stringify({ ...job, choice: { model: "claude-fable-5", effort: "max" } })),
+    null,
+  );
   assert.equal(parseAiJob(JSON.stringify({ ...job, kind: "summary" })), null);
   assert.equal(parseAiJob("nope"), null);
 });
 
 test("a pairing record from R2 pairs only in its own shape", () => {
-  const record = { role: "app", label: "iPad", created_at: "2026-11-07T00:00:00Z", expires_at: "2026-11-07T00:30:00Z" };
+  const record = {
+    role: "app",
+    label: "iPad",
+    created_at: "2026-11-07T00:00:00Z",
+    expires_at: "2026-11-07T00:30:00Z",
+  };
   assert.deepEqual(parsePairingRecord(record), record);
   assert.equal(parsePairingRecord({ ...record, role: "owner" }), null);
   assert.equal(parsePairingRecord({ ...record, label: 3 }), null);
@@ -112,5 +158,8 @@ test("a pairing record from R2 pairs only in its own shape", () => {
 
 test("a registration names the APNs host as one of the two", () => {
   assert.equal(parseDeviceRegistration({ token: TOKEN }), null);
-  assert.deepEqual(parseDeviceRegistration({ token: TOKEN, host: "production" }), { token: TOKEN, host: "production" });
+  assert.deepEqual(parseDeviceRegistration({ token: TOKEN, host: "production" }), {
+    token: TOKEN,
+    host: "production",
+  });
 });

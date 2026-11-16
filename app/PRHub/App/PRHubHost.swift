@@ -1,7 +1,8 @@
-// Every file of the app reads PRKit's types (the PR screens, their models and the design parts) without its own import.
-@_exported import PRKit
 import DurableNetworking
 import Foundation
+
+// Every file of the app reads PRKit's types (the PR screens, their models and the design parts) without its own import.
+@_exported import PRKit
 
 /// PRHub's side of the PR screens (`PRKitHost`): the pr-worker it paired with, the features that Worker's
 /// `GET /device/config` serves, and its writes through `PRHubOutbox`.
@@ -26,7 +27,9 @@ final class PRHubPRHost: PRKitHost {
     /// A Debug run's stand-in Worker (`PRHubStubWorker`); set before the PR screens are made, which read it once.
     var transportOverride: (any HTTPTransport)?
 
-    var transport: any HTTPTransport { transportOverride ?? AppNetwork.transport }
+    var transport: any HTTPTransport {
+        transportOverride ?? AppNetwork.transport
+    }
 
     var configuration: PRKitConfiguration {
         Self.configuration(config(), isCheckingInstallations: isCheckingInstallations())
@@ -139,15 +142,22 @@ final class PRHubPRHost: PRKitHost {
     /// `PRHubOutbox` for a paired or signed-in Worker; none for the samples. A Debug build's `-PRHubOutboxCheck` sets
     /// its own stand-in.
     var outbox: (any PRKitOutbox)?
-    var apnsEnvironment: String { APNSEnvironment.current() }
-    var launchOptions: PRKitLaunchOptions { .none }
+    var apnsEnvironment: String {
+        APNSEnvironment.current()
+    }
+
+    var launchOptions: PRKitLaunchOptions {
+        .none
+    }
+
     func receive(_ event: PRKitEvent) {
         if let event = AnalyticsEvent(event) {
             usage.record(event)
         }
     }
+
     /// PRHub has no event log: the system log has it (`PRMirror`).
-    func log(_ line: String) {}
+    func log(_: String) {}
 
     /// The app group's, which PRHubNotifications fills before an alert's tap. Samples keep their own.
     var mirrorDirectory: URL? {

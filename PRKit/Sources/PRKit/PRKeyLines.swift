@@ -19,7 +19,9 @@ public struct PRKeyLines: Decodable, Sendable {
         public let kind: String
         public let why: String
 
-        public var id: String { "\(path):\(side):\(line)" }
+        public var id: String {
+            "\(path):\(side):\(line)"
+        }
     }
 
     public let items: [Item]
@@ -223,7 +225,9 @@ enum PRNavigatorPage: String, CaseIterable, Identifiable {
     case files = "Files"
     case keyLines = "Key lines"
 
-    var id: Self { self }
+    var id: Self {
+        self
+    }
 }
 
 /// Finds a place in the diff: its files or its key lines, in the `sidePanel` over the code. Picking one closes it and
@@ -312,7 +316,9 @@ extension PRKeyLines.Item {
         }
     }
 
-    var kindTint: Color { kind == "risk" ? .toneBad : .secondary }
+    var kindTint: Color {
+        kind == "risk" ? .toneBad : .secondary
+    }
 }
 
 /// A key line's tick: checked off as reviewed, or not yet. A finger's width, beside the line in the list or its note.

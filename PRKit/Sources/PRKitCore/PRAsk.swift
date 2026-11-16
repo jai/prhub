@@ -56,7 +56,9 @@ public struct PRAskDraft: Decodable, Equatable, Sendable {
     }
 
     /// Nil for an event this app sends no review for.
-    public var reviewEvent: PRReviewEvent? { PRReviewEvent(rawValue: event) }
+    public var reviewEvent: PRReviewEvent? {
+        PRReviewEvent(rawValue: event)
+    }
 
     /// The line comments as Jai's own drafts, each new.
     public var draftComments: [PRDraftComment] {
@@ -145,7 +147,9 @@ public struct PRAskLinearCard: Decodable, Equatable, Sendable {
     }
 
     /// Whether Jai's yes would post it now.
-    public var canPost: Bool { problem == nil && state != .posted }
+    public var canPost: Bool {
+        problem == nil && state != .posted
+    }
 }
 
 /// The conversation as the Worker reads it from the session, which holds it.
@@ -175,7 +179,9 @@ public struct PRAskChat: Decodable, Equatable, Sendable {
             self.linear = linear
         }
 
-        public var isJai: Bool { role == "you" }
+        public var isJai: Bool {
+            role == "you"
+        }
     }
 
     public var messages: [Message]

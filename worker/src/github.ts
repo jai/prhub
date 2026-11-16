@@ -3,16 +3,37 @@ import { renewAfterUnauthorized } from "./hosted.ts";
 import { gitHubReserveOf, limitsOf } from "./limits.ts";
 import { backoffOf, heldBackoff, holdBackoff, observe, stops, waitAnswer } from "./rate-limit.ts";
 import {
-  parseSha, prId, type PrId, repoOf, type RepoFullName, repoParts, type Revision, revisionOf, type Sha, shaOf,
+  parseSha,
+  prId,
+  type PrId,
+  repoOf,
+  type RepoFullName,
+  repoParts,
+  type Revision,
+  revisionOf,
+  type Sha,
+  shaOf,
 } from "./ids.ts";
 import { type GitHubCache, peopleOf } from "./policy-github.ts";
 import { PEOPLE_FIELDS, type PeopleDecision, type PeopleNode } from "./policy-people.ts";
 import { botAuthorsOf, isBotAuthor, type RequestedBy, requestedByOf } from "./requester.ts";
 import {
-  allKeys, lookUpTickets, resolvedTickets, rowTickets, type Ticket, type TicketKeys, ticketKeysOf,
+  allKeys,
+  lookUpTickets,
+  resolvedTickets,
+  rowTickets,
+  type Ticket,
+  type TicketKeys,
+  ticketKeysOf,
 } from "./tickets.ts";
 import type {
-  CheckState, ChecksSummary, MergeState, OpenList, PolicyState, PullRequestState, ReviewState,
+  CheckState,
+  ChecksSummary,
+  MergeState,
+  OpenList,
+  PolicyState,
+  PullRequestState,
+  ReviewState,
 } from "./vocab.ts";
 
 export type { CheckState };
@@ -46,20 +67,22 @@ interface Comment {
 }
 
 interface Rollup {
-  contexts: { nodes: {
-    __typename: string;
-    name?: string;
-    context?: string;
-    status?: string;
-    conclusion?: string | null;
-    state?: string;
-    description?: string | null;
-    detailsUrl?: string | null;
-    targetUrl?: string | null;
-    startedAt?: string | null;
-    isRequired?: boolean;
-    checkSuite?: { workflowRun: { workflow: { name: string } } | null } | null;
-  }[] };
+  contexts: {
+    nodes: {
+      __typename: string;
+      name?: string;
+      context?: string;
+      status?: string;
+      conclusion?: string | null;
+      state?: string;
+      description?: string | null;
+      detailsUrl?: string | null;
+      targetUrl?: string | null;
+      startedAt?: string | null;
+      isRequired?: boolean;
+      checkSuite?: { workflowRun: { workflow: { name: string } } | null } | null;
+    }[];
+  };
 }
 
 type Context = Rollup["contexts"]["nodes"][number];
@@ -127,11 +150,28 @@ export interface Detail {
   labels: { name: string; color: string }[];
   checks: Check[];
   comments: { nodes: Comment[] };
-  reviews: { nodes: { id: string; author: Author | null; state: string; body: string; submittedAt: string | null }[] };
-  reviewThreads: { nodes: {
-    id: string; isResolved: boolean; isOutdated: boolean; viewerCanResolve: boolean; viewerCanUnresolve: boolean;
-    path: string; line: number | null; diffSide: string; comments: { nodes: Comment[] };
-  }[] };
+  reviews: {
+    nodes: {
+      id: string;
+      author: Author | null;
+      state: string;
+      body: string;
+      submittedAt: string | null;
+    }[];
+  };
+  reviewThreads: {
+    nodes: {
+      id: string;
+      isResolved: boolean;
+      isOutdated: boolean;
+      viewerCanResolve: boolean;
+      viewerCanUnresolve: boolean;
+      path: string;
+      line: number | null;
+      diffSide: string;
+      comments: { nodes: Comment[] };
+    }[];
+  };
 }
 
 interface CommonStatus {
@@ -150,16 +190,17 @@ interface CommonStatus {
  * What a list row shows, in the vocabulary the app already has for PRs (`CodingThread.PullRequest`). Each list carries
  * what is true of it alone: a due time on the review list, a merge time on a merged row.
  */
-export type RowStatus = CommonStatus & (
+export type RowStatus = CommonStatus &
   /**
    * `requestedAt`: when review was last asked of Jai himself (null when only a team was asked). `reviewDueAt`: one
    * working day from when he could first see it (`reviewDueAt`); null without an SLA.
    */
-  | { list: "review"; requestedAt: string | null; reviewDueAt: string | null }
-  | { list: "reviewed" }
-  | { list: "mine" }
-  | { list: "merged"; mergedAt: string | null }
-);
+  (
+    | { list: "review"; requestedAt: string | null; reviewDueAt: string | null }
+    | { list: "reviewed" }
+    | { list: "mine" }
+    | { list: "merged"; mergedAt: string | null }
+  );
 
 /** A row of `GET /prs`. */
 export type OpenRowStatus = Extract<RowStatus, { list: OpenList }>;
@@ -193,9 +234,16 @@ export interface PullRequest {
  * The version a detail is kept under: the PR's version and a hash of what the detail says, because GitHub does not move
  * `updatedAt` for everything, resolving a thread among them.
  */
-export async function detailVersionOf(pr: Pick<PullRequest, "version" | "detail">): Promise<string> {
-  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(pr.detail)));
-  const digest = Array.from(new Uint8Array(hash).slice(0, 8), (byte) => byte.toString(16).padStart(2, "0")).join("");
+export async function detailVersionOf(
+  pr: Pick<PullRequest, "version" | "detail">,
+): Promise<string> {
+  const hash = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify(pr.detail)),
+  );
+  const digest = Array.from(new Uint8Array(hash).slice(0, 8), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
   return `${pr.version}.${digest}`;
 }
 
@@ -229,7 +277,9 @@ interface Node extends Pick<PeopleNode, "peopleComments" | "committers"> {
   assignees?: { nodes: { login: string; name?: string | null; avatarUrl?: string | null }[] };
   /** The last commits' messages, for a co-author trailer naming who asked a bot for the PR. */
   trailers?: { nodes: { commit: { message: string } }[] };
-  reviewRequests: { nodes: { requestedReviewer: { login?: string; avatarUrl?: string; name?: string } | null }[] };
+  reviewRequests: {
+    nodes: { requestedReviewer: { login?: string; avatarUrl?: string; name?: string } | null }[];
+  };
   requestEvents: { nodes: RequestEvent[] };
   files: { nodes: { path: string; viewerViewedState: string }[] } | null;
   latestReviews: { nodes: LatestReview[] };
@@ -247,7 +297,10 @@ const OPEN = "is:pr is:open archived:false draft:false sort:updated-desc";
 /**
  * The searches name the owner (`githubLogin`), never `@me`: with `GITHUB_READ_TOKEN` set, `@me` is the read token's user.
  */
-const searchesOf = (login: string) => [`${OPEN} user-review-requested:${login}`, `${OPEN} author:${login}`];
+const searchesOf = (login: string) => [
+  `${OPEN} user-review-requested:${login}`,
+  `${OPEN} author:${login}`,
+];
 const reviewedSearchOf = (login: string) => `${OPEN} reviewed-by:${login}`;
 const SEARCH_QUERY = `query($q: String!, $n: Int!, $after: String) {
   search(query: $q, type: ISSUE, first: $n, after: $after) {
@@ -307,7 +360,9 @@ export function contextsOf(number: number): string {
 
 /** The second account's token reads go with (`GITHUB_READ_TOKEN`); null when there is none, and always on the hosted Worker. */
 export function readToken(env: Env): string | null {
-  return !isSet(env.SIGNED_IN_USER_ID) && isSet(env.GITHUB_READ_TOKEN) ? env.GITHUB_READ_TOKEN : null;
+  return !isSet(env.SIGNED_IN_USER_ID) && isSet(env.GITHUB_READ_TOKEN)
+    ? env.GITHUB_READ_TOKEN
+    : null;
 }
 
 /**
@@ -339,9 +394,18 @@ export function readsAsAnyone(path: string, init: RequestInit): boolean {
  * headers are kept (`rate-limit.ts`): while GitHub asks a token to wait, its calls answer 429 without going, and a
  * background run (`GITHUB_RATE` set) also stops when the token's hour runs low.
  */
-async function github(path: string, env: Env, accept: string, init: RequestInit = {}): Promise<Response> {
+async function github(
+  path: string,
+  env: Env,
+  accept: string,
+  init: RequestInit = {},
+): Promise<Response> {
   const reader = readsAsAnyone(path, init) ? readToken(env) : null;
-  const key = isSet(env.SIGNED_IN_USER_ID) ? `user:${env.SIGNED_IN_USER_ID}` : reader ? "self:read" : "self";
+  const key = isSet(env.SIGNED_IN_USER_ID)
+    ? `user:${env.SIGNED_IN_USER_ID}`
+    : reader
+      ? "self:read"
+      : "self";
   const started = Date.now();
   const held = heldBackoff(key, started);
   if (held && stops(held, started, env.GITHUB_RATE !== undefined)) {
@@ -350,8 +414,12 @@ async function github(path: string, env: Env, accept: string, init: RequestInit 
   const send = async (token: string) => {
     const response = await fetch(`https://api.github.com${path}`, {
       ...init,
-      headers: { ...init.headers as Record<string, string> | undefined, Accept: accept, Authorization: `Bearer ${token}`,
-        "User-Agent": "pr-viewer" },
+      headers: {
+        ...(init.headers as Record<string, string> | undefined),
+        Accept: accept,
+        Authorization: `Bearer ${token}`,
+        "User-Agent": "pr-viewer",
+      },
     });
     if (env.GITHUB_CALLS) {
       env.GITHUB_CALLS.count += 1;
@@ -372,7 +440,12 @@ async function github(path: string, env: Env, accept: string, init: RequestInit 
   return renewed ? send(renewed) : response;
 }
 
-export function sendToGitHub(method: string, path: string, body: object, env: Env): Promise<Response> {
+export function sendToGitHub(
+  method: string,
+  path: string,
+  body: object,
+  env: Env,
+): Promise<Response> {
   return github(path, env, "application/vnd.github+json", { method, body: JSON.stringify(body) });
 }
 
@@ -384,15 +457,30 @@ export function postToGitHub(path: string, body: object, env: Env): Promise<Resp
  * A file's text at a commit or branch; with an empty `ref`, on the default branch. With `etag`, GitHub answers 304 when
  * the file is unchanged, and a 304 costs nothing of the token's hour.
  */
-export function fetchFile(repo: string, path: string, ref: string, env: Env, etag?: string): Promise<Response> {
+export function fetchFile(
+  repo: string,
+  path: string,
+  ref: string,
+  env: Env,
+  etag?: string,
+): Promise<Response> {
   const encoded = path.split("/").map(encodeURIComponent).join("/");
-  return github(`/repos/${repo}/contents/${encoded}${ref ? `?ref=${ref}` : ""}`, env, "application/vnd.github.raw+json",
-    etag ? { headers: { "If-None-Match": etag } } : {});
+  return github(
+    `/repos/${repo}/contents/${encoded}${ref ? `?ref=${ref}` : ""}`,
+    env,
+    "application/vnd.github.raw+json",
+    etag ? { headers: { "If-None-Match": etag } } : {},
+  );
 }
 
 /** With `etag`, a conditional GET: 304 when nothing changed, free of the token's hour. */
 export function getFromGitHub(path: string, env: Env, etag?: string): Promise<Response> {
-  return github(path, env, "application/vnd.github+json", etag ? { headers: { "If-None-Match": etag } } : {});
+  return github(
+    path,
+    env,
+    "application/vnd.github+json",
+    etag ? { headers: { "If-None-Match": etag } } : {},
+  );
 }
 
 /** A PR GitHub has no answer for is a null in the data and a NOT_FOUND here. Anything else fails the whole read. */
@@ -408,7 +496,10 @@ export async function graphql<Data>(query: string, variables: object, env: Env):
   if (!response.ok) {
     throw new Error(`GitHub GraphQL answered ${response.status}`);
   }
-  const body = (await response.json()) as { data?: Data; errors?: { type?: string; message?: string }[] };
+  const body = (await response.json()) as {
+    data?: Data;
+    errors?: { type?: string; message?: string }[];
+  };
   const failure = body.errors?.find((error) => error.type !== "NOT_FOUND");
   if (!body.data || failure) {
     throw new Error(`GitHub GraphQL failed: ${failure?.type ?? "no data"}`);
@@ -423,16 +514,24 @@ const DECISIONS = ["APPROVED", "CHANGES_REQUESTED", "DISMISSED"];
  * GitHub leaves out anyone asked to review again, and lists a comment over the change request it does not lift.
  */
 export function jaiReview(
-  node: { latestReviews: Node["latestReviews"]; reviews?: { nodes: (LatestReview & { author: Author | null })[] } },
+  node: {
+    latestReviews: Node["latestReviews"];
+    reviews?: { nodes: (LatestReview & { author: Author | null })[] };
+  },
   login: string,
 ): LatestReview | undefined {
-  const own = (node.reviews?.nodes ?? []).filter((review) => review.author?.login === login && review.state !== "PENDING");
+  const own = (node.reviews?.nodes ?? []).filter(
+    (review) => review.author?.login === login && review.state !== "PENDING",
+  );
   const standing = own.findLast((review) => DECISIONS.includes(review.state));
   if (standing?.state === "CHANGES_REQUESTED") {
     return standing;
   }
-  return node.latestReviews.nodes.find((review) => review.author?.login === login && review.state !== "PENDING")
-    ?? own.at(-1);
+  return (
+    node.latestReviews.nodes.find(
+      (review) => review.author?.login === login && review.state !== "PENDING",
+    ) ?? own.at(-1)
+  );
 }
 
 /** GitHub's own state of a PR, as the phone draws it. */
@@ -444,8 +543,13 @@ export function detailState(node: { state: string; isDraft: boolean }): Detail["
 
 /** Which of Jai's lists a PR belongs on, or null when it belongs on none. `wasAsked`: it is on his review list now. */
 export function listOf(
-  node: { state: string; isDraft: boolean; author: { __typename: string; login: string } | null;
-    reviewRequests: Node["reviewRequests"]; latestReviews: Node["latestReviews"] },
+  node: {
+    state: string;
+    isDraft: boolean;
+    author: { __typename: string; login: string } | null;
+    reviewRequests: Node["reviewRequests"];
+    latestReviews: Node["latestReviews"];
+  },
   login: string,
   wasAsked = false,
 ): OpenList | null {
@@ -463,10 +567,16 @@ export function listOf(
 
 const POLICY_BOT = /^policy-b[io]t: /;
 const POLICY_STATES: Record<string, PolicyState> = {
-  SUCCESS: "approved", PENDING: "pending", EXPECTED: "pending", FAILURE: "disapproved",
+  SUCCESS: "approved",
+  PENDING: "pending",
+  EXPECTED: "pending",
+  FAILURE: "disapproved",
 };
 const POLICY_DECISIONS: Record<PolicyState, string | null> = {
-  approved: "APPROVED", pending: "REVIEW_REQUIRED", disapproved: "CHANGES_REQUESTED", unknown: null,
+  approved: "APPROVED",
+  pending: "REVIEW_REQUIRED",
+  disapproved: "CHANGES_REQUESTED",
+  unknown: null,
 };
 
 function isPolicyBot(context: Context): boolean {
@@ -477,8 +587,12 @@ function isPolicyBot(context: Context): boolean {
 export function policyOf(contexts: Context[]): Policy | null {
   const status = contexts.find(isPolicyBot);
   return status
-    ? { state: POLICY_STATES[status.state ?? ""] ?? "unknown", description: status.description ?? null,
-      url: status.targetUrl ?? null, required: status.isRequired ?? false }
+    ? {
+        state: POLICY_STATES[status.state ?? ""] ?? "unknown",
+        description: status.description ?? null,
+        url: status.targetUrl ?? null,
+        required: status.isRequired ?? false,
+      }
     : null;
 }
 
@@ -487,7 +601,9 @@ export function policyOf(contexts: Context[]): Policy | null {
  * exception: PolicyBot can pass while GitHub still holds the merge for one.
  */
 export function reviewDecisionOf(
-  policy: Policy | null, decision: string | null, people: PeopleDecision | null = null,
+  policy: Policy | null,
+  decision: string | null,
+  people: PeopleDecision | null = null,
 ): string | null {
   if (decision === "CHANGES_REQUESTED") return decision;
   // Where `.policy.yml` could be read, its people decide; PolicyBot's word also carries its conditions (checks).
@@ -533,10 +649,11 @@ export function reviewersOf(node: Pick<Node, "reviewRequests" | "latestReviews">
     return login ? [{ login, avatarUrl: reviewer?.avatarUrl ?? null, state: "REQUESTED" }] : [];
   });
   const waitedOn = new Set(requested.map((reviewer) => reviewer.login));
-  const reviewed = node.latestReviews.nodes.flatMap(({ author, state }) => (
+  const reviewed = node.latestReviews.nodes.flatMap(({ author, state }) =>
     author && !waitedOn.has(author.login) && state !== "PENDING"
-      ? [{ login: author.login, avatarUrl: author.avatarUrl ?? null, state }] : []
-  ));
+      ? [{ login: author.login, avatarUrl: author.avatarUrl ?? null, state }]
+      : [],
+  );
   return [...reviewed, ...requested];
 }
 
@@ -544,40 +661,73 @@ export function reviewersOf(node: Pick<Node, "reviewRequests" | "latestReviews">
 export function checkOf(context: Context): Check {
   const outcome = context.conclusion ?? context.state ?? null;
   const isRunning = context.__typename === "CheckRun" && context.status !== "COMPLETED";
-  const state: CheckState = isRunning || outcome === "PENDING" || outcome === "EXPECTED" ? "pending"
-    : outcome === "SUCCESS" ? "success"
-      : ["NEUTRAL", "SKIPPED"].includes(outcome ?? "") ? "skipped"
-        // Cancelled means nothing unless GitHub is waiting on it, and then the merge is held like any failure.
-        : ["CANCELLED", "STALE"].includes(outcome ?? "") && !context.isRequired ? "skipped" : "failure";
+  const state: CheckState =
+    isRunning || outcome === "PENDING" || outcome === "EXPECTED"
+      ? "pending"
+      : outcome === "SUCCESS"
+        ? "success"
+        : ["NEUTRAL", "SKIPPED"].includes(outcome ?? "")
+          ? "skipped"
+          : // Cancelled means nothing unless GitHub is waiting on it, and then the merge is held like any failure.
+            ["CANCELLED", "STALE"].includes(outcome ?? "") && !context.isRequired
+            ? "skipped"
+            : "failure";
   return {
-    name: context.name ?? context.context ?? "check", state, url: context.detailsUrl ?? context.targetUrl ?? null,
-    required: context.isRequired ?? false, workflow: context.checkSuite?.workflowRun?.workflow.name ?? null,
+    name: context.name ?? context.context ?? "check",
+    state,
+    url: context.detailsUrl ?? context.targetUrl ?? null,
+    required: context.isRequired ?? false,
+    workflow: context.checkSuite?.workflowRun?.workflow.name ?? null,
   };
 }
 
 const CHECKS: Record<string, ChecksSummary> = {
-  SUCCESS: "passing", FAILURE: "failing", ERROR: "failing", PENDING: "pending", EXPECTED: "pending",
+  SUCCESS: "passing",
+  FAILURE: "failing",
+  ERROR: "failing",
+  PENDING: "pending",
+  EXPECTED: "pending",
 };
 const REVIEWS: Record<string, ReviewState> = {
-  APPROVED: "approved", CHANGES_REQUESTED: "changes_requested", REVIEW_REQUIRED: "required",
+  APPROVED: "approved",
+  CHANGES_REQUESTED: "changes_requested",
+  REVIEW_REQUIRED: "required",
 };
 const MERGES: Record<string, MergeState> = {
-  CLEAN: "clean", HAS_HOOKS: "clean", BEHIND: "behind", BLOCKED: "blocked", DRAFT: "blocked", DIRTY: "conflicting",
+  CLEAN: "clean",
+  HAS_HOOKS: "clean",
+  BEHIND: "behind",
+  BLOCKED: "blocked",
+  DRAFT: "blocked",
+  DIRTY: "conflicting",
   UNSTABLE: "unstable",
 };
 
 /** A PR that conflicts is one whatever GitHub's merge state has got to, and it can lag. */
 export function mergeOf(mergeable: string | null, mergeState: string): MergeState {
-  return mergeable === "CONFLICTING" ? "conflicting" : MERGES[mergeState] ?? "unknown";
+  return mergeable === "CONFLICTING" ? "conflicting" : (MERGES[mergeState] ?? "unknown");
 }
 
 /** The one reading of what GitHub says of a PR's checks and review: PolicyBot's word over GitHub's, its status no check. */
 export function verdictOf(
-  node: { reviewDecision: string | null; overall: Node["overall"]; commits: { nodes: { commit: {
-    statusCheckRollup: { contexts: { nodes: Context[] } } | null } }[] } },
+  node: {
+    reviewDecision: string | null;
+    overall: Node["overall"];
+    commits: {
+      nodes: {
+        commit: {
+          statusCheckRollup: { contexts: { nodes: Context[] } } | null;
+        };
+      }[];
+    };
+  },
   people: PeopleDecision | null = null,
 ): {
-  checks: ChecksSummary; review: ReviewState; decision: string | null; policy: Policy | null; overall: string | null;
+  checks: ChecksSummary;
+  review: ReviewState;
+  decision: string | null;
+  policy: Policy | null;
+  overall: string | null;
   contexts: Context[];
 } {
   const overall = node.overall.nodes[0]?.commit.statusCheckRollup?.state ?? null;
@@ -587,27 +737,49 @@ export function verdictOf(
   return {
     checks: CHECKS[requiredChecks(contexts) ?? ""] ?? "none",
     review: REVIEWS[decision ?? ""] ?? "none",
-    decision, policy, overall, contexts,
+    decision,
+    policy,
+    overall,
+    contexts,
   };
 }
 
 /** A row's status on one of the open lists; the request and due times are kept on the review list alone. */
 export function rowStatus(
-  list: OpenList, author: string | null, checks: ChecksSummary, review: ReviewState, merge: MergeState,
-  mine?: LatestReview, reviewDueAt: string | null = null, requestedAt: string | null = null,
+  list: OpenList,
+  author: string | null,
+  checks: ChecksSummary,
+  review: ReviewState,
+  merge: MergeState,
+  mine?: LatestReview,
+  reviewDueAt: string | null = null,
+  requestedAt: string | null = null,
 ): OpenRowStatus {
   const common = {
-    author, checks, review, merge, jaiReview: mine?.state.toLowerCase() ?? null, jaiReviewedAt: mine?.submittedAt ?? null,
+    author,
+    checks,
+    review,
+    merge,
+    jaiReview: mine?.state.toLowerCase() ?? null,
+    jaiReviewedAt: mine?.submittedAt ?? null,
   };
   return list === "review" ? { list, ...common, requestedAt, reviewDueAt } : { list, ...common };
 }
 
-export interface RequestEvent { createdAt?: string; requestedReviewer?: { login?: string } | null }
+export interface RequestEvent {
+  createdAt?: string;
+  requestedReviewer?: { login?: string } | null;
+}
 
 /** When review was last asked of `login`, or null when only a team was asked. */
 export function reviewRequestedAt(events: RequestEvent[], login: string): string | null {
-  return events.filter((event) => event.requestedReviewer?.login === login && event.createdAt)
-    .map((event) => event.createdAt as string).sort().at(-1) ?? null;
+  return (
+    events
+      .filter((event) => event.requestedReviewer?.login === login && event.createdAt)
+      .map((event) => event.createdAt as string)
+      .sort()
+      .at(-1) ?? null
+  );
 }
 
 /**
@@ -626,9 +798,14 @@ export interface ReviewWeek {
  * The week from `REVIEW_SLA_UTC_OFFSET_HOURS` (`7`), `REVIEW_SLA_HOURS` (`9-18`) and `REVIEW_SLA_WEEKDAYS` (`1,2,3,4,5`).
  * Null, so no row has a due time, when any is unset or makes no sense.
  */
-export function reviewWeek(env: Pick<Env, "REVIEW_SLA_UTC_OFFSET_HOURS" | "REVIEW_SLA_HOURS" | "REVIEW_SLA_WEEKDAYS">):
-  ReviewWeek | null {
-  const { REVIEW_SLA_UTC_OFFSET_HOURS: offset, REVIEW_SLA_HOURS: hours, REVIEW_SLA_WEEKDAYS: days } = env;
+export function reviewWeek(
+  env: Pick<Env, "REVIEW_SLA_UTC_OFFSET_HOURS" | "REVIEW_SLA_HOURS" | "REVIEW_SLA_WEEKDAYS">,
+): ReviewWeek | null {
+  const {
+    REVIEW_SLA_UTC_OFFSET_HOURS: offset,
+    REVIEW_SLA_HOURS: hours,
+    REVIEW_SLA_WEEKDAYS: days,
+  } = env;
   if (!isSet(offset) || !isSet(hours) || !isSet(days)) return null;
   const offsetHours = Number(offset);
   const span = /^\s*(\d{1,2})\s*-\s*(\d{1,2})\s*$/.exec(hours);
@@ -636,7 +813,8 @@ export function reviewWeek(env: Pick<Env, "REVIEW_SLA_UTC_OFFSET_HOURS" | "REVIE
   if (!Number.isFinite(offsetHours) || Math.abs(offsetHours) > 14 || !span) return null;
   const [startHour, endHour] = [Number(span[1]), Number(span[2])];
   const isDay = (day: number) => Number.isInteger(day) && day >= 0 && day <= 6;
-  if (startHour >= endHour || endHour > 24 || weekdays.length === 0 || !weekdays.every(isDay)) return null;
+  if (startHour >= endHour || endHour > 24 || weekdays.length === 0 || !weekdays.every(isDay))
+    return null;
   return { offsetHours, startHour, endHour, weekdays };
 }
 
@@ -683,17 +861,30 @@ export function checksRead(node: ChecksNode, people: PeopleDecision | null): Che
   const { checks, review, decision, policy, overall, contexts } = verdictOf(node, people);
   const merge = mergeOf(node.mergeable, node.mergeStateStatus);
   return {
-    version: `${node.updatedAt}.${overall ?? "NONE"}`, checks, review, merge,
+    version: `${node.updatedAt}.${overall ?? "NONE"}`,
+    checks,
+    review,
+    merge,
     detail: {
-      reviewDecision: decision, mergeState: node.mergeStateStatus, merge, review, policy,
-      checks: latestChecks(contexts).filter((context) => !isPolicyBot(context)).map(checkOf),
+      reviewDecision: decision,
+      mergeState: node.mergeStateStatus,
+      merge,
+      review,
+      policy,
+      checks: latestChecks(contexts)
+        .filter((context) => !isPolicyBot(context))
+        .map(checkOf),
     },
   };
 }
 
 /** A PR read from GitHub, as the index stores it and the phone shows it. Rows and the detail share one verdict. */
 export function pullRequest(
-  node: Node, login: string, wasAsked: boolean, week: ReviewWeek | null, people: PeopleDecision | null,
+  node: Node,
+  login: string,
+  wasAsked: boolean,
+  week: ReviewWeek | null,
+  people: PeopleDecision | null,
   bots: ReadonlySet<string> = new Set(),
 ): PullRequest {
   const { version, checks, review, merge, detail: verdict } = checksRead(node, people);
@@ -713,7 +904,13 @@ export function pullRequest(
     people,
     status: list && {
       ...rowStatus(
-        list, node.author?.login ?? null, checks, review, merge, jaiReview(node, login), reviewDueAt(requestedAt, week),
+        list,
+        node.author?.login ?? null,
+        checks,
+        review,
+        merge,
+        jaiReview(node, login),
+        reviewDueAt(requestedAt, week),
         requestedAt,
       ),
       draft: node.isDraft,
@@ -723,17 +920,36 @@ export function pullRequest(
     tickets: [],
     ticket: null,
     detail: {
-      id: node.id, url: node.url, state: detailState(node), head: node.headRefOid, base: node.baseRefName,
+      id: node.id,
+      url: node.url,
+      state: detailState(node),
+      head: node.headRefOid,
+      base: node.baseRefName,
       headBranch: node.headRefName,
-      author: node.author, isAuthor: node.viewerDidAuthor, authorIsBot,
-      requestedBy: authorIsBot ? requestedByOf(node, bots) : null, tickets: resolvedTickets(ticketKeys, new Map()),
-      body: node.body, additions: node.additions,
-      deletions: node.deletions, changedFiles: node.changedFiles, reviewDecision: verdict.reviewDecision,
-      mergeState: verdict.mergeState, merge, review, mergeMethod: node.repository.viewerDefaultMergeMethod,
-      policy: verdict.policy, reviewers: reviewersOf(node),
-      viewedFiles: (node.files?.nodes ?? []).filter((file) => file.viewerViewedState === "VIEWED").map((file) => file.path),
-      labels: node.labels.nodes, checks: verdict.checks,
-      comments: node.comments, reviews: node.reviews, reviewThreads: node.reviewThreads,
+      author: node.author,
+      isAuthor: node.viewerDidAuthor,
+      authorIsBot,
+      requestedBy: authorIsBot ? requestedByOf(node, bots) : null,
+      tickets: resolvedTickets(ticketKeys, new Map()),
+      body: node.body,
+      additions: node.additions,
+      deletions: node.deletions,
+      changedFiles: node.changedFiles,
+      reviewDecision: verdict.reviewDecision,
+      mergeState: verdict.mergeState,
+      merge,
+      review,
+      mergeMethod: node.repository.viewerDefaultMergeMethod,
+      policy: verdict.policy,
+      reviewers: reviewersOf(node),
+      viewedFiles: (node.files?.nodes ?? [])
+        .filter((file) => file.viewerViewedState === "VIEWED")
+        .map((file) => file.path),
+      labels: node.labels.nodes,
+      checks: verdict.checks,
+      comments: node.comments,
+      reviews: node.reviews,
+      reviewThreads: node.reviewThreads,
     },
   };
 }
@@ -741,9 +957,13 @@ export function pullRequest(
 interface SearchPage {
   search: {
     pageInfo: { hasNextPage: boolean; endCursor: string | null };
-    nodes: { number: number; updatedAt: string; author: { __typename: string } | null;
+    nodes: {
+      number: number;
+      updatedAt: string;
+      author: { __typename: string } | null;
       repository: { nameWithOwner: string };
-      commits: { nodes: { commit: { statusCheckRollup: { state: string } | null } }[] } }[];
+      commits: { nodes: { commit: { statusCheckRollup: { state: string } | null } }[] };
+    }[];
   };
 }
 
@@ -751,13 +971,23 @@ async function search(q: string, env: Env): Promise<Listing[]> {
   const found: Listing[] = [];
   let after: string | null = null;
   do {
-    const page: SearchPage = await graphql<SearchPage>(SEARCH_QUERY, { q, n: PAGE_SIZE, after }, env);
+    const page: SearchPage = await graphql<SearchPage>(
+      SEARCH_QUERY,
+      { q, n: PAGE_SIZE, after },
+      env,
+    );
     for (const node of page.search.nodes) {
       if (node.author?.__typename !== "Bot") {
         const repo = repoOf(node.repository.nameWithOwner);
         const id = prId(repo, node.number);
         const rollup = node.commits.nodes[0]?.commit.statusCheckRollup?.state ?? "NONE";
-        found.push({ id, repo, number: node.number, version: `${node.updatedAt}.${rollup}`, reviewedOnly: false });
+        found.push({
+          id,
+          repo,
+          number: node.number,
+          version: `${node.updatedAt}.${rollup}`,
+          reviewedOnly: false,
+        });
       }
     }
     after = page.search.pageInfo.hasNextPage ? page.search.pageInfo.endCursor : null;
@@ -796,8 +1026,16 @@ const MERGED_QUERY = `query($q: String!, $n: Int!) {
 }`;
 
 interface MergedNode {
-  number: number; title: string; headRefOid: string; baseRefName: string; updatedAt: string; mergedAt: string | null;
-  additions: number; deletions: number; changedFiles: number; author: { login: string } | null;
+  number: number;
+  title: string;
+  headRefOid: string;
+  baseRefName: string;
+  updatedAt: string;
+  mergedAt: string | null;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  author: { login: string } | null;
   repository: { nameWithOwner: string };
 }
 
@@ -819,38 +1057,62 @@ export function mergedRow(node: MergedNode): MergedRow {
   const tooLarge = node.changedFiles > 300 || node.additions + node.deletions > 20_000;
   const head = shaOf(node.headRefOid);
   return {
-    repo: repoOf(node.repository.nameWithOwner), number: node.number, title: node.title, head,
-    revision: revisionOf(head, node.baseRefName), diff: tooLarge ? "too_large" : "ready",
-    detail: `${node.updatedAt}.MERGED`, keyLines: null,
+    repo: repoOf(node.repository.nameWithOwner),
+    number: node.number,
+    title: node.title,
+    head,
+    revision: revisionOf(head, node.baseRefName),
+    diff: tooLarge ? "too_large" : "ready",
+    detail: `${node.updatedAt}.MERGED`,
+    keyLines: null,
     status: {
-      list: "merged", author: node.author?.login ?? null, checks: "none", review: "none", merge: "unknown",
-      jaiReview: null, jaiReviewedAt: null, mergedAt: node.mergedAt,
+      list: "merged",
+      author: node.author?.login ?? null,
+      checks: "none",
+      review: "none",
+      merge: "unknown",
+      jaiReview: null,
+      jaiReviewedAt: null,
+      mergedAt: node.mergedAt,
     },
   };
 }
 
 export const MERGED_SEARCHES = {
   mine: (login: string) => `is:pr is:merged author:${login} archived:false sort:updated-desc`,
-  reviewed: (login: string) => `is:pr is:merged reviewed-by:${login} -author:${login} archived:false sort:updated-desc`,
+  reviewed: (login: string) =>
+    `is:pr is:merged reviewed-by:${login} -author:${login} archived:false sort:updated-desc`,
 } as const;
 
 export async function mergedPullRequests(
-  env: Env, kind: keyof typeof MERGED_SEARCHES = "mine",
+  env: Env,
+  kind: keyof typeof MERGED_SEARCHES = "mine",
 ): Promise<MergedRow[]> {
   const q = MERGED_SEARCHES[kind](await githubLogin(env));
-  const data = await graphql<{ search: { nodes: (MergedNode | Record<string, never>)[] } }>(MERGED_QUERY,
-    { q, n: MERGED_LIMIT }, env);
-  return data.search.nodes.filter((node): node is MergedNode => "number" in node).map(mergedRow)
+  const data = await graphql<{ search: { nodes: (MergedNode | Record<string, never>)[] } }>(
+    MERGED_QUERY,
+    { q, n: MERGED_LIMIT },
+    env,
+  );
+  return data.search.nodes
+    .filter((node): node is MergedNode => "number" in node)
+    .map(mergedRow)
     .sort((a, b) => (b.status.mergedAt ?? "").localeCompare(a.status.mergedAt ?? ""));
 }
 
 type Nodes = Record<string, { pullRequest: Node | null } | null>;
 type ViewerNode = Pick<Node, "viewerDidAuthor" | "files"> & {
   repository: { viewerDefaultMergeMethod: string | null };
-  reviewThreads: { nodes: { id: string; viewerCanResolve: boolean; viewerCanUnresolve: boolean }[] };
+  reviewThreads: {
+    nodes: { id: string; viewerCanResolve: boolean; viewerCanUnresolve: boolean }[];
+  };
 };
 
-function prQuery(refs: PullRequestRef[], fields: (ref: PullRequestRef) => string, fragments: string): string {
+function prQuery(
+  refs: PullRequestRef[],
+  fields: (ref: PullRequestRef) => string,
+  fragments: string,
+): string {
   const parts = refs.map((ref, index) => {
     const { owner, name } = repoParts(ref.repo);
     return `p${index}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) {
@@ -866,17 +1128,29 @@ function prQuery(refs: PullRequestRef[], fields: (ref: PullRequestRef) => string
 async function readNodes(refs: PullRequestRef[], env: Env): Promise<Nodes> {
   const shared = (ref: PullRequestRef) => `...Fields ${contextsOf(ref.number)}`;
   if (!readToken(env)) {
-    return graphql<Nodes>(prQuery(refs, (ref) => `${shared(ref)} ...Viewer`, `${FIELDS} ${VIEWER_FIELDS}`), {}, env);
+    return graphql<Nodes>(
+      prQuery(refs, (ref) => `${shared(ref)} ...Viewer`, `${FIELDS} ${VIEWER_FIELDS}`),
+      {},
+      env,
+    );
   }
   const [data, viewer] = await Promise.all([
     graphql<Nodes>(prQuery(refs, shared, FIELDS), {}, env),
-    graphql<Record<string, { pullRequest: ViewerNode | null } | null>>(prQuery(refs, () => "...Viewer", VIEWER_FIELDS),
-      {}, env),
+    graphql<Record<string, { pullRequest: ViewerNode | null } | null>>(
+      prQuery(refs, () => "...Viewer", VIEWER_FIELDS),
+      {},
+      env,
+    ),
   ]);
-  return Object.fromEntries(Object.entries(data).map(([alias, answer]) => {
-    const node = answer?.pullRequest;
-    return [alias, node ? { pullRequest: withViewer(node, viewer[alias]?.pullRequest ?? null) } : answer];
-  }));
+  return Object.fromEntries(
+    Object.entries(data).map(([alias, answer]) => {
+      const node = answer?.pullRequest;
+      return [
+        alias,
+        node ? { pullRequest: withViewer(node, viewer[alias]?.pullRequest ?? null) } : answer,
+      ];
+    }),
+  );
 }
 
 /** A node read with the read token, with the owner's own fields put in; none known reads as the owner seeing nothing. */
@@ -885,34 +1159,45 @@ export function withViewer(node: Node, viewer: ViewerNode | null): Node {
   return {
     ...node,
     viewerDidAuthor: viewer?.viewerDidAuthor ?? false,
-    repository: { ...node.repository, viewerDefaultMergeMethod: viewer?.repository.viewerDefaultMergeMethod ?? null },
+    repository: {
+      ...node.repository,
+      viewerDefaultMergeMethod: viewer?.repository.viewerDefaultMergeMethod ?? null,
+    },
     files: viewer?.files ?? null,
-    reviewThreads: { nodes: node.reviewThreads.nodes.map((thread) => ({
-      ...thread,
-      viewerCanResolve: threads.get(thread.id)?.viewerCanResolve ?? false,
-      viewerCanUnresolve: threads.get(thread.id)?.viewerCanUnresolve ?? false,
-    })) },
+    reviewThreads: {
+      nodes: node.reviewThreads.nodes.map((thread) => ({
+        ...thread,
+        viewerCanResolve: threads.get(thread.id)?.viewerCanResolve ?? false,
+        viewerCanUnresolve: threads.get(thread.id)?.viewerCanUnresolve ?? false,
+      })),
+    },
   };
 }
 
 /** `lookUp` asks Linear about ticket keys: the index passes its cache (`cachedTickets`). */
 export async function readPullRequests(
-  refs: PullRequestRef[], env: Env, asked: ReadonlySet<string> = new Set(),
+  refs: PullRequestRef[],
+  env: Env,
+  asked: ReadonlySet<string> = new Set(),
   lookUp: (keys: string[]) => Promise<Map<string, Ticket>> = (keys) => lookUpTickets(keys, env),
   cache?: GitHubCache,
 ): Promise<Map<PrId, PullRequest | null>> {
   const [data, login] = await Promise.all([readNodes(refs, env), githubLogin(env)]);
   const week = reviewWeek(env);
   const bots = botAuthorsOf(env);
-  const people = await Promise.all(refs.map((ref, index) => {
-    const node = data[`p${index}`]?.pullRequest;
-    return node ? peopleOf(ref.repo, node, env, cache).catch(() => null) : null;
-  }));
+  const people = await Promise.all(
+    refs.map((ref, index) => {
+      const node = data[`p${index}`]?.pullRequest;
+      return node ? peopleOf(ref.repo, node, env, cache).catch(() => null) : null;
+    }),
+  );
   const read = refs.map((ref, index) => {
     const node = data[`p${index}`]?.pullRequest;
-    return node ? pullRequest(node, login, asked.has(ref.id), week, people[index] ?? null, bots) : null;
+    return node
+      ? pullRequest(node, login, asked.has(ref.id), week, people[index] ?? null, bots)
+      : null;
   });
-  const keys = [...new Set(read.flatMap((pr) => pr ? allKeys(pr.ticketKeys) : []))];
+  const keys = [...new Set(read.flatMap((pr) => (pr ? allKeys(pr.ticketKeys) : [])))];
   const issues = keys.length > 0 ? await lookUp(keys) : new Map<string, Ticket>();
   for (const pr of read) {
     if (pr) {
@@ -933,8 +1218,10 @@ const CHECKS_FIELDS = `headRefOid updatedAt reviewDecision mergeable mergeStateS
  * `.policy.yml` and membership REST calls besides. A PR GitHub has no answer for maps to null; one it refused (SAML,
  * say) maps to `"error"`, and the rest are still read. Throws only when the whole query failed.
  */
-export async function readChecks(refs: PullRequestRef[], env: Env):
-Promise<Map<PrId, ChecksNode | null | "error">> {
+export async function readChecks(
+  refs: PullRequestRef[],
+  env: Env,
+): Promise<Map<PrId, ChecksNode | null | "error">> {
   const fields = refs.map((ref, index) => {
     const { owner, name } = repoParts(ref.repo);
     return `p${index}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) {
@@ -962,8 +1249,12 @@ Promise<Map<PrId, ChecksNode | null | "error">> {
     throw new Error("GitHub GraphQL failed: no data");
   }
   const data = body.data;
-  return new Map(refs.map((ref, index) => [ref.id,
-    failed.has(`p${index}`) ? "error" as const : data[`p${index}`]?.pullRequest ?? null]));
+  return new Map(
+    refs.map((ref, index) => [
+      ref.id,
+      failed.has(`p${index}`) ? ("error" as const) : (data[`p${index}`]?.pullRequest ?? null),
+    ]),
+  );
 }
 
 /** A picker row for any PR, open or not (`GET /prs/{owner}/{repo}/{n}/summary`). */
@@ -984,22 +1275,40 @@ const SUMMARY_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
 }`;
 
 interface SummaryNode {
-  number: number; title: string; state: string; isDraft: boolean; updatedAt: string; url: string;
-  author: { login: string } | null; repository: { nameWithOwner: string };
+  number: number;
+  title: string;
+  state: string;
+  isDraft: boolean;
+  updatedAt: string;
+  url: string;
+  author: { login: string } | null;
+  repository: { nameWithOwner: string };
 }
 
 export function summaryOf(node: SummaryNode): Summary {
   return {
-    repo: repoOf(node.repository.nameWithOwner), number: node.number, title: node.title, state: detailState(node),
-    author: node.author?.login ?? null, updatedAt: node.updatedAt, url: node.url,
+    repo: repoOf(node.repository.nameWithOwner),
+    number: node.number,
+    title: node.title,
+    state: detailState(node),
+    author: node.author?.login ?? null,
+    updatedAt: node.updatedAt,
+    url: node.url,
   };
 }
 
 /** Null when GitHub has no such PR the token can see: an unknown repo, an issue's number, or one past the last. */
-export async function pullRequestSummary(repo: RepoFullName, number: number, env: Env): Promise<Summary | null> {
+export async function pullRequestSummary(
+  repo: RepoFullName,
+  number: number,
+  env: Env,
+): Promise<Summary | null> {
   const { owner, name } = repoParts(repo);
   const data = await graphql<{ repository: { pullRequest: SummaryNode | null } | null }>(
-    SUMMARY_QUERY, { owner, name, number }, env);
+    SUMMARY_QUERY,
+    { owner, name, number },
+    env,
+  );
   const node = data.repository?.pullRequest;
   return node ? summaryOf(node) : null;
 }
@@ -1020,7 +1329,9 @@ export function revisionFrom(pull: unknown): Revision | null {
  * the same revision as the one a client asked for means the head did not move away from it while the diff was read.
  */
 export async function liveDiff(
-  repo: string, number: number, env: Env,
+  repo: string,
+  number: number,
+  env: Env,
 ): Promise<{ response: Response; version: Revision | null }> {
   const response = await fetchDiff(repo, number, env);
   if (!response.ok && response.status !== 406) {

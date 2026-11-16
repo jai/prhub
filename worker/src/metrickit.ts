@@ -16,7 +16,12 @@ export function metricKitOn(env: Pick<Env, "METRICKIT">): boolean {
 
 /** The logins, lowercased, whose phones send MetricKit reports to the hosted Worker (`METRICKIT_LOGINS`). */
 export function metricKitLogins(env: Pick<Env, "METRICKIT_LOGINS">): Set<string> {
-  return new Set((env.METRICKIT_LOGINS ?? "").split(",").map((login) => login.trim().toLowerCase()).filter(Boolean));
+  return new Set(
+    (env.METRICKIT_LOGINS ?? "")
+      .split(",")
+      .map((login) => login.trim().toLowerCase())
+      .filter(Boolean),
+  );
 }
 
 export interface MetricReport {
@@ -38,7 +43,9 @@ export function dayOf(stamp: unknown): string | null {
   if (typeof stamp !== "string") {
     return null;
   }
-  const time = Date.parse(stamp.replace(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}) ([+-]\d{2})(\d{2})$/, "$1T$2$3:$4"));
+  const time = Date.parse(
+    stamp.replace(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}) ([+-]\d{2})(\d{2})$/, "$1T$2$3:$4"),
+  );
   return Number.isNaN(time) ? null : new Date(time).toISOString().slice(0, 10);
 }
 
@@ -51,7 +58,11 @@ export function parseMetricReport(body: unknown, now: Date): MetricReport | null
     return null;
   }
   const fields = body as Record<string, unknown>;
-  if (typeof fields.kind !== "string" || !KINDS.has(fields.kind) || typeof fields.payload !== "string") {
+  if (
+    typeof fields.kind !== "string" ||
+    !KINDS.has(fields.kind) ||
+    typeof fields.payload !== "string"
+  ) {
     return null;
   }
   let payload: unknown;
@@ -64,15 +75,24 @@ export function parseMetricReport(body: unknown, now: Date): MetricReport | null
     return null;
   }
   const stamps = payload as Record<string, unknown>;
-  const day = dayOf(stamps.timeStampEnd) ?? dayOf(stamps.timeStampBegin) ?? now.toISOString().slice(0, 10);
+  const day =
+    dayOf(stamps.timeStampEnd) ?? dayOf(stamps.timeStampBegin) ?? now.toISOString().slice(0, 10);
   return {
-    kind: fields.kind as MetricReport["kind"], day, build: text(fields.build, 64), os: text(fields.os, 64),
-    device: text(fields.device, 64), payload: payload as Record<string, unknown>,
+    kind: fields.kind as MetricReport["kind"],
+    day,
+    build: text(fields.build, 64),
+    os: text(fields.os, 64),
+    device: text(fields.device, 64),
+    payload: payload as Record<string, unknown>,
   };
 }
 
 /** Where a report is kept: by day, then kind and the payload's hash, so the same payload sent twice is one object. */
-export async function metricKey(env: Pick<Env, "SIGNED_IN_USER_ID">, report: MetricReport, raw: string): Promise<string> {
+export async function metricKey(
+  env: Pick<Env, "SIGNED_IN_USER_ID">,
+  report: MetricReport,
+  raw: string,
+): Promise<string> {
   if (!DAY.test(report.day)) {
     throw new Error("bad day");
   }
@@ -81,9 +101,16 @@ export async function metricKey(env: Pick<Env, "SIGNED_IN_USER_ID">, report: Met
 }
 
 /** `POST /device/metrics`: `204` once kept; `404` when MetricKit reports are off for this person. */
-export async function metricsRoute(request: Request, env: Env, now = new Date()): Promise<Response> {
+export async function metricsRoute(
+  request: Request,
+  env: Env,
+  now = new Date(),
+): Promise<Response> {
   if (!metricKitOn(env)) {
-    return Response.json({ error: "MetricKit reports are not set up on this Worker." }, { status: 404 });
+    return Response.json(
+      { error: "MetricKit reports are not set up on this Worker." },
+      { status: 404 },
+    );
   }
   const sent = await request.text();
   let body: unknown = null;
@@ -94,13 +121,33 @@ export async function metricsRoute(request: Request, env: Env, now = new Date())
   }
   const report = parseMetricReport(body, now);
   if (!report) {
-    return Response.json({ error: { code: "validation_error", message:
-      "a report is {kind: metric or diagnostic, payload: MetricKit's JSON as a string}, at most 2 MB" } }, { status: 400 });
+    return Response.json(
+      {
+        error: {
+          code: "validation_error",
+          message:
+            "a report is {kind: metric or diagnostic, payload: MetricKit's JSON as a string}, at most 2 MB",
+        },
+      },
+      { status: 400 },
+    );
   }
   const raw = JSON.stringify(report.payload);
-  await env.DIFFS.put(await metricKey(env, report, raw), JSON.stringify({
-    kind: report.kind, day: report.day, received_at: now.toISOString(), build: report.build, os: report.os,
-    device: report.device, payload: report.payload,
-  }), { httpMetadata: { contentType: "application/json" }, customMetadata: { kind: report.kind, build: report.build ?? "" } });
+  await env.DIFFS.put(
+    await metricKey(env, report, raw),
+    JSON.stringify({
+      kind: report.kind,
+      day: report.day,
+      received_at: now.toISOString(),
+      build: report.build,
+      os: report.os,
+      device: report.device,
+      payload: report.payload,
+    }),
+    {
+      httpMetadata: { contentType: "application/json" },
+      customMetadata: { kind: report.kind, build: report.build ?? "" },
+    },
+  );
   return new Response(null, { status: 204 });
 }

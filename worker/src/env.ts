@@ -201,8 +201,13 @@ export function askQueueName(jobsName: string): string {
 }
 
 export function prIndex(env: Env): DurableObjectStub<PrIndex> {
-  const locationHint = isSet(env.PR_INDEX_LOCATION) ? env.PR_INDEX_LOCATION as DurableObjectLocationHint : undefined;
-  return env.PR_INDEX.get(env.PR_INDEX.idFromName(objectName(env)), locationHint ? { locationHint } : undefined);
+  const locationHint = isSet(env.PR_INDEX_LOCATION)
+    ? (env.PR_INDEX_LOCATION as DurableObjectLocationHint)
+    : undefined;
+  return env.PR_INDEX.get(
+    env.PR_INDEX.idFromName(objectName(env)),
+    locationHint ? { locationHint } : undefined,
+  );
 }
 
 let knownLogin: { token: string; login: string } | null = null;
@@ -217,7 +222,9 @@ export async function githubLogin(env: Env): Promise<string> {
   }
   const response = await fetch("https://api.github.com/user", {
     headers: {
-      Accept: "application/vnd.github+json", Authorization: `Bearer ${env.GITHUB_TOKEN}`, "User-Agent": "pr-viewer",
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+      "User-Agent": "pr-viewer",
     },
   });
   if (!response.ok) {

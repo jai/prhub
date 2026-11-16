@@ -1,7 +1,7 @@
 import AuthenticationServices
 import Foundation
 #if os(iOS)
-import UIKit
+    import UIKit
 #endif
 
 /// The app's `Authenticate`: `ASWebAuthenticationSession` on `/auth/github/start`, catching the HTTPS callback
@@ -39,13 +39,13 @@ enum WebSignIn {
 
     /// The key window the sheet rises from.
     private final class PresentationAnchor: NSObject, ASWebAuthenticationPresentationContextProviding {
-        func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        func presentationAnchor(for _: ASWebAuthenticationSession) -> ASPresentationAnchor {
             MainActor.assumeIsolated {
                 #if os(iOS)
-                let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-                return scenes.flatMap(\.windows).first(where: \.isKeyWindow) ?? ASPresentationAnchor()
+                    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+                    return scenes.flatMap(\.windows).first(where: \.isKeyWindow) ?? ASPresentationAnchor()
                 #else
-                return ASPresentationAnchor()
+                    return ASPresentationAnchor()
                 #endif
             }
         }

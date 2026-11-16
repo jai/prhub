@@ -39,19 +39,26 @@ export class KeyRecordStore {
     const result = consume(counters, nowSeconds);
     if (!result.ok) return { status: 429, retry_after: result.retryAfter };
     await this.#storage.put("counters", result.counters);
-    await this.#storage.put<KeyRecord>("record", { ...record, last_used_at: new Date(nowSeconds * 1000).toISOString() });
+    await this.#storage.put<KeyRecord>("record", {
+      ...record,
+      last_used_at: new Date(nowSeconds * 1000).toISOString(),
+    });
     return { status: 200, key_id: record.key_id };
   }
 
   async revoke(): Promise<void> {
     const record = await this.#storage.get<KeyRecord>("record");
-    if (record !== undefined) await this.#storage.put<KeyRecord>("record", { ...record, revoked: true });
+    if (record !== undefined)
+      await this.#storage.put<KeyRecord>("record", { ...record, revoked: true });
   }
 
   async stats(nowSeconds: number): Promise<{ last_used_at: string | null; sent_24h: number }> {
     const record = await this.#storage.get<KeyRecord>("record");
     const counters = (await this.#storage.get<Counters>("counters")) ?? emptyCounters();
-    return { last_used_at: record?.last_used_at ?? null, sent_24h: sentLastDay(counters, nowSeconds) };
+    return {
+      last_used_at: record?.last_used_at ?? null,
+      sent_24h: sentLastDay(counters, nowSeconds),
+    };
   }
 }
 
@@ -75,7 +82,11 @@ export interface ApnsSecrets {
   APNS_KEY_P8?: string;
 }
 
-export function isFreshJwt(cached: CachedJwt | null | undefined, kid: string, nowSeconds: number): cached is CachedJwt {
+export function isFreshJwt(
+  cached: CachedJwt | null | undefined,
+  kid: string,
+  nowSeconds: number,
+): cached is CachedJwt {
   return cached != null && cached.kid === kid && nowSeconds - cached.iat < JWT_REUSE_SECONDS;
 }
 
@@ -110,7 +121,9 @@ export class KeyIndexStore {
    * A provider token under 50 minutes old, minted here when there is none. One copy for every isolate, because
    * Apple refuses a team whose token changes too often (`TooManyProviderTokenUpdates`).
    */
-  async jwt(nowSeconds: number): Promise<CachedJwt | { error: "apns_not_configured" | "apns_key_invalid" }> {
+  async jwt(
+    nowSeconds: number,
+  ): Promise<CachedJwt | { error: "apns_not_configured" | "apns_key_invalid" }> {
     const { APNS_KEY_ID: kid, APNS_TEAM_ID: team, APNS_KEY_P8: p8 } = this.#secrets;
     if (!kid || !team || !p8) return { error: "apns_not_configured" };
     const stored = await this.#storage.get<CachedJwt>("jwt");

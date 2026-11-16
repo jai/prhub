@@ -1,10 +1,19 @@
 // The hosted Worker's world for tests: a GitHub that answers like the real one for several people, installations and
 // repos, and the account, installation and index objects over in-memory stores. No Durable Object, no network.
 import assert from "node:assert/strict";
-import { AccountCore, type AskResources, type KeyValueStore, type SignedOutReason } from "../src/account-core.ts";
+import {
+  AccountCore,
+  type AskResources,
+  type KeyValueStore,
+  type SignedOutReason,
+} from "../src/account-core.ts";
 import type { Env } from "../src/env.ts";
 import {
-  canSeeWith, type HostedServices, type PendingSignIn, publicHostedRoute, type UserIndexApi,
+  canSeeWith,
+  type HostedServices,
+  type PendingSignIn,
+  publicHostedRoute,
+  type UserIndexApi,
 } from "../src/hosted.ts";
 import type { RepoFullName, Sha } from "../src/ids.ts";
 import { InstallationCore, isInvolved, type ListStore } from "../src/installation-core.ts";
@@ -21,9 +30,17 @@ export const APP: OAuthApp = { clientId: "Iv23test", clientSecret: "client-secre
 export const ORIGIN = "https://prhub.example.workers.dev";
 export const HOUR = 3_600_000;
 
-export interface GitHubCall { method: string; url: string; form: URLSearchParams | null; headers: Headers }
+export interface GitHubCall {
+  method: string;
+  url: string;
+  form: URLSearchParams | null;
+  headers: Headers;
+}
 
-export interface FakeUser { id: number; login: string }
+export interface FakeUser {
+  id: number;
+  login: string;
+}
 
 export interface FakeInstallation {
   account: string;
@@ -56,7 +73,10 @@ export class FakeGitHub {
   readonly fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
     const method = init?.method ?? "GET";
-    const form = typeof init?.body === "string" && url.includes("/login/oauth/") ? new URLSearchParams(init.body) : null;
+    const form =
+      typeof init?.body === "string" && url.includes("/login/oauth/")
+        ? new URLSearchParams(init.body)
+        : null;
     const headers = new Headers(init?.headers);
     this.calls.push({ method, url, form, headers });
     if (url === "https://github.com/login/oauth/access_token") {
@@ -64,42 +84,56 @@ export class FakeGitHub {
         return Response.json({ error: this.refusal });
       }
       if (form?.get("grant_type") === "refresh_token") {
-        return form.get("refresh_token") === this.liveRefresh ? Response.json(this.pair())
+        return form.get("refresh_token") === this.liveRefresh
+          ? Response.json(this.pair())
           : Response.json({ error: "bad_refresh_token" });
       }
-      const isMatch = form?.get("code") === "gh-code"
-        && await pkceChallengeOf(form.get("code_verifier") ?? "") === this.challenge;
-      return isMatch ? Response.json(this.pair()) : Response.json({ error: "bad_verification_code" });
+      const isMatch =
+        form?.get("code") === "gh-code" &&
+        (await pkceChallengeOf(form.get("code_verifier") ?? "")) === this.challenge;
+      return isMatch
+        ? Response.json(this.pair())
+        : Response.json({ error: "bad_verification_code" });
     }
     if (url.startsWith("https://api.github.com/applications/") && method === "DELETE") {
       return new Response(null, { status: 204 });
     }
     const owner = this.owners.get((headers.get("Authorization") ?? "").replace(/^Bearer /, ""));
-    const answer = (body: unknown, status = 200) => Response.json(body, { status, headers: this.headers });
+    const answer = (body: unknown, status = 200) =>
+      Response.json(body, { status, headers: this.headers });
     if (!owner) {
       return answer({ message: "Bad credentials" }, 401);
     }
     const path = new URL(url).pathname;
     // A user token reaches a repo only where the App is installed, and only one the person can see.
-    const sees = (repo: string) => (this.access.get(owner.id)?.has(repo.toLowerCase()) ?? false)
-      && [...this.installations.values()].some((installation) => installation.repos.includes(repo.toLowerCase()));
+    const sees = (repo: string) =>
+      (this.access.get(owner.id)?.has(repo.toLowerCase()) ?? false) &&
+      [...this.installations.values()].some((installation) =>
+        installation.repos.includes(repo.toLowerCase()),
+      );
     if (path === "/user") {
       return answer(owner);
     }
     if (path === "/user/installations") {
       const page = Number(new URL(url).searchParams.get("page") ?? "1");
-      const reached = [...this.installations].filter(([, installation]) => installation.repos.some(sees));
+      const reached = [...this.installations].filter(([, installation]) =>
+        installation.repos.some(sees),
+      );
       return answer({
         total_count: reached.length,
-        installations: page === 1 ? reached.map(([id, installation]) => ({
-          id,
-          account: {
-            login: installation.account, type: installation.type ?? "Organization",
-            avatar_url: `https://avatars.githubusercontent.com/u/${id}?v=4`,
-          },
-          repository_selection: installation.selection ?? "all",
-          suspended_at: installation.suspended ? "2026-11-06T00:00:00Z" : null,
-        })) : [],
+        installations:
+          page === 1
+            ? reached.map(([id, installation]) => ({
+                id,
+                account: {
+                  login: installation.account,
+                  type: installation.type ?? "Organization",
+                  avatar_url: `https://avatars.githubusercontent.com/u/${id}?v=4`,
+                },
+                repository_selection: installation.selection ?? "all",
+                suspended_at: installation.suspended ? "2026-11-06T00:00:00Z" : null,
+              }))
+            : [],
       });
     }
     const repos = /^\/user\/installations\/(\d+)\/repositories$/.exec(path);
@@ -110,7 +144,10 @@ export class FakeGitHub {
       }
       const visible = installation?.repos.filter(sees) ?? [];
       return installation && visible.length > 0
-        ? answer({ total_count: visible.length, repositories: visible.map((name) => ({ full_name: name })) })
+        ? answer({
+            total_count: visible.length,
+            repositories: visible.map((name) => ({ full_name: name })),
+          })
         : answer({ message: "Not Found" }, 404);
     }
     const repo = /^\/repos\/([^/]+\/[^/]+)$/.exec(path);
@@ -138,8 +175,12 @@ export class FakeGitHub {
     this.liveRefresh = `ghr_${this.issued}`;
     this.owners.set(`ghu_${this.issued}`, this.user);
     return {
-      access_token: `ghu_${this.issued}`, expires_in: 28_800, refresh_token: this.liveRefresh,
-      refresh_token_expires_in: 15_897_600, scope: "", token_type: "bearer",
+      access_token: `ghu_${this.issued}`,
+      expires_in: 28_800,
+      refresh_token: this.liveRefresh,
+      refresh_token_expires_in: 15_897_600,
+      scope: "",
+      token_type: "bearer",
     };
   }
 }
@@ -150,7 +191,11 @@ export class MapStore implements KeyValueStore, ListStore {
     return structuredClone(this.map.get(key)) as T | undefined;
   }
   async getMany<T>(keys: string[]): Promise<Map<string, T>> {
-    return new Map(keys.filter((key) => this.map.has(key)).map((key) => [key, structuredClone(this.map.get(key)) as T]));
+    return new Map(
+      keys
+        .filter((key) => this.map.has(key))
+        .map((key) => [key, structuredClone(this.map.get(key)) as T]),
+    );
   }
   async put<T>(key: string | Record<string, unknown>, value?: T): Promise<void> {
     const entries = typeof key === "string" ? { [key]: value } : key;
@@ -164,8 +209,12 @@ export class MapStore implements KeyValueStore, ListStore {
     }
   }
   async list<T>(prefix: string): Promise<Map<string, T>> {
-    return new Map([...this.map].filter(([key]) => key.startsWith(prefix)).sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, value]) => [key, structuredClone(value) as T]));
+    return new Map(
+      [...this.map]
+        .filter(([key]) => key.startsWith(prefix))
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, value]) => [key, structuredClone(value) as T]),
+    );
   }
   async deleteAll(): Promise<void> {
     this.map.clear();
@@ -175,24 +224,49 @@ export class MapStore implements KeyValueStore, ListStore {
 export class FakeIndex implements UserIndexApi {
   linearChanged() {}
   calls: string[] = [];
-  bindUser(userId: number) { this.calls.push(`bind:${userId}`); }
-  tick() { this.calls.push("tick"); }
-  mark(repo: RepoFullName, number: number, involved: boolean) { this.calls.push(`mark:${repo}#${number}:${involved}`); }
-  markHead(repo: RepoFullName, sha: Sha) { this.calls.push(`head:${repo}@${sha.slice(0, 7)}`); }
-  signedOut(reason: SignedOutReason) { this.calls.push(`signed_out:${reason}`); }
-  forgetDevices() { this.calls.push("forget_devices"); }
-  forgetPushRegistrationsOf(fingerprint: string) { this.calls.push(`forget_push:${fingerprint}`); }
-  prunePushRegistrationsOnce(live: string[]) { this.calls.push(`prune_push:${live.length}`); }
-  deleteEverything() { this.calls.push("delete"); }
-  dropRepos(repos: string[]) { this.calls.push(`drop:${[...repos].sort().join(",")}`); }
-  record(kind: string) { this.calls.push(`event:${kind}`); }
+  bindUser(userId: number) {
+    this.calls.push(`bind:${userId}`);
+  }
+  tick() {
+    this.calls.push("tick");
+  }
+  mark(repo: RepoFullName, number: number, involved: boolean) {
+    this.calls.push(`mark:${repo}#${number}:${involved}`);
+  }
+  markHead(repo: RepoFullName, sha: Sha) {
+    this.calls.push(`head:${repo}@${sha.slice(0, 7)}`);
+  }
+  signedOut(reason: SignedOutReason) {
+    this.calls.push(`signed_out:${reason}`);
+  }
+  forgetDevices() {
+    this.calls.push("forget_devices");
+  }
+  forgetPushRegistrationsOf(fingerprint: string) {
+    this.calls.push(`forget_push:${fingerprint}`);
+  }
+  prunePushRegistrationsOnce(live: string[]) {
+    this.calls.push(`prune_push:${live.length}`);
+  }
+  deleteEverything() {
+    this.calls.push("delete");
+  }
+  dropRepos(repos: string[]) {
+    this.calls.push(`drop:${[...repos].sort().join(",")}`);
+  }
+  record(kind: string) {
+    this.calls.push(`event:${kind}`);
+  }
   marks(): string[] {
     return this.calls.filter((call) => call.startsWith("mark:") || call.startsWith("head:"));
   }
 }
 
 export const ASK_RESOURCES: AskResources = {
-  agent_id: "agent_test", environment_id: "env_test", vault_id: "vault_test", credential_id: "cred_test",
+  agent_id: "agent_test",
+  environment_id: "env_test",
+  vault_id: "vault_test",
+  credential_id: "cred_test",
 };
 
 export function hostedWorld(vars: Partial<Env> = {}) {
@@ -210,19 +284,27 @@ export function hostedWorld(vars: Partial<Env> = {}) {
   const forgottenJobs: string[] = [];
   const anthropic = { valid: new Set<string>(), provisioned: [] as string[] };
   const limits = limitsOf({ HOSTED: "on", ...vars });
-  const index = (userId: string) => indexes.get(userId) ?? indexes.set(userId, new FakeIndex()).get(userId) as FakeIndex;
+  const index = (userId: string) =>
+    indexes.get(userId) ?? (indexes.set(userId, new FakeIndex()).get(userId) as FakeIndex);
   const account = (userId: string) => {
     if (!accounts.has(userId)) {
       const store = new MapStore();
       stores.set(userId, store);
-      accounts.set(userId, new AccountCore({
-        store, keyring: () => parseKeyring(KEY), app: APP, fetch: github.fetch,
-        now: () => clock.now, limits,
-        onSignedOut: async (reason) => {
-          signedOut.push(reason);
-          await index(userId).signedOut(reason);
-        },
-      }));
+      accounts.set(
+        userId,
+        new AccountCore({
+          store,
+          keyring: () => parseKeyring(KEY),
+          app: APP,
+          fetch: github.fetch,
+          now: () => clock.now,
+          limits,
+          onSignedOut: async (reason) => {
+            signedOut.push(reason);
+            await index(userId).signedOut(reason);
+          },
+        }),
+      );
     }
     return accounts.get(userId) as AccountCore;
   };
@@ -230,20 +312,24 @@ export function hostedWorld(vars: Partial<Env> = {}) {
     if (!installations.has(id)) {
       const store = new MapStore();
       installationStores.set(id, store);
-      installations.set(id, new InstallationCore({
-        store,
-        deliver: async (userId, target, login) => {
-          if (target.kind === "pr") {
-            index(userId).mark(target.repo, target.number, isInvolved(target, login));
-          } else {
-            index(userId).markHead(target.repo, target.sha);
-          }
-        },
-        dropRepos: async (userId, repos) => {
-          index(userId).dropRepos(repos);
-        },
-        canSee: (userId, repo) => canSeeWith(account(userId), repo, github.fetch, clock.now, gitHubReserveOf(limits)),
-      }));
+      installations.set(
+        id,
+        new InstallationCore({
+          store,
+          deliver: async (userId, target, login) => {
+            if (target.kind === "pr") {
+              index(userId).mark(target.repo, target.number, isInvolved(target, login));
+            } else {
+              index(userId).markHead(target.repo, target.sha);
+            }
+          },
+          dropRepos: async (userId, repos) => {
+            index(userId).dropRepos(repos);
+          },
+          canSee: (userId, repo) =>
+            canSeeWith(account(userId), repo, github.fetch, clock.now, gitHubReserveOf(limits)),
+        }),
+      );
     }
     return installations.get(id) as InstallationCore;
   };
@@ -276,7 +362,7 @@ export function hostedWorld(vars: Partial<Env> = {}) {
     },
     limits,
     anthropic: {
-      check: async (key) => anthropic.valid.has(key) ? "ok" : "invalid",
+      check: async (key) => (anthropic.valid.has(key) ? "ok" : "invalid"),
       provisionAsk: async (key) => {
         anthropic.provisioned.push(key);
         return ASK_RESOURCES;
@@ -286,22 +372,50 @@ export function hostedWorld(vars: Partial<Env> = {}) {
     now: () => clock.now,
   };
   const workerEnv = env({
-    HOSTED: "on", GITHUB_APP_CLIENT_ID: APP.clientId, GITHUB_APP_CLIENT_SECRET: APP.clientSecret,
-    TOKEN_ENCRYPTION_KEY: KEY, WEBHOOK_SECRET: "hook-secret", APPLE_APP_ID: "TEAMID.com.example.prhub",
-    AI_ON_API_KEY: "on", ANTHROPIC_API_KEY: "operator-anthropic-key", USER_ACCOUNTS: {} as Env["USER_ACCOUNTS"],
-    SIGN_INS: {} as Env["SIGN_INS"], INSTALLATIONS: {} as Env["INSTALLATIONS"], IP_LIMITS: {} as Env["IP_LIMITS"],
+    HOSTED: "on",
+    GITHUB_APP_CLIENT_ID: APP.clientId,
+    GITHUB_APP_CLIENT_SECRET: APP.clientSecret,
+    TOKEN_ENCRYPTION_KEY: KEY,
+    WEBHOOK_SECRET: "hook-secret",
+    APPLE_APP_ID: "TEAMID.com.example.prhub",
+    AI_ON_API_KEY: "on",
+    ANTHROPIC_API_KEY: "operator-anthropic-key",
+    USER_ACCOUNTS: {} as Env["USER_ACCOUNTS"],
+    SIGN_INS: {} as Env["SIGN_INS"],
+    INSTALLATIONS: {} as Env["INSTALLATIONS"],
+    IP_LIMITS: {} as Env["IP_LIMITS"],
     ...vars,
   });
   const waited: Promise<unknown>[] = [];
   const route = async (path: string, init: RequestInit = {}) => {
-    const answer = publicHostedRoute(new Request(`${ORIGIN}${path}`, init), workerEnv, services, APP,
-      (promise) => waited.push(promise));
+    const answer = publicHostedRoute(
+      new Request(`${ORIGIN}${path}`, init),
+      workerEnv,
+      services,
+      APP,
+      (promise) => waited.push(promise),
+    );
     assert.ok(answer, `${path} is a hosted route`);
     return answer;
   };
   return {
-    github, clock, stores, accounts, indexes, installations, installationStores, pending, deleted, signedOut, ipCounts,
-    forgottenJobs, anthropic, services, workerEnv, route, waited,
+    github,
+    clock,
+    stores,
+    accounts,
+    indexes,
+    installations,
+    installationStores,
+    pending,
+    deleted,
+    signedOut,
+    ipCounts,
+    forgottenJobs,
+    anthropic,
+    services,
+    workerEnv,
+    route,
+    waited,
   };
 }
 
@@ -312,9 +426,13 @@ export const APP_VERIFIER = "v".repeat(20) + randomToken();
 
 export async function startSignIn(world: World, verifier = APP_VERIFIER): Promise<URL> {
   const challenge = await pkceChallengeOf(verifier);
-  const start = await world.route(`/auth/github/start?${new URLSearchParams({
-    state: APP_STATE, code_challenge: challenge, code_challenge_method: "S256",
-  })}`);
+  const start = await world.route(
+    `/auth/github/start?${new URLSearchParams({
+      state: APP_STATE,
+      code_challenge: challenge,
+      code_challenge_method: "S256",
+    })}`,
+  );
   assert.equal(start.status, 302);
   const authorize = new URL(start.headers.get("Location") ?? "");
   world.github.challenge = authorize.searchParams.get("code_challenge") ?? "";
@@ -333,12 +451,16 @@ export async function signIn(world: World, user?: FakeUser): Promise<string> {
     world.github.user = user;
   }
   const authorize = await startSignIn(world);
-  const done = await callback(world, { code: "gh-code", state: authorize.searchParams.get("state") ?? "" });
+  const done = await callback(world, {
+    code: "gh-code",
+    state: authorize.searchParams.get("state") ?? "",
+  });
   const finish = await world.route("/auth/github/finish", {
-    method: "POST", body: JSON.stringify({ code: done.searchParams.get("code"), code_verifier: APP_VERIFIER }),
+    method: "POST",
+    body: JSON.stringify({ code: done.searchParams.get("code"), code_verifier: APP_VERIFIER }),
   });
   assert.equal(finish.status, 200);
-  const { secret } = await finish.json() as { secret: string };
+  const { secret } = (await finish.json()) as { secret: string };
   await Promise.all(world.waited.splice(0));
   return secret;
 }
@@ -346,13 +468,27 @@ export async function signIn(world: World, user?: FakeUser): Promise<string> {
 export const bearer = (secret: string) => ({ headers: { Authorization: `Bearer ${secret}` } });
 
 /** A delivery as GitHub signs it with the webhook secret. */
-export async function deliver(world: World, event: string, payload: object, secret = "hook-secret"): Promise<Response> {
+export async function deliver(
+  world: World,
+  event: string,
+  payload: object,
+  secret = "hook-secret",
+): Promise<Response> {
   const body = JSON.stringify(payload);
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" },
-    false, ["sign"]);
-  const signature = Buffer.from(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body))).toString("hex");
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = Buffer.from(
+    await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body)),
+  ).toString("hex");
   const answer = await world.route("/github/webhook", {
-    method: "POST", body, headers: { "X-GitHub-Event": event, "X-Hub-Signature-256": `sha256=${signature}` },
+    method: "POST",
+    body,
+    headers: { "X-GitHub-Event": event, "X-Hub-Signature-256": `sha256=${signature}` },
   });
   await Promise.all(world.waited.splice(0));
   return answer;

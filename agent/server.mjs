@@ -6,7 +6,18 @@ import { createServer } from "node:http";
 import { promisify } from "node:util";
 import { InMemorySessionStore, query } from "@anthropic-ai/claude-agent-sdk";
 import {
-  ACTS, authArgs, LINEAR_ACTS, gitEnv, lockConfig, readOnlyHooks, readToolNames, readTools, SAFE_GIT, SERVER, vetRepo, WEB_TOOLS,
+  ACTS,
+  authArgs,
+  LINEAR_ACTS,
+  gitEnv,
+  lockConfig,
+  readOnlyHooks,
+  readToolNames,
+  readTools,
+  SAFE_GIT,
+  SERVER,
+  vetRepo,
+  WEB_TOOLS,
 } from "./read-tools.mjs";
 
 const exec = promisify(execFile);
@@ -19,8 +30,14 @@ async function run({ system, prompt, model, effort, schema }) {
   for await (const message of query({
     prompt,
     options: {
-      systemPrompt: system, model, effort, tools: [], settingSources: [], maxTurns: 3,
-      sessionStore: new InMemorySessionStore(), outputFormat: { type: "json_schema", schema },
+      systemPrompt: system,
+      model,
+      effort,
+      tools: [],
+      settingSources: [],
+      maxTurns: 3,
+      sessionStore: new InMemorySessionStore(),
+      outputFormat: { type: "json_schema", schema },
     },
   })) {
     if (message.type === "result") {
@@ -35,9 +52,15 @@ async function run({ system, prompt, model, effort, schema }) {
     subtype: result.subtype,
     output: result.structured_output ?? null,
     // Claude Code also calls a small model for its own chores; the answer is the asked model's when it ran.
-    model: model in (result.modelUsage ?? {}) ? model : Object.keys(result.modelUsage ?? {})[0] ?? model,
+    model:
+      model in (result.modelUsage ?? {})
+        ? model
+        : (Object.keys(result.modelUsage ?? {})[0] ?? model),
     tokens: {
-      input: (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0),
+      input:
+        (usage.input_tokens ?? 0) +
+        (usage.cache_creation_input_tokens ?? 0) +
+        (usage.cache_read_input_tokens ?? 0),
       output: usage.output_tokens ?? 0,
     },
     costUsd: result.total_cost_usd ?? null,
@@ -58,7 +81,11 @@ async function git(step, args, options = {}) {
   try {
     return await exec("git", [...SAFE_GIT, ...args], { env: gitEnv(), ...options });
   } catch (error) {
-    const said = String(error?.stderr ?? "").trim().split("\n").pop() || `exit ${error?.code ?? "?"}`;
+    const said =
+      String(error?.stderr ?? "")
+        .trim()
+        .split("\n")
+        .pop() || `exit ${error?.code ?? "?"}`;
     throw new Error(`git ${step} failed: ${said}`);
   }
 }
@@ -68,7 +95,10 @@ const locks = new Map();
 async function locked(dir, work) {
   const before = locks.get(dir) ?? Promise.resolve();
   const turn = before.then(work, work);
-  locks.set(dir, turn.catch(() => {}));
+  locks.set(
+    dir,
+    turn.catch(() => {}),
+  );
   return turn;
 }
 
@@ -79,7 +109,9 @@ async function checkout(dir, repo, head, token) {
     await git("init", ["init", "-q", dir]);
     await git("remote", ["-C", dir, "remote", "add", "origin", `https://github.com/${repo}.git`]);
   }
-  await git("fetch", ["-C", dir, ...auth, "fetch", "-q", "--depth=50", "origin", head], { timeout: 300_000 });
+  await git("fetch", ["-C", dir, ...auth, "fetch", "-q", "--depth=50", "origin", head], {
+    timeout: 300_000,
+  });
   await git("checkout", ["-C", dir, "checkout", "-q", "--force", "--detach", head]);
   lockConfig(dir);
   return dir;
@@ -113,21 +145,44 @@ function placeDiff(dir, diff) {
 /** The subscription token and the GitHub token, never in an answer: a defence beside `readOnlyHooks`. */
 function scrub(text, ...more) {
   return [process.env.CLAUDE_CODE_OAUTH_TOKEN, ...more].reduce(
-    (kept, secret) => (secret && kept ? kept.split(secret).join("[redacted]") : kept), text);
+    (kept, secret) => (secret && kept ? kept.split(secret).join("[redacted]") : kept),
+    text,
+  );
 }
 
 /** One Ask turn on `repo` at `head`: the answer's text, the session, and its whole transcript for the next turn. */
 const SAFE = { scope: /^[\w-]{1,64}$/, repo: /^[\w.-]+\/[\w.-]+$/, head: /^[0-9a-f]{40}$/ };
 
 async function ask({
-  system, prompt, model, effort, scope, repo, number, head, token, readOnly, reachable, diff, session, entries, budgetUsd,
+  system,
+  prompt,
+  model,
+  effort,
+  scope,
+  repo,
+  number,
+  head,
+  token,
+  readOnly,
+  reachable,
+  diff,
+  session,
+  entries,
+  budgetUsd,
 }) {
-  if (!SAFE.scope.test(scope) || !SAFE.repo.test(repo) || repo.includes("..") || !Number.isInteger(number)
-    || !SAFE.head.test(head)) {
+  if (
+    !SAFE.scope.test(scope) ||
+    !SAFE.repo.test(repo) ||
+    repo.includes("..") ||
+    !Number.isInteger(number) ||
+    !SAFE.head.test(head)
+  ) {
     throw new Error("The question names no PR this container can check out.");
   }
   // Hosted, the repos this question's token names: the only clones the agent may read. Null on a Worker of one's own.
-  const granted = Array.isArray(reachable) ? reachable.filter((one) => vetRepo(one) === null) : null;
+  const granted = Array.isArray(reachable)
+    ? reachable.filter((one) => vetRepo(one) === null)
+    : null;
   const dir = `${WORK}/${scope}/${repo}/${number}`;
   // This person's other repos, cloned by clone_repo. GitHub owners never start with a dot, so no PR's checkout is here.
   const home = `${WORK}/${scope}`;
@@ -151,14 +206,37 @@ async function ask({
     for await (const message of query({
       prompt,
       options: {
-        systemPrompt: system, model, effort, cwd, tools: ASK_TOOLS, allowedTools: allowed, permissionMode: "dontAsk",
-        mcpServers: { [SERVER]: readTools({
-          prDir: cwd, prRepo: repo, clones, scope: home, token: reads, locked, reachable: granted,
-          onDraft: (made) => { draft = made; },
-          onAct: (action) => { if (actions.length < ACTS) actions.push(action); },
-          onLinear: (comment) => { if (linear.length < LINEAR_ACTS) linear.push(comment); },
-        }) },
-        settingSources: [], maxTurns: 60, maxBudgetUsd: budgetUsd ?? undefined, sessionStore: store,
+        systemPrompt: system,
+        model,
+        effort,
+        cwd,
+        tools: ASK_TOOLS,
+        allowedTools: allowed,
+        permissionMode: "dontAsk",
+        mcpServers: {
+          [SERVER]: readTools({
+            prDir: cwd,
+            prRepo: repo,
+            clones,
+            scope: home,
+            token: reads,
+            locked,
+            reachable: granted,
+            onDraft: (made) => {
+              draft = made;
+            },
+            onAct: (action) => {
+              if (actions.length < ACTS) actions.push(action);
+            },
+            onLinear: (comment) => {
+              if (linear.length < LINEAR_ACTS) linear.push(comment);
+            },
+          }),
+        },
+        settingSources: [],
+        maxTurns: 60,
+        maxBudgetUsd: budgetUsd ?? undefined,
+        sessionStore: store,
         hooks: { PreToolUse: readOnlyHooks(cwd, clones, granted) },
         resume: session ?? undefined,
       },
@@ -179,13 +257,18 @@ async function ask({
       tools,
       text: typeof result.result === "string" ? scrub(result.result, token) : null,
       draft: draft && {
-        ...draft, body: scrub(draft.body, token), comments: draft.comments.map((one) => ({ ...one, body: scrub(one.body, token) })),
+        ...draft,
+        body: scrub(draft.body, token),
+        comments: draft.comments.map((one) => ({ ...one, body: scrub(one.body, token) })),
       },
       actions,
       linear: linear.map((one) => ({ ...one, body: scrub(one.body, token) })),
       session: result.session_id,
       entries: store.entries,
-      model: model in (result.modelUsage ?? {}) ? model : Object.keys(result.modelUsage ?? {})[0] ?? model,
+      model:
+        model in (result.modelUsage ?? {})
+          ? model
+          : (Object.keys(result.modelUsage ?? {})[0] ?? model),
       costUsd: result.total_cost_usd ?? null,
     };
   });

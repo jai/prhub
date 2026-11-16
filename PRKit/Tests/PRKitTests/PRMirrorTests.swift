@@ -1,6 +1,6 @@
-@testable import PRKit
 import DurableNetworking
 import Foundation
+@testable import PRKit
 import SwiftUI
 import Testing
 
@@ -104,8 +104,8 @@ struct PRMirrorTests {
             )
         }
         let rows = [
-            row(1, "review", 3_600, nil), row(2, "review", -3_600, nil), row(3, "review", nil, "changes_requested"),
-            row(4, "review", -86_400, nil), row(5, "reviewed", -90_000, "approved"),
+            row(1, "review", 3600, nil), row(2, "review", -3600, nil), row(3, "review", nil, "changes_requested"),
+            row(4, "review", -86400, nil), row(5, "reviewed", -90000, "approved"),
         ]
 
         #expect(PRListPage.ordered(rows, now: now).map(\.number) == [4, 2, 3, 1, 5])
@@ -122,8 +122,8 @@ struct PRMirrorTests {
                 status: .init(
                     list: list, author: author, checks: "passing", review: "required", merge: "blocked",
                     jaiReview: nil, jaiReviewedAt: nil,
-                    requestedAt: askedHoursAgo.map { now.addingTimeInterval(-$0 * 3_600).formatted(.iso8601) },
-                    reviewDueAt: now.addingTimeInterval(86_400).formatted(.iso8601)
+                    requestedAt: askedHoursAgo.map { now.addingTimeInterval(-$0 * 3600).formatted(.iso8601) },
+                    reviewDueAt: now.addingTimeInterval(86400).formatted(.iso8601)
                 )
             )
         }
@@ -146,17 +146,17 @@ struct PRMirrorTests {
 
     @Test func withNoSLAFromTheWorkerAReviewIsDueOneWorkingDayAfterItCouldBeSeen() throws {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 7 * 3_600))
+        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 7 * 3600))
         let week = ReviewWeek(calendar: calendar)
         let date = { (text: String) in try Date(text, strategy: .iso8601) }
         // Thursday 10:00 local: Friday 10:00. Friday 10:00: Monday 10:00.
-        #expect(week.dueAt(requestedAt: try date("2026-11-05T03:00:00Z")) == (try date("2026-11-06T03:00:00Z")))
-        #expect(week.dueAt(requestedAt: try date("2026-11-06T03:00:00Z")) == (try date("2026-11-09T03:00:00Z")))
+        #expect(try week.dueAt(requestedAt: date("2026-11-05T03:00:00Z")) == date("2026-11-06T03:00:00Z"))
+        #expect(try week.dueAt(requestedAt: date("2026-11-06T03:00:00Z")) == date("2026-11-09T03:00:00Z"))
         // Thursday 20:00: the day starts Friday 09:00, so Monday 09:00. Saturday: Tuesday 09:00. Thursday 07:00:
         // Friday 09:00.
-        #expect(week.dueAt(requestedAt: try date("2026-11-05T13:00:00Z")) == (try date("2026-11-09T02:00:00Z")))
-        #expect(week.dueAt(requestedAt: try date("2026-11-07T05:00:00Z")) == (try date("2026-11-10T02:00:00Z")))
-        #expect(week.dueAt(requestedAt: try date("2026-11-05T00:00:00Z")) == (try date("2026-11-06T02:00:00Z")))
+        #expect(try week.dueAt(requestedAt: date("2026-11-05T13:00:00Z")) == date("2026-11-09T02:00:00Z"))
+        #expect(try week.dueAt(requestedAt: date("2026-11-07T05:00:00Z")) == date("2026-11-10T02:00:00Z"))
+        #expect(try week.dueAt(requestedAt: date("2026-11-05T00:00:00Z")) == date("2026-11-06T02:00:00Z"))
     }
 
     @Test func theOrgFilterStartsAtTheHostsOrgsAndSurvivesSaving() {
@@ -174,7 +174,7 @@ struct PRMirrorTests {
         #expect(PROrgFilter(rawValue: filter.rawValue) == filter)
     }
 
-    @Test func aReviewJaiAnsweredShowsAsHisAndIsNotAskedAgain() throws {
+    @Test func aReviewJaiAnsweredShowsAsHisAndIsNotAskedAgain() {
         let status = PullRequestRow.Status(
             list: "reviewed", author: "ann", checks: "passing", review: "approved", merge: "clean",
             jaiReview: "approved", jaiReviewedAt: "2026-11-01T01:00:00Z"
@@ -270,8 +270,8 @@ struct PRMirrorTests {
     @Test func aPullRequestLinkParsesAndOtherLinksDoNot() throws {
         let link = try #require(URL(string: "https://github.com/acme/web-app/pull/6952/files"))
         #expect(PullRequestRef(url: link) == PullRequestRef(repo: "acme/web-app", number: 6952))
-        #expect(PullRequestRef(url: try #require(URL(string: "https://github.com/jai/skills/issues/4"))) == nil)
-        #expect(PullRequestRef(url: try #require(URL(string: "https://linear.app/a/issue/ABC-1"))) == nil)
+        #expect(try PullRequestRef(url: #require(URL(string: "https://github.com/jai/skills/issues/4"))) == nil)
+        #expect(try PullRequestRef(url: #require(URL(string: "https://linear.app/a/issue/ABC-1"))) == nil)
     }
 
     @Test func githubMarkdownLosesWhatOnlyAWebPageDrawsAndKeepsImagesAndFolds() {

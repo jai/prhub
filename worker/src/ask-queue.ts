@@ -38,7 +38,9 @@ export function askPr(repo: string, number: number): string {
 }
 
 export function createAskTables(sql: LimitSql): void {
-  sql.exec(`CREATE TABLE IF NOT EXISTS asks (id TEXT PRIMARY KEY, pr TEXT, ask TEXT, at INTEGER, error TEXT)`);
+  sql.exec(
+    `CREATE TABLE IF NOT EXISTS asks (id TEXT PRIMARY KEY, pr TEXT, ask TEXT, at INTEGER, error TEXT)`,
+  );
   sql.exec(`CREATE TABLE IF NOT EXISTS ask_chats (pr TEXT PRIMARY KEY, chat TEXT, at INTEGER)`);
 }
 
@@ -47,14 +49,22 @@ export function queueAsk(sql: LimitSql, ask: QueuedAsk): void {
   const pr = askPr(ask.repo, ask.number);
   sql.exec("DELETE FROM asks WHERE (pr = ? AND error IS NOT NULL) OR at < ?", pr, ask.at - KEPT_MS);
   sql.exec("DELETE FROM ask_chats WHERE at < ?", ask.at - KEPT_MS);
-  sql.exec("INSERT OR IGNORE INTO asks (id, pr, ask, at, error) VALUES (?, ?, ?, ?, NULL)",
-    ask.id, pr, JSON.stringify(ask), ask.at);
+  sql.exec(
+    "INSERT OR IGNORE INTO asks (id, pr, ask, at, error) VALUES (?, ?, ?, ?, NULL)",
+    ask.id,
+    pr,
+    JSON.stringify(ask),
+    ask.at,
+  );
 }
 
 /** The oldest question not yet handed over and not failed. */
 export function nextAsk(sql: LimitSql): QueuedAsk | null {
-  const row = sql.exec<{ ask: string; error: string | null }>(
-    "SELECT ask, error FROM asks WHERE error IS NULL ORDER BY at, id LIMIT 1").toArray()[0];
+  const row = sql
+    .exec<{ ask: string; error: string | null }>(
+      "SELECT ask, error FROM asks WHERE error IS NULL ORDER BY at, id LIMIT 1",
+    )
+    .toArray()[0];
   return row ? queuedOf(row) : null;
 }
 
@@ -68,11 +78,14 @@ export function finishAsk(sql: LimitSql, id: string, error: string | null): void
 }
 
 function queuedOf(row: { ask: string; error: string | null }): QueuedAsk {
-  return { ...JSON.parse(row.ask) as QueuedAsk, error: row.error };
+  return { ...(JSON.parse(row.ask) as QueuedAsk), error: row.error };
 }
 
 /** Every question here, one at a time and in order: one handover must end before the next, or two could start sessions. */
-export async function drainAsks(sql: LimitSql, handOver: (ask: QueuedAsk) => Promise<string | null>): Promise<void> {
+export async function drainAsks(
+  sql: LimitSql,
+  handOver: (ask: QueuedAsk) => Promise<string | null>,
+): Promise<void> {
   for (let ask = nextAsk(sql); ask; ask = nextAsk(sql)) {
     finishAsk(sql, ask.id, await handOver(ask));
   }
@@ -80,22 +93,37 @@ export async function drainAsks(sql: LimitSql, handOver: (ask: QueuedAsk) => Pro
 
 /** The chat as `GET …/ask` last read it, for the next `POST` to answer with at once. */
 export function rememberChat(sql: LimitSql, pr: string, chat: AskChat, now: number): void {
-  sql.exec(`INSERT INTO ask_chats (pr, chat, at) VALUES (?, ?, ?)
-    ON CONFLICT (pr) DO UPDATE SET chat = excluded.chat, at = excluded.at`, pr, JSON.stringify(chat), now);
+  sql.exec(
+    `INSERT INTO ask_chats (pr, chat, at) VALUES (?, ?, ?)
+    ON CONFLICT (pr) DO UPDATE SET chat = excluded.chat, at = excluded.at`,
+    pr,
+    JSON.stringify(chat),
+    now,
+  );
 }
 
 export function askView(sql: LimitSql, pr: string): AskView {
-  const chat = sql.exec<{ chat: string }>("SELECT chat FROM ask_chats WHERE pr = ?", pr).toArray()[0];
-  const queued = sql.exec<{ ask: string; error: string | null }>(
-    "SELECT ask, error FROM asks WHERE pr = ? ORDER BY at, id", pr).toArray();
-  return { chat: chat ? JSON.parse(chat.chat) as AskChat : null, queued: queued.map(queuedOf) };
+  const chat = sql
+    .exec<{ chat: string }>("SELECT chat FROM ask_chats WHERE pr = ?", pr)
+    .toArray()[0];
+  const queued = sql
+    .exec<{ ask: string; error: string | null }>(
+      "SELECT ask, error FROM asks WHERE pr = ? ORDER BY at, id",
+      pr,
+    )
+    .toArray();
+  return { chat: chat ? (JSON.parse(chat.chat) as AskChat) : null, queued: queued.map(queuedOf) };
 }
 
 /**
  * The chat with the questions the agent doesn't have yet at its end, as working, or a failed one with why. A question the
  * chat already ends with was handed over a moment ago: it isn't shown twice.
  */
-export function withQueued(chat: AskChat | null, queued: readonly QueuedAsk[], now: number): AskChat {
+export function withQueued(
+  chat: AskChat | null,
+  queued: readonly QueuedAsk[],
+  now: number,
+): AskChat {
   let shown = chat ?? chatOf([], null);
   for (const ask of queued) {
     const asked = shown.messages.filter((message) => message.role === "you").at(-1);
@@ -105,7 +133,10 @@ export function withQueued(chat: AskChat | null, queued: readonly QueuedAsk[], n
       const side = ask.input.anchor ? { side: ask.input.anchor.side } : {};
       shown = {
         ...shown,
-        messages: [...shown.messages, { id: `queued:${ask.id}`, role: "you", text: ask.input.question, anchor, ...side }],
+        messages: [
+          ...shown.messages,
+          { id: `queued:${ask.id}`, role: "you", text: ask.input.question, anchor, ...side },
+        ],
       };
     }
     const problem = ask.error ?? (now - ask.at > ASK_HANDOVER_MS ? NOT_HANDED_OVER : null);
@@ -130,7 +161,11 @@ export interface AskIntake {
 }
 
 /** `202` with the chat and the question in it, or the refusal. `receipt` is `ask:<pr>:<client_ref>` when there is one. */
-export async function acceptAsk(intake: AskIntake, ask: QueuedAsk, receipt: string | null): Promise<Response> {
+export async function acceptAsk(
+  intake: AskIntake,
+  ask: QueuedAsk,
+  receipt: string | null,
+): Promise<Response> {
   const claim = receipt ? await intake.claim(receipt) : "go";
   if (claim === "busy") {
     return intake.busy();

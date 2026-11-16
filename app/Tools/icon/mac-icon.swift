@@ -6,9 +6,11 @@ import AppKit
 
 let set = URL(filePath: "app/PRHub/Assets.xcassets/AppIcon.appiconset")
 guard let art = NSImage(contentsOf: set.appending(path: "PRHubIcon.png"))?
-    .cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+    .cgImage(forProposedRect: nil, context: nil, hints: nil)
+else {
     fatalError("no PRHubIcon.png in \(set.path): run from the repo root")
 }
+
 for pixels in [16, 32, 64, 128, 256, 512, 1024] {
     let side = CGFloat(pixels)
     let context = CGContext(

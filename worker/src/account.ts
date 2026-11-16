@@ -7,15 +7,37 @@
  */
 import { DurableObject } from "cloudflare:workers";
 import {
-  AccountCore, type AskResources, type SignedOutReason, type TokenAnswer,
+  AccountCore,
+  type AskResources,
+  type SignedOutReason,
+  type TokenAnswer,
 } from "./account-core.ts";
 import type { GitHubUser, TokenGrant } from "./boundary.ts";
 import type { Env } from "./env.ts";
-import { canSee, installationOf, keyringOf, oauthAppOf, type PendingSignIn, userIndex } from "./hosted.ts";
+import {
+  canSee,
+  installationOf,
+  keyringOf,
+  oauthAppOf,
+  type PendingSignIn,
+  userIndex,
+} from "./hosted.ts";
 import type { RepoFullName } from "./ids.ts";
-import { type DeliveryTarget, InstallationCore, isInvolved, type Member, storageStore } from "./installation-core.ts";
+import {
+  type DeliveryTarget,
+  InstallationCore,
+  isInvolved,
+  type Member,
+  storageStore,
+} from "./installation-core.ts";
 import { type InstallationAccount, syncInstallations } from "./installations.ts";
-import { consumeLimits, createLimitHitsTable, lastExpiry, type LimitCheck, type LimitDecision } from "./limit-counter.ts";
+import {
+  consumeLimits,
+  createLimitHitsTable,
+  lastExpiry,
+  type LimitCheck,
+  type LimitDecision,
+} from "./limit-counter.ts";
 import { durationOf, LimitName, limitsOf } from "./limits.ts";
 
 /** Each person's safety-net poll, and the refresh that keeps their 6-month refresh token alive. */
@@ -39,7 +61,11 @@ export class UserAccount extends DurableObject<Env> {
     });
   }
 
-  async signIn(user: GitHubUser, grant: TokenGrant, appChallenge: string): Promise<{ handoff: string }> {
+  async signIn(
+    user: GitHubUser,
+    grant: TokenGrant,
+    appChallenge: string,
+  ): Promise<{ handoff: string }> {
     const answer = await this.#core.signIn(user, grant, appChallenge);
     await this.ctx.storage.put("user_id", user.id);
     await this.ctx.storage.setAlarm(Date.now() + pollMs(this.env));
@@ -132,9 +158,13 @@ export class UserAccount extends DurableObject<Env> {
     }
     if ((await this.#core.accessToken()).kind === "ok") {
       await index.tick(Date.now());
-      await syncInstallations(this.#core, (id) => installationOf(this.env, id), (input, init) => fetch(input, init),
-        Date.now(), durationOf(limitsOf(this.env), LimitName.InstallationSyncHours))
-        .catch((error: unknown) => console.error("installation sync failed", error));
+      await syncInstallations(
+        this.#core,
+        (id) => installationOf(this.env, id),
+        (input, init) => fetch(input, init),
+        Date.now(),
+        durationOf(limitsOf(this.env), LimitName.InstallationSyncHours),
+      ).catch((error: unknown) => console.error("installation sync failed", error));
     }
   }
 
@@ -155,7 +185,7 @@ export class SignIn extends DurableObject<Env> {
   }
 
   async take(): Promise<PendingSignIn | null> {
-    const pending = await this.ctx.storage.get<PendingSignIn>("pending") ?? null;
+    const pending = (await this.ctx.storage.get<PendingSignIn>("pending")) ?? null;
     await this.ctx.storage.deleteAll();
     await this.ctx.storage.deleteAlarm();
     return pending;
@@ -187,7 +217,12 @@ export class Installation extends DurableObject<Env> {
     });
   }
 
-  join(member: Pick<Member, "user_id" | "login">, repos: string[], account: string | null, now: number) {
+  join(
+    member: Pick<Member, "user_id" | "login">,
+    repos: string[],
+    account: string | null,
+    now: number,
+  ) {
     return this.#core.join(member, repos, account, now);
   }
 
@@ -214,7 +249,7 @@ export class Installation extends DurableObject<Env> {
 
   async route(target: DeliveryTarget, now: number) {
     const routed = await this.#core.route(target, now);
-    if (routed.queued.length > 0 && await this.ctx.storage.getAlarm() === null) {
+    if (routed.queued.length > 0 && (await this.ctx.storage.getAlarm()) === null) {
       await this.ctx.storage.setAlarm(Date.now());
     }
     return routed;
@@ -229,7 +264,12 @@ export class Installation extends DurableObject<Env> {
 }
 
 /** A delivery into one person's index: a PR to read, or the PRs at a head. */
-async function deliver(env: Env, userId: string, target: DeliveryTarget, login: string): Promise<void> {
+async function deliver(
+  env: Env,
+  userId: string,
+  target: DeliveryTarget,
+  login: string,
+): Promise<void> {
   const index = userIndex(env, userId);
   if (target.kind === "pr") {
     await index.mark(target.repo, target.number, isInvolved(target, login));

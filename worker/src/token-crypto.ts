@@ -17,7 +17,10 @@ export interface Keyring {
 }
 
 export function base64UrlOf(bytes: Uint8Array): string {
-  return btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+  return btoa(String.fromCharCode(...bytes))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/, "");
 }
 
 export function bytesOfBase64Url(text: string): Uint8Array<ArrayBuffer> | null {
@@ -38,7 +41,10 @@ function bytesOfBase64(text: string): Uint8Array<ArrayBuffer> | null {
 
 /** The keyring in `TOKEN_ENCRYPTION_KEY`; null when any entry is not `<id>:<32 bytes in base64>` or an id repeats. */
 export async function parseKeyring(raw: string | undefined): Promise<Keyring | null> {
-  const entries = (raw ?? "").split(",").map((entry) => entry.trim()).filter(Boolean);
+  const entries = (raw ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
   if (entries.length === 0) {
     return null;
   }
@@ -50,18 +56,27 @@ export async function parseKeyring(raw: string | undefined): Promise<Keyring | n
     if (!KEY_ID.test(id) || !bytes || bytes.byteLength !== 32 || keys.has(id)) {
       return null;
     }
-    keys.set(id, await crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]));
+    keys.set(
+      id,
+      await crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]),
+    );
   }
   return { current: entries[0].slice(0, entries[0].indexOf(":")), keys };
 }
 
 /** `v1.<key id>.<iv>.<ciphertext and tag>`, base64url. */
-export async function sealToken(keyring: Keyring, plaintext: string, associated: string): Promise<string> {
+export async function sealToken(
+  keyring: Keyring,
+  plaintext: string,
+  associated: string,
+): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
   const key = keyring.keys.get(keyring.current) as CryptoKey;
   const sealed = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv, additionalData: new TextEncoder().encode(associated) }, key,
-    new TextEncoder().encode(plaintext));
+    { name: "AES-GCM", iv, additionalData: new TextEncoder().encode(associated) },
+    key,
+    new TextEncoder().encode(plaintext),
+  );
   return [VERSION, keyring.current, base64UrlOf(iv), base64UrlOf(new Uint8Array(sealed))].join(".");
 }
 
@@ -76,18 +91,30 @@ export function keyIdOf(sealed: string): string | null {
  * an unknown key id, a changed byte, or associated data for someone or something else.
  */
 export async function openToken(
-  keyring: Keyring, sealed: string, associated: string,
+  keyring: Keyring,
+  sealed: string,
+  associated: string,
 ): Promise<{ plaintext: string; isStale: boolean } | null> {
   const [version, keyId, ivText, bodyText, ...rest] = sealed.split(".");
   const key = keyring.keys.get(keyId ?? "");
   const iv = bytesOfBase64Url(ivText ?? "");
   const body = bytesOfBase64Url(bodyText ?? "");
-  if (version !== VERSION || rest.length > 0 || !key || !iv || iv.byteLength !== IV_BYTES || !body) {
+  if (
+    version !== VERSION ||
+    rest.length > 0 ||
+    !key ||
+    !iv ||
+    iv.byteLength !== IV_BYTES ||
+    !body
+  ) {
     return null;
   }
   try {
     const plain = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv, additionalData: new TextEncoder().encode(associated) }, key, body);
+      { name: "AES-GCM", iv, additionalData: new TextEncoder().encode(associated) },
+      key,
+      body,
+    );
     return { plaintext: new TextDecoder().decode(plain), isStale: keyId !== keyring.current };
   } catch {
     return null;
@@ -101,7 +128,9 @@ export function randomToken(bytes = 32): string {
 
 /** PKCE's S256: base64url of the SHA-256 of the verifier's ASCII. */
 export async function pkceChallengeOf(verifier: string): Promise<string> {
-  return base64UrlOf(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
+  return base64UrlOf(
+    new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))),
+  );
 }
 
 /** RFC 7636: 43 to 128 unreserved characters. */

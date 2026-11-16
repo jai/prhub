@@ -175,9 +175,17 @@ struct DeviceConfig: Codable, Equatable, Sendable {
 
     private struct FeatureKey: CodingKey {
         let stringValue: String
-        var intValue: Int? { nil }
-        init(stringValue: String) { self.stringValue = stringValue }
-        init?(intValue: Int) { nil }
+        var intValue: Int? {
+            nil
+        }
+
+        init(stringValue: String) {
+            self.stringValue = stringValue
+        }
+
+        init?(intValue _: Int) {
+            nil
+        }
     }
 
     init(from decoder: any Decoder) throws {

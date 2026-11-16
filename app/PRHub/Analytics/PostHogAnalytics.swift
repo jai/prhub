@@ -16,10 +16,10 @@ final class PostHogAnalytics: Analytics {
         config.captureApplicationLifecycleEvents = true
         config.captureScreenViews = false
         #if os(iOS)
-        // The phone's alone: the Mac's SDK has no taps, session replay or surveys to turn off.
-        config.captureElementInteractions = false
-        config.sessionReplay = false
-        config.surveys = false
+            // The phone's alone: the Mac's SDK has no taps, session replay or surveys to turn off.
+            config.captureElementInteractions = false
+            config.sessionReplay = false
+            config.surveys = false
         #endif
         config.enableSwizzling = false
         config.capturePushNotificationSubscriptions = false

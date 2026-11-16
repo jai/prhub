@@ -23,7 +23,9 @@ public struct GitHubInstallation: Codable, Equatable, Hashable, Identifiable, Se
     public var repoCount: Int?
     public var suspended: Bool
 
-    public var id: Int { installationID }
+    public var id: Int {
+        installationID
+    }
 
     public init(
         account: String, accountType: AccountType, avatarURL: URL? = nil, installationID: Int,

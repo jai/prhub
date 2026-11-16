@@ -30,5 +30,8 @@ export function clientRefOf(input: unknown): string | null {
 
 /** Another copy is on its way to GitHub: the phone tries again shortly. */
 export function busyAnswer(): Response {
-  return Response.json({ error: "This is already being sent." }, { status: 503, headers: { "Retry-After": "10" } });
+  return Response.json(
+    { error: "This is already being sent." },
+    { status: 503, headers: { "Retry-After": "10" } },
+  );
 }

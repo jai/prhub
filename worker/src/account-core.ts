@@ -11,7 +11,13 @@ import { countOf, durationOf, LimitName, type Limits } from "./limits.ts";
 import { type Fetch, type OAuthApp, refreshGrant, revokeGrant } from "./oauth.ts";
 import { sha256Hex } from "./pairing.ts";
 import {
-  type Keyring, keyIdOf, openToken, pkceChallengeOf, randomToken, sealToken, timingSafeEqual,
+  type Keyring,
+  keyIdOf,
+  openToken,
+  pkceChallengeOf,
+  randomToken,
+  sealToken,
+  timingSafeEqual,
 } from "./token-crypto.ts";
 
 /** Refreshed this long before GitHub's 8 hours run out, so no request carries a token about to die. */
@@ -33,14 +39,18 @@ const AccountSchema = z.object({
   created_at: z.number(),
   state: z.enum(["signed_in", "signed_out"]),
   signed_out_reason: z.enum(["revoked", "refresh_expired", "signed_out"]).nullable(),
-  tokens: z.object({
-    access: z.string(),
-    refresh: z.string().nullable(),
-    access_expires_at: z.number().nullable(),
-    refresh_expires_at: z.number().nullable(),
-  }).nullable(),
+  tokens: z
+    .object({
+      access: z.string(),
+      refresh: z.string().nullable(),
+      access_expires_at: z.number().nullable(),
+      refresh_expires_at: z.number().nullable(),
+    })
+    .nullable(),
   sessions: z.array(z.object({ fingerprint: z.string(), created_at: z.number() })),
-  handoffs: z.array(z.object({ code_hash: z.string(), challenge: z.string(), expires_at: z.number() })),
+  handoffs: z.array(
+    z.object({ code_hash: z.string(), challenge: z.string(), expires_at: z.number() }),
+  ),
 });
 
 type AccountRecord = z.infer<typeof AccountSchema>;
@@ -53,9 +63,14 @@ const AiSchema = z.object({
   /** The person's own Anthropic key, sealed as the tokens are. */
   anthropic_key: z.string(),
   /** Ask's agent, environment and vault in the person's Anthropic org, made when they gave the key. */
-  ask: z.object({
-    agent_id: z.string(), environment_id: z.string(), vault_id: z.string(), credential_id: z.string(),
-  }).nullable(),
+  ask: z
+    .object({
+      agent_id: z.string(),
+      environment_id: z.string(),
+      vault_id: z.string(),
+      credential_id: z.string(),
+    })
+    .nullable(),
 });
 
 /** The installations the person's token reached at the last sync (`installations.ts`), and when one was claimed. */
@@ -102,7 +117,14 @@ export const NO_AI: UserAi = { anthropicKey: null, ask: null };
 
 /** A token to act with, or why there is none: signed out (sign in again) or GitHub could not be asked (try later). */
 export type TokenAnswer =
-  | { kind: "ok"; token: string; login: string; userId: string; ai: UserAi; linearKey?: string | null }
+  | {
+      kind: "ok";
+      token: string;
+      login: string;
+      userId: string;
+      ai: UserAi;
+      linearKey?: string | null;
+    }
   | { kind: "signed_out" }
   | { kind: "unavailable" };
 
@@ -147,7 +169,11 @@ export class AccountCore {
    * GitHub said who this is and gave their tokens: keep both, sealed, and mint the one-time code the app swaps for its
    * session with the PKCE verifier behind `appChallenge`. Signing in again replaces the tokens and keeps other phones.
    */
-  async signIn(user: GitHubUser, grant: TokenGrant, appChallenge: string): Promise<{ handoff: string }> {
+  async signIn(
+    user: GitHubUser,
+    grant: TokenGrant,
+    appChallenge: string,
+  ): Promise<{ handoff: string }> {
     const now = this.#deps.now();
     const held = await this.#read();
     const tokens = await this.#seal(user.id, grant, now);
@@ -163,7 +189,8 @@ export class AccountCore {
       handoffs: [
         ...(held?.handoffs ?? []).filter((entry) => entry.expires_at > now),
         {
-          code_hash: await sha256Hex(handoff), challenge: appChallenge,
+          code_hash: await sha256Hex(handoff),
+          challenge: appChallenge,
           expires_at: now + durationOf(this.#deps.limits, LimitName.SignInCodeMinutes),
         },
       ],
@@ -176,24 +203,36 @@ export class AccountCore {
    * The app's half: the one-time code and the verifier whose S256 the app sent to `/auth/github/start`. The code is
    * spent before anything else is checked, so a wrong verifier burns it too. Null for anything but a match.
    */
-  async finish(handoff: string, verifier: string): Promise<{ secret: string; login: string; userId: string } | null> {
+  async finish(
+    handoff: string,
+    verifier: string,
+  ): Promise<{ secret: string; login: string; userId: string } | null> {
     const now = this.#deps.now();
     const record = await this.#read();
     if (!record) {
       return null;
     }
     const codeHash = await sha256Hex(handoff);
-    const entry = record.handoffs.find((candidate) => timingSafeEqual(candidate.code_hash, codeHash));
-    record.handoffs = record.handoffs.filter((candidate) => candidate !== entry && candidate.expires_at > now);
+    const entry = record.handoffs.find((candidate) =>
+      timingSafeEqual(candidate.code_hash, codeHash),
+    );
+    record.handoffs = record.handoffs.filter(
+      (candidate) => candidate !== entry && candidate.expires_at > now,
+    );
     await this.#write(record);
-    if (!entry || entry.expires_at <= now || record.state !== "signed_in"
-      || !timingSafeEqual(await pkceChallengeOf(verifier), entry.challenge)) {
+    if (
+      !entry ||
+      entry.expires_at <= now ||
+      record.state !== "signed_in" ||
+      !timingSafeEqual(await pkceChallengeOf(verifier), entry.challenge)
+    ) {
       return null;
     }
     const secret = `${record.user_id}.${randomToken()}`;
-    record.sessions = [...record.sessions.filter((session) => this.#isLive(session, now)),
-      { fingerprint: await sha256Hex(secret), created_at: now }]
-      .slice(-countOf(this.#deps.limits, LimitName.SessionsMax));
+    record.sessions = [
+      ...record.sessions.filter((session) => this.#isLive(session, now)),
+      { fingerprint: await sha256Hex(secret), created_at: now },
+    ].slice(-countOf(this.#deps.limits, LimitName.SessionsMax));
     await this.#write(record);
     return { secret, login: record.login, userId: String(record.user_id) };
   }
@@ -202,24 +241,32 @@ export class AccountCore {
   async session(fingerprint: string): Promise<SessionInfo | null> {
     const record = await this.#read();
     const now = this.#deps.now();
-    const live = record?.sessions.find((session) => timingSafeEqual(session.fingerprint, fingerprint)
-      && this.#isLive(session, now));
+    const live = record?.sessions.find(
+      (session) => timingSafeEqual(session.fingerprint, fingerprint) && this.#isLive(session, now),
+    );
     if (!record || !live) {
       return null;
     }
     return {
-      userId: String(record.user_id), login: record.login, state: record.state, reason: record.signed_out_reason,
+      userId: String(record.user_id),
+      login: record.login,
+      state: record.state,
+      reason: record.signed_out_reason,
       hasAnthropicKey: (await this.#readAi()) !== null,
-      hasLinearKey: typeof await this.#deps.store.get("linear") === "string",
-      linearCanComment: await this.#deps.store.get<boolean | null>(LINEAR_COMMENTS) ?? null, createdAt: live.created_at,
+      hasLinearKey: typeof (await this.#deps.store.get("linear")) === "string",
+      linearCanComment: (await this.#deps.store.get<boolean | null>(LINEAR_COMMENTS)) ?? null,
+      createdAt: live.created_at,
     };
   }
 
   /** The fingerprints of the sessions still live: the phones whose push registrations stay. */
   async liveSessionFingerprints(): Promise<string[]> {
     const now = this.#deps.now();
-    return (await this.#read())?.sessions.filter((session) => this.#isLive(session, now))
-      .map((session) => session.fingerprint) ?? [];
+    return (
+      (await this.#read())?.sessions
+        .filter((session) => this.#isLive(session, now))
+        .map((session) => session.fingerprint) ?? []
+    );
   }
 
   /** A session lives `session_lifetime_days` from when it was made; after that its phone signs in again. */
@@ -233,7 +280,11 @@ export class AccountCore {
    * refresh) and for the Anthropic key (`#ai`). Answers what moved, and what is still on an old key: a value whose key
    * left the keyring, which opens no more.
    */
-  async resealStale(): Promise<{ current: string; resealed: SealedField[]; stale: SealedField[] } | null> {
+  async resealStale(): Promise<{
+    current: string;
+    resealed: SealedField[];
+    stale: SealedField[];
+  } | null> {
     const keyring = await this.#deps.keyring();
     if (!keyring) {
       return null;
@@ -243,17 +294,23 @@ export class AccountCore {
       await this.accessToken();
     }
     const stale = await this.#staleFields(keyring.current);
-    return { current: keyring.current, resealed: before.filter((field) => !stale.includes(field)), stale };
+    return {
+      current: keyring.current,
+      resealed: before.filter((field) => !stale.includes(field)),
+      stale,
+    };
   }
 
   async #staleFields(current: string): Promise<SealedField[]> {
     const record = await this.#read();
     const ai = await this.#readAi();
     const sealed: [SealedField, string | null | undefined][] = [
-      ["access", record?.tokens?.access], ["refresh", record?.tokens?.refresh], ["anthropic", ai?.anthropic_key],
+      ["access", record?.tokens?.access],
+      ["refresh", record?.tokens?.refresh],
+      ["anthropic", ai?.anthropic_key],
       ["linear", await this.#deps.store.get<string>("linear")],
     ];
-    return sealed.flatMap(([field, value]) => value && keyIdOf(value) !== current ? [field] : []);
+    return sealed.flatMap(([field, value]) => (value && keyIdOf(value) !== current ? [field] : []));
   }
 
   async isSignedIn(): Promise<boolean> {
@@ -299,7 +356,8 @@ export class AccountCore {
     await this.#deps.store.put(AI, null);
     await this.#deps.store.put("linear", null);
     await this.#deps.store.put(LINEAR_COMMENTS, null);
-    await this.#deps.onSignedOut(reason)
+    await this.#deps
+      .onSignedOut(reason)
       .catch((error: unknown) => console.error("sign-in-again push failed", error));
   }
 
@@ -312,7 +370,9 @@ export class AccountCore {
     if (!record) {
       return false;
     }
-    record.sessions = record.sessions.filter((session) => !timingSafeEqual(session.fingerprint, fingerprint));
+    record.sessions = record.sessions.filter(
+      (session) => !timingSafeEqual(session.fingerprint, fingerprint),
+    );
     const isLast = record.sessions.length === 0;
     await this.#write(isLast ? signedOut(record, "signed_out") : record);
     if (isLast) {
@@ -332,7 +392,9 @@ export class AccountCore {
     let revoked = !record?.tokens;
     if (record?.tokens) {
       const current = await this.#current(record);
-      revoked = current.kind === "ok" && await revokeGrant(this.#deps.app, current.token, this.#deps.fetch);
+      revoked =
+        current.kind === "ok" &&
+        (await revokeGrant(this.#deps.app, current.token, this.#deps.fetch));
     }
     await this.#deps.store.deleteAll();
     return { revoked };
@@ -351,8 +413,19 @@ export class AccountCore {
     if (key !== null && !keyring) {
       throw new Error("TOKEN_ENCRYPTION_KEY is missing or malformed");
     }
-    await this.#deps.store.put(AI, key !== null && keyring
-      ? { anthropic_key: await sealToken(keyring, key, associatedData(record.user_id, "anthropic")), ask } : null);
+    await this.#deps.store.put(
+      AI,
+      key !== null && keyring
+        ? {
+            anthropic_key: await sealToken(
+              keyring,
+              key,
+              associatedData(record.user_id, "anthropic"),
+            ),
+            ask,
+          }
+        : null,
+    );
     return true;
   }
 
@@ -366,15 +439,19 @@ export class AccountCore {
     if (key !== null && !keyring) {
       throw new Error("LINEAR_KEY_ENCRYPTION_UNAVAILABLE: token keyring is missing");
     }
-    await this.#deps.store.put("linear", key !== null && keyring
-      ? await sealToken(keyring, key, associatedData(record.user_id, "linear")) : null);
+    await this.#deps.store.put(
+      "linear",
+      key !== null && keyring
+        ? await sealToken(keyring, key, associatedData(record.user_id, "linear"))
+        : null,
+    );
     await this.#deps.store.put(LINEAR_COMMENTS, key === null ? null : canComment);
     return true;
   }
 
   /** Linear refused a comment for the key's scope: Settings says it can only read until another key replaces it. */
   async linearCannotComment(): Promise<void> {
-    if (typeof await this.#deps.store.get("linear") === "string") {
+    if (typeof (await this.#deps.store.get("linear")) === "string") {
       await this.#deps.store.put(LINEAR_COMMENTS, false);
     }
   }
@@ -386,8 +463,10 @@ export class AccountCore {
     }
     const opened = await openToken(keyring, sealed, associatedData(record.user_id, "linear"));
     if (opened?.isStale) {
-      await this.#deps.store.put("linear", await sealToken(keyring, opened.plaintext,
-        associatedData(record.user_id, "linear")));
+      await this.#deps.store.put(
+        "linear",
+        await sealToken(keyring, opened.plaintext, associatedData(record.user_id, "linear")),
+      );
     }
     return opened?.plaintext ?? null;
   }
@@ -411,7 +490,11 @@ export class AccountCore {
     return true;
   }
 
-  async setInstallations(ids: string[], now: number, accounts: InstallationAccount[]): Promise<void> {
+  async setInstallations(
+    ids: string[],
+    now: number,
+    accounts: InstallationAccount[],
+  ): Promise<void> {
     if (await this.#read()) {
       await this.#deps.store.put(INSTALLATIONS, { ids, synced_at: now });
       await this.#deps.store.put(INSTALLATION_ACCOUNTS, accounts);
@@ -423,7 +506,9 @@ export class AccountCore {
    * left out.
    */
   async installationAccounts(): Promise<InstallationAccount[] | null> {
-    const parsed = InstallationAccountsSchema.safeParse(await this.#deps.store.get(INSTALLATION_ACCOUNTS));
+    const parsed = InstallationAccountsSchema.safeParse(
+      await this.#deps.store.get(INSTALLATION_ACCOUNTS),
+    );
     if (!parsed.success) {
       return null;
     }
@@ -459,10 +544,13 @@ export class AccountCore {
     }
     const keyring = await this.#deps.keyring();
     const associated = associatedData(record.user_id, "refresh");
-    const refresh = keyring && record.tokens.refresh
-      ? await openToken(keyring, record.tokens.refresh, associated) : null;
+    const refresh =
+      keyring && record.tokens.refresh
+        ? await openToken(keyring, record.tokens.refresh, associated)
+        : null;
     const current = await this.#current(record);
-    const accessLives = record.tokens.access_expires_at === null || record.tokens.access_expires_at > now;
+    const accessLives =
+      record.tokens.access_expires_at === null || record.tokens.access_expires_at > now;
     if (record.tokens.refresh === null) {
       // Token expiration is off for the App: nothing to refresh, and a 401 means the person revoked it.
       if (stale === null) {
@@ -491,7 +579,10 @@ export class AccountCore {
     const tokens = await this.#seal(record.user_id, outcome.grant, now);
     await this.#write({ ...record, tokens });
     return {
-      kind: "ok", token: outcome.grant.access_token, login: record.login, userId: String(record.user_id),
+      kind: "ok",
+      token: outcome.grant.access_token,
+      login: record.login,
+      userId: String(record.user_id),
       ai: keyring ? await this.#ai(record, keyring) : NO_AI,
       linearKey: keyring ? await this.#linearKey(record, keyring) : null,
     };
@@ -503,7 +594,11 @@ export class AccountCore {
     if (!keyring || !record.tokens) {
       return { kind: record.tokens ? "unavailable" : "signed_out" };
     }
-    const access = await openToken(keyring, record.tokens.access, associatedData(record.user_id, "access"));
+    const access = await openToken(
+      keyring,
+      record.tokens.access,
+      associatedData(record.user_id, "access"),
+    );
     if (!access) {
       // Not ours, or changed at rest: never sent to GitHub.
       return { kind: "unavailable" };
@@ -512,7 +607,10 @@ export class AccountCore {
       await this.#reseal(record, keyring);
     }
     return {
-      kind: "ok", token: access.plaintext, login: record.login, userId: String(record.user_id),
+      kind: "ok",
+      token: access.plaintext,
+      login: record.login,
+      userId: String(record.user_id),
       ai: await this.#ai(record, keyring),
       linearKey: await this.#linearKey(record, keyring),
     };
@@ -524,10 +622,19 @@ export class AccountCore {
     if (!ai) {
       return NO_AI;
     }
-    const opened = await openToken(keyring, ai.anthropic_key, associatedData(record.user_id, "anthropic"));
+    const opened = await openToken(
+      keyring,
+      ai.anthropic_key,
+      associatedData(record.user_id, "anthropic"),
+    );
     if (opened?.isStale) {
       await this.#deps.store.put(AI, {
-        ...ai, anthropic_key: await sealToken(keyring, opened.plaintext, associatedData(record.user_id, "anthropic")),
+        ...ai,
+        anthropic_key: await sealToken(
+          keyring,
+          opened.plaintext,
+          associatedData(record.user_id, "anthropic"),
+        ),
       });
     }
     return opened ? { anthropicKey: opened.plaintext, ask: ai.ask } : NO_AI;
@@ -538,8 +645,13 @@ export class AccountCore {
     if (!tokens) {
       return;
     }
-    const access = await openToken(keyring, tokens.access, associatedData(record.user_id, "access"));
-    const refresh = tokens.refresh ? await openToken(keyring, tokens.refresh, associatedData(record.user_id, "refresh"))
+    const access = await openToken(
+      keyring,
+      tokens.access,
+      associatedData(record.user_id, "access"),
+    );
+    const refresh = tokens.refresh
+      ? await openToken(keyring, tokens.refresh, associatedData(record.user_id, "refresh"))
       : null;
     if (!access || (tokens.refresh && !refresh)) {
       return;
@@ -548,13 +660,23 @@ export class AccountCore {
       ...record,
       tokens: {
         ...tokens,
-        access: await sealToken(keyring, access.plaintext, associatedData(record.user_id, "access")),
-        refresh: refresh ? await sealToken(keyring, refresh.plaintext, associatedData(record.user_id, "refresh")) : null,
+        access: await sealToken(
+          keyring,
+          access.plaintext,
+          associatedData(record.user_id, "access"),
+        ),
+        refresh: refresh
+          ? await sealToken(keyring, refresh.plaintext, associatedData(record.user_id, "refresh"))
+          : null,
       },
     });
   }
 
-  async #seal(userId: number, grant: TokenGrant, now: number): Promise<NonNullable<AccountRecord["tokens"]>> {
+  async #seal(
+    userId: number,
+    grant: TokenGrant,
+    now: number,
+  ): Promise<NonNullable<AccountRecord["tokens"]>> {
     const keyring = await this.#deps.keyring();
     if (!keyring) {
       throw new Error("TOKEN_ENCRYPTION_KEY is missing or malformed");
@@ -562,9 +684,13 @@ export class AccountCore {
     return {
       access: await sealToken(keyring, grant.access_token, associatedData(userId, "access")),
       refresh: grant.refresh_token
-        ? await sealToken(keyring, grant.refresh_token, associatedData(userId, "refresh")) : null,
+        ? await sealToken(keyring, grant.refresh_token, associatedData(userId, "refresh"))
+        : null,
       access_expires_at: grant.expires_in === null ? null : now + grant.expires_in * 1_000,
-      refresh_expires_at: grant.refresh_token_expires_in === null ? null : now + grant.refresh_token_expires_in * 1_000,
+      refresh_expires_at:
+        grant.refresh_token_expires_in === null
+          ? null
+          : now + grant.refresh_token_expires_in * 1_000,
     };
   }
 

@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Counters, consume, emptyCounters, HOUR_LIMIT, MINUTE_LIMIT, sentLastDay } from "../src/rate.ts";
+import {
+  type Counters,
+  consume,
+  emptyCounters,
+  HOUR_LIMIT,
+  MINUTE_LIMIT,
+  sentLastDay,
+} from "../src/rate.ts";
 
 function sendMany(counters: Counters, nowSeconds: number, count: number): Counters {
   for (let i = 0; i < count; i++) {
@@ -21,7 +28,8 @@ test("60 in a minute pass, the 61st waits for the next minute", () => {
 
 test("600 in an hour pass, the 601st waits until the oldest minute leaves the window", () => {
   let counters = emptyCounters();
-  for (let minute = 0; minute < 10; minute++) counters = sendMany(counters, start + minute * 60, 60);
+  for (let minute = 0; minute < 10; minute++)
+    counters = sendMany(counters, start + minute * 60, 60);
   const later = start + 30 * 60 + 10;
   assert.deepEqual(consume(counters, later), { ok: false, retryAfter: start + 3600 - later });
   assert.ok(consume(counters, start + 3600).ok);
@@ -34,6 +42,8 @@ test("old buckets are dropped and a day's total is kept by the hour", () => {
   assert.equal(sentLastDay(counters, start + 24 * 3600), 3);
   const next = consume(counters, start + 5 * 3600 + 1);
   assert.ok(next.ok);
-  assert.ok(next.counters.minutes.every(([index]) => index > Math.floor((start + 5 * 3600) / 60) - 60));
+  assert.ok(
+    next.counters.minutes.every(([index]) => index > Math.floor((start + 5 * 3600) / 60) - 60),
+  );
   assert.ok(HOUR_LIMIT > MINUTE_LIMIT);
 });

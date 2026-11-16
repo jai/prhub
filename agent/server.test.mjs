@@ -7,7 +7,10 @@ import test from "node:test";
 const PORT = 18_000 + (process.pid % 1000);
 
 async function started() {
-  const server = spawn(process.execPath, ["server.mjs"], { env: { ...process.env, PORT: String(PORT) }, stdio: "ignore" });
+  const server = spawn(process.execPath, ["server.mjs"], {
+    env: { ...process.env, PORT: String(PORT) },
+    stdio: "ignore",
+  });
   for (let tries = 0; tries < 100; tries++) {
     try {
       if ((await fetch(`http://127.0.0.1:${PORT}/health`)).ok) {
@@ -40,7 +43,10 @@ test("a stop asked for during a request waits for its answer", async () => {
   await new Promise((resolve) => setTimeout(resolve, 300));
   server.kill("SIGTERM");
   const left = once(server, "exit");
-  const early = await Promise.race([left, new Promise((resolve) => setTimeout(() => resolve("waiting"), 500))]);
+  const early = await Promise.race([
+    left,
+    new Promise((resolve) => setTimeout(() => resolve("waiting"), 500)),
+  ]);
   assert.equal(early, "waiting", "it left with a request in flight");
   const answered = once(held, "response");
   held.end('"not an object"');

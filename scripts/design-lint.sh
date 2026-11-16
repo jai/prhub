@@ -17,6 +17,7 @@ cd "$root"
 allow_file=scripts/design-lint-allow.txt
 files=$(find "$@" -name '*.swift' -not -path '*/PRKitDesign/*' | sort)
 
+# shellcheck disable=SC2086 # $files is a list of paths: split on purpose.
 exec perl -e '
 use strict;
 use warnings;

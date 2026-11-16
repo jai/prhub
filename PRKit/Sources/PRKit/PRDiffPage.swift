@@ -14,12 +14,12 @@ struct PRDiffPage: View {
     @State private var reviewAction: PRReviewAction?
     @Environment(\.openURL) private var openURL
     #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var sizeClass
+        @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
     @AppStorage(diffFontIn: nil) private var diffFont
     #if os(macOS)
-    /// Read so the diff redraws when View → Make Text Bigger changes it.
-    @AppStorage(MacTextSize.key) private var macTextScale = MacTextSize.standard
+        /// Read so the diff redraws when View → Make Text Bigger changes it.
+        @AppStorage(MacTextSize.key) private var macTextScale = MacTextSize.standard
     #endif
 
     var body: some View {
@@ -55,9 +55,9 @@ struct PRDiffPage: View {
 
     private var isRegularWidth: Bool {
         #if os(iOS)
-        sizeClass == .regular
+            sizeClass == .regular
         #else
-        false
+            false
         #endif
     }
 
@@ -148,7 +148,8 @@ struct PRDiffPage: View {
 
     @ViewBuilder private var composer: some View {
         if let index = session.composingLine, document.lines.indices.contains(index),
-           let target = PRComposerTarget(document, line: document.lines[index]) {
+           let target = PRComposerTarget(document, line: document.lines[index])
+        {
             let line = document.lines[index]
             let text = session.text(for: target)
             let ask: ((String) -> Void)? = session.offersAsk ? { words in
@@ -163,7 +164,7 @@ struct PRDiffPage: View {
                 placeholder: "Comment on this line",
                 buttonTitle: session.drafts.isEmpty ? "Start review" : "Add to review",
                 context: document.isClipped(line) ? document.text(of: line) : nil,
-                lines: 1...6,
+                lines: 1 ... 6,
                 // The box closes at once and the toast follows the comment to GitHub, as a review's does.
                 alternate: .init(title: "Comment now") { words in
                     PRPlatform.endEditing()

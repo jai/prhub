@@ -14,7 +14,11 @@ const NEW = "b".repeat(40) as Sha;
 const OLD_REVISION = revisionOf(OLD, "main");
 const NEW_REVISION = revisionOf(NEW, "main");
 
-interface Put { key: string; value: string; version: string | undefined }
+interface Put {
+  key: string;
+  value: string;
+  version: string | undefined;
+}
 
 /** An R2 bucket in memory: what was put, and with which version. */
 function fakeStore(held: Record<string, { body: string; version?: string }> = {}) {
@@ -25,10 +29,15 @@ function fakeStore(held: Record<string, { body: string; version?: string }> = {}
       return held[key] ? { body: held[key].body } : null;
     },
     async head(key: string) {
-      return held[key] ? { customMetadata: held[key].version ? { [VERSION_METADATA]: held[key].version } : {} } : null;
+      return held[key]
+        ? { customMetadata: held[key].version ? { [VERSION_METADATA]: held[key].version } : {} }
+        : null;
     },
-    async put(key: string, value: ArrayBuffer | string,
-      options?: { customMetadata?: Record<string, string> }) {
+    async put(
+      key: string,
+      value: ArrayBuffer | string,
+      options?: { customMetadata?: Record<string, string> },
+    ) {
       const text = typeof value === "string" ? value : new TextDecoder().decode(value);
       puts.push({ key, value: text, version: options?.customMetadata?.[VERSION_METADATA] });
       held[key] = { body: text, version: options?.customMetadata?.[VERSION_METADATA] };
@@ -43,10 +52,20 @@ function live(body: string, version: string | null, status = 200): () => Promise
 }
 
 /** `serveVersioned` with its deferred writes run before the test looks. */
-async function serve(store: ReturnType<typeof fakeStore>, requested: string, load: () => Promise<LiveRead>) {
+async function serve(
+  store: ReturnType<typeof fakeStore>,
+  requested: string,
+  load: () => Promise<LiveRead>,
+) {
   const pending: Promise<unknown>[] = [];
-  const response = await serveVersioned(store as never, `k/${requested}`, requested, "text/plain", load,
-    (promise) => pending.push(promise));
+  const response = await serveVersioned(
+    store as never,
+    `k/${requested}`,
+    requested,
+    "text/plain",
+    load,
+    (promise) => pending.push(promise),
+  );
   await Promise.all(pending);
   return { status: response.status, body: await response.text() };
 }
@@ -70,7 +89,9 @@ test("a diff read after the head moved on is answered but not kept under the old
 test("a live read of the revision asked for is kept under it, and answers from R2 after that", async () => {
   const store = fakeStore();
   await serve(store, OLD_REVISION, live("old diff", OLD_REVISION));
-  assert.deepEqual(store.puts, [{ key: `k/${OLD_REVISION}`, value: "old diff", version: OLD_REVISION }]);
+  assert.deepEqual(store.puts, [
+    { key: `k/${OLD_REVISION}`, value: "old diff", version: OLD_REVISION },
+  ]);
   const again = await serve(store, OLD_REVISION, () => assert.fail("R2 has it"));
   assert.equal(again.body, "old diff");
 });
@@ -85,22 +106,37 @@ test("a read whose version can't be told, or that GitHub refused, is never kept"
 test("the index marks a diff ready only from a copy known to be of the row's revision", async () => {
   const key = `k/${OLD_REVISION}`;
   const verified = fakeStore({ [key]: { body: "old diff", version: OLD_REVISION } });
-  assert.equal(await storeDiff(verified as never, key, OLD_REVISION, () => assert.fail("R2 has it")), "ready");
+  assert.equal(
+    await storeDiff(verified as never, key, OLD_REVISION, () => assert.fail("R2 has it")),
+    "ready",
+  );
 
   // A copy from before the check, read again: the head has moved, so it stays pending and nothing is written.
   const legacy = fakeStore({ [key]: { body: "new diff" } });
-  assert.equal(await storeDiff(legacy as never, key, OLD_REVISION, live("new diff", NEW_REVISION)), "pending");
+  assert.equal(
+    await storeDiff(legacy as never, key, OLD_REVISION, live("new diff", NEW_REVISION)),
+    "pending",
+  );
   assert.deepEqual(legacy.puts, []);
 
   const fresh = fakeStore();
-  assert.equal(await storeDiff(fresh as never, key, OLD_REVISION, live("old diff", OLD_REVISION)), "ready");
+  assert.equal(
+    await storeDiff(fresh as never, key, OLD_REVISION, live("old diff", OLD_REVISION)),
+    "ready",
+  );
   assert.deepEqual(fresh.puts, [{ key, value: "old diff", version: OLD_REVISION }]);
 });
 
 test("too large is said only of the row's own revision", async () => {
   const key = `k/${OLD_REVISION}`;
-  assert.equal(await storeDiff(fakeStore() as never, key, OLD_REVISION, live("", OLD_REVISION, 406)), "too_large");
-  assert.equal(await storeDiff(fakeStore() as never, key, OLD_REVISION, live("", NEW_REVISION, 406)), "pending");
+  assert.equal(
+    await storeDiff(fakeStore() as never, key, OLD_REVISION, live("", OLD_REVISION, 406)),
+    "too_large",
+  );
+  assert.equal(
+    await storeDiff(fakeStore() as never, key, OLD_REVISION, live("", NEW_REVISION, 406)),
+    "pending",
+  );
 });
 
 const realFetch = globalThis.fetch;
@@ -136,7 +172,11 @@ test("key lines for a head the PR has moved on from are never stored under that 
   gitHubAt(NEW, others);
   const store = fakeStore();
   const job: AiJob = { kind: "key_lines", repo: "acme/app", number: 7, head: OLD, context: 3 };
-  const ready = await runAiJob(job, { GITHUB_TOKEN: "t", ANTHROPIC_API_KEY: "k" } as Env, store as never);
+  const ready = await runAiJob(
+    job,
+    { GITHUB_TOKEN: "t", ANTHROPIC_API_KEY: "k" } as Env,
+    store as never,
+  );
   assert.equal(ready, false);
   assert.equal(store.puts.length, 1);
   assert.equal(store.puts[0].key, aiKey(job));
@@ -148,7 +188,9 @@ test("key lines for a head the PR has moved on from are never stored under that 
 });
 
 const SUMMARY = {
-  risk: "low", riskWhy: "Small and tested.", points: ["One", "Two", "Three", "Four", "Five", "Six"],
+  risk: "low",
+  riskWhy: "Small and tested.",
+  points: ["One", "Two", "Three", "Four", "Five", "Six"],
   bugs: [{ path: "x", line: 99, side: "RIGHT", why: "Off by one." }],
 };
 
@@ -161,23 +203,46 @@ test("on the subscription, key lines come from the Agent SDK container, never th
     get: () => ({
       fetch: async (_url: string, init: RequestInit) => {
         asked.push(JSON.parse(String(init.body)) as Record<string, unknown>);
-        return Response.json({ subtype: "success", output: { items: [], summary: SUMMARY }, model: "claude-sonnet-5-5",
-          tokens: { input: 10, output: 2 }, costUsd: 0.0123 });
+        return Response.json({
+          subtype: "success",
+          output: { items: [], summary: SUMMARY },
+          model: "claude-sonnet-5-5",
+          tokens: { input: 10, output: 2 },
+          costUsd: 0.0123,
+        });
       },
     }),
   } as unknown as Env["AGENT"];
   const store = fakeStore();
   const job: AiJob = { kind: "key_lines", repo: "acme/app", number: 7, head: NEW, context: 0 };
-  await runAiJob(job, { GITHUB_TOKEN: "t", ANTHROPIC_API_KEY: "k", CLAUDE_CODE_OAUTH_TOKEN: "oat", AGENT: agent } as Env,
-    store as never);
+  await runAiJob(
+    job,
+    {
+      GITHUB_TOKEN: "t",
+      ANTHROPIC_API_KEY: "k",
+      CLAUDE_CODE_OAUTH_TOKEN: "oat",
+      AGENT: agent,
+    } as Env,
+    store as never,
+  );
   assert.equal(asked.length, 1);
   assert.equal(asked[0].model, "claude-sonnet-5-5");
   assert.equal((asked[0].schema as { type: string }).type, "object");
-  assert.equal("$schema" in (asked[0].schema as object), false, "Claude Code rejects a $schema it does not know");
-  const stored = JSON.parse(store.puts[0].value) as { items: unknown[]; costCents: number; model: string };
+  assert.equal(
+    "$schema" in (asked[0].schema as object),
+    false,
+    "Claude Code rejects a $schema it does not know",
+  );
+  const stored = JSON.parse(store.puts[0].value) as {
+    items: unknown[];
+    costCents: number;
+    model: string;
+  };
   assert.deepEqual(stored.items, []);
   assert.equal(stored.costCents, 1.23);
-  const summary = (stored as unknown as { summary: { points: string[]; bugs: unknown[]; risk: string } }).summary;
+  const summary = (
+    stored as unknown as { summary: { points: string[]; bugs: unknown[]; risk: string } }
+  ).summary;
   assert.equal(summary.risk, "low");
   assert.equal(summary.points.length, 5, "five points at most");
   assert.deepEqual(summary.bugs, [], "a bug at a line the diff doesn't show is dropped");
@@ -189,36 +254,71 @@ test("a stored failure is shown for ten minutes, then the next ask makes the ans
   const storedAt = new Date("2026-11-11T06:00:00Z");
   assert.equal(isStaleFailure(failed, storedAt, storedAt.getTime() + FAILURE_KEPT_MS - 1), false);
   assert.equal(isStaleFailure(failed, storedAt, storedAt.getTime() + FAILURE_KEPT_MS), true);
-  assert.equal(isStaleFailure(JSON.stringify({ items: [] }), storedAt, storedAt.getTime() + 86_400_000), false,
-    "an answer is kept");
+  assert.equal(
+    isStaleFailure(JSON.stringify({ items: [] }), storedAt, storedAt.getTime() + 86_400_000),
+    false,
+    "an answer is kept",
+  );
 });
 
 test("a container that is not ready yet is asked again, and its last words are the failure", async () => {
   const answers = [
     new Response("There is no Container instance available at this time.", { status: 503 }),
     Response.json({ error: "Claude Code process exited with code 143" }, { status: 500 }),
-    Response.json({ subtype: "success", output: { items: [] }, model: "m", tokens: { input: 1, output: 1 }, costUsd: 0 }),
+    Response.json({
+      subtype: "success",
+      output: { items: [] },
+      model: "m",
+      tokens: { input: 1, output: 1 },
+      costUsd: 0,
+    }),
   ];
   let dropped = false;
-  const agent = { idFromName: (name: string) => name, get: () => ({ fetch: async () => {
-    if (!dropped) {
-      dropped = true;
-      throw new Error("Network connection lost.");
-    }
-    return answers.shift()!;
-  } }) };
+  const agent = {
+    idFromName: (name: string) => name,
+    get: () => ({
+      fetch: async () => {
+        if (!dropped) {
+          dropped = true;
+          throw new Error("Network connection lost.");
+        }
+        return answers.shift()!;
+      },
+    }),
+  };
   const env = { CLAUDE_CODE_OAUTH_TOKEN: "oat", AGENT: agent } as unknown as Env;
-  const answer = await runOnSubscription("s", "p", { type: "object" }, { model: "m" as never, effort: "high" }, env,
-    async () => {});
+  const answer = await runOnSubscription(
+    "s",
+    "p",
+    { type: "object" },
+    { model: "m" as never, effort: "high" },
+    env,
+    async () => {},
+  );
   assert.deepEqual(answer.output, { items: [] });
   assert.equal(dropped, true, "a dropped connection went again too");
-  const never = { idFromName: (name: string) => name, get: () => ({ fetch: async () => new Response("busy") }) };
-  await assert.rejects(runOnSubscription("s", "p", {}, { model: "m" as never, effort: "high" },
-    { ...env, AGENT: never } as unknown as Env, async () => {}), /The AI container failed: busy/);
+  const never = {
+    idFromName: (name: string) => name,
+    get: () => ({ fetch: async () => new Response("busy") }),
+  };
+  await assert.rejects(
+    runOnSubscription(
+      "s",
+      "p",
+      {},
+      { model: "m" as never, effort: "high" },
+      { ...env, AGENT: never } as unknown as Env,
+      async () => {},
+    ),
+    /The AI container failed: busy/,
+  );
 });
 
 test("Ask's diff is the PR's at the question's head, and none once the PR has moved past it", async () => {
   gitHubAt(NEW);
-  assert.equal(await prDiff("acme/app" as never, 7, NEW, { GITHUB_TOKEN: "t" } as Env), "diff --git a/x b/x\n");
+  assert.equal(
+    await prDiff("acme/app" as never, 7, NEW, { GITHUB_TOKEN: "t" } as Env),
+    "diff --git a/x b/x\n",
+  );
   assert.equal(await prDiff("acme/app" as never, 7, OLD, { GITHUB_TOKEN: "t" } as Env), "");
 });

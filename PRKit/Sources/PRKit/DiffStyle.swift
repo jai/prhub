@@ -2,9 +2,9 @@ import PRKitCore
 import PRKitDesign
 import SwiftUI
 #if os(iOS)
-import UIKit
+    import UIKit
 #else
-import AppKit
+    import AppKit
 #endif
 
 /// The diff's colours and fixed measures, the same on the phone's table and the Mac's (`Phone/`, `Mac/`). What follows
@@ -55,9 +55,9 @@ struct DiffMetrics {
         headerChange = .monospacedDigitSystemFont(ofSize: headerSize, weight: .medium)
         rowHeight = ceil(code.diffLineHeight) + Self.rowPadding
         #if os(iOS)
-        viewedTarget = max(Self.minimumTapTarget, ceil(headerPath.diffLineHeight) + Self.headerPadding * 2)
+            viewedTarget = max(Self.minimumTapTarget, ceil(headerPath.diffLineHeight) + Self.headerPadding * 2)
         #else
-        viewedTarget = ceil(headerPath.diffLineHeight) + Self.headerPadding * 2
+            viewedTarget = ceil(headerPath.diffLineHeight) + Self.headerPadding * 2
         #endif
         fileHeaderHeight = viewedTarget
         columnWidth = ("M" as NSString).size(withAttributes: [.font: code]).width
@@ -70,26 +70,27 @@ struct DiffMetrics {
     func headerPath(fitting text: String, in width: CGFloat) -> PlatformFont {
         var fitted = headerPath
         while fitted.pointSize > code.pointSize,
-              (text as NSString).size(withAttributes: [.font: fitted]).width > width {
+              (text as NSString).size(withAttributes: [.font: fitted]).width > width
+        {
             fitted = font.platformFont(points: max(fitted.pointSize - 1, code.pointSize), isBold: true)
         }
         return fitted
     }
 
     #if os(iOS)
-    init(_ font: DiffFont, traits: UITraitCollection) {
-        self.init(font, scale: Self.textScale(traits))
-    }
+        init(_ font: DiffFont, traits: UITraitCollection) {
+            self.init(font, scale: Self.textScale(traits))
+        }
 
-    /// Dynamic Type's scale for body text at `traits`' text size: 1 at the default, Large.
-    static func textScale(_ traits: UITraitCollection) -> CGFloat {
-        let reference: CGFloat = 100
-        return UIFontMetrics.default.scaledValue(for: reference, compatibleWith: traits) / reference
-    }
+        /// Dynamic Type's scale for body text at `traits`' text size: 1 at the default, Large.
+        static func textScale(_ traits: UITraitCollection) -> CGFloat {
+            let reference: CGFloat = 100
+            return UIFontMetrics.default.scaledValue(for: reference, compatibleWith: traits) / reference
+        }
     #else
-    init(_ font: DiffFont) {
-        self.init(font, scale: MacTextSize.codeScale)
-    }
+        init(_ font: DiffFont) {
+            self.init(font, scale: MacTextSize.codeScale)
+        }
     #endif
 }
 
@@ -97,9 +98,9 @@ extension PlatformFont {
     /// One line's height, the same on UIKit and AppKit.
     var diffLineHeight: CGFloat {
         #if os(iOS)
-        lineHeight
+            lineHeight
         #else
-        ascender - descender + leading
+            ascender - descender + leading
         #endif
     }
 }

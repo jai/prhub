@@ -25,7 +25,9 @@ async function reviewerLogin(): Promise<string | null> {
     headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, "User-Agent": "pr-viewer" },
   });
   if (!response.ok) {
-    console.error(`GitHub answered ${response.status} for GITHUB_TOKEN's user; pass --login instead`);
+    console.error(
+      `GitHub answered ${response.status} for GITHUB_TOKEN's user; pass --login instead`,
+    );
     process.exit(1);
   }
   return ((await response.json()) as { login: string }).login;
@@ -37,7 +39,11 @@ if (!process.env.ANTHROPIC_API_KEY) {
 }
 const login = await reviewerLogin();
 const resources = await createAskResources(process.env.ANTHROPIC_API_KEY, login);
-console.log(JSON.stringify({
-  ASK_AGENT_ID: resources.agent_id, ASK_ENVIRONMENT_ID: resources.environment_id, ASK_VAULT_ID: resources.vault_id,
-  ASK_CREDENTIAL_ID: resources.credential_id,
-}));
+console.log(
+  JSON.stringify({
+    ASK_AGENT_ID: resources.agent_id,
+    ASK_ENVIRONMENT_ID: resources.environment_id,
+    ASK_VAULT_ID: resources.vault_id,
+    ASK_CREDENTIAL_ID: resources.credential_id,
+  }),
+);

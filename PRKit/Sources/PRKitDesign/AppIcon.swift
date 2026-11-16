@@ -74,7 +74,7 @@ public enum AppIcon: String {
     case samples = "sparkles.rectangle.stack"
     case settings = "gearshape"
 
-    // A PR's page: asking AI, its checks, what people wrote.
+    /// A PR's page: asking AI, its checks, what people wrote.
     case askAI = "questionmark.bubble"
     // A PR at a glance, above its key lines: its risk, the bugs found, its ticket's requirements, what it does.
     case risk = "exclamationmark.shield.fill"
@@ -124,12 +124,14 @@ public enum AppIcon: String {
     case attachFile = "folder"
 
     /// The SF Symbol's name, for an API that takes one.
-    public var symbol: String { rawValue }
+    public var symbol: String {
+        rawValue
+    }
 }
 
-extension Image {
+public extension Image {
     /// A registry icon. Its variant is DESIGN.md's, set once at the app's root.
-    public init(_ icon: AppIcon) {
+    init(_ icon: AppIcon) {
         self.init(systemName: icon.symbol)
     }
 }

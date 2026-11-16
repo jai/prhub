@@ -6,10 +6,20 @@ import { alertKey, alertKinds, alertMessage, alertsFor, type HeldStatus } from "
 import { addMissingColumns } from "./pr-columns";
 import { createHeldAlertsTable, type HeldRow, holdAlert, releaseAlerts } from "./push-gate";
 import {
-  createPushRegistrationsTable, forgetPushTokensOf, pruneUnlinkedPushTokens, registerPushToken,
+  createPushRegistrationsTable,
+  forgetPushTokensOf,
+  pruneUnlinkedPushTokens,
+  registerPushToken,
 } from "./push-registrations";
 import {
-  type ApnsHost, apnsJwt, type PushMessage, pushMode, type PushOutcome, sendDirect, sendViaPager, sendViaRelay,
+  type ApnsHost,
+  apnsJwt,
+  type PushMessage,
+  pushMode,
+  type PushOutcome,
+  sendDirect,
+  sendViaPager,
+  sendViaRelay,
   SYNC_WAKE,
 } from "./apns";
 import { aiConfigOf } from "./config";
@@ -18,23 +28,50 @@ import { actingEnvFor } from "./hosted";
 import type { SignedOutReason } from "./account-core";
 import { fingerprintOf, type PairingRecord, pairingKey, parsePairingRecord } from "./pairing";
 import {
-  type ChecksNode, type Detail, detailVersionOf, liveDiff, type OpenRowStatus, type PullRequest, type PullRequestRef,
-  readChecks, readPullRequests, type ReviewWeek, type RowStatus, searchListings,
+  type ChecksNode,
+  type Detail,
+  detailVersionOf,
+  liveDiff,
+  type OpenRowStatus,
+  type PullRequest,
+  type PullRequestRef,
+  readChecks,
+  readPullRequests,
+  type ReviewWeek,
+  type RowStatus,
+  searchListings,
 } from "./github";
 import type { ReadPullRequest } from "./alerts";
 import { patchedRead } from "./check-refresh";
 import { createGitHubCacheTable, pruneGitHubCache, sqlCache } from "./github-cache";
 import { GitHubFailure, readStates, type StatesResult } from "./pr-states";
 import {
-  BUSY_WINDOW_MS, createMarkTables, type DueMark, dropMark, dueMarks, finishRead, mark, markedIds, nextDueAt,
-  postpone, type Scope, throttledDue,
+  BUSY_WINDOW_MS,
+  createMarkTables,
+  type DueMark,
+  dropMark,
+  dueMarks,
+  finishRead,
+  mark,
+  markedIds,
+  nextDueAt,
+  postpone,
+  type Scope,
+  throttledDue,
 } from "./marks";
 import type { PeopleDecision } from "./policy-people";
 import { parseRowStatus, parseStoredTicket, parseStoredTickets } from "./boundary";
 import { cachedTickets, createTicketsTable, refreshTickets, resetTickets } from "./ticket-cache";
 import { allKeys, lookUpTickets, type Ticket } from "./tickets";
 import {
-  type CodeHash, type DeviceToken, type Fingerprint, parseRepoFullName, parseSha, prId, type PrId, type RepoFullName,
+  type CodeHash,
+  type DeviceToken,
+  type Fingerprint,
+  parseRepoFullName,
+  parseSha,
+  prId,
+  type PrId,
+  type RepoFullName,
   type Sha,
 } from "./ids";
 import { putVersioned, storeDiff } from "./versioned";
@@ -42,22 +79,44 @@ import { newRateLimitState } from "./rate-limit";
 import { DEFAULT_CONTEXT } from "./key-lines";
 import { onSubscription } from "./agent-container";
 import { OPEN_LISTS } from "./vocab";
-import { consumeLimits, createLimitHitsTable, type LimitCheck, type LimitDecision } from "./limit-counter";
+import {
+  consumeLimits,
+  createLimitHitsTable,
+  type LimitCheck,
+  type LimitDecision,
+} from "./limit-counter";
 import { indexedPullRequestsMaxOf, LimitName, limitsOf, retentionOf } from "./limits";
 import { sweepClosedPullRequests } from "./retention";
 import {
-  type CarriedIndexCounts, type CarriedIndexState, readCarriedIndexState, writeCarriedIndexState,
+  type CarriedIndexCounts,
+  type CarriedIndexState,
+  readCarriedIndexState,
+  writeCarriedIndexState,
 } from "./carry";
 import {
-  createReviewedKeyLinesTable, forgetReviewedKeyLinesOf, markKeyLine, pruneReviewedKeyLines, type ReviewedKeyLines,
+  createReviewedKeyLinesTable,
+  forgetReviewedKeyLinesOf,
+  markKeyLine,
+  pruneReviewedKeyLines,
+  type ReviewedKeyLines,
   reviewedKeyLines,
 } from "./reviewed-key-lines";
 
 /** The push that asks a hosted person to sign in again; the app shows Sign in with GitHub when it opens. */
 const SIGN_IN_AGAIN: PushMessage = {
-  pushType: "alert", priority: 10, collapseId: "prhub-sign-in", lifetimeSeconds: 7 * 86_400,
-  payload: { aps: { alert: { title: "PRHub", body: "Sign in with GitHub again to keep your pull requests up to date." } },
-    reason: "signed_out" },
+  pushType: "alert",
+  priority: 10,
+  collapseId: "prhub-sign-in",
+  lifetimeSeconds: 7 * 86_400,
+  payload: {
+    aps: {
+      alert: {
+        title: "PRHub",
+        body: "Sign in with GitHub again to keep your pull requests up to date.",
+      },
+    },
+    reason: "signed_out",
+  },
 };
 const READS_PER_PASS = 5;
 /** Checks-only reads one pass makes, in one query GitHub prices at a point (`readChecks`). */
@@ -153,7 +212,9 @@ export class PrIndex extends DurableObject<Env> {
     // Key lines answers moved to `key-lines-v3` (with the ticket's requirements): every PR's are made again, at the
     // queue's pace.
     if (this.meta("key_lines_version") < KEY_LINES_VERSION) {
-      this.sql.exec("UPDATE pull_requests SET key_lines_queued = NULL, key_lines_ready = NULL, key_lines_tried_at = NULL");
+      this.sql.exec(
+        "UPDATE pull_requests SET key_lines_queued = NULL, key_lines_ready = NULL, key_lines_tried_at = NULL",
+      );
       this.setMeta("key_lines_version", KEY_LINES_VERSION);
     }
   }
@@ -164,14 +225,25 @@ export class PrIndex extends DurableObject<Env> {
 
   /** The rows of `GET /prs`, chosen and ordered by `rest`: one SELECT, so an alert's row is the list's row. */
   private selectRows(rest: string, ...bindings: unknown[]): Row[] {
-    const rows = this.sql.exec<Omit<Row, "status" | "ticket" | "tickets">
-      & { status: string | null; ticket: string | null; tickets: string | null }>(
-      `SELECT repo, number, title, head,
+    const rows = this.sql
+      .exec<
+        Omit<Row, "status" | "ticket" | "tickets"> & {
+          status: string | null;
+          ticket: string | null;
+          tickets: string | null;
+        }
+      >(
+        `SELECT repo, number, title, head,
       revision, diff_state AS diff, COALESCE(detail_version, NULLIF(version, ''), updated_at) AS detail, status,
       CASE WHEN key_lines_ready = head THEN ${DEFAULT_CONTEXT} END AS keyLines, ticket, tickets
-      FROM pull_requests ${rest}`, ...bindings).toArray();
+      FROM pull_requests ${rest}`,
+        ...bindings,
+      )
+      .toArray();
     return rows.map((row) => ({
-      ...row, status: parseRowStatus(row.status), ticket: parseStoredTicket(row.ticket),
+      ...row,
+      status: parseRowStatus(row.status),
+      ticket: parseStoredTicket(row.ticket),
       tickets: parseStoredTickets(row.tickets),
     }));
   }
@@ -180,7 +252,12 @@ export class PrIndex extends DurableObject<Env> {
    * A delivery. A PR no list holds and Jai has no part in is dropped here, so it never costs a GitHub read. The rest
    * are read in full, a burst of them once (`marks.ts`). The person's own write is read soon whatever came before it.
    */
-  async mark(repo: RepoFullName, number: number, involved: boolean, isOwnWrite = false): Promise<void> {
+  async mark(
+    repo: RepoFullName,
+    number: number,
+    involved: boolean,
+    isOwnWrite = false,
+  ): Promise<void> {
     const id = prId(repo, number);
     if (!involved && !this.exists("pull_requests", id)) {
       return;
@@ -206,10 +283,17 @@ export class PrIndex extends DurableObject<Env> {
 
   /** A check suite or a status on a commit: only the checks of each held PR at that head are read again. */
   async markHead(repo: RepoFullName, sha: Sha): Promise<void> {
-    const held = this.sql.exec<{ id: string; repo: string; number: number }>(
-      "SELECT id, repo, number FROM pull_requests WHERE repo = ? AND head = ? AND list <> 'merged'", repo, sha)
+    const held = this.sql
+      .exec<{ id: string; repo: string; number: number }>(
+        "SELECT id, repo, number FROM pull_requests WHERE repo = ? AND head = ? AND list <> 'merged'",
+        repo,
+        sha,
+      )
       .toArray();
-    await this.markThrottled(held.flatMap((row) => refOf(row) ?? []), "checks");
+    await this.markThrottled(
+      held.flatMap((row) => refOf(row) ?? []),
+      "checks",
+    );
   }
 
   private async markThrottled(refs: PullRequestRef[], scope: Scope): Promise<void> {
@@ -233,13 +317,14 @@ export class PrIndex extends DurableObject<Env> {
   }
 
   private async readMarked(env: Env | null): Promise<void> {
-    const due = (scope: Scope, limit: number) => dueMarks(this.sql, scope, Date.now(), limit).flatMap((row) => {
-      const ref = refOf(row);
-      if (!ref) {
-        dropMark(this.sql, row.id);
-      }
-      return ref ? [{ ...row, ...ref }] : [];
-    });
+    const due = (scope: Scope, limit: number) =>
+      dueMarks(this.sql, scope, Date.now(), limit).flatMap((row) => {
+        const ref = refOf(row);
+        if (!ref) {
+          dropMark(this.sql, row.id);
+        }
+        return ref ? [{ ...row, ...ref }] : [];
+      });
     const dirty = due("full", READS_PER_PASS);
     if (!env) {
       // A hosted person signed out: nothing is read until they sign in again and their account ticks this index.
@@ -252,13 +337,23 @@ export class PrIndex extends DurableObject<Env> {
       return;
     }
     if (dirty.length > 0) {
-      const asked = new Set(this.sql.exec<{ id: string }>(
-        "SELECT id FROM pull_requests WHERE list IN ('review', 'reviewed')").toArray().map((row) => row.id));
+      const asked = new Set(
+        this.sql
+          .exec<{ id: string }>("SELECT id FROM pull_requests WHERE list IN ('review', 'reviewed')")
+          .toArray()
+          .map((row) => row.id),
+      );
       let read: Awaited<ReturnType<typeof readPullRequests>>;
       try {
         const connection = await sha256Hex(env.LINEAR_API_KEY ?? "");
-        const tickets = (keys: string[]) => cachedTickets(this.sql, keys, Date.now(),
-          (stale) => lookUpTickets(stale, env), connection);
+        const tickets = (keys: string[]) =>
+          cachedTickets(
+            this.sql,
+            keys,
+            Date.now(),
+            (stale) => lookUpTickets(stale, env),
+            connection,
+          );
         read = await readPullRequests(dirty, env, asked, tickets, sqlCache(this.sql));
       } catch (error) {
         await this.readFailed(env, error);
@@ -271,7 +366,10 @@ export class PrIndex extends DurableObject<Env> {
           this.holdAlertsOn(listed);
           await this.store(listed, env);
         } else if (pr?.status) {
-          this.addEvent("limit_reached", { limit: LimitName.IndexedPullRequestsMax, pr: marked.id });
+          this.addEvent("limit_reached", {
+            limit: LimitName.IndexedPullRequestsMax,
+            pr: marked.id,
+          });
         } else {
           this.remove(marked.id);
         }
@@ -284,7 +382,9 @@ export class PrIndex extends DurableObject<Env> {
     this.noteRateLimit(env);
     const next = this.exists("pending") ? Date.now() : nextDueAt(this.sql);
     if (next !== null) {
-      await this.ctx.storage.setAlarm(this.rateLimitedUntil(Date.now()) ?? Math.max(next, Date.now() + 250));
+      await this.ctx.storage.setAlarm(
+        this.rateLimitedUntil(Date.now()) ?? Math.max(next, Date.now() + 250),
+      );
     }
   }
 
@@ -292,7 +392,9 @@ export class PrIndex extends DurableObject<Env> {
   private async readFailed(env: Env, error: unknown): Promise<void> {
     this.addEvent("read_failed", { error: String(error) });
     this.noteRateLimit(env);
-    await this.ctx.storage.setAlarm(this.rateLimitedUntil(Date.now()) ?? Date.now() + READ_RETRY_MS);
+    await this.ctx.storage.setAlarm(
+      this.rateLimitedUntil(Date.now()) ?? Date.now() + READ_RETRY_MS,
+    );
   }
 
   /**
@@ -309,7 +411,12 @@ export class PrIndex extends DurableObject<Env> {
       read = await readChecks(marks, env);
     } catch (error) {
       this.addEvent("read_failed", { scope: "checks", error: String(error) });
-      postpone(this.sql, "checks", marks.map(({ id }) => id), Date.now() + READ_RETRY_MS);
+      postpone(
+        this.sql,
+        "checks",
+        marks.map(({ id }) => id),
+        Date.now() + READ_RETRY_MS,
+      );
       return;
     }
     for (const checks of marks) {
@@ -327,41 +434,94 @@ export class PrIndex extends DurableObject<Env> {
    * The held row and detail with fresh checks. `full`: it needs a full read instead. `skip`: nothing to do, as the row
    * went or is merged.
    */
-  private async storeChecks(id: PrId, node: ChecksNode, env: Env): Promise<"stored" | "full" | "skip"> {
-    const row = this.sql.exec<{ repo: string; number: number; title: string; head: string; updated_at: string;
-      status: string | null; detail_version: string | null; people: string | null; people_at: number | null }>(
-      `SELECT repo, number, title, head, updated_at, status, detail_version, people, people_at FROM pull_requests
-      WHERE id = ?`, id).toArray()[0];
+  private async storeChecks(
+    id: PrId,
+    node: ChecksNode,
+    env: Env,
+  ): Promise<"stored" | "full" | "skip"> {
+    const row = this.sql
+      .exec<{
+        repo: string;
+        number: number;
+        title: string;
+        head: string;
+        updated_at: string;
+        status: string | null;
+        detail_version: string | null;
+        people: string | null;
+        people_at: number | null;
+      }>(
+        `SELECT repo, number, title, head, updated_at, status, detail_version, people, people_at FROM pull_requests
+      WHERE id = ?`,
+        id,
+      )
+      .toArray()[0];
     const status = parseRowStatus(row?.status ?? null);
     const repo = parseRepoFullName(row?.repo);
     if (!row || !repo || status?.list === "merged") {
       return "skip";
     }
-    if (!status || row.people === null || row.people_at === null || row.detail_version === null
-      || this.meta("row_shape") < ROW_SHAPE) {
+    if (
+      !status ||
+      row.people === null ||
+      row.people_at === null ||
+      row.detail_version === null ||
+      this.meta("row_shape") < ROW_SHAPE
+    ) {
       return "full";
     }
-    const stored = await env.DIFFS.get(scopedKey(env, detailKey(row.repo, row.number, row.detail_version)));
+    const stored = await env.DIFFS.get(
+      scopedKey(env, detailKey(row.repo, row.number, row.detail_version)),
+    );
     const detail = stored ? await stored.json<Detail>().catch(() => null) : null;
     const people = JSON.parse(row.people) as PeopleDecision | null;
-    const patched = detail && patchedRead({
-      head: row.head, updatedAt: row.updated_at, status, detail, people, peopleAt: row.people_at,
-    }, node, Date.now());
+    const patched =
+      detail &&
+      patchedRead(
+        {
+          head: row.head,
+          updatedAt: row.updated_at,
+          status,
+          detail,
+          people,
+          peopleAt: row.people_at,
+        },
+        node,
+        Date.now(),
+      );
     if (!patched) {
       return "full";
     }
     this.holdAlerts(status, {
-      repo, number: row.number, head: row.head, title: row.title, list: patched.status.list,
-      review: patched.status.review, requestedAt: patched.status.list === "review" ? patched.status.requestedAt : null,
+      repo,
+      number: row.number,
+      head: row.head,
+      title: row.title,
+      list: patched.status.list,
+      review: patched.status.review,
+      requestedAt: patched.status.list === "review" ? patched.status.requestedAt : null,
     });
     const detailVersion = await detailVersionOf(patched);
     if (detailVersion === row.detail_version) {
       return "stored";
     }
-    await putVersioned(env.DIFFS, scopedKey(env, detailKey(row.repo, row.number, detailVersion)), detailVersion,
-      JSON.stringify(patched.detail), "application/json");
-    this.sql.exec(`UPDATE pull_requests SET version = ?, detail_version = ?, status = ?, changed_at = ? WHERE id = ?
-      AND head = ?`, patched.version, detailVersion, JSON.stringify(patched.status), Date.now(), id, row.head);
+    await putVersioned(
+      env.DIFFS,
+      scopedKey(env, detailKey(row.repo, row.number, detailVersion)),
+      detailVersion,
+      JSON.stringify(patched.detail),
+      "application/json",
+    );
+    this.sql.exec(
+      `UPDATE pull_requests SET version = ?, detail_version = ?, status = ?, changed_at = ? WHERE id = ?
+      AND head = ?`,
+      patched.version,
+      detailVersion,
+      JSON.stringify(patched.status),
+      Date.now(),
+      id,
+      row.head,
+    );
     this.setMeta("changed_at", Date.now());
     return "stored";
   }
@@ -404,7 +564,12 @@ export class PrIndex extends DurableObject<Env> {
       return;
     }
     const connection = await sha256Hex(env.LINEAR_API_KEY ?? "");
-    const changed = await refreshTickets(this.sql, now, (keys) => lookUpTickets(keys, env), connection);
+    const changed = await refreshTickets(
+      this.sql,
+      now,
+      (keys) => lookUpTickets(keys, env),
+      connection,
+    );
     for (const row of changed) {
       const ref = refOf(row);
       if (ref) {
@@ -420,11 +585,19 @@ export class PrIndex extends DurableObject<Env> {
       return;
     }
     this.setMeta("retention_swept_at", now);
-    const held = new Set(this.sql.exec<{ id: string }>("SELECT id FROM pull_requests").toArray()
-      .map((row) => row.id.toLowerCase()));
+    const held = new Set(
+      this.sql
+        .exec<{ id: string }>("SELECT id FROM pull_requests")
+        .toArray()
+        .map((row) => row.id.toLowerCase()),
+    );
     try {
-      const deleted = await sweepClosedPullRequests(env.DIFFS, scopedKey(env, ""), (id) => held.has(id.toLowerCase()),
-        now - retention);
+      const deleted = await sweepClosedPullRequests(
+        env.DIFFS,
+        scopedKey(env, ""),
+        (id) => held.has(id.toLowerCase()),
+        now - retention,
+      );
       this.addEvent("retention_swept", { deleted });
     } catch (error) {
       this.addEvent("retention_failed", { error: String(error) });
@@ -434,20 +607,26 @@ export class PrIndex extends DurableObject<Env> {
   private async compareWithGitHub(env: Env): Promise<void> {
     const listings = await searchListings(env);
     const now = Date.now();
-    const held = this.sql.exec<{ id: string; repo: string; number: number; version: string; status: string | null }>(
-      "SELECT id, repo, number, version, status FROM pull_requests").toArray();
+    const held = this.sql
+      .exec<{ id: string; repo: string; number: number; version: string; status: string | null }>(
+        "SELECT id, repo, number, version, status FROM pull_requests",
+      )
+      .toArray();
     const isCurrentShape = this.meta("row_shape") >= ROW_SHAPE;
     const versions = new Map<string, string | null>(
-      held.map((row) => [row.id, row.status && isCurrentShape ? row.version : null]));
+      held.map((row) => [row.id, row.status && isCurrentShape ? row.version : null]),
+    );
     this.setMeta("row_shape", ROW_SHAPE);
-    const updatedOf = (version: string | null | undefined) => version?.slice(0, version.indexOf(".")) ?? null;
+    const updatedOf = (version: string | null | undefined) =>
+      version?.slice(0, version.indexOf(".")) ?? null;
     for (const { id, repo, number, version, reviewedOnly } of listings.values()) {
       const heldVersion = versions.get(id);
       if (heldVersion === version || (reviewedOnly && !versions.has(id))) {
         continue;
       }
       // The same `updatedAt` with another checks rollup: only checks moved, and a checks-only read will do.
-      const scope = heldVersion && updatedOf(heldVersion) === updatedOf(version) ? "checks" : "full";
+      const scope =
+        heldVersion && updatedOf(heldVersion) === updatedOf(version) ? "checks" : "full";
       mark(this.sql, { id, repo, number }, scope, now);
     }
     for (const row of held) {
@@ -468,9 +647,17 @@ export class PrIndex extends DurableObject<Env> {
    * held.
    */
   private holdAlertsOn(pr: Listed): void {
-    const heldRow = this.sql.exec<{ status: string | null }>(
-      "SELECT status FROM pull_requests WHERE id = ?", prId(pr.repo, pr.number)).toArray()[0];
-    this.holdAlerts(parseRowStatus(heldRow?.status ?? null), { ...pr, list: pr.status.list, review: pr.status.review });
+    const heldRow = this.sql
+      .exec<{ status: string | null }>(
+        "SELECT status FROM pull_requests WHERE id = ?",
+        prId(pr.repo, pr.number),
+      )
+      .toArray()[0];
+    this.holdAlerts(parseRowStatus(heldRow?.status ?? null), {
+      ...pr,
+      list: pr.status.list,
+      review: pr.status.review,
+    });
   }
 
   private holdAlerts(held: HeldStatus, read: ReadPullRequest): void {
@@ -481,8 +668,15 @@ export class PrIndex extends DurableObject<Env> {
     const now = Date.now();
     for (const alert of alertsFor(held, read, kinds, now)) {
       const key = alertKey(alert);
-      const claimed = this.sql.exec(`INSERT INTO alerts (key, at) VALUES (?, ?) ON CONFLICT (key) DO NOTHING
-        RETURNING key`, key, now).toArray().length > 0;
+      const claimed =
+        this.sql
+          .exec(
+            `INSERT INTO alerts (key, at) VALUES (?, ?) ON CONFLICT (key) DO NOTHING
+        RETURNING key`,
+            key,
+            now,
+          )
+          .toArray().length > 0;
       if (claimed) {
         holdAlert(this.sql, key, alert, now);
       }
@@ -495,20 +689,27 @@ export class PrIndex extends DurableObject<Env> {
    */
   private async sendHeldAlerts(env: Env | null): Promise<void> {
     const makesKeyLines = env !== null && onSubscription(env);
-    const keyLinesOn = (row: HeldRow) => makesKeyLines && row.list === "review" && row.diff_state === "ready";
+    const keyLinesOn = (row: HeldRow) =>
+      makesKeyLines && row.list === "review" && row.diff_state === "ready";
     const now = Date.now();
     const { release, dropped, nextAt } = releaseAlerts(this.sql, now, keyLinesOn);
     for (const alert of dropped) {
       this.addEvent("alert_dropped", { kind: alert.kind, pr: prId(alert.repo, alert.number) });
     }
-    await Promise.all(release.map(({ alert, heldMs, reason }) => {
-      const pr = prId(alert.repo, alert.number);
-      const row = this.selectRows("WHERE id = ?", pr)[0] ?? null;
-      this.addEvent("push_delayed", { kind: alert.kind, pr, ms: heldMs, reason });
-      // This instance's own record of what it said, under `/events`: never shared with another instance's.
-      return this.sendToDevices(alertMessage(alert, row), "alert",
-        { kind: alert.kind, pr, title: alert.title, held_ms: heldMs });
-    }));
+    await Promise.all(
+      release.map(({ alert, heldMs, reason }) => {
+        const pr = prId(alert.repo, alert.number);
+        const row = this.selectRows("WHERE id = ?", pr)[0] ?? null;
+        this.addEvent("push_delayed", { kind: alert.kind, pr, ms: heldMs, reason });
+        // This instance's own record of what it said, under `/events`: never shared with another instance's.
+        return this.sendToDevices(alertMessage(alert, row), "alert", {
+          kind: alert.kind,
+          pr,
+          title: alert.title,
+          held_ms: heldMs,
+        });
+      }),
+    );
     if (nextAt !== null) {
       await this.ensureAlarm(Math.max(0, nextAt - now));
     }
@@ -526,10 +727,16 @@ export class PrIndex extends DurableObject<Env> {
     const rate = env.GITHUB_RATE ?? newRateLimitState();
     const counted = { ...env, GITHUB_RATE: rate };
     try {
-      return { answer: await readStates(refs, week, counted, sqlCache(this.sql)), githubCalls: rate.calls };
+      return {
+        answer: await readStates(refs, week, counted, sqlCache(this.sql)),
+        githubCalls: rate.calls,
+      };
     } catch (failure) {
       if (failure instanceof GitHubFailure) {
-        return { failure: { code: failure.code, message: failure.message }, githubCalls: rate.calls };
+        return {
+          failure: { code: failure.code, message: failure.message },
+          githubCalls: rate.calls,
+        };
       }
       throw failure;
     }
@@ -546,19 +753,28 @@ export class PrIndex extends DurableObject<Env> {
 
   /** How many of the list's PRs each repo holds: the repo index's liveliest relevance hint. */
   listedCounts(): Record<string, number> {
-    const rows = this.sql.exec<{ repo: string; n: number }>(
-      "SELECT repo, count(*) AS n FROM pull_requests GROUP BY repo").toArray();
+    const rows = this.sql
+      .exec<{ repo: string; n: number }>(
+        "SELECT repo, count(*) AS n FROM pull_requests GROUP BY repo",
+      )
+      .toArray();
     return Object.fromEntries(rows.map(({ repo, n }) => [repo, n]));
   }
 
   /** Whether this copy of a write goes to GitHub (`write-receipts.ts`). One that does is marked sending in the same turn. */
   claimWrite(ref: string, now: number): WriteClaim {
     this.sql.exec("DELETE FROM writes WHERE at < ?", now - RECEIPT_KEPT_MS);
-    const receipt = this.sql.exec<WriteReceipt>("SELECT state, at FROM writes WHERE ref = ?", ref).toArray()[0] ?? null;
+    const receipt =
+      this.sql.exec<WriteReceipt>("SELECT state, at FROM writes WHERE ref = ?", ref).toArray()[0] ??
+      null;
     const claim = claimOf(receipt, now);
     if (claim === "go") {
-      this.sql.exec(`INSERT INTO writes (ref, state, at) VALUES (?, 'sending', ?)
-        ON CONFLICT (ref) DO UPDATE SET state = 'sending', at = excluded.at`, ref, now);
+      this.sql.exec(
+        `INSERT INTO writes (ref, state, at) VALUES (?, 'sending', ?)
+        ON CONFLICT (ref) DO UPDATE SET state = 'sending', at = excluded.at`,
+        ref,
+        now,
+      );
     }
     return claim;
   }
@@ -580,7 +796,9 @@ export class PrIndex extends DurableObject<Env> {
   /** The person lost these repos (an installation removed them, or was suspended or deleted): their rows go now. */
   dropRepos(repos: string[]): void {
     const names = new Set(repos.map((repo) => repo.toLowerCase()));
-    const held = this.sql.exec<{ id: string; repo: string }>("SELECT id, repo FROM pull_requests").toArray();
+    const held = this.sql
+      .exec<{ id: string; repo: string }>("SELECT id, repo FROM pull_requests")
+      .toArray();
     for (const row of held.filter((one) => names.has(one.repo.toLowerCase()))) {
       this.remove(row.id);
     }
@@ -598,7 +816,13 @@ export class PrIndex extends DurableObject<Env> {
   }
 
   /** One key line checked off or back on; null when the head holds as many as it may. */
-  markKeyLine(pr: PrId, head: Sha, line: string, reviewed: boolean, now: number): ReviewedKeyLines | null {
+  markKeyLine(
+    pr: PrId,
+    head: Sha,
+    line: string,
+    reviewed: boolean,
+    now: number,
+  ): ReviewedKeyLines | null {
     return markKeyLine(this.sql, pr, head, line, reviewed, now);
   }
 
@@ -607,11 +831,22 @@ export class PrIndex extends DurableObject<Env> {
    * this object's own storage before anything is awaited, so two requests with it can't both pass. A `device` code
    * replaces every paired device, and the push registrations with them; an `app` code adds one.
    */
-  async pair(codeHash: CodeHash, fingerprint: Fingerprint, now: number): Promise<PairingRecord | null> {
+  async pair(
+    codeHash: CodeHash,
+    fingerprint: Fingerprint,
+    now: number,
+  ): Promise<PairingRecord | null> {
     // A code lives 30 minutes and its record goes when it is used, so a day of spent hashes is plenty.
     this.sql.exec("DELETE FROM spent_codes WHERE at < ?", now - 86_400_000);
-    const claimed = this.sql.exec(`INSERT INTO spent_codes (code_hash, at) VALUES (?, ?)
-      ON CONFLICT (code_hash) DO NOTHING RETURNING code_hash`, codeHash, now).toArray().length > 0;
+    const claimed =
+      this.sql
+        .exec(
+          `INSERT INTO spent_codes (code_hash, at) VALUES (?, ?)
+      ON CONFLICT (code_hash) DO NOTHING RETURNING code_hash`,
+          codeHash,
+          now,
+        )
+        .toArray().length > 0;
     if (!claimed) {
       return null;
     }
@@ -627,15 +862,22 @@ export class PrIndex extends DurableObject<Env> {
       this.sql.exec("DELETE FROM paired");
       this.sql.exec("DELETE FROM devices");
     }
-    this.sql.exec(`INSERT INTO paired (fingerprint, role, label, paired_at) VALUES (?, ?, ?, ?)
+    this.sql.exec(
+      `INSERT INTO paired (fingerprint, role, label, paired_at) VALUES (?, ?, ?, ?)
       ON CONFLICT (fingerprint) DO UPDATE SET role = excluded.role, label = excluded.label, paired_at = excluded.paired_at`,
-    fingerprint, record.role, record.label, now);
+      fingerprint,
+      record.role,
+      record.label,
+      now,
+    );
     this.addEvent("paired", { role: record.role, label: record.label });
     return record;
   }
 
   isPaired(fingerprint: Fingerprint): boolean {
-    return this.sql.exec("SELECT 1 FROM paired WHERE fingerprint = ?", fingerprint).toArray().length > 0;
+    return (
+      this.sql.exec("SELECT 1 FROM paired WHERE fingerprint = ?", fingerprint).toArray().length > 0
+    );
   }
 
   /**
@@ -653,7 +895,9 @@ export class PrIndex extends DurableObject<Env> {
 
   /** Hosted: one phone signed out, and its push registrations go with its session. */
   forgetPushRegistrationsOf(fingerprint: Fingerprint): void {
-    this.addEvent("device_signed_out", { push_registrations: forgetPushTokensOf(this.sql, fingerprint) });
+    this.addEvent("device_signed_out", {
+      push_registrations: forgetPushTokensOf(this.sql, fingerprint),
+    });
   }
 
   /**
@@ -671,20 +915,35 @@ export class PrIndex extends DurableObject<Env> {
 
   /** Self-hosted: the paired devices, and Jai's app's `APP_TOKEN` when it is set. */
   private async selfHostedDevices(): Promise<string[]> {
-    const paired = this.sql.exec<{ fingerprint: string }>("SELECT fingerprint FROM paired").toArray()
+    const paired = this.sql
+      .exec<{ fingerprint: string }>("SELECT fingerprint FROM paired")
+      .toArray()
       .map((row) => row.fingerprint);
-    return isSet(this.env.APP_TOKEN) ? [...paired, await fingerprintOf(this.env.APP_TOKEN)] : paired;
+    return isSet(this.env.APP_TOKEN)
+      ? [...paired, await fingerprintOf(this.env.APP_TOKEN)]
+      : paired;
   }
 
   /** What the phone did. A sync's lag is how long each change it picked up took to reach it. */
-  record(kind: string, detail: { changed?: string[]; complete?: boolean } & Record<string, unknown>): void {
+  record(
+    kind: string,
+    detail: { changed?: string[]; complete?: boolean } & Record<string, unknown>,
+  ): void {
     const now = Date.now();
     if (kind === "sync" && detail.complete) {
       this.setMeta("phone_synced_at", now);
     }
-    const lags = (detail.changed ?? []).flatMap((id) => this.sql.exec<{ changed_at: number }>(
-      "SELECT changed_at FROM pull_requests WHERE id = ?", id).toArray().map((row) => now - row.changed_at));
-    this.addEvent(kind, { ...detail, changed: undefined, lags_ms: lags.length > 0 ? lags : undefined });
+    const lags = (detail.changed ?? []).flatMap((id) =>
+      this.sql
+        .exec<{ changed_at: number }>("SELECT changed_at FROM pull_requests WHERE id = ?", id)
+        .toArray()
+        .map((row) => now - row.changed_at),
+    );
+    this.addEvent(kind, {
+      ...detail,
+      changed: undefined,
+      lags_ms: lags.length > 0 ? lags : undefined,
+    });
   }
 
   /** Why a push did or did not go, as of now. */
@@ -707,36 +966,54 @@ export class PrIndex extends DurableObject<Env> {
   }
 
   pushState(): Record<string, number> {
-    const count = (table: string) => this.sql.exec<{ n: number }>(`SELECT count(*) AS n FROM ${table}`).one().n;
-    const production = this.sql.exec<{ n: number }>(
-      "SELECT count(*) AS n FROM devices WHERE host = 'production'").one().n;
+    const count = (table: string) =>
+      this.sql.exec<{ n: number }>(`SELECT count(*) AS n FROM ${table}`).one().n;
+    const production = this.sql
+      .exec<{ n: number }>("SELECT count(*) AS n FROM devices WHERE host = 'production'")
+      .one().n;
     return {
-      changed_at: this.meta("changed_at"), pushed_at: this.meta("pushed_at"),
-      phone_synced_at: this.meta("phone_synced_at"), devices: count("devices"), production, dirty: count("dirty"),
-      pending: this.sql.exec<{ n: number }>(
-        "SELECT count(*) AS n FROM pull_requests WHERE diff_state = 'pending'").one().n,
+      changed_at: this.meta("changed_at"),
+      pushed_at: this.meta("pushed_at"),
+      phone_synced_at: this.meta("phone_synced_at"),
+      devices: count("devices"),
+      production,
+      dirty: count("dirty"),
+      pending: this.sql
+        .exec<{ n: number }>("SELECT count(*) AS n FROM pull_requests WHERE diff_state = 'pending'")
+        .one().n,
     };
   }
 
   events(limit: number): { at: number; kind: string; detail: string }[] {
-    return this.sql.exec<{ at: number; kind: string; detail: string }>(
-      "SELECT at, kind, detail FROM events ORDER BY id DESC LIMIT ?", limit).toArray();
+    return this.sql
+      .exec<{ at: number; kind: string; detail: string }>(
+        "SELECT at, kind, detail FROM events ORDER BY id DESC LIMIT ?",
+        limit,
+      )
+      .toArray();
   }
 
   private exists(what: "pull_requests" | "pending", id?: string): boolean {
     const query = {
       pull_requests: "SELECT 1 FROM pull_requests WHERE id = ?",
-      pending: "SELECT 1 FROM pull_requests WHERE diff_state = 'pending' AND diff_tried_at < ? LIMIT 1",
+      pending:
+        "SELECT 1 FROM pull_requests WHERE diff_state = 'pending' AND diff_tried_at < ? LIMIT 1",
     }[what];
     const parameter = what === "pending" ? Date.now() - 60_000 : id;
-    return (parameter === undefined ? this.sql.exec(query) : this.sql.exec(query, parameter)).toArray().length > 0;
+    return (
+      (parameter === undefined ? this.sql.exec(query) : this.sql.exec(query, parameter)).toArray()
+        .length > 0
+    );
   }
 
   /** Whether a PR not held yet must wait: the index holds `indexed_pull_requests_max` already. */
   private isFullFor(id: string): boolean {
     const max = indexedPullRequestsMaxOf(limitsOf(this.env));
-    return max !== null && !this.exists("pull_requests", id)
-      && this.sql.exec<{ n: number }>("SELECT count(*) AS n FROM pull_requests").one().n >= max;
+    return (
+      max !== null &&
+      !this.exists("pull_requests", id) &&
+      this.sql.exec<{ n: number }>("SELECT count(*) AS n FROM pull_requests").one().n >= max
+    );
   }
 
   /** A full read due now: the poll, Linear or a carried index found the PR behind. */
@@ -753,7 +1030,12 @@ export class PrIndex extends DurableObject<Env> {
   }
 
   private addEvent(kind: string, detail: object): void {
-    this.sql.exec("INSERT INTO events (at, kind, detail) VALUES (?, ?, ?)", Date.now(), kind, JSON.stringify(detail));
+    this.sql.exec(
+      "INSERT INTO events (at, kind, detail) VALUES (?, ?, ?)",
+      Date.now(),
+      kind,
+      JSON.stringify(detail),
+    );
     this.sql.exec("DELETE FROM events WHERE id <= (SELECT max(id) FROM events) - ?", KEPT_EVENTS);
   }
 
@@ -763,12 +1045,22 @@ export class PrIndex extends DurableObject<Env> {
    */
   private async store(pr: Listed, env: Env): Promise<void> {
     const detailVersion = await detailVersionOf(pr);
-    await putVersioned(env.DIFFS, scopedKey(env, detailKey(pr.repo, pr.number, detailVersion)), detailVersion,
-      JSON.stringify(pr.detail), "application/json");
+    await putVersioned(
+      env.DIFFS,
+      scopedKey(env, detailKey(pr.repo, pr.number, detailVersion)),
+      detailVersion,
+      JSON.stringify(pr.detail),
+      "application/json",
+    );
     const id = prId(pr.repo, pr.number);
-    const held = this.sql.exec<{ detail_version: string | null }>(
-      "SELECT detail_version FROM pull_requests WHERE id = ?", id).toArray()[0];
-    this.sql.exec(`INSERT INTO pull_requests (id, repo, number, title, head, revision, list, updated_at, version,
+    const held = this.sql
+      .exec<{ detail_version: string | null }>(
+        "SELECT detail_version FROM pull_requests WHERE id = ?",
+        id,
+      )
+      .toArray()[0];
+    this.sql.exec(
+      `INSERT INTO pull_requests (id, repo, number, title, head, revision, list, updated_at, version,
         detail_version, status, changed_at, ticket, ticket_keys, tickets, people, people_at, diff_state, diff_tried_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)
       ON CONFLICT (id) DO UPDATE SET title = excluded.title, head = excluded.head, list = excluded.list,
@@ -779,10 +1071,24 @@ export class PrIndex extends DurableObject<Env> {
         diff_state = CASE WHEN revision <> excluded.revision THEN 'pending' ELSE diff_state END,
         diff_tried_at = CASE WHEN revision <> excluded.revision THEN 0 ELSE diff_tried_at END,
         revision = excluded.revision`,
-    id, pr.repo, pr.number, pr.title, pr.head, pr.revision, pr.status.list, pr.updatedAt, pr.version, detailVersion,
-    JSON.stringify(pr.status), Date.now(), pr.ticket && JSON.stringify(pr.ticket),
-    JSON.stringify(allKeys(pr.ticketKeys)), JSON.stringify(pr.tickets), JSON.stringify(pr.people),
-    Date.now());
+      id,
+      pr.repo,
+      pr.number,
+      pr.title,
+      pr.head,
+      pr.revision,
+      pr.status.list,
+      pr.updatedAt,
+      pr.version,
+      detailVersion,
+      JSON.stringify(pr.status),
+      Date.now(),
+      pr.ticket && JSON.stringify(pr.ticket),
+      JSON.stringify(allKeys(pr.ticketKeys)),
+      JSON.stringify(pr.tickets),
+      JSON.stringify(pr.people),
+      Date.now(),
+    );
     if (held?.detail_version !== detailVersion) {
       this.setMeta("changed_at", Date.now());
     }
@@ -801,29 +1107,52 @@ export class PrIndex extends DurableObject<Env> {
     const spare = this.rateLimitedUntil(Date.now()) === null;
     let others = spare ? OTHER_KEY_LINES_PER_PASS : 0;
     const lists = OPEN_LISTS.map((list) => `'${list}'`).join(", ");
-    const rows = this.sql.exec<{ id: string; repo: string; number: number; head: string; list: string }>(`SELECT id,
+    const rows = this.sql
+      .exec<{ id: string; repo: string; number: number; head: string; list: string }>(
+        `SELECT id,
       repo, number, head, list FROM pull_requests WHERE list IN (${lists}) AND diff_state = 'ready'
         AND (COALESCE(key_lines_queued, '') <> head
           OR (COALESCE(key_lines_ready, '') <> head AND COALESCE(key_lines_tried_at, 0) < ?))
-      ORDER BY list = 'review' DESC LIMIT ?`, Date.now() - KEY_LINES_RETRY_MS, KEY_LINES_PER_PASS).toArray();
+      ORDER BY list = 'review' DESC LIMIT ?`,
+        Date.now() - KEY_LINES_RETRY_MS,
+        KEY_LINES_PER_PASS,
+      )
+      .toArray();
     const due = rows.filter((row) => row.list === "review" || others-- > 0);
     for (const row of due) {
-      this.sql.exec("UPDATE pull_requests SET key_lines_queued = ?, key_lines_tried_at = ? WHERE id = ?", row.head,
-        Date.now(), row.id);
+      this.sql.exec(
+        "UPDATE pull_requests SET key_lines_queued = ?, key_lines_tried_at = ? WHERE id = ?",
+        row.head,
+        Date.now(),
+        row.id,
+      );
       const head = parseSha(row.head);
       const ref = refOf(row);
       if (!head || !ref) {
         continue;
       }
-      await aiJobs(env).enqueue({
-        kind: "key_lines", repo: ref.repo, number: ref.number, head, context: DEFAULT_CONTEXT, choice: aiConfigOf(env).defaults.key_lines,
-      }, isSet(env.SIGNED_IN_USER_ID) ? env.SIGNED_IN_USER_ID : null);
+      await aiJobs(env).enqueue(
+        {
+          kind: "key_lines",
+          repo: ref.repo,
+          number: ref.number,
+          head,
+          context: DEFAULT_CONTEXT,
+          choice: aiConfigOf(env).defaults.key_lines,
+        },
+        isSet(env.SIGNED_IN_USER_ID) ? env.SIGNED_IN_USER_ID : null,
+      );
     }
   }
 
   /** Key lines landed: an alert held for them (`push-gate.ts`) may go now. */
   async keyLinesReady(id: PrId, head: Sha): Promise<void> {
-    this.sql.exec("UPDATE pull_requests SET key_lines_ready = ? WHERE id = ? AND head = ?", head, id, head);
+    this.sql.exec(
+      "UPDATE pull_requests SET key_lines_ready = ? WHERE id = ? AND head = ?",
+      head,
+      id,
+      head,
+    );
     this.setMeta("changed_at", Date.now());
     if (this.sql.exec("SELECT 1 FROM held_alerts LIMIT 1").toArray().length > 0) {
       await this.ensureAlarm(0);
@@ -831,7 +1160,9 @@ export class PrIndex extends DurableObject<Env> {
   }
 
   private remove(id: string): void {
-    if (this.sql.exec("DELETE FROM pull_requests WHERE id = ? RETURNING id", id).toArray().length > 0) {
+    if (
+      this.sql.exec("DELETE FROM pull_requests WHERE id = ? RETURNING id", id).toArray().length > 0
+    ) {
       this.setMeta("changed_at", Date.now());
     }
   }
@@ -841,15 +1172,32 @@ export class PrIndex extends DurableObject<Env> {
    * the index reads the PR again, and the row moves to the new revision.
    */
   private async storeDiffs(env: Env): Promise<void> {
-    const pending = this.sql.exec<{ id: string; repo: string; number: number; revision: string }>(`SELECT id, repo,
+    const pending = this.sql
+      .exec<{ id: string; repo: string; number: number; revision: string }>(
+        `SELECT id, repo,
       number, revision FROM pull_requests WHERE diff_state = 'pending' AND diff_tried_at < ?
-      ORDER BY diff_tried_at LIMIT ?`, Date.now() - 60_000, DIFFS_PER_PASS).toArray();
-    await Promise.all(pending.map(async ({ id, repo, number, revision }) => {
-      this.sql.exec("UPDATE pull_requests SET diff_tried_at = ? WHERE id = ?", Date.now(), id);
-      const state = await storeDiff(env.DIFFS, scopedKey(env, diffKey(repo, number, revision)), revision,
-        () => liveDiff(repo, number, env));
-      this.sql.exec("UPDATE pull_requests SET diff_state = ? WHERE id = ? AND revision = ?", state, id, revision);
-    }));
+      ORDER BY diff_tried_at LIMIT ?`,
+        Date.now() - 60_000,
+        DIFFS_PER_PASS,
+      )
+      .toArray();
+    await Promise.all(
+      pending.map(async ({ id, repo, number, revision }) => {
+        this.sql.exec("UPDATE pull_requests SET diff_tried_at = ? WHERE id = ?", Date.now(), id);
+        const state = await storeDiff(
+          env.DIFFS,
+          scopedKey(env, diffKey(repo, number, revision)),
+          revision,
+          () => liveDiff(repo, number, env),
+        );
+        this.sql.exec(
+          "UPDATE pull_requests SET diff_state = ? WHERE id = ? AND revision = ?",
+          state,
+          id,
+          revision,
+        );
+      }),
+    );
   }
 
   /**
@@ -858,8 +1206,10 @@ export class PrIndex extends DurableObject<Env> {
    */
   private async pushIfDue(now: number): Promise<void> {
     const changed = this.meta("changed_at");
-    const isDue = changed > this.meta("pushed_at") && changed > this.meta("phone_synced_at")
-      && now - this.meta("pushed_at") >= PUSH_SPACING_MS;
+    const isDue =
+      changed > this.meta("pushed_at") &&
+      changed > this.meta("phone_synced_at") &&
+      now - this.meta("pushed_at") >= PUSH_SPACING_MS;
     if (!isDue) {
       return;
     }
@@ -881,7 +1231,11 @@ export class PrIndex extends DurableObject<Env> {
     return null;
   }
 
-  private async sendToDevices(message: PushMessage, kind: string, detail: object): Promise<boolean> {
+  private async sendToDevices(
+    message: PushMessage,
+    kind: string,
+    detail: object,
+  ): Promise<boolean> {
     const byHost = this.deliverByHost(message);
     if (byHost) {
       const { status, reason } = await byHost;
@@ -899,12 +1253,17 @@ export class PrIndex extends DurableObject<Env> {
     }
     const seconds = Math.floor(Date.now() / 1000);
     const jwt = mode === "apns" ? await apnsJwt(this.env, seconds) : "";
-    const devices = this.sql.exec<{ token: string; host: ApnsHost }>(
-      "SELECT token, host FROM devices WHERE host = 'production'").toArray();
+    const devices = this.sql
+      .exec<{ token: string; host: ApnsHost }>(
+        "SELECT token, host FROM devices WHERE host = 'production'",
+      )
+      .toArray();
     let delivered = false;
     for (const { token, host } of devices) {
-      const { status, reason } = mode === "relay" ? await sendViaRelay(token, host, this.env, seconds, message)
-        : await sendDirect(token, host, jwt, this.env, seconds, message);
+      const { status, reason } =
+        mode === "relay"
+          ? await sendViaRelay(token, host, this.env, seconds, message)
+          : await sendDirect(token, host, jwt, this.env, seconds, message);
       this.addEvent(kind, { ...detail, status, reason });
       if (status === 200) {
         delivered = true;
@@ -968,22 +1327,35 @@ export class PrIndex extends DurableObject<Env> {
   /** A backoff this run's answers called for, kept for the next runs and said once in `/events` (`rate_limited`). */
   private noteRateLimit(env: Env): void {
     const backoff = env.GITHUB_RATE?.backoff;
-    if (!backoff || backoff.until <= Date.now() || backoff.until <= this.meta("rate_limited_until")) {
+    if (
+      !backoff ||
+      backoff.until <= Date.now() ||
+      backoff.until <= this.meta("rate_limited_until")
+    ) {
       return;
     }
     this.setMeta("rate_limited_until", backoff.until);
     this.addEvent("rate_limited", {
-      kind: backoff.kind, until: new Date(backoff.until).toISOString(), remaining: env.GITHUB_RATE?.remaining ?? null,
+      kind: backoff.kind,
+      until: new Date(backoff.until).toISOString(),
+      remaining: env.GITHUB_RATE?.remaining ?? null,
       limit: env.GITHUB_RATE?.limit ?? null,
     });
   }
 
   private meta(key: string): number {
-    return this.sql.exec<{ value: number }>("SELECT value FROM meta WHERE key = ?", key).toArray()[0]?.value ?? 0;
+    return (
+      this.sql.exec<{ value: number }>("SELECT value FROM meta WHERE key = ?", key).toArray()[0]
+        ?.value ?? 0
+    );
   }
 
   private setMeta(key: string, value: number): void {
-    this.sql.exec(`INSERT INTO meta (key, value) VALUES (?, ?)
-      ON CONFLICT (key) DO UPDATE SET value = excluded.value`, key, value);
+    this.sql.exec(
+      `INSERT INTO meta (key, value) VALUES (?, ?)
+      ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
+      key,
+      value,
+    );
   }
 }

@@ -15,7 +15,8 @@ export class MemoryStorage implements Storage {
   }
   async list<T>({ prefix }: { prefix: string }) {
     const out = new Map<string, T>();
-    for (const [key, value] of this.map) if (key.startsWith(prefix)) out.set(key, structuredClone(value) as T);
+    for (const [key, value] of this.map)
+      if (key.startsWith(prefix)) out.set(key, structuredClone(value) as T);
     return out;
   }
 }
@@ -35,7 +36,10 @@ function namespace<T>(make: () => T) {
 }
 
 export async function testPem(): Promise<string> {
-  const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
+    "sign",
+    "verify",
+  ]);
   const der = new Uint8Array(await crypto.subtle.exportKey("pkcs8", pair.privateKey));
   const base64 = btoa(String.fromCharCode(...der));
   return `-----BEGIN PRIVATE KEY-----\n${base64.match(/.{1,64}/g)!.join("\n")}\n-----END PRIVATE KEY-----\n`;
@@ -50,7 +54,9 @@ export interface Sent {
 }
 
 /** A relay over in-memory Durable Objects, a settable clock and a recording APNs. */
-export async function harness(options: { apns?: (sent: Sent) => Response | Promise<Response>; pem?: string } = {}) {
+export async function harness(
+  options: { apns?: (sent: Sent) => Response | Promise<Response>; pem?: string } = {},
+) {
   const env = {
     APNS_TOPIC: "com.example.public",
     RELAY_ADMIN_TOKEN: ADMIN,
@@ -69,9 +75,15 @@ export async function harness(options: { apns?: (sent: Sent) => Response | Promi
   const deps: Deps = {
     now: () => clock.ms,
     fetch: (async (input: string, init: RequestInit) => {
-      const entry = { url: input, headers: init.headers as Record<string, string>, body: JSON.parse(init.body as string) };
+      const entry = {
+        url: input,
+        headers: init.headers as Record<string, string>,
+        body: JSON.parse(init.body as string),
+      };
       sent.push(entry);
-      return options.apns ? options.apns(entry) : new Response(null, { status: 200, headers: { "apns-id": "id-1" } });
+      return options.apns
+        ? options.apns(entry)
+        : new Response(null, { status: 200, headers: { "apns-id": "id-1" } });
     }) as unknown as typeof fetch,
   };
   const relay = createRelay(deps);
@@ -80,7 +92,8 @@ export async function harness(options: { apns?: (sent: Sent) => Response | Promi
       new Request(`https://relay.test${path}`, {
         method,
         headers: token === null ? {} : { authorization: `Bearer ${token}` },
-        body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
+        body:
+          body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
       }),
       env as unknown as Env,
     );

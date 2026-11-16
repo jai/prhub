@@ -63,10 +63,10 @@ struct PRHubBuild: Equatable, Sendable {
     /// The launch arguments' domain, in a Debug build only.
     private static var debugOverrides: UserDefaults? {
         #if DEBUG
-        let arguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
-        return arguments.isEmpty ? nil : UserDefaults.standard
+            let arguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+            return arguments.isEmpty ? nil : UserDefaults.standard
         #else
-        nil
+            nil
         #endif
     }
 }

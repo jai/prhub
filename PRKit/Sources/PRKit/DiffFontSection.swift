@@ -2,7 +2,7 @@ import PRKitCore
 import PRKitDesign
 import SwiftUI
 #if os(iOS)
-import UIKit
+    import UIKit
 #endif
 
 /// Settings' "Diff font": a live preview of a few diff lines drawn by the diff itself, the size, and every face, each
@@ -97,17 +97,17 @@ public struct DiffFontSection: View {
 /// mark can be tried here.
 struct DiffFontPreview: View {
     private static let sample = """
-        diff --git a/Sources/Checkout/RetryButton.swift b/Sources/Checkout/RetryButton.swift
-        --- a/Sources/Checkout/RetryButton.swift
-        +++ b/Sources/Checkout/RetryButton.swift
-        @@ -12,3 +12,4 @@ struct CheckoutView: View {
-             var body: some View {
-        -        Text("Payment failed")
-        +        Text("Payment failed, try again")
-        +        RetryButton(action: retry)
-             }
+    diff --git a/Sources/Checkout/RetryButton.swift b/Sources/Checkout/RetryButton.swift
+    --- a/Sources/Checkout/RetryButton.swift
+    +++ b/Sources/Checkout/RetryButton.swift
+    @@ -12,3 +12,4 @@ struct CheckoutView: View {
+         var body: some View {
+    -        Text("Payment failed")
+    +        Text("Payment failed, try again")
+    +        RetryButton(action: retry)
+         }
 
-        """
+    """
     private static let document = DiffDocument(data: Data(sample.utf8))
     private static let rows = DiffRows(document: document, threads: [])
 
@@ -115,7 +115,7 @@ struct DiffFontPreview: View {
     @State private var viewed: Set<String> = []
     @State private var folds = FoldSet()
     #if os(iOS)
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+        @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #endif
 
     var body: some View {
@@ -131,10 +131,10 @@ struct DiffFontPreview: View {
     /// Tall enough for the header and every line, open or folded.
     private var height: CGFloat {
         #if os(iOS)
-        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
-        let metrics = DiffMetrics(font, traits: traits)
+            let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
+            let metrics = DiffMetrics(font, traits: traits)
         #else
-        let metrics = DiffMetrics(font)
+            let metrics = DiffMetrics(font)
         #endif
         let lines = Self.rows.files.first?.rows.count ?? 0
         return metrics.fileHeaderHeight + CGFloat(lines) * metrics.rowHeight + Space.sm
@@ -182,18 +182,18 @@ private struct DiffFontModifier: ViewModifier {
     let step: CGFloat
     @AppStorage(diffFontIn: nil) private var stored
     #if os(iOS)
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+        @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #else
-    @AppStorage(MacTextSize.key) private var macTextScale = MacTextSize.standard
+        @AppStorage(MacTextSize.key) private var macTextScale = MacTextSize.standard
     #endif
 
     func body(content: Content) -> some View {
         let font = explicit ?? stored
         #if os(iOS)
-        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
-        let scale = DiffMetrics.textScale(traits)
+            let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
+            let scale = DiffMetrics.textScale(traits)
         #else
-        let scale = MacTextSize.codeScale
+            let scale = MacTextSize.codeScale
         #endif
         return content.font(Font(font.platformFont(points: (font.size + step) * scale) as CTFont))
     }

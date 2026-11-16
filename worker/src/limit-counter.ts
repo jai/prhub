@@ -8,7 +8,10 @@ import type { LimitName, RateWindow } from "./limits.ts";
 
 /** The slice of `SqlStorage` the counter uses; a test passes `node:sqlite` behind the same shape. */
 export interface LimitSql {
-  exec<Row extends Record<string, SqlStorageValue>>(query: string, ...bindings: unknown[]): { toArray(): Row[] };
+  exec<Row extends Record<string, SqlStorageValue>>(
+    query: string,
+    ...bindings: unknown[]
+  ): { toArray(): Row[] };
 }
 
 export interface LimitCheck {
@@ -16,7 +19,9 @@ export interface LimitCheck {
   readonly window: RateWindow;
 }
 
-export type LimitDecision = { allowed: true } | { allowed: false; name: LimitName; retryAfterMs: number };
+export type LimitDecision =
+  | { allowed: true }
+  | { allowed: false; name: LimitName; retryAfterMs: number };
 
 export function createLimitHitsTable(sql: LimitSql): void {
   sql.exec(`CREATE TABLE IF NOT EXISTS limit_hits (name TEXT, subject TEXT, key TEXT, at INTEGER, expires_at INTEGER,
@@ -29,34 +34,65 @@ export function createLimitHitsTable(sql: LimitSql): void {
  * every subject's, so the table holds at most each limit's count per subject.
  */
 export function consumeLimits(
-  sql: LimitSql, checks: readonly LimitCheck[], subject: string, key: string, now: number,
+  sql: LimitSql,
+  checks: readonly LimitCheck[],
+  subject: string,
+  key: string,
+  now: number,
 ): LimitDecision {
   sql.exec("DELETE FROM limit_hits WHERE expires_at <= ?", now);
   const toCount: LimitCheck[] = [];
   for (const check of checks) {
     const since = now - check.window.windowMs;
-    const isCounted = sql.exec("SELECT 1 FROM limit_hits WHERE name = ? AND subject = ? AND key = ? AND at > ?",
-      check.name, subject, key, since).toArray().length > 0;
+    const isCounted =
+      sql
+        .exec(
+          "SELECT 1 FROM limit_hits WHERE name = ? AND subject = ? AND key = ? AND at > ?",
+          check.name,
+          subject,
+          key,
+          since,
+        )
+        .toArray().length > 0;
     if (isCounted) {
       continue;
     }
-    const [{ hits, oldest }] = sql.exec<{ hits: number; oldest: number | null }>(`SELECT count(*) AS hits,
-      min(at) AS oldest FROM limit_hits WHERE name = ? AND subject = ? AND at > ?`, check.name, subject, since).toArray();
+    const [{ hits, oldest }] = sql
+      .exec<{ hits: number; oldest: number | null }>(
+        `SELECT count(*) AS hits,
+      min(at) AS oldest FROM limit_hits WHERE name = ? AND subject = ? AND at > ?`,
+        check.name,
+        subject,
+        since,
+      )
+      .toArray();
     if (hits >= check.window.count) {
-      return { allowed: false, name: check.name, retryAfterMs: (oldest ?? now) + check.window.windowMs - now };
+      return {
+        allowed: false,
+        name: check.name,
+        retryAfterMs: (oldest ?? now) + check.window.windowMs - now,
+      };
     }
     toCount.push(check);
   }
   for (const check of toCount) {
-    sql.exec(`INSERT INTO limit_hits (name, subject, key, at, expires_at) VALUES (?, ?, ?, ?, ?)
+    sql.exec(
+      `INSERT INTO limit_hits (name, subject, key, at, expires_at) VALUES (?, ?, ?, ?, ?)
       ON CONFLICT (name, subject, key) DO UPDATE SET at = excluded.at, expires_at = excluded.expires_at`,
-    check.name, subject, key, now, now + check.window.windowMs);
+      check.name,
+      subject,
+      key,
+      now,
+      now + check.window.windowMs,
+    );
   }
   return { allowed: true };
 }
 
 /** When the last hit held expires, so an object that only counts can delete itself then; null when it holds none. */
 export function lastExpiry(sql: LimitSql): number | null {
-  const [{ last }] = sql.exec<{ last: number | null }>("SELECT max(expires_at) AS last FROM limit_hits").toArray();
+  const [{ last }] = sql
+    .exec<{ last: number | null }>("SELECT max(expires_at) AS last FROM limit_hits")
+    .toArray();
   return last;
 }

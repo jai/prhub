@@ -78,8 +78,10 @@ const addedKey = (repo: string) => `repo:${repoKey(repo)}`;
 /** Whether a person is involved in a PR, so their index takes it even when it does not hold it yet. */
 export function isInvolved(target: DeliveryTarget, login: string): boolean {
   const name = login.toLowerCase();
-  return target.kind === "pr"
-    && [target.author, ...target.reviewers].some((candidate) => candidate?.toLowerCase() === name);
+  return (
+    target.kind === "pr" &&
+    [target.author, ...target.reviewers].some((candidate) => candidate?.toLowerCase() === name)
+  );
 }
 
 export class InstallationCore {
@@ -93,8 +95,12 @@ export class InstallationCore {
    * A person's token listed the repos it can see here: they replace what was known of them. A repo seen here for the
    * first time is dated now, so people whose lists are older ask about it before a delivery reaches them.
    */
-  async join(member: { user_id: string; login: string }, repos: string[], account: string | null, now: number):
-  Promise<void> {
+  async join(
+    member: { user_id: string; login: string },
+    repos: string[],
+    account: string | null,
+    now: number,
+  ): Promise<void> {
     await this.#deleteFor(member.user_id, ["seen:"]);
     const known = await this.#deps.store.getMany<number>(repos.map(addedKey));
     const entries: Record<string, unknown> = {
@@ -107,7 +113,7 @@ export class InstallationCore {
       }
     }
     if (account !== null) {
-      entries.meta = { ...await this.#meta(), account } satisfies Meta;
+      entries.meta = { ...(await this.#meta()), account } satisfies Meta;
     }
     await this.#putAll(entries);
   }
@@ -126,15 +132,18 @@ export class InstallationCore {
   /** `installation_repositories` `removed`: nobody is routed to them, and every member's rows of them go now. */
   async reposRemoved(repos: string[]): Promise<void> {
     const members = [...(await this.members()).keys()];
-    await this.#deleteKeys(repos.flatMap((repo) => [
-      addedKey(repo), ...members.flatMap((userId) => [seenKey(userId, repo), checkKey(userId, repo)]),
-    ]));
+    await this.#deleteKeys(
+      repos.flatMap((repo) => [
+        addedKey(repo),
+        ...members.flatMap((userId) => [seenKey(userId, repo), checkKey(userId, repo)]),
+      ]),
+    );
     await this.#dropForMembers(members, repos);
   }
 
   /** Suspended, nothing is routed and every member's rows of its repos go; `unsuspend` brings them back by the poll. */
   async setSuspended(suspended: boolean): Promise<void> {
-    await this.#deps.store.put({ meta: { ...await this.#meta(), suspended } satisfies Meta });
+    await this.#deps.store.put({ meta: { ...(await this.#meta()), suspended } satisfies Meta });
     if (suspended) {
       await this.#dropForMembers([...(await this.members()).keys()], await this.#repos());
     }
@@ -150,8 +159,12 @@ export class InstallationCore {
 
   /** Every repo this installation has named, lowercased: in an event, or in a member's list. */
   async #repos(): Promise<string[]> {
-    const added = [...(await this.#deps.store.list("repo:")).keys()].map((key) => key.slice("repo:".length));
-    const seen = [...(await this.#deps.store.list("seen:")).keys()].map((key) => key.split(":").slice(2).join(":"));
+    const added = [...(await this.#deps.store.list("repo:")).keys()].map((key) =>
+      key.slice("repo:".length),
+    );
+    const seen = [...(await this.#deps.store.list("seen:")).keys()].map((key) =>
+      key.split(":").slice(2).join(":"),
+    );
     return [...new Set([...added, ...seen])];
   }
 
@@ -173,13 +186,18 @@ export class InstallationCore {
    * A delivery about one repo: marked now in the index of each member who can see it; queued for a check for each one
    * in doubt; never sent to anyone else. Nothing goes while the installation is suspended.
    */
-  async route(target: DeliveryTarget, now: number): Promise<{ delivered: string[]; queued: string[] }> {
+  async route(
+    target: DeliveryTarget,
+    now: number,
+  ): Promise<{ delivered: string[]; queued: string[] }> {
     const meta = await this.#meta();
     if (meta.suspended) {
       return { delivered: [], queued: [] };
     }
     const members = [...(await this.members()).values()];
-    const seen = await this.#deps.store.getMany<Seen>(members.map((member) => seenKey(member.user_id, target.repo)));
+    const seen = await this.#deps.store.getMany<Seen>(
+      members.map((member) => seenKey(member.user_id, target.repo)),
+    );
     let addedAt = await this.#deps.store.get<number>(addedKey(target.repo));
     if (addedAt === undefined) {
       // A repo no list or event named yet: an "all repositories" install gained it. Everyone asks once.
@@ -204,20 +222,27 @@ export class InstallationCore {
 
   /** Asks each queued person's token about the repo, and delivers what was waiting to those who can see it. */
   async runChecks(now: number): Promise<{ isPending: boolean }> {
-    const checks = [...(await this.#deps.store.list<Check>("check:")).values()].slice(0, CHECKS_PER_PASS);
+    const checks = [...(await this.#deps.store.list<Check>("check:")).values()].slice(
+      0,
+      CHECKS_PER_PASS,
+    );
     const members = await this.members();
     for (const check of checks) {
       const member = members.get(check.user_id);
       const visible = member ? await this.#deps.canSee(check.user_id, check.repo) : false;
       if (visible === null && check.tries + 1 < CHECK_TRIES) {
-        await this.#deps.store.put({ [checkKey(check.user_id, check.repo)]: { ...check, tries: check.tries + 1 } });
+        await this.#deps.store.put({
+          [checkKey(check.user_id, check.repo)]: { ...check, tries: check.tries + 1 },
+        });
         continue;
       }
       await this.#deps.store.delete([checkKey(check.user_id, check.repo)]);
       if (visible === null || !member) {
         continue;
       }
-      await this.#deps.store.put({ [seenKey(check.user_id, check.repo)]: { visible, at: now } satisfies Seen });
+      await this.#deps.store.put({
+        [seenKey(check.user_id, check.repo)]: { visible, at: now } satisfies Seen,
+      });
       if (visible) {
         for (const target of check.targets) {
           await this.#deps.deliver(check.user_id, target, member.login);
@@ -234,13 +259,16 @@ export class InstallationCore {
     const targets = (held?.targets ?? []).filter((one) => JSON.stringify(one) !== same);
     await this.#deps.store.put({
       [key]: {
-        user_id: userId, repo: target.repo, targets: [...targets, target].slice(-TARGETS_PER_CHECK), tries: held?.tries ?? 0,
+        user_id: userId,
+        repo: target.repo,
+        targets: [...targets, target].slice(-TARGETS_PER_CHECK),
+        tries: held?.tries ?? 0,
       } satisfies Check,
     });
   }
 
   async #meta(): Promise<Meta> {
-    return await this.#deps.store.get<Meta>("meta") ?? { account: null, suspended: false };
+    return (await this.#deps.store.get<Meta>("meta")) ?? { account: null, suspended: false };
   }
 
   async #deleteFor(userId: string, prefixes: string[]): Promise<void> {
@@ -265,8 +293,10 @@ export class InstallationCore {
 /** `DurableObjectStorage` as a `ListStore`: its batch calls take at most 128 keys at a time. */
 export function storageStore(storage: DurableObjectStorage): ListStore {
   const BATCH = 128;
-  const chunks = <T>(items: T[]) => Array.from({ length: Math.ceil(items.length / BATCH) },
-    (_, index) => items.slice(index * BATCH, (index + 1) * BATCH));
+  const chunks = <T>(items: T[]) =>
+    Array.from({ length: Math.ceil(items.length / BATCH) }, (_, index) =>
+      items.slice(index * BATCH, (index + 1) * BATCH),
+    );
   return {
     get: (key) => storage.get(key),
     async getMany<T>(keys: string[]) {

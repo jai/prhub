@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PRKitCore
+import Testing
 
 /// Where the mirror lives (`PRMirrorLocation`): Application Support in the app group's container, else the app's own;
 /// a mirror left in an earlier build's caches moves there once.

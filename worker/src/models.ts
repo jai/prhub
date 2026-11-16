@@ -14,15 +14,19 @@
 
 import type { RepoFullName, Sha } from "./ids.ts";
 
-export const SUPPORTED_MODELS = ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"] as const;
-export type ModelId = typeof SUPPORTED_MODELS[number];
+export const SUPPORTED_MODELS = [
+  "claude-haiku-5-5",
+  "claude-sonnet-5-5",
+  "claude-opus-5-5",
+] as const;
+export type ModelId = (typeof SUPPORTED_MODELS)[number];
 
 /** In order: a later effort is "above" an earlier one. `xhigh` and `max` are never offered. */
 export const EFFORTS = ["low", "medium", "high"] as const;
-export type Effort = typeof EFFORTS[number];
+export type Effort = (typeof EFFORTS)[number];
 
 export const AI_FEATURES = ["key_lines", "rewrite", "ask"] as const;
-export type AiFeature = typeof AI_FEATURES[number];
+export type AiFeature = (typeof AI_FEATURES)[number];
 
 export interface ModelChoice {
   readonly model: ModelId;
@@ -37,19 +41,36 @@ interface ModelSpec {
   /** `fallbacks: "default"` on a refusal. Haiku 5.5 has no server-side fallback. */
   readonly serverFallback: boolean;
   /** USD per million tokens. Haiku 5.5's rate rises above 100K input tokens. */
-  readonly price: { input: number; output: number; longInput?: number; longOutput?: number; longFrom?: number };
+  readonly price: {
+    input: number;
+    output: number;
+    longInput?: number;
+    longOutput?: number;
+    longFrom?: number;
+  };
 }
 
 export const MODEL_SPECS: Readonly<Record<ModelId, ModelSpec>> = {
   "claude-haiku-5-5": {
-    label: "Haiku 5.5", efforts: EFFORTS, defaultEffort: "medium", serverFallback: false,
+    label: "Haiku 5.5",
+    efforts: EFFORTS,
+    defaultEffort: "medium",
+    serverFallback: false,
     price: { input: 0.1, output: 0.5, longInput: 0.5, longOutput: 2.5, longFrom: 100_000 },
   },
   "claude-sonnet-5-5": {
-    label: "Sonnet 5.5", efforts: EFFORTS, defaultEffort: "high", serverFallback: true, price: { input: 2, output: 10 },
+    label: "Sonnet 5.5",
+    efforts: EFFORTS,
+    defaultEffort: "high",
+    serverFallback: true,
+    price: { input: 2, output: 10 },
   },
   "claude-opus-5-5": {
-    label: "Opus 5.5", efforts: EFFORTS, defaultEffort: "medium", serverFallback: true, price: { input: 4, output: 20 },
+    label: "Opus 5.5",
+    efforts: EFFORTS,
+    defaultEffort: "medium",
+    serverFallback: true,
+    price: { input: 4, output: 20 },
   },
 };
 
@@ -74,7 +95,9 @@ export interface AiConfig {
   readonly problems: readonly AiConfigProblem[];
 }
 
-export type AiConfigVars = Partial<Record<"AI_MODELS_ALLOWED" | "AI_EFFORT_MAX" | "AI_DEFAULTS", string>>;
+export type AiConfigVars = Partial<
+  Record<"AI_MODELS_ALLOWED" | "AI_EFFORT_MAX" | "AI_DEFAULTS", string>
+>;
 
 export function isModelId(value: unknown): value is ModelId {
   return typeof value === "string" && (SUPPORTED_MODELS as readonly string[]).includes(value);
@@ -108,13 +131,24 @@ function parseAllowed(raw: string | undefined, problems: AiConfigProblem[]): Mod
   if (blank(raw)) {
     return [...SUPPORTED_MODELS];
   }
-  const named = raw!.split(",").map((name) => name.trim()).filter(Boolean);
+  const named = raw!
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean);
   for (const name of named.filter((one) => !isModelId(one))) {
-    problems.push({ variable: "AI_MODELS_ALLOWED", value: name, reason: "not a model this code supports" });
+    problems.push({
+      variable: "AI_MODELS_ALLOWED",
+      value: name,
+      reason: "not a model this code supports",
+    });
   }
   const allowed = SUPPORTED_MODELS.filter((model) => named.includes(model));
   if (allowed.length === 0) {
-    problems.push({ variable: "AI_MODELS_ALLOWED", value: raw!, reason: "allows no supported model; using all of them" });
+    problems.push({
+      variable: "AI_MODELS_ALLOWED",
+      value: raw!,
+      reason: "allows no supported model; using all of them",
+    });
     return [...SUPPORTED_MODELS];
   }
   return allowed;
@@ -126,7 +160,11 @@ function parseEffortMax(raw: string | undefined, problems: AiConfigProblem[]): E
     return "high";
   }
   if (!isEffort(value)) {
-    problems.push({ variable: "AI_EFFORT_MAX", value, reason: "must be low, medium or high; using high" });
+    problems.push({
+      variable: "AI_EFFORT_MAX",
+      value,
+      reason: "must be low, medium or high; using high",
+    });
     return "high";
   }
   return value;
@@ -136,11 +174,19 @@ function parseEffortMax(raw: string | undefined, problems: AiConfigProblem[]): E
 function parseChoiceText(value: unknown): { model: string; effort?: string } | null {
   if (typeof value === "string") {
     const [model, effort, extra] = value.trim().split(":");
-    return model && extra === undefined ? { model, ...(effort === undefined ? {} : { effort }) } : null;
+    return model && extra === undefined
+      ? { model, ...(effort === undefined ? {} : { effort }) }
+      : null;
   }
-  if (value && typeof value === "object" && typeof (value as { model?: unknown }).model === "string") {
+  if (
+    value &&
+    typeof value === "object" &&
+    typeof (value as { model?: unknown }).model === "string"
+  ) {
     const { model, effort } = value as { model: string; effort?: unknown };
-    return effort === undefined || typeof effort === "string" ? { model, ...(effort === undefined ? {} : { effort }) } : null;
+    return effort === undefined || typeof effort === "string"
+      ? { model, ...(effort === undefined ? {} : { effort }) }
+      : null;
   }
   return null;
 }
@@ -150,7 +196,9 @@ function defaultEntries(raw: string): [string, unknown][] | null {
   if (text.startsWith("{")) {
     try {
       const parsed: unknown = JSON.parse(text);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? Object.entries(parsed) : null;
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? Object.entries(parsed)
+        : null;
     } catch {
       return null;
     }
@@ -168,7 +216,10 @@ function defaultEntries(raw: string): [string, unknown][] | null {
 
 /** A default the config can't serve moves to the nearest one it can: the same model at a lower effort, else another. */
 function fitDefault(
-  config: Pick<AiConfig, "allowed" | "effortMax">, feature: AiFeature, wanted: ModelChoice, problems: AiConfigProblem[],
+  config: Pick<AiConfig, "allowed" | "effortMax">,
+  feature: AiFeature,
+  wanted: ModelChoice,
+  problems: AiConfigProblem[],
   value: string,
 ): ModelChoice {
   let { model, effort } = wanted;
@@ -176,20 +227,31 @@ function fitDefault(
     const builtIn = BUILT_IN_DEFAULTS[feature].model;
     const fallback = config.allowed.includes(builtIn) ? builtIn : config.allowed[0];
     if (value !== "") {
-      problems.push({ variable: "AI_DEFAULTS", value, reason: `${feature}: ${model} is not allowed; using ${fallback}` });
+      problems.push({
+        variable: "AI_DEFAULTS",
+        value,
+        reason: `${feature}: ${model} is not allowed; using ${fallback}`,
+      });
     }
     model = fallback;
-    effort = model === builtIn ? BUILT_IN_DEFAULTS[feature].effort : MODEL_SPECS[model].defaultEffort;
+    effort =
+      model === builtIn ? BUILT_IN_DEFAULTS[feature].effort : MODEL_SPECS[model].defaultEffort;
   }
   const clamped = clampEffort(config, model, effort);
   if (clamped !== effort && value !== "") {
-    problems.push({ variable: "AI_DEFAULTS", value, reason: `${feature}: effort ${effort} is above the max; using ${clamped}` });
+    problems.push({
+      variable: "AI_DEFAULTS",
+      value,
+      reason: `${feature}: effort ${effort} is above the max; using ${clamped}`,
+    });
   }
   return { model, effort: clamped };
 }
 
 function parseDefaults(
-  raw: string | undefined, config: Pick<AiConfig, "allowed" | "effortMax">, problems: AiConfigProblem[],
+  raw: string | undefined,
+  config: Pick<AiConfig, "allowed" | "effortMax">,
+  problems: AiConfigProblem[],
 ): Record<AiFeature, ModelChoice> {
   const wanted: Record<AiFeature, { choice: ModelChoice; value: string }> = {
     key_lines: { choice: BUILT_IN_DEFAULTS.key_lines, value: "" },
@@ -199,26 +261,52 @@ function parseDefaults(
   if (!blank(raw)) {
     const entries = defaultEntries(raw!);
     if (!entries) {
-      problems.push({ variable: "AI_DEFAULTS", value: raw!, reason: "not feature=model:effort pairs or a JSON object" });
+      problems.push({
+        variable: "AI_DEFAULTS",
+        value: raw!,
+        reason: "not feature=model:effort pairs or a JSON object",
+      });
     }
     for (const [feature, value] of entries ?? []) {
       const shown = typeof value === "string" ? value : JSON.stringify(value);
       const text = parseChoiceText(value);
       if (!isFeature(feature)) {
-        problems.push({ variable: "AI_DEFAULTS", value: feature, reason: "not a feature (key_lines, rewrite, ask)" });
+        problems.push({
+          variable: "AI_DEFAULTS",
+          value: feature,
+          reason: "not a feature (key_lines, rewrite, ask)",
+        });
       } else if (!text || !isModelId(text.model)) {
-        problems.push({ variable: "AI_DEFAULTS", value: shown, reason: `${feature}: not a supported model` });
+        problems.push({
+          variable: "AI_DEFAULTS",
+          value: shown,
+          reason: `${feature}: not a supported model`,
+        });
       } else if (text.effort !== undefined && !isEffort(text.effort)) {
-        problems.push({ variable: "AI_DEFAULTS", value: shown, reason: `${feature}: effort must be low, medium or high` });
+        problems.push({
+          variable: "AI_DEFAULTS",
+          value: shown,
+          reason: `${feature}: effort must be low, medium or high`,
+        });
       } else {
         wanted[feature] = {
-          choice: { model: text.model, effort: text.effort ?? MODEL_SPECS[text.model].defaultEffort }, value: shown,
+          choice: {
+            model: text.model,
+            effort: text.effort ?? MODEL_SPECS[text.model].defaultEffort,
+          },
+          value: shown,
         };
       }
     }
   }
   return {
-    key_lines: fitDefault(config, "key_lines", wanted.key_lines.choice, problems, wanted.key_lines.value),
+    key_lines: fitDefault(
+      config,
+      "key_lines",
+      wanted.key_lines.choice,
+      problems,
+      wanted.key_lines.value,
+    ),
     rewrite: fitDefault(config, "rewrite", wanted.rewrite.choice, problems, wanted.rewrite.value),
     ask: fitDefault(config, "ask", wanted.ask.choice, problems, wanted.ask.value),
   };
@@ -239,21 +327,32 @@ export type ChoiceResult = { ok: true; choice: ModelChoice } | { ok: false; erro
  * default's effort when it is the default model, else that model's own default, kept under the max.
  */
 export function resolveChoice(
-  config: AiConfig, feature: AiFeature, requested: { model?: unknown; effort?: unknown },
+  config: AiConfig,
+  feature: AiFeature,
+  requested: { model?: unknown; effort?: unknown },
 ): ChoiceResult {
   const fallback = config.defaults[feature];
   const model = requested.model ?? null;
   const effort = requested.effort ?? null;
-  if (model !== null && (typeof model !== "string" || !isModelId(model) || !config.allowed.includes(model))) {
+  if (
+    model !== null &&
+    (typeof model !== "string" || !isModelId(model) || !config.allowed.includes(model))
+  ) {
     return { ok: false, error: `model must be one of ${config.allowed.join(", ")}` };
   }
   const chosenModel: ModelId = model ?? fallback.model;
   const offered = effortsFor(config, chosenModel);
-  if (effort !== null && (typeof effort !== "string" || !isEffort(effort) || !offered.includes(effort))) {
+  if (
+    effort !== null &&
+    (typeof effort !== "string" || !isEffort(effort) || !offered.includes(effort))
+  ) {
     return { ok: false, error: `effort must be one of ${offered.join(", ")} for ${chosenModel}` };
   }
-  const chosenEffort: Effort = effort
-    ?? (chosenModel === fallback.model ? fallback.effort : clampEffort(config, chosenModel, MODEL_SPECS[chosenModel].defaultEffort));
+  const chosenEffort: Effort =
+    effort ??
+    (chosenModel === fallback.model
+      ? fallback.effort
+      : clampEffort(config, chosenModel, MODEL_SPECS[chosenModel].defaultEffort));
   return { ok: true, choice: { model: chosenModel, effort: chosenEffort } };
 }
 
@@ -266,7 +365,11 @@ export interface FeatureModels {
 export function featureModels(config: AiConfig, feature: AiFeature): FeatureModels {
   return {
     default: config.defaults[feature],
-    allowed: config.allowed.map((model) => ({ model, label: MODEL_SPECS[model].label, efforts: effortsFor(config, model) })),
+    allowed: config.allowed.map((model) => ({
+      model,
+      label: MODEL_SPECS[model].label,
+      efforts: effortsFor(config, model),
+    })),
   };
 }
 
@@ -309,6 +412,9 @@ export function aiKey({ kind, repo, number, head, context, choice }: AiJob): str
   // v3: key lines with the PR's summary and its ticket's requirements; answers kept before it are made again when next
   // asked for.
   const name = kind === "key_lines" ? `key-lines-v3-${context}` : "rewrite";
-  const model = choice && !sameChoice(choice, BUILT_IN_DEFAULTS[kind]) ? `-${choice.model}-${choice.effort}` : "";
+  const model =
+    choice && !sameChoice(choice, BUILT_IN_DEFAULTS[kind])
+      ? `-${choice.model}-${choice.effort}`
+      : "";
   return `ai/${repo}/${number}/${head}/${name}${model}.json`;
 }

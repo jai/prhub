@@ -1,7 +1,7 @@
 import DurableNetworking
 import Foundation
-import Testing
 @testable import PRKit
+import Testing
 
 /// Each kind of outbox job in its own states and words: one delivery, never one meaning.
 @MainActor
@@ -27,15 +27,20 @@ struct PROutboxJobTests {
         let access = PRViewerAccess.offline
         let configuration = PRKitConfiguration.everything
         let held = Outbox()
-        var outbox: (any PRKitOutbox)? { held }
+        var outbox: (any PRKitOutbox)? {
+            held
+        }
+
         let apnsEnvironment = "sandbox"
         let samples: PRSampleSet? = nil
         let launchOptions = PRKitLaunchOptions.none
         private(set) var events: [PRKitEvent] = []
 
         let transport: any HTTPTransport = URLSessionTransport.background
-        func log(_ line: String) {}
-        func receive(_ event: PRKitEvent) { events.append(event) }
+        func log(_: String) {}
+        func receive(_ event: PRKitEvent) {
+            events.append(event)
+        }
     }
 
     private let ref = PullRequestRef(repo: "acme/api", number: 7)
@@ -80,7 +85,7 @@ struct PROutboxJobTests {
             return
         }
         let session = kit.model.session(for: ref)
-        try await session.setResolved(true, thread: try Self.thread())
+        try await session.setResolved(true, thread: Self.thread())
         #expect(session.notice == .queued(noun: "Resolving the thread", .sending))
         #expect(session.notice?.tone == .toneWaiting)
     }

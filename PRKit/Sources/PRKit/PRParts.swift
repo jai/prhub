@@ -31,10 +31,10 @@ extension View {
     }
 }
 
-extension View {
+public extension View {
     /// A field to type in, on every screen: words 12 by 8 from its edge on the fill, in a control's corner, ringed in
     /// the accent while it has focus. The system's rounded border reads as stock.
-    public func prField(isFocused: Bool) -> some View {
+    func prField(isFocused: Bool) -> some View {
         padding(.horizontal, PRStyle.inset)
             .padding(.vertical, Space.sm)
             .background(Color.groundFill, in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous))
@@ -76,14 +76,14 @@ public struct PRButtonStyle: ButtonStyle {
                 configuration.label.labelStyle(.iconText)
             }
         }
-            .font(.appFootnote.weight(.semibold))
-            .foregroundStyle(foreground)
-            .padding(.horizontal, inset)
-            .frame(minHeight: PRStyle.controlHeight)
-            .background(background, in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous))
-            .contentShape(.rect.inset(by: -6))
-            .opacity(isEnabled ? (configuration.isPressed ? PRStyle.pressedOpacity : 1) : PRStyle.disabledOpacity)
-            .animation(AppMotion.press, value: configuration.isPressed)
+        .font(.appFootnote.weight(.semibold))
+        .foregroundStyle(foreground)
+        .padding(.horizontal, inset)
+        .frame(minHeight: PRStyle.controlHeight)
+        .background(background, in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous))
+        .contentShape(.rect.inset(by: -6))
+        .opacity(isEnabled ? (configuration.isPressed ? PRStyle.pressedOpacity : 1) : PRStyle.disabledOpacity)
+        .animation(AppMotion.press, value: configuration.isPressed)
     }
 
     private var foreground: AnyShapeStyle {
@@ -122,18 +122,20 @@ public struct PRCommentText: View {
         MarkdownText(
             text, headingFont: .appFootnote.weight(.semibold), firstBlockInset: firstBlockInset, onCheckbox: onCheckbox
         )
-            .font(.appFootnote)
-            .lineSpacing(PRStyle.bodyLineSpacing)
+        .font(.appFootnote)
+        .lineSpacing(PRStyle.bodyLineSpacing)
     }
 }
 
 public struct PRAvatar: View {
     public let author: PullRequestDetail.Author?
-    /// Grows with the text beside it, so its initial is never clipped at a large text size.
+    // Grows with the text beside it, so its initial is never clipped at a large text size.
     #if os(macOS)
-    private var size: CGFloat { 20 * MacTextSize.layoutScale }
+        private var size: CGFloat {
+            20 * MacTextSize.layoutScale
+        }
     #else
-    @ScaledMetric(relativeTo: .caption2) private var size: CGFloat = 20
+        @ScaledMetric(relativeTo: .caption2) private var size: CGFloat = 20
     #endif
 
     public init(author: PullRequestDetail.Author?) {
@@ -188,10 +190,10 @@ public struct PRChevron: View {
 
 /// Where a comment is written, always in place: under the line, in the thread, or under the button that opened it. A
 /// refusal shows GitHub's reason here, and the words stay in the box.
-extension Binding where Value == String? {
+public extension Binding where Value == String? {
     /// For a box open while this has a value. SwiftUI's `Binding(_:)` unwrapping one force-unwraps it, and Cancel clearing
     /// the value while the box is still leaving crashes on that. A write as it leaves doesn't open it again.
-    public var whileOpen: Binding<String> {
+    var whileOpen: Binding<String> {
         Binding<String> { wrappedValue ?? "" } set: { text in
             if wrappedValue != nil {
                 wrappedValue = text
@@ -214,7 +216,7 @@ public struct InlineComposer: View {
     public var context: String?
     public var needsText = true
     var sendAtLeading = false
-    public var lines = 3...10
+    public var lines = 3 ... 10
     public var alternate: Alternate?
     /// Takes the words to the PR's AI agent instead.
     public var ask: ((String) -> Void)?

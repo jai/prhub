@@ -1,7 +1,7 @@
 import Foundation
+@testable import PRKit
 import Synchronization
 import Testing
-@testable import PRKit
 
 /// Key lines checked off as reviewed: at once on screen, kept by the Worker so another device shows them, at one head.
 @MainActor
@@ -19,7 +19,9 @@ struct PRKeyLineReviewTests {
 
         private let state = Mutex(State())
 
-        var posts: [String] { state.withLock { $0.posts } }
+        var posts: [String] {
+            state.withLock { $0.posts }
+        }
 
         func set(_ mode: Mode) {
             state.withLock { $0.mode = mode }
@@ -63,7 +65,7 @@ struct PRKeyLineReviewTests {
             case .refuses where request.httpMethod == "POST": return answer(400, #"{"error":"Too many."}"#)
             default:
                 let kept = PRReviewedKeyLines(head: reviewed?.head ?? "", reviewed: reviewed?.lines ?? [])
-                return (try JSONEncoder().encode(kept), answer(200, "").1)
+                return try (JSONEncoder().encode(kept), answer(200, "").1)
             }
         }
 
@@ -98,8 +100,8 @@ struct PRKeyLineReviewTests {
             data = try JSONSerialization.data(withJSONObject: object)
         }
         let keyLines = try JSONDecoder().decode(PRKeyLines.self, from: Data(Self.lines.utf8))
-        let session = PRSession(
-            ref: ref, title: nil, content: PRContent(detail: try PullRequestDetail.decode(data), document: nil),
+        let session = try PRSession(
+            ref: ref, title: nil, content: PRContent(detail: PullRequestDetail.decode(data), document: nil),
             keyLines: keyLines, tappedAt: 0, model: model
         )
         session.setContextLines(PRKeyLines.defaultContext)
@@ -112,8 +114,8 @@ struct PRKeyLineReviewTests {
     }
 
     /// Until the session's send has had its answer.
-    private func settle(_ session: PRSession, posts: Int) async throws {
-        for _ in 0..<200 where worker.posts.count < posts {
+    private func settle(_: PRSession, posts: Int) async throws {
+        for _ in 0 ..< 200 where worker.posts.count < posts {
             try await Task.sleep(for: .milliseconds(10))
         }
         try await Task.sleep(for: .milliseconds(50))
@@ -161,7 +163,7 @@ struct PRKeyLineReviewTests {
 
     @Test func ticksBelongToTheHeadTheyWereMadeAt() async throws {
         let older = try await session()
-        worker.seed(["a.swift:RIGHT:1"], at: try head(of: older))
+        try worker.seed(["a.swift:RIGHT:1"], at: head(of: older))
         await older.loadReviewedKeyLines()
         #expect(older.reviewedKeyLineCount == 1)
 
@@ -173,7 +175,7 @@ struct PRKeyLineReviewTests {
     @Test func ticksReadOnlineShowOfflineOnTheNextLaunch() async throws {
         let directory = URL.temporaryDirectory.appending(path: "key-line-review-\(UUID().uuidString)")
         let online = try await session(in: directory)
-        worker.seed(["a.swift:RIGHT:1"], at: try head(of: online))
+        try worker.seed(["a.swift:RIGHT:1"], at: head(of: online))
         await online.loadReviewedKeyLines()
         #expect(online.reviewedKeyLineCount == 1)
 

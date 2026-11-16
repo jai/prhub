@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The parts of PRHub's own pages (onboarding, Sign in again, Settings, Delete Account) that PRKit doesn't share: one
-/// look for each, so a change to one is a change here (DESIGN.md, Components). Blocks are PRKit's `PRPageBlock`.
+// The parts of PRHub's own pages (onboarding, Sign in again, Settings, Delete Account) that PRKit doesn't share: one
+// look for each, so a change to one is a change here (DESIGN.md, Components). Blocks are PRKit's `PRPageBlock`.
 
 /// A page's title and what it is for, at the top of the page.
 struct PageHeader: View {

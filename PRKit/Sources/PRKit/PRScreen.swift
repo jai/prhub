@@ -26,12 +26,12 @@ final class DiffOpenTimer {
             return
         }
         #if os(iOS)
-        let link = CADisplayLink(target: self, selector: #selector(tick))
-        link.add(to: .main, forMode: .common)
-        self.link = link
+            let link = CADisplayLink(target: self, selector: #selector(tick))
+            link.add(to: .main, forMode: .common)
+            self.link = link
         #else
-        // The Mac has no display link here; the next turn of the run loop is after the frame is drawn.
-        DispatchQueue.main.async { self.milliseconds = (CACurrentMediaTime() - self.startedAt) * 1000 }
+            // The Mac has no display link here; the next turn of the run loop is after the frame is drawn.
+            DispatchQueue.main.async { self.milliseconds = (CACurrentMediaTime() - self.startedAt) * 1000 }
         #endif
     }
 
@@ -103,11 +103,12 @@ struct PRDiffScreen: View {
 
     private func report() {
         guard case let .document(document, _) = session.content?.diff,
-              let milliseconds = session.timer.milliseconds else {
+              let milliseconds = session.timer.milliseconds
+        else {
             return
         }
         #if DEBUG
-        print("PRBENCH \(session.summary(document))")
+            print("PRBENCH \(session.summary(document))")
         #endif
         session.report(document: document, milliseconds: milliseconds)
     }
@@ -162,58 +163,58 @@ private extension View {
         sheet(isPresented: Binding(
             get: { showsAsk && session.isShowingAsk }, set: { session.isShowingAsk = $0 }
         )) { PRAskSheet(session: session) }
-        .toolbar {
-            if session.content != nil, session.offersAsk {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Ask AI", systemImage: "bubble.left.and.text.bubble.right") { session.openAsk() }
-                        .accessibilityIdentifier("pr-ask")
-                }
-            }
-            if let url = session.content.flatMap({ URL(string: $0.detail.url) }) {
-                ToolbarItem(placement: .primaryAction) {
-                    // A tap opens GitHub. A long press, or a click and hold on the Mac, offers the link itself.
-                    Menu {
-                        Button("Copy link", systemImage: AppIcon.copyLink.symbol) { Pasteboard.copy(url.absoluteString) }
-                            .accessibilityIdentifier("pr-link-copy")
-                        ShareLink(item: url)
-                            .accessibilityIdentifier("pr-link-share")
-                    } label: {
-                        Label("Open in GitHub", systemImage: AppIcon.openInGitHub.symbol)
-                    } primaryAction: {
-                        PRPlatform.openExternally(url)
+            .toolbar {
+                if session.content != nil, session.offersAsk {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Ask AI", systemImage: "bubble.left.and.text.bubble.right") { session.openAsk() }
+                            .accessibilityIdentifier("pr-ask")
                     }
-                    .menuIndicator(.hidden)
-                    .accessibilityIdentifier("open-in-github")
-                    .accessibilityValue(url.absoluteString)
+                }
+                if let url = session.content.flatMap({ URL(string: $0.detail.url) }) {
+                    ToolbarItem(placement: .primaryAction) {
+                        // A tap opens GitHub. A long press, or a click and hold on the Mac, offers the link itself.
+                        Menu {
+                            Button("Copy link", systemImage: AppIcon.copyLink.symbol) { Pasteboard.copy(url.absoluteString) }
+                                .accessibilityIdentifier("pr-link-copy")
+                            ShareLink(item: url)
+                                .accessibilityIdentifier("pr-link-share")
+                        } label: {
+                            Label("Open in GitHub", systemImage: AppIcon.openInGitHub.symbol)
+                        } primaryAction: {
+                            PRPlatform.openExternally(url)
+                        }
+                        .menuIndicator(.hidden)
+                        .accessibilityIdentifier("open-in-github")
+                        .accessibilityValue(url.absoluteString)
+                    }
                 }
             }
-        }
     }
 
     /// The system's Back and Forward on the Mac walk a history, which is not where a PR came from. This is one Back, which
     /// does what the stack says.
     @ViewBuilder func macBackButton(_ back: @escaping () -> Void) -> some View {
         #if os(macOS)
-        modifier(MacBackButton(back: back))
+            modifier(MacBackButton(back: back))
         #else
-        self
+            self
         #endif
     }
 }
 
 #if os(macOS)
-private struct MacBackButton: ViewModifier {
-    let back: () -> Void
+    private struct MacBackButton: ViewModifier {
+        let back: () -> Void
 
-    func body(content: Content) -> some View {
-        content
-            .navigationBarBackButtonHidden(true)
-            .toolbar {
-                ToolbarItem(placement: .navigation) {
-                    Button("Back", systemImage: "chevron.left", action: back)
-                        .keyboardShortcut("[", modifiers: .command)
+        func body(content: Content) -> some View {
+            content
+                .navigationBarBackButtonHidden(true)
+                .toolbar {
+                    ToolbarItem(placement: .navigation) {
+                        Button("Back", systemImage: "chevron.left", action: back)
+                            .keyboardShortcut("[", modifiers: .command)
+                    }
                 }
-            }
+        }
     }
-}
 #endif

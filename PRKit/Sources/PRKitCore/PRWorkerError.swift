@@ -30,7 +30,7 @@ public enum PRWorkerError: LocalizedError, Equatable, Sendable {
         case 406, 413: self = .tooLarge
         case 400, 422: self = .unreadableRequest
         case 429: self = .limited
-        case 500...599: self = .unavailable
+        case 500 ... 599: self = .unavailable
         default: self = .unexpected(status: status)
         }
     }
@@ -44,7 +44,7 @@ public enum PRWorkerError: LocalizedError, Equatable, Sendable {
     public init(status: Int, body: Data, area: PRRequestArea) {
         if let refusal = try? JSONDecoder().decode(WorkerRefusal.self, from: body) {
             self = .refused(refusal.error, isPermanent: PRWorkerError(status: status).isPermanent)
-        } else if (status == 404 || status == 410) && !area.isPullRequest {
+        } else if status == 404 || status == 410, !area.isPullRequest {
             self = .unreachable(area)
         } else {
             self.init(status: status)

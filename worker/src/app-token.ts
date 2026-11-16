@@ -23,59 +23,103 @@ export function rateLimitWords(response: Response): string | null {
     return null;
   }
   const reset = Number(response.headers.get("x-ratelimit-reset"));
-  const at = Number.isFinite(reset) && reset > 0 ? `, resets ${new Date(reset * 1000).toISOString().slice(11, 16)} UTC` : "";
+  const at =
+    Number.isFinite(reset) && reset > 0
+      ? `, resets ${new Date(reset * 1000).toISOString().slice(11, 16)} UTC`
+      : "";
   return `GitHub's rate limit for your account is used up${at}`;
 }
 
 function base64url(data: ArrayBuffer | string): string {
   const bytes = typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data);
-  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
 /** A GitHub App's JWT, from its id and PKCS#8 key. */
-export async function appJwt(app: { id: string; key: string }, nowSeconds = Math.floor(Date.now() / 1000)): Promise<string> {
-  const der = Uint8Array.from(atob(app.key.replace(/-----[^-]+-----|\s/g, "")), (c) => c.charCodeAt(0));
-  const key = await crypto.subtle.importKey(
-    "pkcs8", der, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"],
+export async function appJwt(
+  app: { id: string; key: string },
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<string> {
+  const der = Uint8Array.from(atob(app.key.replace(/-----[^-]+-----|\s/g, "")), (c) =>
+    c.charCodeAt(0),
   );
-  const body = `${base64url('{"alg":"RS256","typ":"JWT"}')}.${
-    base64url(JSON.stringify({ iat: nowSeconds - 30, exp: nowSeconds + 500, iss: app.id }))}`;
+  const key = await crypto.subtle.importKey(
+    "pkcs8",
+    der,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const body = `${base64url('{"alg":"RS256","typ":"JWT"}')}.${base64url(
+    JSON.stringify({ iat: nowSeconds - 30, exp: nowSeconds + 500, iss: app.id }),
+  )}`;
   return `${body}.${base64url(await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(body)))}`;
 }
 
 /** Read only: what the agent may do on GitHub, whatever it is told to try. */
 export const ASK_PERMISSIONS = {
-  contents: "read", pull_requests: "read", issues: "read", checks: "read", actions: "read", statuses: "read",
+  contents: "read",
+  pull_requests: "read",
+  issues: "read",
+  checks: "read",
+  actions: "read",
+  statuses: "read",
   metadata: "read",
 } as const;
 
 function appHeaders(jwt: string): Record<string, string> {
-  return { Accept: "application/vnd.github+json", Authorization: `Bearer ${jwt}`, "User-Agent": "pr-viewer" };
+  return {
+    Accept: "application/vnd.github+json",
+    Authorization: `Bearer ${jwt}`,
+    "User-Agent": "pr-viewer",
+  };
 }
 
 /** The id of the App's installation that holds `repo`. */
-async function installationOf(repo: RepoFullName, jwt: string, fetcher: typeof fetch): Promise<number> {
-  const installation = await fetcher(`https://api.github.com/repos/${repo}/installation`, { headers: appHeaders(jwt) });
+async function installationOf(
+  repo: RepoFullName,
+  jwt: string,
+  fetcher: typeof fetch,
+): Promise<number> {
+  const installation = await fetcher(`https://api.github.com/repos/${repo}/installation`, {
+    headers: appHeaders(jwt),
+  });
   if (!installation.ok) {
-    throw new InstallationTokenRefused(rateLimitWords(installation)
-      ?? `The AI can't read ${repo}: the GitHub App isn't installed there.`, installation.status);
+    throw new InstallationTokenRefused(
+      rateLimitWords(installation) ??
+        `The AI can't read ${repo}: the GitHub App isn't installed there.`,
+      installation.status,
+    );
   }
-  return (await installation.json() as { id: number }).id;
+  return ((await installation.json()) as { id: number }).id;
 }
 
 /** A read-only token of installation `id`, for `names` (repo names in its account) alone, or every repo with null. */
 async function mint(
-  id: number, names: string[] | null, jwt: string, repo: RepoFullName, fetcher: typeof fetch,
+  id: number,
+  names: string[] | null,
+  jwt: string,
+  repo: RepoFullName,
+  fetcher: typeof fetch,
 ): Promise<string> {
   const minted = await fetcher(`https://api.github.com/app/installations/${id}/access_tokens`, {
-    method: "POST", headers: appHeaders(jwt),
-    body: JSON.stringify({ ...(names ? { repositories: names } : {}), permissions: ASK_PERMISSIONS }),
+    method: "POST",
+    headers: appHeaders(jwt),
+    body: JSON.stringify({
+      ...(names ? { repositories: names } : {}),
+      permissions: ASK_PERMISSIONS,
+    }),
   });
   if (!minted.ok) {
-    throw new InstallationTokenRefused(rateLimitWords(minted)
-      ?? `GitHub wouldn't give the AI read access to ${repo}.`, minted.status);
+    throw new InstallationTokenRefused(
+      rateLimitWords(minted) ?? `GitHub wouldn't give the AI read access to ${repo}.`,
+      minted.status,
+    );
   }
-  return (await minted.json() as { token: string }).token;
+  return ((await minted.json()) as { token: string }).token;
 }
 
 /**
@@ -83,7 +127,10 @@ async function mint(
  * (the hosted Worker always); Jai's Ask App's reaches every repo it is installed on.
  */
 export async function installationRepoToken(
-  repo: RepoFullName, app: { id: string; key: string }, isNarrowed: boolean, fetcher: typeof fetch,
+  repo: RepoFullName,
+  app: { id: string; key: string },
+  isNarrowed: boolean,
+  fetcher: typeof fetch,
 ): Promise<string> {
   const jwt = await appJwt(app);
   const id = await installationOf(repo, jwt, fetcher);
@@ -108,12 +155,15 @@ async function visibleRepos(id: number, env: Env, now: number): Promise<RepoFull
   }
   const repos: RepoFullName[] = [];
   for (let page = 1; page <= MAX_TOKEN_REPOS / 100; page++) {
-    const response = await getFromGitHub(`/user/installations/${id}/repositories?per_page=100&page=${page}`, env);
+    const response = await getFromGitHub(
+      `/user/installations/${id}/repositories?per_page=100&page=${page}`,
+      env,
+    );
     if (!response.ok) {
       await response.body?.cancel();
       return null;
     }
-    const { repositories } = await response.json() as { repositories?: { full_name?: string }[] };
+    const { repositories } = (await response.json()) as { repositories?: { full_name?: string }[] };
     for (const { full_name: name } of repositories ?? []) {
       const parsed = name ? parseRepoFullName(name) : null;
       if (parsed) {
@@ -144,7 +194,10 @@ export interface AskGrant {
  * can't. The person's token stays in the Worker. Elsewhere: `askRepoToken`'s, not narrowed.
  */
 export async function askGrant(
-  repo: RepoFullName, number: number, env: Env, fetcher: typeof fetch = (input, init) => fetch(input, init),
+  repo: RepoFullName,
+  number: number,
+  env: Env,
+  fetcher: typeof fetch = (input, init) => fetch(input, init),
   now = Date.now(),
 ): Promise<AskGrant> {
   if (!isSet(env.SIGNED_IN_USER_ID)) {
@@ -154,8 +207,12 @@ export async function askGrant(
       // Jai's Ask App reaches the repos it is installed on; on another (his own jai/* repos) the Worker's token checks
       // the PR out instead, and, since it may write, the agent's tools get no GitHub with it.
       const fallback = isSet(env.GITHUB_READ_TOKEN) ? env.GITHUB_READ_TOKEN : env.GITHUB_TOKEN;
-      if (error instanceof InstallationTokenRefused && error.status === 404 && isSet(env.ASK_GITHUB_APP_ID)
-        && isSet(fallback)) {
+      if (
+        error instanceof InstallationTokenRefused &&
+        error.status === 404 &&
+        isSet(env.ASK_GITHUB_APP_ID) &&
+        isSet(fallback)
+      ) {
         return { token: fallback, repos: null, readOnly: false };
       }
       throw error;
@@ -173,14 +230,23 @@ export async function askGrant(
   const visible = kept ?? (await visibleRepos(id, env, now)) ?? [];
   const repos = [...new Set([repo, ...visible])].slice(0, MAX_TOKEN_REPOS);
   return {
-    token: await mint(id, repos.map((one) => repoParts(one).name), jwt, repo, fetcher), repos,
+    token: await mint(
+      id,
+      repos.map((one) => repoParts(one).name),
+      jwt,
+      repo,
+      fetcher,
+    ),
+    repos,
     checkedBy: sight === "person" ? "person" : "person_cached",
   };
 }
 
 /** The repos of installation `id` the person's own token listed within `VISIBLE_REPOS_MS`; null when none are kept. */
 async function keptRepos(id: number, env: Env, now: number): Promise<RepoFullName[] | null> {
-  const kept = await (await env.DIFFS.get(scopedKey(env, `ask-reach/${id}.json`)))?.json<{ at: number; repos: RepoFullName[] }>();
+  const kept = await (
+    await env.DIFFS.get(scopedKey(env, `ask-reach/${id}.json`))
+  )?.json<{ at: number; repos: RepoFullName[] }>();
   return kept && now - kept.at < VISIBLE_REPOS_MS ? kept.repos : null;
 }
 
@@ -188,7 +254,11 @@ async function keptRepos(id: number, env: Env, now: number): Promise<RepoFullNam
  * "person" when their token reads the PR. Rate limited, the refusal to throw unless their own kept list stands in
  * (`askGrant`); any other refusal is thrown here.
  */
-async function personSeesPr(repo: RepoFullName, number: number, env: Env): Promise<"person" | InstallationTokenRefused> {
+async function personSeesPr(
+  repo: RepoFullName,
+  number: number,
+  env: Env,
+): Promise<"person" | InstallationTokenRefused> {
   const visible = await getFromGitHub(`/repos/${repo}/pulls/${number}`, env);
   if (visible.ok) {
     await visible.body?.cancel();
@@ -196,8 +266,10 @@ async function personSeesPr(repo: RepoFullName, number: number, env: Env): Promi
   }
   await visible.body?.cancel();
   const limited = rateLimitWords(visible);
-  const refusal = new InstallationTokenRefused(limited
-    ?? `The AI can't read ${repo}: your GitHub account can't see this pull request.`, visible.status);
+  const refusal = new InstallationTokenRefused(
+    limited ?? `The AI can't read ${repo}: your GitHub account can't see this pull request.`,
+    visible.status,
+  );
   if (limited === null) {
     throw refusal;
   }
@@ -210,18 +282,30 @@ async function personSeesPr(repo: RepoFullName, number: number, env: Env): Promi
  * Self-hosted: a PAT, `ASK_GITHUB_TOKEN` (read only), else `GITHUB_READ_TOKEN`, else `GITHUB_TOKEN`.
  */
 export async function askRepoToken(
-  repo: RepoFullName, number: number, env: Env, fetcher: typeof fetch = (input, init) => fetch(input, init),
+  repo: RepoFullName,
+  number: number,
+  env: Env,
+  fetcher: typeof fetch = (input, init) => fetch(input, init),
 ): Promise<string> {
   if (isSet(env.SIGNED_IN_USER_ID)) {
     const sight = await personSeesPr(repo, number, env);
     if (sight !== "person") {
       throw sight;
     }
-    return installationRepoToken(repo, { id: env.GITHUB_APP_ID ?? "", key: env.GITHUB_APP_PRIVATE_KEY ?? "" }, true,
-      fetcher);
+    return installationRepoToken(
+      repo,
+      { id: env.GITHUB_APP_ID ?? "", key: env.GITHUB_APP_PRIVATE_KEY ?? "" },
+      true,
+      fetcher,
+    );
   }
   if (isSet(env.ASK_GITHUB_APP_ID) && isSet(env.ASK_GITHUB_APP_KEY)) {
-    return installationRepoToken(repo, { id: env.ASK_GITHUB_APP_ID, key: env.ASK_GITHUB_APP_KEY }, false, fetcher);
+    return installationRepoToken(
+      repo,
+      { id: env.ASK_GITHUB_APP_ID, key: env.ASK_GITHUB_APP_KEY },
+      false,
+      fetcher,
+    );
   }
   if (isSet(env.ASK_GITHUB_TOKEN)) {
     return env.ASK_GITHUB_TOKEN;
@@ -237,10 +321,16 @@ export async function askRepoToken(
  * keeps to the checkout.
  */
 export function askGitHubReach(
-  env: Pick<Env, "SIGNED_IN_USER_ID" | "ASK_GITHUB_APP_ID" | "ASK_GITHUB_APP_KEY" | "ASK_GITHUB_TOKEN">,
+  env: Pick<
+    Env,
+    "SIGNED_IN_USER_ID" | "ASK_GITHUB_APP_ID" | "ASK_GITHUB_APP_KEY" | "ASK_GITHUB_TOKEN"
+  >,
 ): "none" | "installation" | "wide" {
   if (isSet(env.SIGNED_IN_USER_ID)) {
     return "installation";
   }
-  return (isSet(env.ASK_GITHUB_APP_ID) && isSet(env.ASK_GITHUB_APP_KEY)) || isSet(env.ASK_GITHUB_TOKEN) ? "wide" : "none";
+  return (isSet(env.ASK_GITHUB_APP_ID) && isSet(env.ASK_GITHUB_APP_KEY)) ||
+    isSet(env.ASK_GITHUB_TOKEN)
+    ? "wide"
+    : "none";
 }

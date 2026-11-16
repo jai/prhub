@@ -26,21 +26,37 @@ export function pemToDer(pem: string): Uint8Array<ArrayBuffer> {
     .replace(/-----BEGIN [^-]*-----/g, "")
     .replace(/-----END [^-]*-----/g, "")
     .replace(/\s+/g, "");
-  if (base64 === "" || !/^[A-Za-z0-9+/]+=*$/.test(base64)) throw new Error("apns key PEM has no base64 body");
+  if (base64 === "" || !/^[A-Za-z0-9+/]+=*$/.test(base64))
+    throw new Error("apns key PEM has no base64 body");
   return Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
 }
 
 export async function importApnsKey(pem: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey("pkcs8", pemToDer(pem), { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  return crypto.subtle.importKey(
+    "pkcs8",
+    pemToDer(pem),
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["sign"],
+  );
 }
 
 /** ES256 provider token; WebCrypto's raw r‖s signature is already JWS form. */
-export async function mintApnsJwt(key: CryptoKey, kid: string, iss: string, iat: number): Promise<string> {
+export async function mintApnsJwt(
+  key: CryptoKey,
+  kid: string,
+  iss: string,
+  iat: number,
+): Promise<string> {
   const encoder = new TextEncoder();
   const header = base64Url(encoder.encode(JSON.stringify({ alg: "ES256", kid })));
   const claims = base64Url(encoder.encode(JSON.stringify({ iss, iat })));
   const signingInput = `${header}.${claims}`;
-  const signature = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, encoder.encode(signingInput));
+  const signature = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    key,
+    encoder.encode(signingInput),
+  );
   return `${signingInput}.${base64Url(new Uint8Array(signature))}`;
 }
 
@@ -63,7 +79,11 @@ export interface ApnsRequest {
 }
 
 /** One APNs request. Never throws: a thrown or timed-out fetch is `fetch_error: …`, like worker/src/apns.ts. */
-export async function sendToApns(fetcher: typeof fetch, jwt: string, request: ApnsRequest): Promise<PushResult> {
+export async function sendToApns(
+  fetcher: typeof fetch,
+  jwt: string,
+  request: ApnsRequest,
+): Promise<PushResult> {
   const headers: Record<string, string> = {
     authorization: `bearer ${jwt}`,
     "content-type": "application/json",
@@ -85,7 +105,11 @@ export async function sendToApns(fetcher: typeof fetch, jwt: string, request: Ap
   } catch (error) {
     // Fixed values, never the thrown message: it can carry the URL, and the URL carries the device token.
     const timedOut = error instanceof Error && error.name === "TimeoutError";
-    return { apns_status: null, apns_id: null, reason: timedOut ? "fetch_error: timeout" : "fetch_error: network" };
+    return {
+      apns_status: null,
+      apns_id: null,
+      reason: timedOut ? "fetch_error: timeout" : "fetch_error: network",
+    };
   }
   return readApnsResponse(response);
 }
@@ -94,7 +118,9 @@ export async function sendToApns(fetcher: typeof fetch, jwt: string, request: Ap
 export function invalidatesProviderToken(result: PushResult): boolean {
   return (
     result.apns_status === 403 &&
-    (result.reason === "ExpiredProviderToken" || result.reason === "InvalidProviderToken" || result.reason === "http_403")
+    (result.reason === "ExpiredProviderToken" ||
+      result.reason === "InvalidProviderToken" ||
+      result.reason === "http_403")
   );
 }
 
@@ -106,7 +132,8 @@ async function readApnsResponse(response: Response): Promise<PushResult> {
     const text = await response.text();
     if (text !== "") {
       const parsed: unknown = JSON.parse(text);
-      if (isPlainObject(parsed) && typeof parsed.reason === "string" && parsed.reason !== "") reason = parsed.reason;
+      if (isPlainObject(parsed) && typeof parsed.reason === "string" && parsed.reason !== "")
+        reason = parsed.reason;
     }
   } catch {
     // keep http_<status>

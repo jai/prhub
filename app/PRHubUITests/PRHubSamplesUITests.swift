@@ -11,7 +11,7 @@ final class PRHubSamplesUITests: XCTestCase {
         XCUIDevice.shared.appearance = .light
     }
 
-    func testTheSamplesWorkWithNoWorker() throws {
+    func testTheSamplesWorkWithNoWorker() {
         app.launchArguments = ["-PRHubFirstRun"]
         app.launch()
 

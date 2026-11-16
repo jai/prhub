@@ -62,9 +62,9 @@ public struct PRLocalAnswer: Codable, Hashable, Sendable {
     }
 }
 
-extension PullRequestRow {
+public extension PullRequestRow {
     /// This row as read, when Jai has answered the review it asks for.
-    public func answered(_ answer: PRLocalAnswer?) -> PullRequestRow {
+    func answered(_ answer: PRLocalAnswer?) -> PullRequestRow {
         guard let answer, isReviewRequest, let status else {
             return self
         }

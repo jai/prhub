@@ -29,9 +29,12 @@ const BODY_REF = String.raw`(?:https://linear\.app/[\w-]+/issue/)?[A-Za-z][A-Za-
  * Linear's magic words in a description, then the keys they name: `Fixes ENG-1`, `Part of ENG-1, ENG-2`, `Closes
  * https://linear.app/acme/issue/ENG-1/retry`. Linear links a PR to each.
  */
-const MAGIC = new RegExp(String.raw`\b(?:clos(?:e[sd]?|ing)|fix(?:e[sd]|ing)?|resolv(?:e[sd]?|ing)|`
-  + String.raw`complet(?:e[sd]?|ing)|refs?|references|part of|relate[sd] to|contributes to|towards?)\s*:?\s+`
-  + String.raw`(${BODY_REF}(?:\s*(?:,|&|\band\b)\s*${BODY_REF})*)`, "gi");
+const MAGIC = new RegExp(
+  String.raw`\b(?:clos(?:e[sd]?|ing)|fix(?:e[sd]|ing)?|resolv(?:e[sd]?|ing)|` +
+    String.raw`complet(?:e[sd]?|ing)|refs?|references|part of|relate[sd] to|contributes to|towards?)\s*:?\s+` +
+    String.raw`(${BODY_REF}(?:\s*(?:,|&|\band\b)\s*${BODY_REF})*)`,
+  "gi",
+);
 /** A Linear issue's URL anywhere in a description. */
 const LINEAR_URL = /https:\/\/linear\.app\/[\w-]+\/issue\/([A-Za-z][A-Za-z0-9]{1,9}-\d+)\b/g;
 const BODY_KEY = /([A-Za-z][A-Za-z0-9]{1,9}-\d+)\b/g;
@@ -48,15 +51,22 @@ export interface TicketKeys {
  * the way Linear does (`MAGIC`, `LINEAR_URL`), each once, in the order written.
  */
 export function ticketKeysOf(title: string, branch: string, body = ""): TicketKeys {
-  const inTitle = [...title.matchAll(BRACKET)].flatMap(([, inside]) => [...inside.matchAll(KEY)].map(([key]) => key));
+  const inTitle = [...title.matchAll(BRACKET)].flatMap(([, inside]) =>
+    [...inside.matchAll(KEY)].map(([key]) => key),
+  );
   const fromTitle = [...new Set(inTitle)];
-  const fromBranch = [...new Set([...branch.matchAll(BRANCH_KEY)].map(([, key]) => key.toUpperCase()))]
-    .filter((key) => !fromTitle.includes(key));
+  const fromBranch = [
+    ...new Set([...branch.matchAll(BRANCH_KEY)].map(([, key]) => key.toUpperCase())),
+  ].filter((key) => !fromTitle.includes(key));
   const named = [
-    ...[...body.matchAll(MAGIC)].flatMap(([, refs]) => [...refs.matchAll(BODY_KEY)].map(([key]) => key)),
+    ...[...body.matchAll(MAGIC)].flatMap(([, refs]) =>
+      [...refs.matchAll(BODY_KEY)].map(([key]) => key),
+    ),
     ...[...body.matchAll(LINEAR_URL)].map(([, key]) => key),
   ].map((key) => key.toUpperCase());
-  const fromBody = [...new Set(named)].filter((key) => !fromTitle.includes(key) && !fromBranch.includes(key));
+  const fromBody = [...new Set(named)].filter(
+    (key) => !fromTitle.includes(key) && !fromBranch.includes(key),
+  );
   return { title: fromTitle, branch: fromBranch, body: fromBody };
 }
 
@@ -67,7 +77,15 @@ export function allKeys(keys: TicketKeys): string[] {
 
 /** A key before Linear has been asked. */
 export function unresolved(key: string): Ticket {
-  return { key, url: null, title: null, state: null, state_type: null, state_color: null, found: null };
+  return {
+    key,
+    url: null,
+    title: null,
+    state: null,
+    state_type: null,
+    state_color: null,
+    found: null,
+  };
 }
 
 interface Issue {
@@ -82,10 +100,14 @@ export interface LinearAnswer<Data> {
   errors?: { message?: string; path?: unknown[] }[];
 }
 
-export async function checkLinearKey(key: string, send: Fetch): Promise<"ok" | "invalid" | "unavailable"> {
+export async function checkLinearKey(
+  key: string,
+  send: Fetch,
+): Promise<"ok" | "invalid" | "unavailable"> {
   try {
     const response = await send(LINEAR, {
-      method: "POST", headers: { Authorization: key, "Content-Type": "application/json" },
+      method: "POST",
+      headers: { Authorization: key, "Content-Type": "application/json" },
       body: JSON.stringify({ query: "query PRHubConnection { viewer { id } }" }),
       signal: AbortSignal.timeout(10_000),
     });
@@ -95,8 +117,12 @@ export async function checkLinearKey(key: string, send: Fetch): Promise<"ok" | "
     if (!response.ok) {
       return "unavailable";
     }
-    const answer = z.object({ data: z.object({ viewer: z.object({ id: z.string().min(1) }) }),
-      errors: z.array(z.unknown()).optional() }).safeParse(await response.json());
+    const answer = z
+      .object({
+        data: z.object({ viewer: z.object({ id: z.string().min(1) }) }),
+        errors: z.array(z.unknown()).optional(),
+      })
+      .safeParse(await response.json());
     return answer.success && !answer.data.errors?.length ? "ok" : "invalid";
   } catch {
     return "unavailable";
@@ -108,7 +134,9 @@ export async function checkLinearKey(key: string, send: Fetch): Promise<"ok" | "
  * a failed request, or an HTTP error other than 400, which carries GraphQL's own errors.
  */
 export async function askLinear<Data>(
-  query: string, variables: Record<string, unknown>, env: Pick<Env, "LINEAR_API_KEY">,
+  query: string,
+  variables: Record<string, unknown>,
+  env: Pick<Env, "LINEAR_API_KEY">,
 ): Promise<LinearAnswer<Data> | null> {
   if (!isSet(env.LINEAR_API_KEY)) {
     return null;
@@ -119,7 +147,9 @@ export async function askLinear<Data>(
       headers: { Authorization: env.LINEAR_API_KEY, "Content-Type": "application/json" },
       body: JSON.stringify({ query, variables }),
     });
-    return response.ok || response.status === 400 ? await response.json() as LinearAnswer<Data> : null;
+    return response.ok || response.status === 400
+      ? ((await response.json()) as LinearAnswer<Data>)
+      : null;
   } catch {
     return null;
   }
@@ -134,21 +164,34 @@ export async function lookUpTickets(keys: string[], env: Env): Promise<Map<strin
   if (keys.length === 0) {
     return found;
   }
-  const fields = keys.map((key, index) =>
-    `t${index}: issue(id: ${JSON.stringify(key)}) { identifier title url state { name type color } }`);
-  const answer = await askLinear<Record<string, Issue | null>>(`query { ${fields.join("\n")} }`, {}, env);
+  const fields = keys.map(
+    (key, index) =>
+      `t${index}: issue(id: ${JSON.stringify(key)}) { identifier title url state { name type color } }`,
+  );
+  const answer = await askLinear<Record<string, Issue | null>>(
+    `query { ${fields.join("\n")} }`,
+    {},
+    env,
+  );
   if (!answer?.data) {
     return found;
   }
-  const missing = new Set((answer.errors ?? [])
-    .filter((error) => /not found/i.test(error.message ?? ""))
-    .map((error) => error.path?.[0]));
+  const missing = new Set(
+    (answer.errors ?? [])
+      .filter((error) => /not found/i.test(error.message ?? ""))
+      .map((error) => error.path?.[0]),
+  );
   keys.forEach((key, index) => {
     const issue = answer.data?.[`t${index}`];
     if (issue) {
       found.set(key, {
-        key: issue.identifier, url: issue.url, title: issue.title, state: issue.state?.name ?? null,
-        state_type: issue.state?.type ?? null, state_color: issue.state?.color ?? null, found: true,
+        key: issue.identifier,
+        url: issue.url,
+        title: issue.title,
+        state: issue.state?.name ?? null,
+        state_type: issue.state?.type ?? null,
+        state_color: issue.state?.color ?? null,
+        found: true,
       });
     } else if (missing.has(`t${index}`)) {
       found.set(key, { ...unresolved(key), found: false });

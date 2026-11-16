@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PRKit
+import Testing
 
 /// The checks' list as a big web app's PR has it: one job name in several workflows, and a job's matrix legs beside the
 /// job's own check.
@@ -32,7 +32,7 @@ struct PRCheckGroupsTests {
     }
 
     @Test func aJobsLegsAreOneLineWithTheirCountAndWorstState() throws {
-        let legs = (1...8).map { check("frontend visual proof (web \($0)/8)", "Playwright Visual Proof") }
+        let legs = (1 ... 8).map { check("frontend visual proof (web \($0)/8)", "Playwright Visual Proof") }
         let shown = try groups(
             legs + [
                 check("frontend visual proof", "Playwright Visual Proof"),

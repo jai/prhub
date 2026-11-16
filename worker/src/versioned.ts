@@ -20,9 +20,17 @@ function versionOf(object: { customMetadata?: Record<string, string> } | null): 
   return object?.customMetadata?.[VERSION_METADATA] ?? null;
 }
 
-export function putVersioned(store: VersionStore, key: string, version: string, value: ArrayBuffer | string,
-  contentType: string): Promise<unknown> {
-  return store.put(key, value, { httpMetadata: { contentType }, customMetadata: { [VERSION_METADATA]: version } });
+export function putVersioned(
+  store: VersionStore,
+  key: string,
+  version: string,
+  value: ArrayBuffer | string,
+  contentType: string,
+): Promise<unknown> {
+  return store.put(key, value, {
+    httpMetadata: { contentType },
+    customMetadata: { [VERSION_METADATA]: version },
+  });
 }
 
 /**
@@ -30,7 +38,11 @@ export function putVersioned(store: VersionStore, key: string, version: string, 
  * answered, as GitHub has it now, but not kept: it would stand for the old version for ever.
  */
 export async function serveVersioned(
-  store: VersionStore, key: string, requested: string, contentType: string, load: () => Promise<LiveRead>,
+  store: VersionStore,
+  key: string,
+  requested: string,
+  contentType: string,
+  load: () => Promise<LiveRead>,
   waitUntil: (promise: Promise<unknown>) => void,
 ): Promise<Response> {
   const stored = await store.get(key);
@@ -55,7 +67,10 @@ export type DiffState = "ready" | "too_large" | "pending";
  * read that was of it. A read of another revision leaves the row pending; the index reads the PR again anyway.
  */
 export async function storeDiff(
-  store: VersionStore, key: string, revision: string, load: () => Promise<LiveRead>,
+  store: VersionStore,
+  key: string,
+  revision: string,
+  load: () => Promise<LiveRead>,
 ): Promise<DiffState> {
   if (versionOf(await store.head(key)) === revision) {
     return "ready";

@@ -1,7 +1,7 @@
 import DurableNetworking
+import Foundation
 import PRKitCore
 import PRKitDesign
-import Foundation
 
 /// Keeps the phone a complete copy of the Worker's list, and is the one owner of its files: every download, publish
 /// and prune happens here, so two syncs can't race.

@@ -11,8 +11,10 @@ public struct IconTextLabelStyle: LabelStyle {
     }
 }
 
-extension LabelStyle where Self == IconTextLabelStyle {
-    public static var iconText: IconTextLabelStyle { IconTextLabelStyle() }
+public extension LabelStyle where Self == IconTextLabelStyle {
+    static var iconText: IconTextLabelStyle {
+        IconTextLabelStyle()
+    }
 }
 
 /// An icon from `AppIcon` and words, as `IconTextLabelStyle` draws them.

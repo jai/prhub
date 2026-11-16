@@ -113,8 +113,8 @@ public struct PrStatusMarks: View {
     }
 }
 
-extension PrStatusMark.Tone {
-    public var color: Color {
+public extension PrStatusMark.Tone {
+    var color: Color {
         switch self {
         case .good: Color.toneGood
         case .bad: Color.toneBad

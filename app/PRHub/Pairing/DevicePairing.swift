@@ -39,7 +39,7 @@ enum PairingError: Error, Equatable, Sendable {
             "This Worker can't pair phones yet. Update it from github.com/jai/prhub and try again."
         case .appCode:
             "That code is for an app, not a phone. Run npm run pair without --app for a phone code."
-        case .unreachable(let host):
+        case let .unreachable(host):
             "Couldn't reach \(host). Check the address and your internet connection."
         case .server:
             "The Worker had a problem on its side. Try again in a minute; if it keeps happening, check its logs."
@@ -65,7 +65,7 @@ enum PairingError: Error, Equatable, Sendable {
             self = .secretRefused
         case .server(_, 404), .server(_, 405):
             self = .pairingUnsupported
-        case .server(_, let status):
+        case let .server(_, status):
             self = .server(status: status)
         case .transport:
             self = .unreachable(host: host)

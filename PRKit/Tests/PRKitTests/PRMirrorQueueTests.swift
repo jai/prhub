@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PRKit
+import Testing
 
 /// The mirror's queue (`PRMirror`): one download per file, six at a time, the newest list wins, and a pull waits for
 /// the list alone.
@@ -48,7 +48,7 @@ struct PRMirrorQueueTests {
             let body: Data
             if path == "/prs" {
                 body = try JSONSerialization.data(withJSONObject: [
-                    "prs": try JSONSerialization.jsonObject(with: JSONEncoder().encode(list)), "synced_at": 0,
+                    "prs": JSONSerialization.jsonObject(with: JSONEncoder().encode(list)), "synced_at": 0,
                 ])
             } else {
                 if gated.contains(path) {
@@ -123,7 +123,7 @@ struct PRMirrorQueueTests {
         #expect(clock.now - started < .seconds(1))
         #expect(model.rows.isEmpty, "a row shows only once its files are here")
         // The files take 2 s; a busy shared runner can take a few more.
-        for _ in 0..<300 where model.rows.count < 2 {
+        for _ in 0 ..< 300 where model.rows.count < 2 {
             try await Task.sleep(for: .milliseconds(50))
         }
         #expect(model.rows.map(\.id) == rows.map(\.id))
@@ -228,7 +228,7 @@ struct PRMirrorQueueTests {
     }
 
     @Test func noMoreThanSixFilesDownloadAtOnce() async {
-        let rows = (1...20).map { row($0) }
+        let rows = (1 ... 20).map { row($0) }
         await worker.set(list: rows, delay: .milliseconds(50))
         let mirror = mirror()
         _ = await mirror.begin(rows, generation: 1)
@@ -312,10 +312,10 @@ struct PRMirrorQueueTests {
     }
 
     private static let detailWithChanges = """
-        {"url":"u","head":"h","base":"main","headBranch":"b","author":null,"isAuthor":false,"body":"","additions":4,
-        "deletions":1,"changedFiles":2,"reviewDecision":null,"mergeState":"CLEAN","labels":[],"checks":[],
-        "comments":{"nodes":[]},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]},"title":null}
-        """
+    {"url":"u","head":"h","base":"main","headBranch":"b","author":null,"isAuthor":false,"body":"","additions":4,
+    "deletions":1,"changedFiles":2,"reviewDecision":null,"mergeState":"CLEAN","labels":[],"checks":[],
+    "comments":{"nodes":[]},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]},"title":null}
+    """
 
     @Test func aFailedFileWaitsForAPullWhichTriesItAtOnce() async {
         let item = row(1)

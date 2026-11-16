@@ -1,10 +1,22 @@
 /** What the phone can say on a PR, as Jai: the Worker's token is his. */
 export type Write =
   | { kind: "comment"; body: string }
-  | { kind: "review"; event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT"; body: string; commit: string;
-    comments: ReviewComment[] }
+  | {
+      kind: "review";
+      event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT";
+      body: string;
+      commit: string;
+      comments: ReviewComment[];
+    }
   | { kind: "resolve"; thread: string; resolved: boolean }
-  | { kind: "line"; body: string; commit: string; path: string; line: number; side: "LEFT" | "RIGHT" }
+  | {
+      kind: "line";
+      body: string;
+      commit: string;
+      path: string;
+      line: number;
+      side: "LEFT" | "RIGHT";
+    }
   | { kind: "reply"; body: string; thread: string }
   | { kind: "viewed"; pullRequest: string; path: string; viewed: boolean }
   | { kind: "update_branch"; commit: string }
@@ -19,7 +31,12 @@ const TASK = /^(\s*[-*] \[)[ xX](\] )/;
  * The body with its task at `index` set, or null if it has no such task. Tasks are counted as the phone draws them, so
  * one inside an HTML comment or a code fence doesn't count.
  */
-export function toggleTask(body: string, index: number, checked: boolean, task: string | null = null): string | null {
+export function toggleTask(
+  body: string,
+  index: number,
+  checked: boolean,
+  task: string | null = null,
+): string | null {
   const lines = body.split("\n");
   let seen = 0;
   let inFence = false;
@@ -76,9 +93,13 @@ export function refusalWords(status: number): string {
 export function gitHubReason(answer: unknown): string {
   const body = answer as { message?: unknown; errors?: unknown } | null;
   const errors = Array.isArray(body?.errors) ? body.errors : [];
-  const details = errors.map((error) => typeof error === "string"
-    ? error
-    : (error as { message?: unknown; code?: unknown } | null)?.message ?? (error as { code?: unknown } | null)?.code);
-  return [body?.message, ...details].filter((part): part is string => typeof part === "string" && part !== "")
+  const details = errors.map((error) =>
+    typeof error === "string"
+      ? error
+      : ((error as { message?: unknown; code?: unknown } | null)?.message ??
+        (error as { code?: unknown } | null)?.code),
+  );
+  return [body?.message, ...details]
+    .filter((part): part is string => typeof part === "string" && part !== "")
     .join(": ");
 }

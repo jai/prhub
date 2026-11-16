@@ -107,7 +107,9 @@ public struct PRListPullRequest: Equatable, Sendable {
         self.reviewDueAt = reviewDueAt
     }
 
-    public func pastSLA(now: Date) -> Date? { reviewDueAt.flatMap { $0 <= now ? $0 : nil } }
+    public func pastSLA(now: Date) -> Date? {
+        reviewDueAt.flatMap { $0 <= now ? $0 : nil }
+    }
 
     /// `owner/repo#N` in lower case: how the Worker keys a ref, and how the phone remembers opening it.
     public var key: String {
@@ -140,11 +142,11 @@ extension PRListPullRequest: Decodable {
     /// A state word a newer Worker added reads as no state, never as a list that cannot be read.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        status = PullRequestStatus(
-            repo: try container.decode(String.self, forKey: .repo),
-            number: try container.decode(Int.self, forKey: .number),
-            url: try container.decode(String.self, forKey: .url),
-            title: try container.decodeIfPresent(String.self, forKey: .title),
+        status = try PullRequestStatus(
+            repo: container.decode(String.self, forKey: .repo),
+            number: container.decode(Int.self, forKey: .number),
+            url: container.decode(String.self, forKey: .url),
+            title: container.decodeIfPresent(String.self, forKey: .title),
             state: try? container.decodeIfPresent(PullRequestStatus.State.self, forKey: .state),
             checks: try? container.decodeIfPresent(PullRequestStatus.Checks.self, forKey: .checks),
             merge: try? container.decodeIfPresent(PullRequestStatus.Merge.self, forKey: .merge),
@@ -162,10 +164,10 @@ extension PRListPullRequest: Decodable {
     }
 }
 
-extension PRListItem {
+public extension PRListItem {
     /// With a ticket: its key and title, else the item's title, else the key alone — a title that starts with the
     /// key does not repeat it. Without one: the first PR's title, else the item's title, else that PR's ref.
-    public var headline: String {
+    var headline: String {
         if let ticket {
             guard let name = ticket.title ?? title else {
                 return ticket.key
@@ -179,19 +181,20 @@ extension PRListItem {
     }
 }
 
-extension PRListItem {
+public extension PRListItem {
     /// A PR's title, else the item's, else its ref. The ticket this block shows goes from a title that ends with it.
-    public func title(of pullRequest: PRListPullRequest) -> String {
+    func title(of pullRequest: PRListPullRequest) -> String {
         let title = pullRequest.status.title ?? self.title ?? pullRequest.ref
         return Self.withoutShownKeys(title, shown: Set(tickets.map { $0.key.uppercased() }))
     }
 
     /// The title without the brackets at its end, `[ENG-1]`, `[ENG-1, ENG-2]` or `[ENG-1] [ENG-2]`, each only when every
     /// key in it has its ticket line.
-    static func withoutShownKeys(_ title: String, shown: Set<String>) -> String {
+    internal static func withoutShownKeys(_ title: String, shown: Set<String>) -> String {
         var title = Substring(title)
         while title.hasSuffix("]"), let open = title.lastIndex(of: "["), open > title.startIndex,
-              title[title.index(before: open)] == " " {
+              title[title.index(before: open)] == " "
+        {
             let keys = title[title.index(after: open) ..< title.index(before: title.endIndex)]
                 .split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).uppercased() }
             guard !keys.isEmpty, keys.allSatisfy(shown.contains) else {
@@ -204,7 +207,7 @@ extension PRListItem {
 
     /// "Aymen · web-app#6952 · 12h": who, where and how long ago. The ref stays out when it is already the title, and
     /// the age is left out until GitHub has said it.
-    public func metaLine(
+    func metaLine(
         of pullRequest: PRListPullRequest, now: Date, format: ThreadTimeFormat, showsAuthor: Bool
     ) -> String {
         let reference = title(of: pullRequest) == pullRequest.ref ? nil : pullRequest.status.reference
@@ -214,10 +217,10 @@ extension PRListItem {
     }
 }
 
-extension PRListTicket {
+public extension PRListTicket {
     /// Linear's word for its state, `Resolving…` until the hub has looked the issue up, `Not found` when Linear has no
     /// such issue for the hub.
-    public var stateText: String {
+    var stateText: String {
         switch found {
         case .none: "Resolving…"
         case .some(false): "Not found"
@@ -236,17 +239,17 @@ public enum PrListState: String, Equatable, Sendable {
     case closed = "Closed"
 }
 
-extension PRListPullRequest {
-    public var url: String {
+public extension PRListPullRequest {
+    var url: String {
         status.url
     }
 
     /// "acme/sms-sender#341": the ref as the agent wrote it.
-    public var ref: String {
+    var ref: String {
         "\(status.repo)#\(status.number)"
     }
 
-    public var listState: PrListState {
+    var listState: PrListState {
         guard found == true else {
             return found == nil ? .resolving : .notFound
         }
@@ -261,13 +264,13 @@ extension PRListPullRequest {
 
     /// Who opened it, shortly: the first word of the name on their GitHub profile, else their login; `nil` until the hub
     /// has looked it up.
-    public var authorShortName: String? {
+    var authorShortName: String? {
         authorName?.split(separator: " ").first.map(String.init) ?? author
     }
 
     /// The author's GitHub picture, from GitHub's own `github.com/<login>.png`; `nil` without a login, or for one a
     /// GitHub login could not be (letters, digits and hyphens).
-    public var avatarURL: URL? {
+    var avatarURL: URL? {
         guard let author, author.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }) else {
             return nil
         }
@@ -297,16 +300,16 @@ public struct PrJaiMark: Equatable, Sendable {
     }
 }
 
-extension PRListPullRequest {
+public extension PRListPullRequest {
     /// His change request on an open PR: GitHub holds the merge for it until he lifts it.
-    public var isBlockedByJai: Bool {
+    var isBlockedByJai: Bool {
         jaiReview == .changesRequested && (status.state == .open || status.state == .draft)
     }
 
     /// "You're blocking · you requested changes 3m ago"; "You approved · 3m ago"; "Asked again · you commented 2d ago" when
     /// a review is asked of him after his last one; with no review, "Opened 2m ago" when he opened it here (`openedAt`),
     /// else nothing.
-    public func jaiMark(openedAt: Date?, now: Date, format: ThreadTimeFormat) -> PrJaiMark? {
+    func jaiMark(openedAt: Date?, now: Date, format: ThreadTimeFormat) -> PrJaiMark? {
         let when = jaiReviewedAt.map { " · \(format.ago($0, now: now))" } ?? ""
         let submitted: (kind: PrJaiMark.Kind, did: String)? = switch jaiReview {
         case .approved: (.approved, "approved")
@@ -334,7 +337,7 @@ extension PRListPullRequest {
 
     /// Approved or sent back by Jai after `sent`, and not asked again since: his part of this list is done. On the PRs tab,
     /// any answer to a review he was asked for counts.
-    public func isDecidedByJai(since sent: Date) -> Bool {
+    func isDecidedByJai(since sent: Date) -> Bool {
         if isAnswered == true {
             return true
         }
@@ -345,10 +348,10 @@ extension PRListPullRequest {
     }
 }
 
-extension PRListItem {
+public extension PRListItem {
     /// Every PR of the item decided by Jai since the list was sent: the row fades, as a thread's does while his answer is
     /// with the agent. A new list starts at full strength, whatever he did before it, and a comment is no decision.
-    public func isDecidedByJai(since sent: Date) -> Bool {
+    func isDecidedByJai(since sent: Date) -> Bool {
         !pullRequests.isEmpty && pullRequests.allSatisfy { $0.isDecidedByJai(since: sent) }
     }
 }

@@ -95,44 +95,44 @@ extension PRSampleSet {
 
     /// The ticket the checkout retry's description fixes, as the Worker has it from Linear.
     private static let checkoutTickets = """
-        [{"key": "WEB-31", "url": "https://linear.app/acme/issue/WEB-31",
-          "title": "Let shoppers retry a failed payment", "state": "In Review", "state_type": "started",
-          "state_color": "#0f783c", "found": true}]
-        """
+    [{"key": "WEB-31", "url": "https://linear.app/acme/issue/WEB-31",
+      "title": "Let shoppers retry a failed payment", "state": "In Review", "state_type": "started",
+      "state_color": "#0f783c", "found": true}]
+    """
 
     /// The two tickets the rate limit's title names, as the Worker has them from Linear.
     private static let rateLimitTickets = """
-        [{"key": "API-88", "url": "https://linear.app/acme/issue/API-88", "title": "Throttle password reset emails",
-          "state": "In Progress", "state_type": "started", "state_color": "#f2c94c", "found": true},
-         {"key": "SEC-12", "url": "https://linear.app/acme/issue/SEC-12", "title": "Stop reset email floods",
-          "state": "Todo", "state_type": "unstarted", "state_color": "#e2e2e2", "found": true}]
-        """
+    [{"key": "API-88", "url": "https://linear.app/acme/issue/API-88", "title": "Throttle password reset emails",
+      "state": "In Progress", "state_type": "started", "state_color": "#f2c94c", "found": true},
+     {"key": "SEC-12", "url": "https://linear.app/acme/issue/SEC-12", "title": "Stop reset email floods",
+      "state": "Todo", "state_type": "unstarted", "state_color": "#e2e2e2", "found": true}]
+    """
 
     /// GitHub's Markdown at full stretch, as a big repo's descriptions have it: a table with aligned columns, tasks,
     /// code, a quote and a fold. Escaped for the detail's JSON.
     private static let rateLimitBody = """
-        Limits password reset requests to five an hour for each email address, so the endpoint can't be used to \
-        flood someone's inbox.
+    Limits password reset requests to five an hour for each email address, so the endpoint can't be used to \
+    flood someone's inbox.
 
-        | Requests in an hour, per email address | Today | This PR |
-        | :--- | :---: | ---: |
-        | 1 to 5 | Sent | Sent |
-        | 6 and over | Sent, every time | **429**, with ~~no~~ a `Retry-After` |
+    | Requests in an hour, per email address | Today | This PR |
+    | :--- | :---: | ---: |
+    | 1 to 5 | Sent | Sent |
+    | 6 and over | Sent, every time | **429**, with ~~no~~ a `Retry-After` |
 
-        - [x] Unit tests for the window's edges
-        - [ ] Tried against staging
+    - [x] Unit tests for the window's edges
+    - [ ] Tried against staging
 
-        ```ts
-        if (await limiter.count(email, { window: '1h' }) >= 5) return tooMany(res, 'Try again in an hour')
-        ```
+    ```ts
+    if (await limiter.count(email, { window: '1h' }) >= 5) return tooMany(res, 'Try again in an hour')
+    ```
 
-        > The limit counts by email address, not by IP, so a shared office network is never locked out.
+    > The limit counts by email address, not by IP, so a shared office network is never locked out.
 
-        <details><summary>How the window is kept</summary>
+    <details><summary>How the window is kept</summary>
 
-        Each request adds a row with its time; rows older than an hour drop out when the next one is counted.
-        </details>
-        """.replacingOccurrences(of: "\n", with: "\\n")
+    Each request adds a row with its time; rows older than an hour drop out when the next one is counted.
+    </details>
+    """.replacingOccurrences(of: "\n", with: "\\n")
 
     private static let checkoutDiff = """
     diff --git a/src/checkout/CheckoutError.tsx b/src/checkout/CheckoutError.tsx
@@ -334,9 +334,9 @@ struct PRHubSample {
             detail: "sample",
             status: PullRequestRow.Status(
                 list: list, author: author, checks: checks, review: review, merge: merge, jaiReview: yourReview,
-                jaiReviewedAt: yourReview.map { _ in Date.now.addingTimeInterval(-86_400).ISO8601Format() },
-                requestedAt: requestedHoursAgo.map { Date.now.addingTimeInterval(-$0 * 3_600).ISO8601Format() },
-                reviewDueAt: dueHoursAgo.map { Date.now.addingTimeInterval(-$0 * 3_600).ISO8601Format() }
+                jaiReviewedAt: yourReview.map { _ in Date.now.addingTimeInterval(-86400).ISO8601Format() },
+                requestedAt: requestedHoursAgo.map { Date.now.addingTimeInterval(-$0 * 3600).ISO8601Format() },
+                reviewDueAt: dueHoursAgo.map { Date.now.addingTimeInterval(-$0 * 3600).ISO8601Format() }
             ),
             keyLines: PRKeyLines.defaultContext, ticket: rowTickets.first, tickets: rowTickets
         )
@@ -354,9 +354,8 @@ struct PRHubSample {
     private static let groupedChecks = (
         [#"{"name": "detect-changes", "state": "success", "url": null, "required": false, "workflow": "CI"}"#,
          #"{"name": "detect-changes", "state": "skipped", "url": null, "required": false, "workflow": "Preview"}"#,
-         #"{"name": "visual proof", "state": "success", "url": null, "required": false, "workflow": "Visual Proof"}"#,
-        ]
-            + (1...4).map {
+         #"{"name": "visual proof", "state": "success", "url": null, "required": false, "workflow": "Visual Proof"}"#]
+            + (1 ... 4).map {
                 #"{"name": "visual proof (web \#($0)/4)", "state": "success", "url": null, "required": false, "#
                     + #""workflow": "Visual Proof"}"#
             }
@@ -388,7 +387,7 @@ struct PRHubSample {
 
     private var detail: String {
         let isMine = list == "mine"
-        let yesterday = Date.now.addingTimeInterval(-86_400).ISO8601Format()
+        let yesterday = Date.now.addingTimeInterval(-86400).ISO8601Format()
         let failing = checks == "failing"
         let comments = comment.map {
             #"[{"id": "sample-comment-\#(number)", "author": {"login": "\#($0.0)", "avatarUrl": null}, "#

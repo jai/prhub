@@ -15,7 +15,9 @@ public enum DiffFontFace: String, CaseIterable, Identifiable, Sendable {
     case ibmPlexMono
     case firaCode
 
-    public var id: Self { self }
+    public var id: Self {
+        self
+    }
 
     public var name: String {
         switch self {
@@ -77,7 +79,8 @@ public struct DiffFont: Hashable, Sendable, RawRepresentable {
     public init?(rawValue: String) {
         let parts = rawValue.split(separator: ":", omittingEmptySubsequences: false)
         guard parts.count == 2, let face = DiffFontFace(rawValue: String(parts[0])),
-              let size = Double(parts[1]), Self.sizes.contains(CGFloat(size)) else {
+              let size = Double(parts[1]), Self.sizes.contains(CGFloat(size))
+        else {
             return nil
         }
         self.init(face: face, size: CGFloat(size))
@@ -99,16 +102,17 @@ public struct DiffFont: Hashable, Sendable, RawRepresentable {
     func platformFont(points: CGFloat, isBold: Bool = false) -> PlatformFont {
         DiffFontRegistry.registerBundledFaces()
         if let names = face.postScriptNames,
-           let font = PlatformFont(name: isBold ? names.bold : names.regular, size: points) {
+           let font = PlatformFont(name: isBold ? names.bold : names.regular, size: points)
+        {
             return font
         }
         return .monospacedSystemFont(ofSize: points, weight: isBold ? .semibold : .regular)
     }
 }
 
-extension AppStorage where Value == DiffFont {
+public extension AppStorage where Value == DiffFont {
     /// The device's diff font, `standard` until someone picks another.
-    public init(diffFontIn store: UserDefaults? = nil) {
+    init(diffFontIn store: UserDefaults? = nil) {
         self.init(wrappedValue: .standard, DiffFont.storageKey, store: store)
     }
 }
@@ -129,7 +133,8 @@ enum DiffFontRegistry {
 
     static func fontFiles(of face: DiffFontFace) -> [URL] {
         guard let folder = face.bundledFolder,
-              let directory = Bundle.module.url(forResource: folder, withExtension: nil, subdirectory: "Fonts") else {
+              let directory = Bundle.module.url(forResource: folder, withExtension: nil, subdirectory: "Fonts")
+        else {
             return []
         }
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []

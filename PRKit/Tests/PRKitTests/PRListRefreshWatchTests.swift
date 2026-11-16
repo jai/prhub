@@ -1,6 +1,6 @@
+@testable import PRKit
 import SwiftUI
 import Testing
-@testable import PRKit
 
 /// The pull to refresh's watch (issue #55): a refresh's start and end, and whether the list came back to rest.
 @MainActor

@@ -1,11 +1,11 @@
 import PRKitDesign
 import SwiftUI
 
-extension View {
+public extension View {
     /// A panel that slides in from the right over the page, which dims under it; a tap on the dim closes it, and a
     /// swipe to the right carries it with the finger, then lets it go or springs it back (DESIGN.md, Other parts). Where the screen has room, the diff puts its panel in a column instead (`PRPanelPlacement`).
     /// The panel draws its own ground.
-    public func sidePanel(
+    func sidePanel(
         isPresented: Bool, close: @escaping () -> Void, @ViewBuilder panel: @escaping () -> some View
     ) -> some View {
         modifier(SidePanel(isPresented: isPresented, close: close, panel: panel))
@@ -22,7 +22,9 @@ private struct SidePanel<Panel: View>: ViewModifier {
     /// starts as scrolling stays scrolling.
     @State private var isSwiping: Bool?
 
-    private static var width: Double { PanelStyle.width }
+    private static var width: Double {
+        PanelStyle.width
+    }
 
     func body(content: Content) -> some View {
         content.overlay {

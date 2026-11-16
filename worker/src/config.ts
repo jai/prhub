@@ -5,7 +5,13 @@ import { type Env, isSet } from "./env.ts";
 import { feedbackDirectURL } from "./feedback-token.ts";
 import { metricKitOn } from "./metrickit.ts";
 import { type LimitName, limitsConfig, limitsOf } from "./limits.ts";
-import { type AiConfig, type AiFeature, type FeatureModels, featureModels, parseAiConfig } from "./models.ts";
+import {
+  type AiConfig,
+  type AiFeature,
+  type FeatureModels,
+  featureModels,
+  parseAiConfig,
+} from "./models.ts";
 
 /** `GET /device/config` (docs/api.md): what this Worker can serve, so the app shows only that. */
 export interface DeviceConfig {
@@ -39,7 +45,9 @@ export interface DeviceConfig {
 let parsed: { key: string; config: AiConfig } | null = null;
 
 /** The AI model config, parsed once per isolate and per value of its vars. */
-export function aiConfigOf(env: Pick<Env, "AI_MODELS_ALLOWED" | "AI_EFFORT_MAX" | "AI_DEFAULTS">): AiConfig {
+export function aiConfigOf(
+  env: Pick<Env, "AI_MODELS_ALLOWED" | "AI_EFFORT_MAX" | "AI_DEFAULTS">,
+): AiConfig {
   const key = JSON.stringify([env.AI_MODELS_ALLOWED, env.AI_EFFORT_MAX, env.AI_DEFAULTS]);
   if (parsed?.key !== key) {
     parsed = { key, config: parseAiConfig(env) };
@@ -48,24 +56,42 @@ export function aiConfigOf(env: Pick<Env, "AI_MODELS_ALLOWED" | "AI_EFFORT_MAX" 
 }
 
 export function askConfigured(env: Env): boolean {
-  return onSubscription(env) || onApiKey(env) && [env.ASK_AGENT_ID, env.ASK_ENVIRONMENT_ID, env.ASK_VAULT_ID, env.ASK_CREDENTIAL_ID].every(isSet)
-    && (isSet(env.ASK_ANTHROPIC_API_KEY) || isSet(env.ANTHROPIC_API_KEY));
+  return (
+    onSubscription(env) ||
+    (onApiKey(env) &&
+      [env.ASK_AGENT_ID, env.ASK_ENVIRONMENT_ID, env.ASK_VAULT_ID, env.ASK_CREDENTIAL_ID].every(
+        isSet,
+      ) &&
+      (isSet(env.ASK_ANTHROPIC_API_KEY) || isSet(env.ANTHROPIC_API_KEY)))
+  );
 }
 
 /** Feedback goes to the FeedbackKit Worker, which keeps every app's. */
 export function featureKitConfigured(env: Env): boolean {
-  return (env.FEEDBACKKIT !== undefined || isSet(env.FEEDBACKKIT_URL)) && isSet(env.FEEDBACKKIT_TOKEN)
-    && isSet(env.FEEDBACKKIT_APP);
+  return (
+    (env.FEEDBACKKIT !== undefined || isSet(env.FEEDBACKKIT_URL)) &&
+    isSet(env.FEEDBACKKIT_TOKEN) &&
+    isSet(env.FEEDBACKKIT_APP)
+  );
 }
-
 
 /** Each feature is on when what serves it is configured; nothing is a separate switch. */
 export function deviceConfig(env: Env, login: string | null, latest?: AppLatest): DeviceConfig {
   const model = makesAnswers(env);
-  const orgs = (env.GITHUB_ORGS ?? "").split(",").map((org) => org.trim()).filter(Boolean);
+  const orgs = (env.GITHUB_ORGS ?? "")
+    .split(",")
+    .map((org) => org.trim())
+    .filter(Boolean);
   const ask = askConfigured(env);
-  const on = ([["key_lines", model], ["rewrite", model], ["ask", ask]] as [AiFeature, boolean][])
-    .filter(([, isOn]) => isOn).map(([feature]) => feature);
+  const on = (
+    [
+      ["key_lines", model],
+      ["rewrite", model],
+      ["ask", ask],
+    ] as [AiFeature, boolean][]
+  )
+    .filter(([, isOn]) => isOn)
+    .map(([feature]) => feature);
   const ai = aiConfigOf(env);
   const direct = feedbackDirectURL(env);
   return {
@@ -79,7 +105,15 @@ export function deviceConfig(env: Env, login: string | null, latest?: AppLatest)
     },
     login,
     ...(orgs.length > 0 ? { orgs } : {}),
-    ...(on.length > 0 ? { ai: { features: Object.fromEntries(on.map((feature) => [feature, featureModels(ai, feature)])) } } : {}),
+    ...(on.length > 0
+      ? {
+          ai: {
+            features: Object.fromEntries(
+              on.map((feature) => [feature, featureModels(ai, feature)]),
+            ),
+          },
+        }
+      : {}),
     limits: limitsConfig(limitsOf(env)),
     ...(direct && featureKitConfigured(env) ? { feedback_direct: { url: direct } } : {}),
     ...(latest ? { app_latest: latest } : {}),

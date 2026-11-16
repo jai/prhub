@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PRKit
+import Testing
 
 /// The worker's golden fixtures (docs/fixtures/), which its contract test writes from the real builders: the app reads
 /// each one as it reads the Worker's answer. A field the Worker renames or drops fails here before a phone sees it.

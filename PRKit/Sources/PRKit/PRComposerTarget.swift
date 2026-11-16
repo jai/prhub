@@ -1,6 +1,6 @@
+import Foundation
 import PRKitCore
 import PRKitDesign
-import Foundation
 
 /// Where a comment goes, before it has words.
 enum PRComposerTarget: Sendable {

@@ -18,7 +18,9 @@ public struct ReviewWeek: Sendable {
         self.weekdays = weekdays
     }
 
-    public static var local: ReviewWeek { ReviewWeek(calendar: .current) }
+    public static var local: ReviewWeek {
+        ReviewWeek(calendar: .current)
+    }
 
     public func dueAt(requestedAt: Date) -> Date? {
         let hour = calendar.component(.hour, from: requestedAt)
@@ -43,7 +45,7 @@ public struct ReviewWeek: Sendable {
 
     private func nextWorkday(from date: Date) -> Date {
         var date = date
-        for _ in 0..<7 where !isWorkday(date) {
+        for _ in 0 ..< 7 where !isWorkday(date) {
             date = calendar.date(byAdding: .day, value: 1, to: date) ?? date
         }
         return date

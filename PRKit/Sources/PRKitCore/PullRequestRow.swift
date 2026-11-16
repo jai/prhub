@@ -94,15 +94,31 @@ public struct PullRequestRow: Codable, Hashable, Identifiable, Sendable {
         )
     }
 
-    public var id: String { "\(repo)#\(number)" }
-    public var hasDiff: Bool { diff != .tooLarge }
-    public var isReviewRequest: Bool { status?.list == "review" }
+    public var id: String {
+        "\(repo)#\(number)"
+    }
+
+    public var hasDiff: Bool {
+        diff != .tooLarge
+    }
+
+    public var isReviewRequest: Bool {
+        status?.list == "review"
+    }
+
     /// Jai answered this review. The row stays on the review list, greyed as read, until the PR closes.
-    public var isAnswered: Bool { status?.list == "reviewed" }
-    public var isMerged: Bool { status?.list == "merged" }
+    public var isAnswered: Bool {
+        status?.list == "reviewed"
+    }
+
+    public var isMerged: Bool {
+        status?.list == "merged"
+    }
+
     public var reviewRequestedAt: Date? {
         isReviewRequest ? status?.requestedAt.flatMap { try? Date($0, strategy: .iso8601) } : nil
     }
+
     /// The Worker's due time, else one day of the phone's own working week from the request (`ReviewWeek.local`).
     public var reviewDue: Date? {
         guard isReviewRequest else {
@@ -113,10 +129,19 @@ public struct PullRequestRow: Codable, Hashable, Identifiable, Sendable {
         }
         return reviewRequestedAt.flatMap { ReviewWeek.local.dueAt(requestedAt: $0) }
     }
-    public func isPastSLA(now: Date) -> Bool { reviewDue.map { $0 <= now } ?? false }
+
+    public func isPastSLA(now: Date) -> Bool {
+        reviewDue.map { $0 <= now } ?? false
+    }
+
     /// Asked to review again, with his own change request still holding the merge: the first thing on his list.
-    public var isWaitingOnJaisChangeRequest: Bool { isReviewRequest && status?.jaiReview == "changes_requested" }
-    public var org: String { String(repo.prefix { $0 != "/" }) }
+    public var isWaitingOnJaisChangeRequest: Bool {
+        isReviewRequest && status?.jaiReview == "changes_requested"
+    }
+
+    public var org: String {
+        String(repo.prefix { $0 != "/" })
+    }
 
     /// This PR as Agents → Lists holds one, so both screens draw it with `PrListBlock`. The Worker lists open PRs.
     public var listPullRequest: PRListPullRequest {
@@ -136,8 +161,19 @@ public struct PullRequestRow: Codable, Hashable, Identifiable, Sendable {
         )
     }
 
-    private var fileStem: String { "\(repo.replacing("/", with: "__"))__\(number)" }
-    public var diffFileName: String { "\(fileStem)__\(revision).diff" }
-    public var detailFileName: String { "\(fileStem)__\(detail.replacing(":", with: "-")).json" }
-    public var keyLinesFileName: String? { keyLines.map { "\(fileStem)__\(head)__keylines\($0).json" } }
+    private var fileStem: String {
+        "\(repo.replacing("/", with: "__"))__\(number)"
+    }
+
+    public var diffFileName: String {
+        "\(fileStem)__\(revision).diff"
+    }
+
+    public var detailFileName: String {
+        "\(fileStem)__\(detail.replacing(":", with: "-")).json"
+    }
+
+    public var keyLinesFileName: String? {
+        keyLines.map { "\(fileStem)__\(head)__keylines\($0).json" }
+    }
 }

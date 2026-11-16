@@ -40,28 +40,48 @@ export interface PeopleNode {
   author: { login: string } | null;
   files?: { nodes: { path: string }[] } | null;
   labels?: { nodes: { name: string }[] };
-  latestReviews: { nodes: { author: { login: string } | null; state: string; submittedAt: string | null }[] };
+  latestReviews: {
+    nodes: { author: { login: string } | null; state: string; submittedAt: string | null }[];
+  };
   /** Every review: `latestReviews` leaves out the reader's own, and the Worker reads as Jai. */
-  peopleReviews?: { nodes: { author: { login: string } | null; state: string; submittedAt: string | null }[] };
-  peopleComments?: { nodes: { author: { login: string } | null; body: string; createdAt: string }[] };
-  committers?: { nodes: { commit: { committedDate: string; author: { user: { login: string } | null } | null;
-    committer: { user: { login: string } | null } | null } }[] };
+  peopleReviews?: {
+    nodes: { author: { login: string } | null; state: string; submittedAt: string | null }[];
+  };
+  peopleComments?: {
+    nodes: { author: { login: string } | null; body: string; createdAt: string }[];
+  };
+  committers?: {
+    nodes: {
+      commit: {
+        committedDate: string;
+        author: { user: { login: string } | null } | null;
+        committer: { user: { login: string } | null } | null;
+      };
+    }[];
+  };
 }
 
 export function factsOf(node: PeopleNode): PeopleFacts {
   const commits = node.committers?.nodes ?? [];
-  const logins = (list: (string | undefined)[]) => [...new Set(list.filter((login): login is string => !!login))];
+  const logins = (list: (string | undefined)[]) => [
+    ...new Set(list.filter((login): login is string => !!login)),
+  ];
   return {
     base: node.baseRefName,
     title: node.title,
     author: node.author?.login ?? "",
     files: (node.files?.nodes ?? []).map((file) => file.path),
-    committers: logins(commits.flatMap(({ commit }) => [commit.author?.user?.login, commit.committer?.user?.login])),
+    committers: logins(
+      commits.flatMap(({ commit }) => [commit.author?.user?.login, commit.committer?.user?.login]),
+    ),
     headAt: commits.at(-1)?.commit.committedDate ?? null,
     labels: (node.labels?.nodes ?? []).map((label) => label.name),
-    reviews: latestByPerson([...node.latestReviews.nodes, ...node.peopleReviews?.nodes ?? []]),
-    comments: (node.peopleComments?.nodes ?? []).flatMap((comment) => comment.author
-      ? [{ login: comment.author.login, body: comment.body, createdAt: comment.createdAt }] : []),
+    reviews: latestByPerson([...node.latestReviews.nodes, ...(node.peopleReviews?.nodes ?? [])]),
+    comments: (node.peopleComments?.nodes ?? []).flatMap((comment) =>
+      comment.author
+        ? [{ login: comment.author.login, body: comment.body, createdAt: comment.createdAt }]
+        : [],
+    ),
   };
 }
 
@@ -71,10 +91,15 @@ function latestByPerson(
 ): PeopleFacts["reviews"] {
   const latest = new Map<string, PeopleFacts["reviews"][number]>();
   for (const review of reviews) {
-    if (!review.author || !["APPROVED", "CHANGES_REQUESTED", "DISMISSED"].includes(review.state)) continue;
+    if (!review.author || !["APPROVED", "CHANGES_REQUESTED", "DISMISSED"].includes(review.state))
+      continue;
     const seen = latest.get(review.author.login);
     if (!seen || (review.submittedAt ?? "") > (seen.submittedAt ?? "")) {
-      latest.set(review.author.login, { login: review.author.login, state: review.state, submittedAt: review.submittedAt });
+      latest.set(review.author.login, {
+        login: review.author.login,
+        state: review.state,
+        submittedAt: review.submittedAt,
+      });
     }
   }
   return [...latest.values()];
@@ -86,12 +111,18 @@ export interface Membership {
   inOrg(org: string, login: string): Promise<boolean | null>;
 }
 
-interface Actors { users?: string[]; teams?: string[]; organizations?: string[] }
+interface Actors {
+  users?: string[];
+  teams?: string[];
+  organizations?: string[];
+}
 interface Rule {
   name: string;
   if?: Record<string, unknown>;
   options?: {
-    allow_author?: boolean; allow_contributor?: boolean; allow_non_author_contributor?: boolean;
+    allow_author?: boolean;
+    allow_contributor?: boolean;
+    allow_non_author_contributor?: boolean;
     invalidate_on_push?: boolean;
     methods?: { comments?: string[]; comment_patterns?: string[]; github_review?: boolean };
   };
@@ -115,13 +146,20 @@ export function parsePolicy(text: string): Policy | null {
   }
 }
 
-export async function peopleDecision(policy: Policy, pr: PeopleFacts, members: Membership): Promise<PeopleDecision | null> {
+export async function peopleDecision(
+  policy: Policy,
+  pr: PeopleFacts,
+  members: Membership,
+): Promise<PeopleDecision | null> {
   const rules = new Map((policy.approval_rules ?? []).map((rule) => [rule.name, rule]));
   const counts = async (who: Actors, login: string) => await isActor(who, login, members);
   const disapprovers = policy.policy?.disapproval?.requires;
   if (disapprovers) {
     for (const review of pr.reviews) {
-      if (review.state === "CHANGES_REQUESTED" && await counts(disapprovers, review.login) === true) {
+      if (
+        review.state === "CHANGES_REQUESTED" &&
+        (await counts(disapprovers, review.login)) === true
+      ) {
         return "CHANGES_REQUESTED";
       }
     }
@@ -135,7 +173,11 @@ export async function peopleDecision(policy: Policy, pr: PeopleFacts, members: M
 type Outcome = "approved" | "pending" | "skipped";
 
 async function all(
-  items: Expression[], join: "and" | "or", rules: Map<string, Rule>, pr: PeopleFacts, members: Membership,
+  items: Expression[],
+  join: "and" | "or",
+  rules: Map<string, Rule>,
+  pr: PeopleFacts,
+  members: Membership,
 ): Promise<Outcome | null> {
   const outcomes: Outcome[] = [];
   for (const item of items) {
@@ -145,11 +187,17 @@ async function all(
   }
   const counted = outcomes.filter((outcome) => outcome !== "skipped");
   if (counted.length === 0) return "skipped";
-  const approved = join === "and" ? counted.every((o) => o === "approved") : counted.some((o) => o === "approved");
+  const approved =
+    join === "and" ? counted.every((o) => o === "approved") : counted.some((o) => o === "approved");
   return approved ? "approved" : "pending";
 }
 
-async function evaluate(item: Expression, rules: Map<string, Rule>, pr: PeopleFacts, members: Membership): Promise<Outcome | null> {
+async function evaluate(
+  item: Expression,
+  rules: Map<string, Rule>,
+  pr: PeopleFacts,
+  members: Membership,
+): Promise<Outcome | null> {
   if (typeof item === "string") {
     const rule = rules.get(item);
     return rule ? await ruleOutcome(rule, pr, members) : null;
@@ -159,7 +207,11 @@ async function evaluate(item: Expression, rules: Map<string, Rule>, pr: PeopleFa
   return null;
 }
 
-async function ruleOutcome(rule: Rule, pr: PeopleFacts, members: Membership): Promise<Outcome | null> {
+async function ruleOutcome(
+  rule: Rule,
+  pr: PeopleFacts,
+  members: Membership,
+): Promise<Outcome | null> {
   const applies = await matches(rule.if ?? {}, pr, members);
   if (applies === null) return null;
   if (!applies) return "skipped";
@@ -169,20 +221,30 @@ async function ruleOutcome(rule: Rule, pr: PeopleFacts, members: Membership): Pr
   const contributors = new Set(pr.committers.filter((login) => login !== pr.author));
   const eligible = async (login: string): Promise<boolean | null> => {
     if (login === pr.author && !options.allow_author) return false;
-    if (contributors.has(login) && !options.allow_contributor && !options.allow_non_author_contributor) return false;
+    if (
+      contributors.has(login) &&
+      !options.allow_contributor &&
+      !options.allow_non_author_contributor
+    )
+      return false;
     return await isActor(rule.requires ?? {}, login, members);
   };
   const after = options.invalidate_on_push && pr.headAt ? pr.headAt : "";
   const approvers = new Set<string>();
   if (options.methods?.github_review !== false) {
     for (const review of pr.reviews) {
-      if (review.state === "APPROVED" && (review.submittedAt ?? "") >= after) approvers.add(review.login);
+      if (review.state === "APPROVED" && (review.submittedAt ?? "") >= after)
+        approvers.add(review.login);
     }
   }
   const phrases = options.methods?.comments ?? (options.methods ? [] : DEFAULT_COMMENTS);
-  const patterns = (options.methods?.comment_patterns ?? []).flatMap((source) => safeRegExp(source) ?? []);
+  const patterns = (options.methods?.comment_patterns ?? []).flatMap(
+    (source) => safeRegExp(source) ?? [],
+  );
   for (const comment of pr.comments) {
-    const said = phrases.some((phrase) => comment.body.includes(phrase)) || patterns.some((p) => p.test(comment.body));
+    const said =
+      phrases.some((phrase) => comment.body.includes(phrase)) ||
+      patterns.some((p) => p.test(comment.body));
     if (said && comment.createdAt >= after) approvers.add(comment.login);
   }
   let approved = 0;
@@ -195,16 +257,22 @@ async function ruleOutcome(rule: Rule, pr: PeopleFacts, members: Membership): Pr
 }
 
 /** Whether a rule's `if` holds; true for predicates this doesn't know, so an unknown one never hides a rule. */
-async function matches(predicates: Record<string, unknown>, pr: PeopleFacts, members: Membership): Promise<boolean | null> {
+async function matches(
+  predicates: Record<string, unknown>,
+  pr: PeopleFacts,
+  members: Membership,
+): Promise<boolean | null> {
   for (const [name, value] of Object.entries(predicates)) {
     const predicate = (value ?? {}) as Record<string, unknown>;
-    const strings = (key: string) => (Array.isArray(predicate[key]) ? predicate[key] as string[] : []);
+    const strings = (key: string) =>
+      Array.isArray(predicate[key]) ? (predicate[key] as string[]) : [];
     switch (name) {
       case "targets_branch":
         if (!test(predicate.pattern, pr.base)) return false;
         break;
       case "title":
-        if (strings("matches").length && !strings("matches").some((p) => test(p, pr.title))) return false;
+        if (strings("matches").length && !strings("matches").some((p) => test(p, pr.title)))
+          return false;
         if (strings("not_matches").some((p) => test(p, pr.title))) return false;
         break;
       case "changed_files": {
@@ -217,7 +285,12 @@ async function matches(predicates: Record<string, unknown>, pr: PeopleFacts, mem
         if (!pr.files.every((file) => strings("paths").some((p) => test(p, file)))) return false;
         break;
       case "has_labels":
-        if (!(Array.isArray(value) ? value as string[] : []).every((label) => pr.labels.includes(label))) return false;
+        if (
+          !(Array.isArray(value) ? (value as string[]) : []).every((label) =>
+            pr.labels.includes(label),
+          )
+        )
+          return false;
         break;
       case "has_author_in": {
         const isIn = await isActor(predicate as Actors, pr.author, members);

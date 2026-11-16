@@ -2,8 +2,8 @@
   "name": "agent-pager-relay",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "description": "PRHub push relay: forwards self-hosted Workers' pushes to APNs with Jai's key (docs/push-relay.md)",
+  "type": "module",
   "scripts": {
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json",

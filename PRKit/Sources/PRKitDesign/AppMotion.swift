@@ -13,9 +13,9 @@ public enum AppMotion {
     public static let screen = Animation.smooth(duration: MotionTokens.screen)
 }
 
-extension AnyTransition {
+public extension AnyTransition {
     /// Content opening under a header: it fades while the layout around it moves. A slide would pass through the header.
-    public static var fold: AnyTransition {
+    static var fold: AnyTransition {
         .opacity
     }
 }

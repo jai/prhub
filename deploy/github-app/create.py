@@ -44,19 +44,34 @@ def convert(code: str) -> dict:
     request = urllib.request.Request(
         f"https://api.github.com/app-manifests/{urllib.parse.quote(code)}/conversions",
         method="POST",
-        headers={"Accept": "application/vnd.github+json", "User-Agent": "prhub-app-setup"},
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "prhub-app-setup",
+        },
     )
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.load(response)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--worker", default=PLACEHOLDER,
-                        help="the hosted Worker's origin, https://host with no path")
-    parser.add_argument("--name", help="the App's name instead of the manifest's, for a test copy (\"PRHub Test\")")
-    parser.add_argument("--port", type=int, default=53682, help="local port for GitHub's redirect")
-    parser.add_argument("--dry-run", action="store_true", help="print the manifest and exit")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--worker",
+        default=PLACEHOLDER,
+        help="the hosted Worker's origin, https://host with no path",
+    )
+    parser.add_argument(
+        "--name",
+        help="the App's name instead of the manifest's, for a test copy (\"PRHub Test\")",
+    )
+    parser.add_argument(
+        "--port", type=int, default=53682, help="local port for GitHub's redirect"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="print the manifest and exit"
+    )
     args = parser.parse_args()
 
     worker = args.worker.rstrip("/")
@@ -72,7 +87,9 @@ def main() -> int:
     out_dir = repo / "tmp" / "github-app"
     out_dir.mkdir(parents=True, exist_ok=True)
     os.chmod(out_dir, 0o700)
-    out_file = out_dir / (f"{args.name.lower().replace(' ', '-')}.json" if args.name else "prhub-app.json")
+    out_file = out_dir / (
+        f"{args.name.lower().replace(' ', '-')}.json" if args.name else "prhub-app.json"
+    )
     state = secrets.token_urlsafe(24)
     result: dict = {}
 
@@ -94,17 +111,23 @@ def main() -> int:
             if url.path == "/":
                 action = html.escape(f"{NEW_APP_URL}?state={state}", quote=True)
                 value = html.escape(json.dumps(manifest), quote=True)
-                self.reply(200, f"<form id=f method=post action='{action}'>"
-                                f"<input type=hidden name=manifest value='{value}'>"
-                                f"<button>Create {html.escape(manifest['name'])} on GitHub</button></form>"
-                                "<script>document.getElementById('f').submit()</script>")
+                self.reply(
+                    200,
+                    f"<form id=f method=post action='{action}'>"
+                    f"<input type=hidden name=manifest value='{value}'>"
+                    f"<button>Create {html.escape(manifest['name'])} on GitHub</button></form>"
+                    "<script>document.getElementById('f').submit()</script>",
+                )
                 return
             if url.path != "/created":
                 self.reply(404, "Not found")
                 return
             code = query.get("code", [""])[0]
             if query.get("state", [""])[0] != state or not code.isalnum():
-                self.reply(400, "This is not the answer to this script's request. Nothing was saved.")
+                self.reply(
+                    400,
+                    "This is not the answer to this script's request. Nothing was saved.",
+                )
                 return
             try:
                 app = convert(code)
@@ -117,13 +140,18 @@ def main() -> int:
             with os.fdopen(fd, "w") as handle:
                 json.dump(app, handle, indent=2)
             result["app"] = app
-            self.reply(200, f"<p>Created <a href='{html.escape(app['html_url'])}'>{html.escape(app['slug'])}</a>. "
-                            "Back to the terminal for the next steps.</p>")
+            self.reply(
+                200,
+                f"<p>Created <a href='{html.escape(app['html_url'])}'>{html.escape(app['slug'])}</a>. "
+                "Back to the terminal for the next steps.</p>",
+            )
             threading.Thread(target=server.shutdown).start()
 
     server = HTTPServer(("127.0.0.1", args.port), Handler)
     start = f"http://127.0.0.1:{args.port}/"
-    print(f"Opening {start}; if no browser opens, open it yourself. Waiting for GitHub (Ctrl-C to stop).")
+    print(
+        f"Opening {start}; if no browser opens, open it yourself. Waiting for GitHub (Ctrl-C to stop)."
+    )
     webbrowser.open(start)
     server.serve_forever()
 
@@ -134,12 +162,16 @@ def main() -> int:
     fields = ["id", "slug", "client_id", "client_secret", "webhook_secret", "pem"]
     missing = [name for name in fields if not app.get(name)]
     print(f"Created {app['slug']} (App ID {app['id']}): {app['html_url']}")
-    print(f"Credentials in {out_file} (mode 0600). Fields present: "
-          f"{', '.join(name for name in fields if name not in missing)}.")
+    print(
+        f"Credentials in {out_file} (mode 0600). Fields present: "
+        f"{', '.join(name for name in fields if name not in missing)}."
+    )
     if missing:
         print(f"Missing from GitHub's answer: {', '.join(missing)}", file=sys.stderr)
         return 1
-    print("Next: store them in your password manager and delete the file (docs/plans/github-app.md, 'Creating the App').")
+    print(
+        "Next: store them in your password manager and delete the file (docs/plans/github-app.md, 'Creating the App')."
+    )
     return 0
 
 

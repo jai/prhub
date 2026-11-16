@@ -5,33 +5,56 @@ import { linearKeyRoute } from "./linear-key.ts";
  * Off unless `HOSTED` is `on`; a self-hosted Worker never reaches anything here.
  */
 import type {
-  AccountCore, AskResources, SessionInfo, SignedOutReason, TokenAnswer, UserAi,
+  AccountCore,
+  AskResources,
+  SessionInfo,
+  SignedOutReason,
+  TokenAnswer,
+  UserAi,
 } from "./account-core.ts";
 import { isAnthropicKeyShape, NO_AI, userIdOf } from "./account-core.ts";
 import { bodyOf, parseFinishInput, parseSender } from "./boundary.ts";
 import { askQueueName, type Env, isSet } from "./env.ts";
 import type { Fingerprint, RepoFullName, Sha } from "./ids.ts";
 import {
-  type InstallationAccount, type InstallationApi, parseAppDelivery, syncInstallations,
+  type InstallationAccount,
+  type InstallationApi,
+  parseAppDelivery,
+  syncInstallations,
 } from "./installations.ts";
 import type { LimitCheck, LimitDecision } from "./limit-counter.ts";
 import {
-  durationOf, gitHubReserveOf, type GitHubReserve, LimitName, limitReachedAnswer, type Limits, limitsOf, rateWindowOf,
-  type RateLimitName, readNowGapOf,
+  durationOf,
+  gitHubReserveOf,
+  type GitHubReserve,
+  LimitName,
+  limitReachedAnswer,
+  type Limits,
+  limitsOf,
+  rateWindowOf,
+  type RateLimitName,
+  readNowGapOf,
 } from "./limits.ts";
 import { authorizeUrl, exchangeCode, type Fetch, type OAuthApp, readUser } from "./oauth.ts";
 import { metricKitLogins } from "./metrickit.ts";
 import { deviceSecretOf, fingerprintOf, sha256Hex } from "./pairing.ts";
 import { backoffOf } from "./rate-limit.ts";
 import {
-  isPkceChallenge, type Keyring, parseKeyring, pkceChallengeOf, randomToken,
+  isPkceChallenge,
+  type Keyring,
+  parseKeyring,
+  pkceChallengeOf,
+  randomToken,
 } from "./token-crypto.ts";
 import { verifySignature } from "./webhook.ts";
 import { checkAnthropicKey, createAskResources } from "./ask-setup.ts";
 import { onApiKey } from "./agent-container.ts";
 import type { IpLimit } from "./account.ts";
 
-export type HostedMode = { kind: "off" } | { kind: "on"; app: OAuthApp } | { kind: "misconfigured"; missing: string[] };
+export type HostedMode =
+  | { kind: "off" }
+  | { kind: "on"; app: OAuthApp }
+  | { kind: "misconfigured"; missing: string[] };
 
 /** On with `HOSTED=on` and everything sign-in needs; `HOSTED=on` without it serves nothing rather than fall back. */
 export function hostedMode(env: Env): HostedMode {
@@ -46,12 +69,17 @@ export function hostedMode(env: Env): HostedMode {
     ["SIGN_INS", env.SIGN_INS !== undefined],
     ["INSTALLATIONS", env.INSTALLATIONS !== undefined],
     ["IP_LIMITS", env.IP_LIMITS !== undefined],
-  ].flatMap(([name, isThere]) => isThere ? [] : [name as string]);
-  return missing.length > 0 ? { kind: "misconfigured", missing } : { kind: "on", app: oauthAppOf(env) };
+  ].flatMap(([name, isThere]) => (isThere ? [] : [name as string]));
+  return missing.length > 0
+    ? { kind: "misconfigured", missing }
+    : { kind: "on", app: oauthAppOf(env) };
 }
 
 export function oauthAppOf(env: Env): OAuthApp {
-  return { clientId: env.GITHUB_APP_CLIENT_ID ?? "", clientSecret: env.GITHUB_APP_CLIENT_SECRET ?? "" };
+  return {
+    clientId: env.GITHUB_APP_CLIENT_ID ?? "",
+    clientSecret: env.GITHUB_APP_CLIENT_SECRET ?? "",
+  };
 }
 
 let parsedKeyring: { raw: string; keyring: Promise<Keyring | null> } | null = null;
@@ -77,7 +105,10 @@ export function canMintInstallationTokens(env: Env): boolean {
  * subscription only for `SUBSCRIPTION_LOGINS`. Never on the Worker's own key, and Feedback, the
  * relay stay off; Linear uses only the person’s own key.
  */
-export function userEnv(env: Env, user: { userId: string; login: string; token: string; ai?: UserAi; linearKey?: string | null }): Env {
+export function userEnv(
+  env: Env,
+  user: { userId: string; login: string; token: string; ai?: UserAi; linearKey?: string | null },
+): Env {
   const ai = user.ai ?? NO_AI;
   const ask = ai.anthropicKey !== null && canMintInstallationTokens(env) ? ai.ask : null;
   return {
@@ -91,7 +122,9 @@ export function userEnv(env: Env, user: { userId: string; login: string; token: 
     HUB_TOKEN: undefined,
     WEBHOOK_SECRET: undefined,
     ANTHROPIC_API_KEY: ai.anthropicKey ?? undefined,
-    CLAUDE_CODE_OAUTH_TOKEN: subscriptionLogins(env).has(user.login.toLowerCase()) ? env.CLAUDE_CODE_OAUTH_TOKEN : undefined,
+    CLAUDE_CODE_OAUTH_TOKEN: subscriptionLogins(env).has(user.login.toLowerCase())
+      ? env.CLAUDE_CODE_OAUTH_TOKEN
+      : undefined,
     METRICKIT: metricKitLogins(env).has(user.login.toLowerCase()) ? "on" : undefined,
     ASK_ANTHROPIC_API_KEY: undefined,
     ASK_AGENT_ID: ask?.agent_id,
@@ -109,7 +142,12 @@ export function userEnv(env: Env, user: { userId: string; login: string; token: 
 
 /** The logins whose AI runs on the Worker's subscription (`SUBSCRIPTION_LOGINS`), lowercased. */
 function subscriptionLogins(env: Env): Set<string> {
-  return new Set((env.SUBSCRIPTION_LOGINS ?? "").split(",").map((login) => login.trim().toLowerCase()).filter(Boolean));
+  return new Set(
+    (env.SUBSCRIPTION_LOGINS ?? "")
+      .split(",")
+      .map((login) => login.trim().toLowerCase())
+      .filter(Boolean),
+  );
 }
 
 /** What the routes reach: the Durable Objects, R2 and GitHub, so a test can stand in for each. */
@@ -139,10 +177,25 @@ export interface AnthropicApi {
   provisionAsk(key: string, login: string): Promise<AskResources>;
 }
 
-export type AccountApi = Pick<AccountCore,
-  "signIn" | "finish" | "session" | "accessToken" | "tokenAfterUnauthorized" | "signOutEverywhere" | "signOut"
-  | "deleteAccount" | "setAnthropicKey" | "setLinearKey" | "linearCannotComment" | "installationIds" | "claimInstallationSync" | "setInstallations"
-  | "installationAccounts" | "installationSyncedAt">;
+export type AccountApi = Pick<
+  AccountCore,
+  | "signIn"
+  | "finish"
+  | "session"
+  | "accessToken"
+  | "tokenAfterUnauthorized"
+  | "signOutEverywhere"
+  | "signOut"
+  | "deleteAccount"
+  | "setAnthropicKey"
+  | "setLinearKey"
+  | "linearCannotComment"
+  | "installationIds"
+  | "claimInstallationSync"
+  | "setInstallations"
+  | "installationAccounts"
+  | "installationSyncedAt"
+>;
 
 /** The part of a person's `PrIndex` the hosted routes and installations touch. */
 export interface UserIndexApi {
@@ -195,7 +248,11 @@ export function installationOf(env: Env, id: string): InstallationApi {
  * person; null when GitHub could not say (down, or asking the token to wait), so the question is asked again.
  */
 export async function canSeeWith(
-  account: Pick<AccountApi, "accessToken">, repo: RepoFullName, fetcher: Fetch, now: number, reserve: GitHubReserve,
+  account: Pick<AccountApi, "accessToken">,
+  repo: RepoFullName,
+  fetcher: Fetch,
+  now: number,
+  reserve: GitHubReserve,
 ): Promise<boolean | null> {
   const answer = await account.accessToken();
   if (answer.kind !== "ok") {
@@ -204,7 +261,11 @@ export async function canSeeWith(
   let response: Response;
   try {
     response = await fetcher(`https://api.github.com/repos/${repo}`, {
-      headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${answer.token}`, "User-Agent": "pr-viewer" },
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${answer.token}`,
+        "User-Agent": "pr-viewer",
+      },
     });
   } catch {
     return null;
@@ -220,8 +281,13 @@ export async function canSeeWith(
 }
 
 export function canSee(env: Env, userId: string, repo: RepoFullName): Promise<boolean | null> {
-  return canSeeWith(accountOf(env, userId), repo, (input, init) => fetch(input, init), Date.now(),
-    gitHubReserveOf(limitsOf(env)));
+  return canSeeWith(
+    accountOf(env, userId),
+    repo,
+    (input, init) => fetch(input, init),
+    Date.now(),
+    gitHubReserveOf(limitsOf(env)),
+  );
 }
 
 /** The real services: the Worker's bindings. */
@@ -229,7 +295,8 @@ export function servicesOf(env: Env): HostedServices {
   const signIn = (id: string) => {
     const namespace = env.SIGN_INS as DurableObjectNamespace;
     return namespace.get(namespace.idFromName(`signin:${id}`)) as unknown as {
-      begin(pending: PendingSignIn): Promise<void>; take(): Promise<PendingSignIn | null>;
+      begin(pending: PendingSignIn): Promise<void>;
+      take(): Promise<PendingSignIn | null>;
     };
   };
   return {
@@ -273,7 +340,9 @@ export async function renewAfterUnauthorized(env: Env): Promise<string | null> {
   if (!isSet(env.SIGNED_IN_USER_ID) || env.USER_ACCOUNTS === undefined) {
     return null;
   }
-  const answer = await accountOf(env, env.SIGNED_IN_USER_ID).tokenAfterUnauthorized(env.GITHUB_TOKEN);
+  const answer = await accountOf(env, env.SIGNED_IN_USER_ID).tokenAfterUnauthorized(
+    env.GITHUB_TOKEN,
+  );
   if (answer.kind !== "ok") {
     return null;
   }
@@ -293,14 +362,29 @@ const APP_STATE = /^[A-Za-z0-9._~-]{16,256}$/;
 const SIGN_IN_ID = /^[A-Za-z0-9_-]{43}$/;
 
 function errorAnswer(status: number, code: string, message: string): Response {
-  return Response.json({ error: { code, message } }, { status, headers: { "Cache-Control": "no-store" } });
+  return Response.json(
+    { error: { code, message } },
+    { status, headers: { "Cache-Control": "no-store" } },
+  );
 }
 
-function page(title: string, text: string, status = 200, link?: { href: string; label: string }): Response {
-  const button = link ? `<p><a href="${link.href}" style="font-size:20px">${link.label}</a></p>` : "";
-  return new Response(`<!doctype html><meta name="viewport" content="width=device-width"><title>${title}</title>
+function page(
+  title: string,
+  text: string,
+  status = 200,
+  link?: { href: string; label: string },
+): Response {
+  const button = link
+    ? `<p><a href="${link.href}" style="font-size:20px">${link.label}</a></p>`
+    : "";
+  return new Response(
+    `<!doctype html><meta name="viewport" content="width=device-width"><title>${title}</title>
     <body style="font-family:-apple-system,sans-serif;padding:24px"><h1>${title}</h1><p>${text}</p>${button}</body>`,
-  { status, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+    {
+      status,
+      headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+    },
+  );
 }
 
 /** Where the app's authentication session ends: the app catches it and never loads it. */
@@ -313,20 +397,33 @@ function doneUrl(origin: string, fields: Record<string, string>): string {
  * The Worker keeps the app's state and challenge under a state of its own, and sends GitHub a challenge of its own
  * too: GitHub's code is traded here, with a verifier that never leaves the Worker.
  */
-export async function startRoute(request: Request, services: HostedServices, app: OAuthApp): Promise<Response> {
+export async function startRoute(
+  request: Request,
+  services: HostedServices,
+  app: OAuthApp,
+): Promise<Response> {
   const url = new URL(request.url);
   const appState = url.searchParams.get("state") ?? "";
   const appChallenge = url.searchParams.get("code_challenge");
-  if (!APP_STATE.test(appState) || !isPkceChallenge(appChallenge)
-    || url.searchParams.get("code_challenge_method") !== "S256") {
-    return errorAnswer(400, "validation_error",
-      "state must be 16-256 URL-safe characters, code_challenge an S256 challenge, code_challenge_method S256");
+  if (
+    !APP_STATE.test(appState) ||
+    !isPkceChallenge(appChallenge) ||
+    url.searchParams.get("code_challenge_method") !== "S256"
+  ) {
+    return errorAnswer(
+      400,
+      "validation_error",
+      "state must be 16-256 URL-safe characters, code_challenge an S256 challenge, code_challenge_method S256",
+    );
   }
   const id = randomToken();
   const githubVerifier = randomToken();
   const redirectUri = `${url.origin}/auth/github/callback`;
   await services.signIns.begin(id, {
-    app_state: appState, app_challenge: appChallenge, github_verifier: githubVerifier, redirect_uri: redirectUri,
+    app_state: appState,
+    app_challenge: appChallenge,
+    github_verifier: githubVerifier,
+    redirect_uri: redirectUri,
     expires_at: services.now() + durationOf(services.limits, LimitName.SignInMinutes),
   });
   return new Response(null, {
@@ -345,20 +442,28 @@ export async function startRoute(request: Request, services: HostedServices, app
  * Without one (`request_oauth_on_install`, from an install on github.com), a page: nothing is traded.
  */
 export async function callbackRoute(
-  request: Request, services: HostedServices, app: OAuthApp, waitUntil: (promise: Promise<unknown>) => void,
+  request: Request,
+  services: HostedServices,
+  app: OAuthApp,
+  waitUntil: (promise: Promise<unknown>) => void,
 ): Promise<Response> {
   const url = new URL(request.url);
   const params = url.searchParams;
   const id = params.get("state");
   if (id === null) {
-    return page("PRHub is installed", "Open PRHub on your iPhone and sign in with GitHub to see your pull requests.",
-      200, { href: "prhub://", label: "Open PRHub" });
+    return page(
+      "PRHub is installed",
+      "Open PRHub on your iPhone and sign in with GitHub to see your pull requests.",
+      200,
+      { href: "prhub://", label: "Open PRHub" },
+    );
   }
   const pending = SIGN_IN_ID.test(id) ? await services.signIns.take(id) : null;
   if (!pending || pending.expires_at <= services.now()) {
     return Response.redirect(doneUrl(url.origin, { error: "sign_in_expired" }), 302);
   }
-  const fail = (error: string) => Response.redirect(doneUrl(url.origin, { error, state: pending.app_state }), 302);
+  const fail = (error: string) =>
+    Response.redirect(doneUrl(url.origin, { error, state: pending.app_state }), 302);
   if (params.has("error")) {
     return fail(params.get("error") === "access_denied" ? "access_denied" : "github_refused");
   }
@@ -366,9 +471,18 @@ export async function callbackRoute(
   if (!code || code.length > 200) {
     return fail("github_refused");
   }
-  const outcome = await exchangeCode(app, code, pending.github_verifier, pending.redirect_uri, services.fetch);
+  const outcome = await exchangeCode(
+    app,
+    code,
+    pending.github_verifier,
+    pending.redirect_uri,
+    services.fetch,
+  );
   if (outcome.kind !== "granted") {
-    console.error("sign-in: code exchange failed", outcome.kind === "refused" ? outcome.error : outcome.status);
+    console.error(
+      "sign-in: code exchange failed",
+      outcome.kind === "refused" ? outcome.error : outcome.status,
+    );
     return fail(outcome.kind === "refused" ? "github_refused" : "github_unavailable");
   }
   const user = await readUser(outcome.grant.access_token, services.fetch);
@@ -376,13 +490,23 @@ export async function callbackRoute(
     return fail("github_unavailable");
   }
   const userId = String(user.id);
-  const { handoff } = await services.account(userId).signIn(user, outcome.grant, pending.app_challenge);
+  const { handoff } = await services
+    .account(userId)
+    .signIn(user, outcome.grant, pending.app_challenge);
   const index = services.index(userId);
-  waitUntil((async () => {
-    await index.bindUser(user.id);
-    await syncInstallations(services.account(userId), services.installation, services.fetch, services.now(), 0);
-    await index.tick(services.now());
-  })().catch((error: unknown) => console.error("sign-in: first sync failed", error)));
+  waitUntil(
+    (async () => {
+      await index.bindUser(user.id);
+      await syncInstallations(
+        services.account(userId),
+        services.installation,
+        services.fetch,
+        services.now(),
+        0,
+      );
+      await index.tick(services.now());
+    })().catch((error: unknown) => console.error("sign-in: first sync failed", error)),
+  );
   return Response.redirect(doneUrl(url.origin, { code: handoff, state: pending.app_state }), 302);
 }
 
@@ -396,19 +520,30 @@ export async function finishRoute(request: Request, services: HostedServices): P
   const input = parseFinishInput((await bodyOf(request))?.value);
   const userId = userIdOf(input?.code ?? null);
   if (!input || !userId) {
-    return errorAnswer(400, "validation_error", "code must be the callback's code; code_verifier the PKCE verifier");
+    return errorAnswer(
+      400,
+      "validation_error",
+      "code must be the callback's code; code_verifier the PKCE verifier",
+    );
   }
   const session = await services.account(userId).finish(input.code, input.code_verifier);
   if (!session) {
-    return errorAnswer(401, "sign_in_invalid", "unknown, used or expired code, or a verifier that does not match");
+    return errorAnswer(
+      401,
+      "sign_in_invalid",
+      "unknown, used or expired code, or a verifier that does not match",
+    );
   }
-  return Response.json({ secret: session.secret, login: session.login, user_id: session.userId },
-    { headers: { "Cache-Control": "no-store" } });
+  return Response.json(
+    { secret: session.secret, login: session.login, user_id: session.userId },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }
 
 /** A request's session: whose it is, and its fingerprint. Null when the bearer is no session this Worker minted. */
 export async function sessionOf(
-  request: Request, services: HostedServices,
+  request: Request,
+  services: HostedServices,
 ): Promise<(SessionInfo & { fingerprint: Fingerprint }) | null> {
   const secret = deviceSecretOf(request.headers.get("Authorization"));
   const userId = userIdOf(secret);
@@ -442,7 +577,10 @@ export async function signOutRoute(request: Request, services: HostedServices): 
  * `DELETE /account` (App Review 5.1.1(v)): GitHub revokes PRHub's authorization and tokens for this person, and the
  * Worker deletes their account, PR index and stored PR content.
  */
-export async function deleteAccountRoute(request: Request, services: HostedServices): Promise<Response> {
+export async function deleteAccountRoute(
+  request: Request,
+  services: HostedServices,
+): Promise<Response> {
   const session = await sessionOf(request, services);
   if (!session) {
     return errorAnswer(401, "unauthorized", "send the session secret as the bearer");
@@ -457,7 +595,10 @@ export async function deleteAccountRoute(request: Request, services: HostedServi
   }
   await services.index(session.userId).deleteEverything();
   await services.deleteStored(session.userId);
-  return Response.json({ deleted: true, github_revoked: revoked }, { headers: { "Cache-Control": "no-store" } });
+  return Response.json(
+    { deleted: true, github_revoked: revoked },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }
 
 /**
@@ -467,13 +608,18 @@ export async function deleteAccountRoute(request: Request, services: HostedServi
  * status events go to the installation, which marks them in the index of each member who can see the repo.
  */
 export async function hostedWebhook(
-  request: Request, env: Env, services: HostedServices, waitUntil: (promise: Promise<unknown>) => void,
+  request: Request,
+  env: Env,
+  services: HostedServices,
+  waitUntil: (promise: Promise<unknown>) => void,
 ): Promise<Response> {
   if (!isSet(env.WEBHOOK_SECRET)) {
     return new Response("not found\n", { status: 404 });
   }
   const body = await request.arrayBuffer();
-  if (!(await verifySignature(body, request.headers.get("X-Hub-Signature-256"), env.WEBHOOK_SECRET))) {
+  if (
+    !(await verifySignature(body, request.headers.get("X-Hub-Signature-256"), env.WEBHOOK_SECRET))
+  ) {
     return new Response("unauthenticated\n", { status: 401 });
   }
   const event = request.headers.get("X-GitHub-Event");
@@ -498,8 +644,15 @@ export async function hostedWebhook(
   const now = services.now();
   const syncSender = (senderId: number | null) => {
     if (senderId !== null) {
-      waitUntil(syncInstallations(services.account(String(senderId)), services.installation, services.fetch, now, 0)
-        .catch((error: unknown) => console.error("installation sync failed", error)));
+      waitUntil(
+        syncInstallations(
+          services.account(String(senderId)),
+          services.installation,
+          services.fetch,
+          now,
+          0,
+        ).catch((error: unknown) => console.error("installation sync failed", error)),
+      );
     }
   };
   if (delivery.kind === "target") {
@@ -533,7 +686,11 @@ export async function hostedWebhook(
  * on which their key lines, rewrites and Ask run. Anthropic must accept it first; Ask's agent, environment and vault are
  * then made in their org when this Worker can serve Ask. Sealed at rest, never answered back.
  */
-export async function anthropicKeyRoute(request: Request, env: Env, services: HostedServices): Promise<Response> {
+export async function anthropicKeyRoute(
+  request: Request,
+  env: Env,
+  services: HostedServices,
+): Promise<Response> {
   const session = await sessionOf(request, services);
   if (!session) {
     return errorAnswer(401, "unauthorized", "sign in with GitHub");
@@ -547,7 +704,11 @@ export async function anthropicKeyRoute(request: Request, env: Env, services: Ho
     return new Response(null, { status: 204 });
   }
   if (!onApiKey(env)) {
-    return errorAnswer(409, "api_key_off", "AI runs on the subscription for now, so a key can't be added");
+    return errorAnswer(
+      409,
+      "api_key_off",
+      "AI runs on the subscription for now, so a key can't be added",
+    );
   }
   const body = (await bodyOf(request))?.value as { key?: unknown } | undefined;
   const key = typeof body?.key === "string" ? body.key.trim() : null;
@@ -556,7 +717,8 @@ export async function anthropicKeyRoute(request: Request, env: Env, services: Ho
   }
   const checked = await services.anthropic.check(key);
   if (checked !== "ok") {
-    return checked === "invalid" ? errorAnswer(422, "anthropic_key_invalid", "Anthropic did not accept this key")
+    return checked === "invalid"
+      ? errorAnswer(422, "anthropic_key_invalid", "Anthropic did not accept this key")
       : errorAnswer(503, "anthropic_unavailable", "Anthropic could not be asked; try again");
   }
   let ask: AskResources | null = null;
@@ -571,17 +733,29 @@ export async function anthropicKeyRoute(request: Request, env: Env, services: Ho
   if (!(await account.setAnthropicKey(key, ask))) {
     return errorAnswer(401, "signed_out", "sign in with GitHub again");
   }
-  return Response.json({ anthropic_key: true, ask_ai: ask !== null }, { headers: { "Cache-Control": "no-store" } });
+  return Response.json(
+    { anthropic_key: true, ask_ai: ask !== null },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }
 
 /** Sign-in routes a client may call at will, limited per IP: `429 limit_reached` past the limit. */
-async function limited(request: Request, services: HostedServices, name: RateLimitName): Promise<Response | null> {
+async function limited(
+  request: Request,
+  services: HostedServices,
+  name: RateLimitName,
+): Promise<Response | null> {
   const window = rateWindowOf(services.limits, name);
   if (!window) {
     return null;
   }
   const ipHash = await sha256Hex(request.headers.get("CF-Connecting-IP") ?? "unknown");
-  const decision = await services.limitIp(ipHash, [{ name, window }], randomToken(), services.now());
+  const decision = await services.limitIp(
+    ipHash,
+    [{ name, window }],
+    randomToken(),
+    services.now(),
+  );
   return decision.allowed ? null : limitReachedAnswer(decision.name, decision.retryAfterMs);
 }
 
@@ -598,20 +772,34 @@ export function associationRoute(env: Env): Response {
  * that act with the Worker's own token (pairing, the webhook App's setup, the hub's states) are not served.
  */
 export function publicHostedRoute(
-  request: Request, env: Env, services: HostedServices, app: OAuthApp, waitUntil: (promise: Promise<unknown>) => void,
+  request: Request,
+  env: Env,
+  services: HostedServices,
+  app: OAuthApp,
+  waitUntil: (promise: Promise<unknown>) => void,
 ): Promise<Response> | null {
   const { pathname } = new URL(request.url);
-  const limit = pathname === "/auth/github/start" && request.method === "GET" ? LimitName.SignInStartsPerIpPerMinute
-    : pathname === "/auth/github/finish" && request.method === "POST" ? LimitName.SignInFinishesPerIpPerMinute : null;
+  const limit =
+    pathname === "/auth/github/start" && request.method === "GET"
+      ? LimitName.SignInStartsPerIpPerMinute
+      : pathname === "/auth/github/finish" && request.method === "POST"
+        ? LimitName.SignInFinishesPerIpPerMinute
+        : null;
   if (limit) {
-    return limited(request, services, limit)
-      .then((answer) => answer ?? openRoute(request, env, services, app, waitUntil) as Promise<Response>);
+    return limited(request, services, limit).then(
+      (answer) =>
+        answer ?? (openRoute(request, env, services, app, waitUntil) as Promise<Response>),
+    );
   }
   return openRoute(request, env, services, app, waitUntil);
 }
 
 function openRoute(
-  request: Request, env: Env, services: HostedServices, app: OAuthApp, waitUntil: (promise: Promise<unknown>) => void,
+  request: Request,
+  env: Env,
+  services: HostedServices,
+  app: OAuthApp,
+  waitUntil: (promise: Promise<unknown>) => void,
 ): Promise<Response> | null {
   const { pathname } = new URL(request.url);
   const method = request.method;
@@ -645,8 +833,15 @@ function openRoute(
   if (pathname === "/account/anthropic-key" && (method === "PUT" || method === "DELETE")) {
     return anthropicKeyRoute(request, env, services);
   }
-  if (["/device/pair", "/github/setup", "/github/callback", "/github/app-credentials", "/prs/states"]
-    .includes(pathname)) {
+  if (
+    [
+      "/device/pair",
+      "/github/setup",
+      "/github/callback",
+      "/github/app-credentials",
+      "/prs/states",
+    ].includes(pathname)
+  ) {
     return Promise.resolve(new Response("not found\n", { status: 404 }));
   }
   return null;
@@ -658,20 +853,27 @@ function openRoute(
  * `/device/config` is answered for a signed-out session too, so the app can show Sign in again.
  */
 export async function authenticate(
-  request: Request, env: Env, services: HostedServices,
+  request: Request,
+  env: Env,
+  services: HostedServices,
 ): Promise<{ env: Env; session: SessionInfo } | { answer: Response; session: SessionInfo | null }> {
   const session = await sessionOf(request, services);
   if (!session) {
     return { answer: errorAnswer(401, "unauthorized", "sign in with GitHub"), session: null };
   }
-  const token = session.state === "signed_in" ? await services.account(session.userId).accessToken()
-    : { kind: "signed_out" as const };
+  const token =
+    session.state === "signed_in"
+      ? await services.account(session.userId).accessToken()
+      : { kind: "signed_out" as const };
   if (token.kind === "ok") {
     return { env: userEnv(env, token), session };
   }
   return token.kind === "signed_out"
     ? { answer: errorAnswer(401, "signed_out", "sign in with GitHub again"), session }
-    : { answer: errorAnswer(503, "github_unavailable", "GitHub could not be asked; try again"), session };
+    : {
+        answer: errorAnswer(503, "github_unavailable", "GitHub could not be asked; try again"),
+        session,
+      };
 }
 
 /** How long `GET /device/config` waits for a read of the installations before it answers with the ones it holds. */
@@ -685,16 +887,28 @@ const READ_NOW_WAIT_MS = 8_000;
  * once the last read is `installation_sync_on_open_minutes` old.
  */
 export async function configInstallations(
-  request: Request, session: SessionInfo, services: HostedServices, waitUntil: (promise: Promise<unknown>) => void,
+  request: Request,
+  session: SessionInfo,
+  services: HostedServices,
+  waitUntil: (promise: Promise<unknown>) => void,
 ): Promise<InstallationAccount[] | null> {
   const account = services.account(session.userId);
   const held = await account.installationAccounts();
-  const isNewSession = await account.installationSyncedAt() < session.createdAt;
-  const readsNow = isNewSession || !held?.length || new URL(request.url).searchParams.get("fresh") === "1";
-  const gapMs = isNewSession ? 0
-    : readsNow ? readNowGapOf(services.limits) : durationOf(services.limits, LimitName.InstallationSyncOnOpenMinutes);
-  const sync = syncInstallations(account, services.installation, services.fetch, services.now(), gapMs)
-    .catch((error: unknown) => console.error("installation sync failed", error));
+  const isNewSession = (await account.installationSyncedAt()) < session.createdAt;
+  const readsNow =
+    isNewSession || !held?.length || new URL(request.url).searchParams.get("fresh") === "1";
+  const gapMs = isNewSession
+    ? 0
+    : readsNow
+      ? readNowGapOf(services.limits)
+      : durationOf(services.limits, LimitName.InstallationSyncOnOpenMinutes);
+  const sync = syncInstallations(
+    account,
+    services.installation,
+    services.fetch,
+    services.now(),
+    gapMs,
+  ).catch((error: unknown) => console.error("installation sync failed", error));
   waitUntil(sync);
   if (!readsNow) {
     return held;
@@ -713,13 +927,21 @@ export async function configInstallations(
  * What `GET /device/config` adds on the hosted Worker. Whether a key is set, never the key. `installations` once a sync
  * has read them for a signed-in person.
  */
-export function hostedAccountConfig(session: SessionInfo, installations: InstallationAccount[] | null = null): object {
+export function hostedAccountConfig(
+  session: SessionInfo,
+  installations: InstallationAccount[] | null = null,
+): object {
   return {
     hosted: true,
     account: {
-      state: session.state, login: session.login, user_id: session.userId, anthropic_key: session.hasAnthropicKey,
+      state: session.state,
+      login: session.login,
+      user_id: session.userId,
+      anthropic_key: session.hasAnthropicKey,
       linear_key: session.hasLinearKey === true,
-      ...(session.hasLinearKey === true ? { linear_can_comment: session.linearCanComment ?? null } : {}),
+      ...(session.hasLinearKey === true
+        ? { linear_can_comment: session.linearCanComment ?? null }
+        : {}),
       ...(session.state === "signed_out" ? { reason: session.reason } : {}),
     },
     ...(session.state === "signed_in" && installations ? { installations } : {}),

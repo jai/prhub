@@ -1,18 +1,23 @@
 import PRKitDesign
 import SwiftUI
 
-extension PRKeyLines {
+public extension PRKeyLines {
     /// The PR at a glance, made with the key lines: its risk, the bugs found and what it does.
-    public struct Summary: Decodable, Sendable {
+    struct Summary: Decodable, Sendable {
         public struct Bug: Decodable, Identifiable, Sendable {
             public let path: String
             public let line: Int
             public let side: String
             public let why: String
 
-            public var id: String { "\(path):\(side):\(line)" }
+            public var id: String {
+                "\(path):\(side):\(line)"
+            }
+
             /// The bug as a key line, so a tap shows it in the diff as one does.
-            var asItem: Item { Item(path: path, line: line, side: side, kind: "risk", why: why) }
+            var asItem: Item {
+                Item(path: path, line: line, side: side, kind: "risk", why: why)
+            }
         }
 
         /// Whether the PR does what its Linear ticket asks (docs/api.md, "Requirements").
@@ -155,7 +160,9 @@ struct PRKeyLinesSummaryCard: View {
         }
     }
 
-    private var riskIcon: AppIcon { summary.risk == "low" ? .riskLow : .risk }
+    private var riskIcon: AppIcon {
+        summary.risk == "low" ? .riskLow : .risk
+    }
 
     private var riskTone: Color {
         switch summary.risk {

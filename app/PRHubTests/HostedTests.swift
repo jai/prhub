@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PRHub
+import Testing
 
 private let worker = URL(string: "https://prhub.example.workers.dev")!
 
@@ -19,7 +19,7 @@ struct HostedSignInTests {
         #expect(first.state != second.state && first.verifier != second.verifier)
         let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._~-")
         for value in [first.state, first.verifier] {
-            #expect((43...128).contains(value.count))
+            #expect((43 ... 128).contains(value.count))
             #expect(value.unicodeScalars.allSatisfy(allowed.contains))
         }
     }
@@ -121,7 +121,7 @@ struct AccountClientTests {
     }
 
     private static func body(_ request: URLRequest) throws -> [String: String]? {
-        try JSONSerialization.jsonObject(with: try #require(request.httpBody)) as? [String: String]
+        try JSONSerialization.jsonObject(with: #require(request.httpBody)) as? [String: String]
     }
 
     @Test func finishSendsTheCodeAndVerifierWithNoBearer() async throws {
@@ -425,7 +425,7 @@ struct HostedConnectionTests {
         let fake = Fake()
         let connection = try Self.connection(fake, paired: true)
         await connection.refreshConfig()
-        connection.leavesForGitHub(URL(string: "https://github.com/acme/api/pull/7")!)
+        try connection.leavesForGitHub(#require(URL(string: "https://github.com/acme/api/pull/7")))
         await connection.refreshConfig()
         #expect(fake.configReads.with { $0 } == [false, false], "a PR link is not GitHub's install pages")
 
@@ -576,7 +576,7 @@ struct HostedConnectionTests {
 
     @Test func aSetupLinkInABuildWithoutSelfHostingSaysSo() async throws {
         let connection = try Self.connection(Fake())
-        connection.open(URL(string: "prhub://setup?worker=https%3A%2F%2Fpr-review.alex.workers.dev&code=7KQ2M9XA")!)
+        try connection.open(#require(URL(string: "prhub://setup?worker=https%3A%2F%2Fpr-review.alex.workers.dev&code=7KQ2M9XA")))
         #expect(connection.phase == .selfHostedOff)
         await connection.connect(text: "prhub://setup?worker=https%3A%2F%2Fpr-review.alex.workers.dev&code=7KQ2M9XA")
         #expect(connection.phase == .selfHostedOff && connection.showsOnboarding)
@@ -586,12 +586,12 @@ struct HostedConnectionTests {
         let endpoint = WorkerEndpoint(store: WorkerURLStore(
             service: "com.jaigovindani.prreview.tests", account: "self-hosted-url-\(UUID().uuidString)"
         ))
-        try endpoint.save(URL(string: "https://pr-review.alex.workers.dev")!)
-        let connection = WorkerConnection(
+        try endpoint.save(#require(URL(string: "https://pr-review.alex.workers.dev")))
+        let connection = try WorkerConnection(
             endpoint: endpoint,
             pairing: DevicePairing(pair: { _, _ in throw PairingClient.Failure.transport }, save: { _ in }),
             fetchConfig: { _ in DeviceConfig(features: [.push], login: "alex") }, forgetSecret: {},
-            defaults: UserDefaults(suiteName: "prhub-hosted-\(UUID().uuidString)")!, build: Self.build
+            defaults: #require(UserDefaults(suiteName: "prhub-hosted-\(UUID().uuidString)")), build: Self.build
         )
         await connection.refreshConfig()
         #expect(connection.isPaired && !connection.showsOnboarding)

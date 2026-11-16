@@ -33,19 +33,25 @@ root="$(cd "$here/.." && pwd)"
 config="$here/wrangler.jsonc"
 
 say() { printf '==> %s\n' "$*" >&2; }
-die() { printf 'setup.sh: %s\n' "$*" >&2; exit 1; }
+die() {
+	printf 'setup.sh: %s\n' "$*" >&2
+	exit 1
+}
 
 # ask NAME "prompt" [secret]: keeps an existing value, else prompts in a terminal, else fails.
 ask() {
-  local name="$1" prompt="$2" secret="${3:-}" value
-  value="${!name:-}"
-  if [ -z "$value" ]; then
-    [ -t 0 ] || die "$name is not set (no terminal to ask in)"
-    if [ "$secret" = secret ]; then read -rsp "$prompt: " value; echo >&2; else read -rp "$prompt: " value; fi
-  fi
-  [ -n "$value" ] || die "$name is empty"
-  printf -v "$name" '%s' "$value"
-  export "${name?}"
+	local name="$1" prompt="$2" secret="${3:-}" value
+	value="${!name:-}"
+	if [ -z "$value" ]; then
+		[ -t 0 ] || die "$name is not set (no terminal to ask in)"
+		if [ "$secret" = secret ]; then
+			read -rsp "$prompt: " value
+			echo >&2
+		else read -rp "$prompt: " value; fi
+	fi
+	[ -n "$value" ] || die "$name is empty"
+	printf -v "$name" '%s' "$value"
+	export "${name?}"
 }
 
 # 1. Tools and settings.
@@ -58,20 +64,23 @@ WORKER_NAME="${WORKER_NAME:-pr-review}"
 [[ "$WORKER_NAME" =~ ^[a-z0-9][a-z0-9-]{0,55}$ ]] || die "WORKER_NAME must be lowercase letters, digits and hyphens"
 PUSH_RELAY_URL="${PUSH_RELAY_URL:-}"
 if [ -n "$PUSH_RELAY_URL" ]; then
-  [[ "$PUSH_RELAY_URL" =~ ^https://[^[:space:]/]+/?$ ]] || die "PUSH_RELAY_URL must be https://<host>"
+	[[ "$PUSH_RELAY_URL" =~ ^https://[^[:space:]/]+/?$ ]] || die "PUSH_RELAY_URL must be https://<host>"
 fi
 
-if [ ! -d "$root/worker/node_modules" ]; then say "installing the Worker's dependencies"; (cd "$root/worker" && npm ci --no-audit --no-fund >&2); fi
+if [ ! -d "$root/worker/node_modules" ]; then
+	say "installing the Worker's dependencies"
+	(cd "$root/worker" && npm ci --no-audit --no-fund >&2)
+fi
 wrangler() { (cd "$root/worker" && npx --yes wrangler@4 "$@"); }
 
 # Cloudflare API call with the token on stdin; prints the body, fails on success:false.
 cf() {
-  local method="$1" path="$2" data="${3:-}" args response
-  args=(-sS --config - -X "$method" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID$path")
-  [ -n "$data" ] && args+=(--data "$data")
-  response="$(printf 'header = "Authorization: Bearer %s"\nheader = "Content-Type: application/json"\n' "$CLOUDFLARE_API_TOKEN" | curl "${args[@]}")"
-  [ "$(printf '%s' "$response" | jq -r '.success')" = true ] || die "Cloudflare $method $path failed: $(printf '%s' "$response" | jq -c '.errors')"
-  printf '%s' "$response"
+	local method="$1" path="$2" data="${3:-}" args response
+	args=(-sS --config - -X "$method" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID$path")
+	[ -n "$data" ] && args+=(--data "$data")
+	response="$(printf 'header = "Authorization: Bearer %s"\nheader = "Content-Type: application/json"\n' "$CLOUDFLARE_API_TOKEN" | curl "${args[@]}")"
+	[ "$(printf '%s' "$response" | jq -r '.success')" = true ] || die "Cloudflare $method $path failed: $(printf '%s' "$response" | jq -c '.errors')"
+	printf '%s' "$response"
 }
 
 say "checking the Cloudflare token against account $CLOUDFLARE_ACCOUNT_ID"
@@ -87,16 +96,16 @@ say "GitHub token is $login's"
 # 2. R2 bucket.
 bucket="$WORKER_NAME-diffs"
 if cf GET "/r2/buckets?per_page=1000" | jq -e --arg b "$bucket" '.result.buckets[] | select(.name == $b)' >/dev/null; then
-  say "found R2 bucket $bucket"
+	say "found R2 bucket $bucket"
 else
-  cf POST "/r2/buckets" "$(jq -nc --arg b "$bucket" '{name: $b}')" >/dev/null
-  say "created R2 bucket $bucket"
+	cf POST "/r2/buckets" "$(jq -nc --arg b "$bucket" '{name: $b}')" >/dev/null
+	say "created R2 bucket $bucket"
 fi
 
 # 3. Render the config. Node does the substitution so any value stays valid JSON.
 # shellcheck disable=SC2016
 WORKER_NAME="$WORKER_NAME" CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" R2_BUCKET="$bucket" \
-  PUSH_RELAY_URL="${PUSH_RELAY_URL%/}" node -e '
+	PUSH_RELAY_URL="${PUSH_RELAY_URL%/}" node -e '
 const fs = require("fs");
 const [template, out] = process.argv.slice(1);
 const names = ["WORKER_NAME", "CLOUDFLARE_ACCOUNT_ID", "R2_BUCKET", "PUSH_RELAY_URL", "GITHUB_ORGS",
@@ -117,10 +126,10 @@ say "deployed at $worker_url"
 
 # 5. Secrets: each one given, never echoed.
 for name in GITHUB_TOKEN PUSH_RELAY_KEY ANTHROPIC_API_KEY ASK_GITHUB_TOKEN; do
-  if [ -n "${!name:-}" ]; then
-    printf '%s' "${!name}" | wrangler secret put "$name" --config "$config" >/dev/null 2>&1 || die "could not set $name"
-    say "set $name"
-  fi
+	if [ -n "${!name:-}" ]; then
+		printf '%s' "${!name}" | wrangler secret put "$name" --config "$config" >/dev/null 2>&1 || die "could not set $name"
+		say "set $name"
+	fi
 done
 
 # 6. Check. Secrets take a few seconds to reach the new version.

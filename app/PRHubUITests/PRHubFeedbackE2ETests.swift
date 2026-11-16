@@ -14,7 +14,9 @@ final class PRHubFeedbackE2ETests: XCTestCase {
         continueAfterFailure = false
     }
 
-    private var values: [String: String] { ProcessInfo.processInfo.environment }
+    private var values: [String: String] {
+        ProcessInfo.processInfo.environment
+    }
 
     /// Launches on the Feedback tab, on FeedbackKit's direct path; skipped without the URL and token.
     private func launchOnTheLiveWorker() throws {

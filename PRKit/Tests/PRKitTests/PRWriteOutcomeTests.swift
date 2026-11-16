@@ -1,8 +1,8 @@
 import Foundation
+@testable import PRKit
 import PRKitDesign
 import SwiftUI
 import Testing
-@testable import PRKit
 
 /// The Worker's answers read once, at the client, and each kind of queued job in its own words.
 struct PRWorkerErrorTests {

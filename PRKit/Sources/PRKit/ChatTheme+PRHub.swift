@@ -2,9 +2,9 @@
 import PRKitDesign
 import SwiftUI
 
-extension ChatTheme {
+public extension ChatTheme {
     /// DESIGN.md's chat: its text styles, colour roles and icons, and a code block in the diff's font.
-    public static let prHub = ChatTheme(
+    static let prHub = ChatTheme(
         font: { Font.app($0) },
         code: { AnyView($0.diffCodeFont(step: Font.appleSize(.footnote) - DiffFont.standard.size)) },
         ink: .ink, inkQuiet: .inkQuiet, onBubble: .onBubble, groundPage: .groundPage, groundCard: .groundCard,

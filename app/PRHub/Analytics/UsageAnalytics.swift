@@ -22,7 +22,8 @@ struct AnalyticsProject: Equatable, Sendable {
             return value.isEmpty || value.contains("$(") ? nil : value
         }
         guard let apiKey = setting("PRHubAnalyticsKey"), let host = setting("PRHubAnalyticsHost"),
-              let url = URL(string: "https://\(host)") else {
+              let url = URL(string: "https://\(host)")
+        else {
             return nil
         }
         self.apiKey = apiKey
@@ -73,9 +74,9 @@ final class UsageAnalytics {
 
     static func live() -> UsageAnalytics {
         #if DEBUG
-        let isDebugBuild = true
+            let isDebugBuild = true
         #else
-        let isDebugBuild = false
+            let isDebugBuild = false
         #endif
         return make(
             project: AnalyticsProject(info: Bundle.main.infoDictionary ?? [:]), isDebugBuild: isDebugBuild,

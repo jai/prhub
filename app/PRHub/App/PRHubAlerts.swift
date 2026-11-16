@@ -23,7 +23,7 @@ final class PRHubNotificationDelegate: NSObject, UNUserNotificationCenterDelegat
     }
 
     func userNotificationCenter(
-        _ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+        _: UNUserNotificationCenter, willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         if Self.isSignedOut(notification.request.content.userInfo) {
@@ -34,7 +34,7 @@ final class PRHubNotificationDelegate: NSObject, UNUserNotificationCenterDelegat
     }
 
     func userNotificationCenter(
-        _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+        _: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo

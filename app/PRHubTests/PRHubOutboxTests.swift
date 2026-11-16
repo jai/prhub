@@ -1,7 +1,7 @@
 import DurableNetworking
 import Foundation
-import Testing
 @testable import PRHub
+import Testing
 
 /// PR writes and questions saved on the device until the Worker has them (`PRHubOutbox`, issue #52).
 @MainActor
@@ -30,7 +30,7 @@ struct PRHubOutboxTests {
 
     /// Waits up to 15 s (the outbox's backoff tops out at 10 s) for `done`.
     private func eventually(_ done: () -> Bool) async throws {
-        for _ in 0..<150 where !done() {
+        for _ in 0 ..< 150 where !done() {
             try await Task.sleep(for: .milliseconds(100))
         }
     }

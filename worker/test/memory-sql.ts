@@ -7,7 +7,9 @@ export function memorySql(): LimitSql {
   const database = new DatabaseSync(":memory:");
   return {
     exec<Row>(query: string, ...bindings: unknown[]) {
-      const rows = database.prepare(query).all(...bindings as (string | number | null)[]) as Row[];
+      const rows = database
+        .prepare(query)
+        .all(...(bindings as (string | number | null)[])) as Row[];
       return { toArray: () => rows.map((row) => ({ ...row })) };
     },
   };

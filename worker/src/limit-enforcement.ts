@@ -3,7 +3,14 @@
  * self-hosted Worker's pairing, against its IP there. Past a limit the route answers `429 limit_reached`.
  */
 import { type Env, prIndex } from "./env.ts";
-import { LimitName, limitReachedAnswer, limitsOf, type Limits, rateWindowOf, type RateLimitName } from "./limits.ts";
+import {
+  LimitName,
+  limitReachedAnswer,
+  limitsOf,
+  type Limits,
+  rateWindowOf,
+  type RateLimitName,
+} from "./limits.ts";
 import type { LimitCheck } from "./limit-counter.ts";
 import { sha256Hex } from "./pairing.ts";
 import { randomToken } from "./token-crypto.ts";
@@ -15,8 +22,12 @@ function checksOf(limits: Limits, names: readonly RateLimitName[]): LimitCheck[]
   });
 }
 
-async function consume(env: Env, names: readonly RateLimitName[], subject: string, key: string):
-Promise<Response | null> {
+async function consume(
+  env: Env,
+  names: readonly RateLimitName[],
+  subject: string,
+  key: string,
+): Promise<Response | null> {
   const checks = checksOf(limitsOf(env), names);
   if (checks.length === 0) {
     return null;
@@ -29,8 +40,11 @@ Promise<Response | null> {
  * One request of the person `env` acts for, against `names`; null when every one has room. `key` names the request,
  * so a repeat of it (the same `client_ref`, or the same AI job) is not counted again; null counts every request.
  */
-export function personLimitAnswer(env: Env, names: readonly RateLimitName[], key: string | null):
-Promise<Response | null> {
+export function personLimitAnswer(
+  env: Env,
+  names: readonly RateLimitName[],
+  key: string | null,
+): Promise<Response | null> {
   return consume(env, names, "", key ?? randomToken());
 }
 

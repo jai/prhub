@@ -1,7 +1,7 @@
 import Foundation
-import Testing
 @testable import PRKit
 @testable import PRKitCore
+import Testing
 
 /// A PR's Ask chat keeps its last good answer: the sheet opens on it, offline too, after a relaunch.
 @MainActor

@@ -13,7 +13,8 @@ export interface AppLatest {
 }
 
 /** Where `.github/workflows/hourly-release.yml` publishes it (release/app-latest.mjs). `APP_LATEST_URL` overrides. */
-export const APP_LATEST_URL = "https://raw.githubusercontent.com/jai/prhub/ci/app-latest/app-latest.json";
+export const APP_LATEST_URL =
+  "https://raw.githubusercontent.com/jai/prhub/ci/app-latest/app-latest.json";
 
 const FRESH_MS = 10 * 60_000;
 const TIMEOUT_MS = 1_500;
@@ -27,7 +28,10 @@ function buildOf(value: unknown): AppBuild | undefined {
     return undefined;
   }
   const { version, build } = value as Record<string, unknown>;
-  return typeof version === "string" && VERSION.test(version) && typeof build === "string" && BUILD.test(build)
+  return typeof version === "string" &&
+    VERSION.test(version) &&
+    typeof build === "string" &&
+    BUILD.test(build)
     ? { version, build }
     : undefined;
 }
@@ -50,8 +54,11 @@ export function parseAppLatest(value: unknown): AppLatest | undefined {
  * The newest TestFlight builds, kept 10 minutes per isolate and by Cloudflare's cache. A read that fails or takes
  * longer than 1.5 s answers what the isolate last kept, or nothing, and is tried again a minute later.
  */
-export async function appLatest(env: Pick<Env, "APP_LATEST_URL">, fetchImpl: typeof fetch = fetch,
-  now = Date.now()): Promise<AppLatest | undefined> {
+export async function appLatest(
+  env: Pick<Env, "APP_LATEST_URL">,
+  fetchImpl: typeof fetch = fetch,
+  now = Date.now(),
+): Promise<AppLatest | undefined> {
   const url = env.APP_LATEST_URL?.trim() || APP_LATEST_URL;
   if (url === "off") {
     return undefined;

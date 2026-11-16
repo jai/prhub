@@ -14,12 +14,14 @@ struct PRDescriptionView: View {
     @State private var boxHeight: CGFloat = 0
     private static let descriptionEditor = "description-editor"
 
-    private var folds: FoldSet { session.folds }
+    private var folds: FoldSet {
+        session.folds
+    }
 
     var body: some View {
         ScrollViewReader { proxy in
             page
-                #if os(iOS)
+            #if os(iOS)
                 // The keyboard's arrival is what covers a box that has just opened, Post and all.
                 .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
                     reveal(in: proxy)
@@ -32,7 +34,7 @@ struct PRDescriptionView: View {
                 .onChange(of: boxHeight) {
                     Task { @MainActor in reveal(in: proxy) }
                 }
-                #endif
+            #endif
         }
     }
 

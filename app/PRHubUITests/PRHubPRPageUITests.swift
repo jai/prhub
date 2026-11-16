@@ -36,7 +36,7 @@ final class PRHubPRPageUITests: XCTestCase {
         launch([])
         openCheckout()
         let request = app.buttons["pr-review-request-changes"]
-        for _ in 0..<5 where !(request.exists && request.isHittable) {
+        for _ in 0 ..< 5 where !(request.exists && request.isHittable) {
             app.swipeUp(velocity: .slow)
         }
         request.tap()
@@ -112,7 +112,7 @@ final class PRHubPRPageUITests: XCTestCase {
     }
 
     /// One job name in two workflows says its workflow; a job's matrix legs are one line that opens to them.
-    func testTheChecksGroupMatrixLegsAndNameTheirWorkflow() throws {
+    func testTheChecksGroupMatrixLegsAndNameTheirWorkflow() {
         launch()
         openCheckout()
         let header = app.buttons["checks-header"]
@@ -131,7 +131,7 @@ final class PRHubPRPageUITests: XCTestCase {
 
     /// A description in GitHub's Markdown: its table one grid that scrolls sideways, not a line per cell, and a
     /// `<details>` fold that opens in place.
-    func testADescriptionDrawsGitHubsMarkdown() throws {
+    func testADescriptionDrawsGitHubsMarkdown() {
         launch()
         openRateLimit()
         let table = app.scrollViews["markdown-table"]
@@ -154,7 +154,7 @@ final class PRHubPRPageUITests: XCTestCase {
 
     /// At a text size where "Request changes" no longer fits its third, all three buttons show icons, and keep their
     /// words for VoiceOver.
-    func testTheReviewBarShowsIconsWhenItsWordsDontFit() throws {
+    func testTheReviewBarShowsIconsWhenItsWordsDontFit() {
         launch(["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryXXL"])
         openCheckout()
         let approve = app.buttons["pr-review-approve"]
@@ -170,7 +170,7 @@ final class PRHubPRPageUITests: XCTestCase {
 
     /// The tickets the title names, each with Linear's state, and the title without their brackets; a bot's PR names
     /// the person it was opened for, and says it is a bot's.
-    func testThePageShowsItsTicketsAndWhoItIsFrom() throws {
+    func testThePageShowsItsTicketsAndWhoItIsFrom() {
         launch()
         openRateLimit()
         XCTAssertTrue(app.staticTexts["Rate-limit the password reset endpoint"].waitForExistence(timeout: 5),
@@ -188,7 +188,7 @@ final class PRHubPRPageUITests: XCTestCase {
 
     /// Approve closes its box at once; the toast says Submitting review…, then Approved, then goes. A refused review
     /// stays on the toast with the reason, and Retry sends it.
-    func testAReviewGoesInTheBackgroundWithAToast() throws {
+    func testAReviewGoesInTheBackgroundWithAToast() {
         launch(["-PRHubRefuseFirstReview"])
         openCheckout()
         let approve = app.buttons["pr-review-approve"]
@@ -217,7 +217,7 @@ final class PRHubPRPageUITests: XCTestCase {
         XCTAssertTrue(waitFor(timeout: 6) { !words.exists }, "it fades once GitHub has it")
     }
 
-    func testALinesCommentNowClosesItsBoxAndTheToastFollowsIt() throws {
+    func testALinesCommentNowClosesItsBoxAndTheToastFollowsIt() {
         launch()
         openCheckout()
         let diff = app.buttons["pr-files-changed"]

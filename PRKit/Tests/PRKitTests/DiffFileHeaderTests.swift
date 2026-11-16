@@ -1,10 +1,10 @@
 import Foundation
-import Testing
 @testable import PRKit
+import Testing
 #if os(iOS)
-import UIKit
+    import UIKit
 #else
-import AppKit
+    import AppKit
 #endif
 
 /// The file header's path at big text sizes: it shrinks before it is cut, never below the code's size, and is cut from
@@ -37,25 +37,25 @@ struct DiffFileHeaderTests {
     }
 
     #if os(iOS)
-    /// On an iPhone 17's width, at Jai's size: the header's label shows the long path's whole file name.
-    @Test func atJaisSizeTheHeaderShowsTheLongPathsFileName() throws {
-        let metrics = DiffMetrics(
-            .standard, traits: UITraitCollection(preferredContentSizeCategory: .extraExtraExtraLarge)
-        )
-        let header = DiffFileHeader(reuseIdentifier: DiffFileHeader.identifier)
-        let file = DiffRows.File(path: Self.longPath, change: .init(added: 150, removed: 0), rows: [])
-        header.configure(file, section: 0, isCollapsed: false, isViewed: false, metrics: metrics)
-        header.pin(toVisibleWidth: 402, offsetX: 0)
-        let path = try #require(labels(in: header).first { $0.accessibilityIdentifier == "file-header-0" })
-        let name = "…" + (Self.longPath as NSString).lastPathComponent
-        #expect(width(of: name, in: metrics.headerPath) > path.bounds.width, "the case this is for: cut on main")
-        #expect(width(of: name, in: path.font) <= path.bounds.width)
-        #expect(path.lineBreakMode == .byTruncatingHead)
-    }
+        /// On an iPhone 17's width, at Jai's size: the header's label shows the long path's whole file name.
+        @Test func atJaisSizeTheHeaderShowsTheLongPathsFileName() throws {
+            let metrics = DiffMetrics(
+                .standard, traits: UITraitCollection(preferredContentSizeCategory: .extraExtraExtraLarge)
+            )
+            let header = DiffFileHeader(reuseIdentifier: DiffFileHeader.identifier)
+            let file = DiffRows.File(path: Self.longPath, change: .init(added: 150, removed: 0), rows: [])
+            header.configure(file, section: 0, isCollapsed: false, isViewed: false, metrics: metrics)
+            header.pin(toVisibleWidth: 402, offsetX: 0)
+            let path = try #require(labels(in: header).first { $0.accessibilityIdentifier == "file-header-0" })
+            let name = "…" + (Self.longPath as NSString).lastPathComponent
+            #expect(width(of: name, in: metrics.headerPath) > path.bounds.width, "the case this is for: cut on main")
+            #expect(width(of: name, in: path.font) <= path.bounds.width)
+            #expect(path.lineBreakMode == .byTruncatingHead)
+        }
 
-    private func labels(in view: UIView) -> [UILabel] {
-        view.subviews.flatMap { ($0 as? UILabel).map { [$0] } ?? labels(in: $0) }
-    }
+        private func labels(in view: UIView) -> [UILabel] {
+            view.subviews.flatMap { ($0 as? UILabel).map { [$0] } ?? labels(in: $0) }
+        }
     #endif
 
     private func bold(_ size: CGFloat) -> PlatformFont {

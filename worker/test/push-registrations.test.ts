@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { DeviceToken, Fingerprint } from "../src/ids.ts";
 import {
-  createPushRegistrationsTable, forgetPushTokensOf, pruneUnlinkedPushTokens, registerPushToken,
+  createPushRegistrationsTable,
+  forgetPushTokensOf,
+  pruneUnlinkedPushTokens,
+  registerPushToken,
 } from "../src/push-registrations.ts";
 import { memorySql } from "./memory-sql.ts";
 
@@ -11,8 +14,11 @@ const IPAD = "b".repeat(64) as Fingerprint;
 const token = (digit: string) => digit.repeat(64) as DeviceToken;
 
 function registered(sql: ReturnType<typeof memorySql>) {
-  return sql.exec<{ token: string; fingerprint: string | null }>(
-    "SELECT token, fingerprint FROM devices ORDER BY token").toArray();
+  return sql
+    .exec<{ token: string; fingerprint: string | null }>(
+      "SELECT token, fingerprint FROM devices ORDER BY token",
+    )
+    .toArray();
 }
 
 test("unpairing one device takes its push registrations and leaves the other device's", () => {

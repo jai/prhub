@@ -1,5 +1,5 @@
-@testable import PRKit
 import Foundation
+@testable import PRKit
 import Testing
 
 struct DiffDocumentTests {
@@ -66,8 +66,8 @@ struct DiffDocumentTests {
             "comments":{"nodes":[]}}
             """.utf8))
         }
-        let rows = DiffRows(document: document, threads: [
-            try thread(5, "RIGHT"), try thread(5, "LEFT"), try thread(nil, "RIGHT"), try thread(900, "RIGHT"),
+        let rows = try DiffRows(document: document, threads: [
+            thread(5, "RIGHT"), thread(5, "LEFT"), thread(nil, "RIGHT"), thread(900, "RIGHT"),
         ])
 
         #expect(rows.files.map(\.path) == ["f"])

@@ -55,10 +55,18 @@ export function alertKinds(env: Pick<Env, "PR_ALERTS">): Set<AlertKind> {
  * or changes requested on a PR already held. Dedupe on PR and head is the index's (`alertKey`).
  */
 export function alertsFor(
-  held: HeldStatus, pr: ReadPullRequest, kinds: ReadonlySet<AlertKind>, now: number,
+  held: HeldStatus,
+  pr: ReadPullRequest,
+  kinds: ReadonlySet<AlertKind>,
+  now: number,
 ): PrAlert[] {
-  const alert = (kind: AlertKind): PrAlert => (
-    { kind, repo: pr.repo, number: pr.number, head: pr.head, title: pr.title });
+  const alert = (kind: AlertKind): PrAlert => ({
+    kind,
+    repo: pr.repo,
+    number: pr.number,
+    head: pr.head,
+    title: pr.title,
+  });
   const alerts: PrAlert[] = [];
   const isFresh = pr.requestedAt !== null && now - Date.parse(pr.requestedAt) <= ALERT_FRESH_MS;
   if (kinds.has("review_requested") && pr.list === "review" && held?.list !== "review" && isFresh) {
@@ -81,12 +89,16 @@ export function alertKey(alert: Pick<PrAlert, "kind" | "repo" | "number" | "head
 }
 
 const HEADINGS: Record<AlertKind, string> = {
-  review_requested: "Review requested", approved: "Approved", changes_requested: "Changes requested",
+  review_requested: "Review requested",
+  approved: "Approved",
+  changes_requested: "Changes requested",
 };
 
 function clip(text: string, limit: number): string {
   const characters = Array.from(text.trim());
-  return characters.length <= limit ? characters.join("") : `${characters.slice(0, limit - 1).join("")}…`;
+  return characters.length <= limit
+    ? characters.join("")
+    : `${characters.slice(0, limit - 1).join("")}…`;
 }
 
 /** Room left in APNs' 4096 bytes for everything but `row`, whatever the title. */
@@ -101,7 +113,10 @@ export function alertMessage(alert: PrAlert, row: object | null = null): PushMes
   const name = prId(alert.repo, alert.number);
   const payload: PushMessage["payload"] = {
     aps: {
-      alert: { title: clip(`${HEADINGS[alert.kind]}: ${name}`, MAX_TITLE), body: clip(alert.title, MAX_BODY) },
+      alert: {
+        title: clip(`${HEADINGS[alert.kind]}: ${name}`, MAX_TITLE),
+        body: clip(alert.title, MAX_BODY),
+      },
       sound: "default",
       "thread-id": clip(`pr:${name}`, 64),
       "mutable-content": 1,
@@ -113,7 +128,10 @@ export function alertMessage(alert: PrAlert, row: object | null = null): PushMes
   const withRow = row ? { ...payload, row } : payload;
   const fits = new TextEncoder().encode(JSON.stringify(withRow)).length <= MAX_PAYLOAD_BYTES;
   return {
-    pushType: "alert", priority: 10, collapseId: null, lifetimeSeconds: ALERT_LIFETIME_SECONDS,
+    pushType: "alert",
+    priority: 10,
+    collapseId: null,
+    lifetimeSeconds: ALERT_LIFETIME_SECONDS,
     payload: fits ? withRow : payload,
   };
 }

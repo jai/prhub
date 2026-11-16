@@ -1,7 +1,7 @@
 import Foundation
+@testable import PRKit
 import SwiftUI
 import Testing
-@testable import PRKit
 
 /// The code stops at its sideways edges: a bounce would pull it off the screen's edge, with the file header cut where
 /// the table ends. A finger's bounce can't be driven from a test, so this holds the setting that stops it, on the
@@ -16,9 +16,9 @@ struct DiffTableEdgeTests {
             onContent: {}, actions: actions
         )
         #if os(iOS)
-        #expect(!container.bounces)
+            #expect(!container.bounces)
         #else
-        #expect(container.horizontalScrollElasticity == .none)
+            #expect(container.horizontalScrollElasticity == .none)
         #endif
     }
 

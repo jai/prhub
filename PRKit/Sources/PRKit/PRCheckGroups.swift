@@ -10,7 +10,9 @@ extension PullRequestDetail {
             public let label: String
             public let check: Check
 
-            public var id: String { check.id }
+            public var id: String {
+                check.id
+            }
         }
 
         public let name: String
@@ -22,11 +24,18 @@ extension PullRequestDetail {
         /// Another line has the same name, so this one says its workflow.
         public fileprivate(set) var showsWorkflow = false
 
-        public var id: String { "\(workflow ?? "")\n\(name)\n\(job?.id ?? legs.first?.id ?? "")" }
-        public var isGroup: Bool { !legs.isEmpty }
+        public var id: String {
+            "\(workflow ?? "")\n\(name)\n\(job?.id ?? legs.first?.id ?? "")"
+        }
+
+        public var isGroup: Bool {
+            !legs.isEmpty
+        }
 
         /// The job's check and its legs.
-        public var checks: [Check] { (job.map { [$0] } ?? []) + legs.map(\.check) }
+        public var checks: [Check] {
+            (job.map { [$0] } ?? []) + legs.map(\.check)
+        }
 
         /// The worst of its checks: failing, then running, then passing, then skipped.
         public var state: String {
@@ -40,7 +49,9 @@ extension PullRequestDetail {
         }
 
         /// Where a tap goes for a single check.
-        public var url: String? { isGroup ? nil : job?.url }
+        public var url: String? {
+            isGroup ? nil : job?.url
+        }
 
         /// What follows the name, quieter: the legs' count and, where it tells two lines apart, the workflow.
         public var detail: String? {
@@ -78,11 +89,16 @@ extension PullRequestDetail {
         for check in checks {
             let own = JobKey(workflow: check.workflow, name: check.name)
             if jobs.contains(own) {
-                if grouped[own] == nil { order.append(own) }
+                if grouped[own] == nil {
+                    order.append(own)
+                }
                 grouped[own, default: (nil, [])].job = check
             } else if let leg = Self.leg(of: check), case let key = JobKey(workflow: check.workflow, name: leg.job),
-                      jobs.contains(key) {
-                if grouped[key] == nil { order.append(key) }
+                      jobs.contains(key)
+            {
+                if grouped[key] == nil {
+                    order.append(key)
+                }
                 grouped[key, default: (nil, [])].legs.append(.init(label: leg.label, check: check))
             } else {
                 groups.append(CheckGroup(name: check.name, workflow: check.workflow, job: check, legs: []))
@@ -116,7 +132,7 @@ extension PullRequestDetail {
             return nil
         }
         let job = String(check.name[..<open.lowerBound])
-        let label = String(check.name[open.upperBound..<check.name.index(before: check.name.endIndex)])
+        let label = String(check.name[open.upperBound ..< check.name.index(before: check.name.endIndex)])
         guard !job.isEmpty, !label.isEmpty, !(job + label).contains(where: { "()".contains($0) }) else {
             return nil
         }

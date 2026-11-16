@@ -59,10 +59,15 @@ export interface DeviceRegistration {
 }
 
 /** `POST /device/register`: `{token, host}`, the token lowercased as the relay keeps it. */
-export const parseDeviceRegistration = parser<DeviceRegistration>(z.object({
-  token: z.string().regex(DEVICE_TOKEN).transform((token) => token.toLowerCase() as DeviceToken),
-  host: z.enum(APNS_HOSTS),
-}));
+export const parseDeviceRegistration = parser<DeviceRegistration>(
+  z.object({
+    token: z
+      .string()
+      .regex(DEVICE_TOKEN)
+      .transform((token) => token.toLowerCase() as DeviceToken),
+    host: z.enum(APNS_HOSTS),
+  }),
+);
 
 /** A sync names the rows it fetched by id, so a phone with every row changed sends a few hundred. */
 const MAX_CHANGED = 2_000;
@@ -73,11 +78,15 @@ export interface DeviceEvent {
 }
 
 /** `POST /device/event`: a kind, and whatever the phone says about it. `changed` and `complete` are read, so typed. */
-export const parseDeviceEvent = parser<DeviceEvent>(z.looseObject({
-  kind: z.string().min(1).max(64),
-  changed: z.array(z.string().max(300)).max(MAX_CHANGED).optional(),
-  complete: z.boolean().optional(),
-}).transform(({ kind, ...detail }) => ({ kind, detail })));
+export const parseDeviceEvent = parser<DeviceEvent>(
+  z
+    .looseObject({
+      kind: z.string().min(1).max(64),
+      changed: z.array(z.string().max(300)).max(MAX_CHANGED).optional(),
+      complete: z.boolean().optional(),
+    })
+    .transform(({ kind, ...detail }) => ({ kind, detail })),
+);
 
 // --- Writes and questions -------------------------------------------------------------------------------------------
 
@@ -88,24 +97,52 @@ const ReviewComment = z.object({ path: TEXT, line: z.number(), side: SIDE, body:
 
 const WriteSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("comment"), body: TEXT }),
-  z.object({
-    kind: z.literal("review"), event: z.enum(["APPROVE", "REQUEST_CHANGES", "COMMENT"]), body: z.string().default(""),
-    commit: TEXT, comments: z.array(ReviewComment).default([]),
-  }).refine((review) => review.event === "APPROVE" || review.body !== "" || review.comments.length > 0),
+  z
+    .object({
+      kind: z.literal("review"),
+      event: z.enum(["APPROVE", "REQUEST_CHANGES", "COMMENT"]),
+      body: z.string().default(""),
+      commit: TEXT,
+      comments: z.array(ReviewComment).default([]),
+    })
+    .refine(
+      (review) => review.event === "APPROVE" || review.body !== "" || review.comments.length > 0,
+    ),
   z.object({ kind: z.literal("resolve"), thread: TEXT, resolved: z.boolean() }),
-  z.object({ kind: z.literal("line"), body: TEXT, commit: TEXT, path: TEXT, line: z.number(), side: SIDE }),
+  z.object({
+    kind: z.literal("line"),
+    body: TEXT,
+    commit: TEXT,
+    path: TEXT,
+    line: z.number(),
+    side: SIDE,
+  }),
   z.object({ kind: z.literal("reply"), body: TEXT, thread: TEXT }),
   z.object({ kind: z.literal("viewed"), pullRequest: TEXT, path: TEXT, viewed: z.boolean() }),
   z.object({ kind: z.literal("update_branch"), commit: TEXT }),
   z.object({ kind: z.literal("remove_request") }),
   z.object({
-    kind: z.literal("checkbox"), index: z.number().int(), checked: z.boolean(),
-    task: z.string().nullish().transform((task) => task ?? null),
+    kind: z.literal("checkbox"),
+    index: z.number().int(),
+    checked: z.boolean(),
+    task: z
+      .string()
+      .nullish()
+      .transform((task) => task ?? null),
   }),
   z.object({
-    kind: z.literal("edit_body"), body: z.string(), base: z.string().nullish().transform((base) => base ?? null),
+    kind: z.literal("edit_body"),
+    body: z.string(),
+    base: z
+      .string()
+      .nullish()
+      .transform((base) => base ?? null),
   }),
-  z.object({ kind: z.literal("merge"), method: z.enum(["merge", "squash", "rebase"]), commit: TEXT }),
+  z.object({
+    kind: z.literal("merge"),
+    method: z.enum(["merge", "squash", "rebase"]),
+    commit: TEXT,
+  }),
 ]);
 
 /** `POST /prs/{owner}/{repo}/{n}/write`: one of the writes the viewer can post. */
@@ -113,15 +150,29 @@ export const parseWrite = parser<Write>(WriteSchema);
 
 const MAX_QUESTION = 4_000;
 
-const AskAnchor = z.object({ path: z.string(), line: z.number().int(), side: SIDE, code: z.string().optional() });
+const AskAnchor = z.object({
+  path: z.string(),
+  line: z.number().int(),
+  side: SIDE,
+  code: z.string().optional(),
+});
 
 /** `POST /prs/{owner}/{repo}/{n}/ask`: the question, the head it is about, and a line when it is about one. */
-export const parseAskInput = parser<AskInput>(z.object({
-  question: z.string().max(MAX_QUESTION).transform((question) => question.trim()).pipe(TEXT),
-  head: SHA,
-  // A line that can't be read leaves the question about the whole PR, as it always has.
-  anchor: z.unknown().optional().transform((anchor) => AskAnchor.safeParse(anchor).data ?? null),
-}));
+export const parseAskInput = parser<AskInput>(
+  z.object({
+    question: z
+      .string()
+      .max(MAX_QUESTION)
+      .transform((question) => question.trim())
+      .pipe(TEXT),
+    head: SHA,
+    // A line that can't be read leaves the question about the whole PR, as it always has.
+    anchor: z
+      .unknown()
+      .optional()
+      .transform((anchor) => AskAnchor.safeParse(anchor).data ?? null),
+  }),
+);
 
 // --- Storage --------------------------------------------------------------------------------------------------------
 
@@ -142,7 +193,12 @@ const COMMON_STATUS = {
  * row on another list was stored with, as all were before, is dropped.
  */
 const RowStatusSchema = z.discriminatedUnion("list", [
-  z.object({ list: z.literal("review"), ...COMMON_STATUS, requestedAt: NULLABLE_TEXT, reviewDueAt: NULLABLE_TEXT }),
+  z.object({
+    list: z.literal("review"),
+    ...COMMON_STATUS,
+    requestedAt: NULLABLE_TEXT,
+    reviewDueAt: NULLABLE_TEXT,
+  }),
   z.object({ list: z.literal("reviewed"), ...COMMON_STATUS }),
   z.object({ list: z.literal("mine"), ...COMMON_STATUS }),
   z.object({ list: z.literal("merged"), ...COMMON_STATUS, mergedAt: NULLABLE_TEXT }),
@@ -164,8 +220,13 @@ export function parseRowStatus(stored: string | null): RowStatus | null {
 }
 
 const TicketSchema = z.object({
-  key: z.string(), url: NULLABLE_TEXT, title: NULLABLE_TEXT, state: NULLABLE_TEXT, state_type: NULLABLE_TEXT,
-  state_color: NULLABLE_TEXT, found: z.boolean().nullable(),
+  key: z.string(),
+  url: NULLABLE_TEXT,
+  title: NULLABLE_TEXT,
+  state: NULLABLE_TEXT,
+  state_type: NULLABLE_TEXT,
+  state_color: NULLABLE_TEXT,
+  found: z.boolean().nullable(),
 });
 
 /** A Linear ticket the index stored (a row's `ticket`, `tickets.ticket`); null for none, or for one that won't parse. */
@@ -219,11 +280,13 @@ export interface KeyLineMark {
 }
 
 /** `POST /prs/{owner}/{repo}/{n}/key-lines-reviewed`: one key line, by its id, checked off at a head or back on. */
-export const parseKeyLineMark = parser<KeyLineMark>(z.object({
-  head: SHA,
-  line: z.string().min(1).max(MAX_KEY_LINE_ID),
-  reviewed: z.boolean(),
-}));
+export const parseKeyLineMark = parser<KeyLineMark>(
+  z.object({
+    head: SHA,
+    line: z.string().min(1).max(MAX_KEY_LINE_ID),
+    reviewed: z.boolean(),
+  }),
+);
 
 // --- Hosted sign-in (hosted.ts, account.ts) -------------------------------------------------------------------------
 
@@ -236,15 +299,34 @@ export interface TokenGrant {
 }
 
 /** GitHub's token endpoint, which answers `200` with `{error}` as often as with tokens. */
-export const parseTokenGrant = parser<TokenGrant>(z.object({
-  access_token: z.string().min(1).max(512),
-  expires_in: z.number().int().positive().nullish().transform((value) => value ?? null),
-  refresh_token: z.string().min(1).max(512).nullish().transform((value) => value ?? null),
-  refresh_token_expires_in: z.number().int().positive().nullish().transform((value) => value ?? null),
-}));
+export const parseTokenGrant = parser<TokenGrant>(
+  z.object({
+    access_token: z.string().min(1).max(512),
+    expires_in: z
+      .number()
+      .int()
+      .positive()
+      .nullish()
+      .transform((value) => value ?? null),
+    refresh_token: z
+      .string()
+      .min(1)
+      .max(512)
+      .nullish()
+      .transform((value) => value ?? null),
+    refresh_token_expires_in: z
+      .number()
+      .int()
+      .positive()
+      .nullish()
+      .transform((value) => value ?? null),
+  }),
+);
 
 /** `{error}` from the token endpoint: `bad_refresh_token`, `bad_verification_code`, `incorrect_client_credentials`… */
-export const parseOAuthError = parser<{ error: string }>(z.object({ error: z.string().min(1).max(100) }));
+export const parseOAuthError = parser<{ error: string }>(
+  z.object({ error: z.string().min(1).max(100) }),
+);
 
 export interface GitHubUser {
   id: number;
@@ -252,19 +334,28 @@ export interface GitHubUser {
 }
 
 /** `GET /user`: the id names the person for good; the login can change. */
-export const parseGitHubUser = parser<GitHubUser>(z.object({
-  id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-  login: z.string().regex(/^[A-Za-z0-9-]{1,39}$/),
-}));
+export const parseGitHubUser = parser<GitHubUser>(
+  z.object({
+    id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    login: z.string().regex(/^[A-Za-z0-9-]{1,39}$/),
+  }),
+);
 
 /** `POST /auth/github/finish`: the one-time code from the callback, and the PKCE verifier the app made. */
-export const parseFinishInput = parser<{ code: string; code_verifier: string }>(z.object({
-  code: z.string().min(1).max(200),
-  code_verifier: z.string().regex(/^[A-Za-z0-9._~-]{43,128}$/),
-}));
+export const parseFinishInput = parser<{ code: string; code_verifier: string }>(
+  z.object({
+    code: z.string().min(1).max(200),
+    code_verifier: z.string().regex(/^[A-Za-z0-9._~-]{43,128}$/),
+  }),
+);
 
 /** A webhook delivery that names a person: `github_app_authorization` names who revoked the App. */
-export const parseSender = parser<{ action: string | null; sender: { id: number } }>(z.object({
-  action: z.string().nullish().transform((value) => value ?? null),
-  sender: z.object({ id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }),
-}));
+export const parseSender = parser<{ action: string | null; sender: { id: number } }>(
+  z.object({
+    action: z
+      .string()
+      .nullish()
+      .transform((value) => value ?? null),
+    sender: z.object({ id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }),
+  }),
+);

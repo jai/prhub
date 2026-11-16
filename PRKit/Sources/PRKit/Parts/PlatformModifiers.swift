@@ -4,93 +4,95 @@ import SwiftUI
 
 /// The phone's own navigation-bar and list API where the Mac has none, so a shared screen says what it wants once:
 /// on the phone each is exactly the iOS call it names, on the Mac the nearest thing a window has, or nothing.
-extension View {
+public extension View {
     /// The phone's inline title; a Mac window has no navigation bar to size.
-    public func inlineNavigationTitle() -> some View {
+    func inlineNavigationTitle() -> some View {
         #if os(iOS)
-        navigationBarTitleDisplayMode(.inline)
+            navigationBarTitleDisplayMode(.inline)
         #else
-        self
+            self
         #endif
     }
 
     /// The phone's compact gaps between list sections; the Mac's lists keep their own.
-    public func compactListSections() -> some View {
+    func compactListSections() -> some View {
         #if os(iOS)
-        listSectionSpacing(.compact)
+            listSectionSpacing(.compact)
         #else
-        self
+            self
         #endif
     }
 
     /// On a wide iPad, keeps every scroll view under it to the width of an iPad in portrait, centred. The phone, the Mac
     /// and narrower iPad windows keep their own margins; a diff's table is UIKit, so it keeps the whole width.
-    public func readableContentWidth() -> some View {
+    func readableContentWidth() -> some View {
         #if os(iOS)
-        modifier(ReadableContentWidth())
+            modifier(ReadableContentWidth())
         #else
-        self
+            self
         #endif
     }
 
     /// A bar over the content, held to the same width as the content under it on a wide iPad.
-    public func readableBarWidth() -> some View {
+    func readableBarWidth() -> some View {
         #if os(iOS)
-        frame(maxWidth: ReadableContentWidth.widest).frame(maxWidth: .infinity)
+            frame(maxWidth: ReadableContentWidth.widest).frame(maxWidth: .infinity)
         #else
-        self
+            self
         #endif
     }
 
     /// A sheet's or popover's own scroll margins, not the readable-width screen's it inherits (UI bug 015: a strip).
-    public func presentedScrollMargins() -> some View { contentMargins(.horizontal, 0, for: .scrollContent) }
+    func presentedScrollMargins() -> some View {
+        contentMargins(.horizontal, 0, for: .scrollContent)
+    }
 
     /// A sheet's content: a sheet sets its own width, so on an iPad it swaps the margins of the screen under it for a
     /// form's own. No margin at all would take the corners off its sections.
-    public func sheetContentWidth() -> some View {
+    func sheetContentWidth() -> some View {
         #if os(iOS)
-        modifier(SheetContentWidth())
+            modifier(SheetContentWidth())
         #else
-        self
+            self
         #endif
     }
 
     /// The phone's full-screen cover; a sheet over the Mac's window.
-    public func fullScreenCoverOrSheet<Content: View>(
+    func fullScreenCoverOrSheet<Content: View>(
         isPresented: Binding<Bool>, @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         #if os(iOS)
-        fullScreenCover(isPresented: isPresented, content: content)
+            fullScreenCover(isPresented: isPresented, content: content)
         #else
-        sheet(isPresented: isPresented, content: content)
+            sheet(isPresented: isPresented, content: content)
         #endif
     }
 
     /// A sheet's content: the phone's as it is; on the Mac, a Form grouped as the phone draws it, at a size a sheet
     /// can hold — a Mac sheet otherwise shrinks to its content's least.
-    public func macSheetSize(width: CGFloat, height: CGFloat) -> some View {
+    func macSheetSize(width: CGFloat, height: CGFloat) -> some View {
         #if os(macOS)
-        formStyle(.grouped)
-            .frame(minWidth: width, idealWidth: width, minHeight: height, idealHeight: height)
+            formStyle(.grouped)
+                .frame(minWidth: width, idealWidth: width, minHeight: height, idealHeight: height)
         #else
-        self
+            self
         #endif
     }
 
     /// Pull to refresh on the phone; a Mac has no pull, so there the toolbar's Refresh and ⌘R run the same action.
-    public func refreshableWithCommand(action: @escaping @Sendable () async -> Void) -> some View {
+    func refreshableWithCommand(action: @escaping @Sendable () async -> Void) -> some View {
         #if os(macOS)
-        refreshable(action: action)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Refresh", systemImage: "arrow.clockwise") {
-                        Task { await action() }
+            refreshable(action: action)
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Refresh", systemImage: "arrow.clockwise") {
+                            Task { await action() }
+                        }
+                        .keyboardShortcut("r")
                     }
-                    .keyboardShortcut("r")
                 }
-            }
         #else
-        refreshable(action: action)
+            refreshable(action: action)
         #endif
     }
 
@@ -98,140 +100,140 @@ extension View {
     /// appears. A stack inside the Mac's sidebar swaps its screens in one frame — macOS animates a stack only outside a
     /// split view, with or without an animation around the push — so the motion is the screen's own. The phone's stack
     /// slides its screens itself.
-    public func pushedOnMac() -> some View {
+    func pushedOnMac() -> some View {
         #if os(macOS)
-        modifier(MacPushedScreen())
+            modifier(MacPushedScreen())
         #else
-        self
+            self
         #endif
     }
 
     /// A stack's first screen: on the Mac it slides back in from the left and fades up when Back returns to it
     /// (`atRoot` turning true), the other half of `pushedOnMac`. The phone's stack slides it back itself.
-    public func returnedToOnMac(atRoot: Bool) -> some View {
+    func returnedToOnMac(atRoot: Bool) -> some View {
         #if os(macOS)
-        modifier(MacReturnedScreen(atRoot: atRoot))
+            modifier(MacReturnedScreen(atRoot: atRoot))
         #else
-        self
+            self
         #endif
     }
 
     /// The phone's zoom out of `sourceID` as a cover opens; a Mac sheet comes down as sheets do.
-    public func zoomTransition(sourceID: some Hashable, in namespace: Namespace.ID) -> some View {
+    func zoomTransition(sourceID: some Hashable, in namespace: Namespace.ID) -> some View {
         #if os(iOS)
-        navigationTransition(.zoom(sourceID: sourceID, in: namespace))
+            navigationTransition(.zoom(sourceID: sourceID, in: namespace))
         #else
-        self
+            self
         #endif
     }
 }
 
-extension ToolbarItemPlacement {
+public extension ToolbarItemPlacement {
     /// The phone's top bar, trailing; the Mac's primary-action place in the toolbar.
-    public static var barTrailing: ToolbarItemPlacement {
+    static var barTrailing: ToolbarItemPlacement {
         #if os(iOS)
-        .topBarTrailing
+            .topBarTrailing
         #else
-        .primaryAction
+            .primaryAction
         #endif
     }
 
     /// The phone's top bar, leading; the Mac's navigation place in the toolbar.
-    public static var barLeading: ToolbarItemPlacement {
+    static var barLeading: ToolbarItemPlacement {
         #if os(iOS)
-        .topBarLeading
+            .topBarLeading
         #else
-        .navigation
+            .navigation
         #endif
     }
 }
 
-extension SearchFieldPlacement {
+public extension SearchFieldPlacement {
     /// The phone's drawer under the navigation bar; the Mac's search field in the toolbar.
-    public static var drawer: SearchFieldPlacement {
+    static var drawer: SearchFieldPlacement {
         #if os(iOS)
-        .navigationBarDrawer(displayMode: .automatic)
+            .navigationBarDrawer(displayMode: .automatic)
         #else
-        .toolbar
+            .toolbar
         #endif
     }
 }
 
 #if os(iOS)
-private struct SheetContentWidth: ViewModifier {
-    func body(content: Content) -> some View {
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            content.contentMargins(.horizontal, 20, for: .scrollContent)
-        } else {
-            content
+    private struct SheetContentWidth: ViewModifier {
+        func body(content: Content) -> some View {
+            if UIDevice.current.userInterfaceIdiom == .pad {
+                content.contentMargins(.horizontal, 20, for: .scrollContent)
+            } else {
+                content
+            }
         }
     }
-}
 
-private struct ReadableContentWidth: ViewModifier {
-    static let widest: CGFloat = 820
-    @State private var margin: CGFloat = 0
+    private struct ReadableContentWidth: ViewModifier {
+        static let widest: CGFloat = 820
+        @State private var margin: CGFloat = 0
 
-    func body(content: Content) -> some View {
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            content
-                .contentMargins(.horizontal, margin > 0 ? margin : nil, for: .scrollContent)
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
-                    margin = max(0, (width - Self.widest) / 2)
-                }
-        } else {
-            content
+        func body(content: Content) -> some View {
+            if UIDevice.current.userInterfaceIdiom == .pad {
+                content
+                    .contentMargins(.horizontal, margin > 0 ? margin : nil, for: .scrollContent)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                        margin = max(0, (width - Self.widest) / 2)
+                    }
+            } else {
+                content
+            }
         }
     }
-}
 #endif
 
 #if os(macOS)
-/// How far a Mac screen moves as it is pushed or returned to.
-private enum MacScreenMotion {
-    static let distance: CGFloat = 60
-}
-
-private struct MacPushedScreen: ViewModifier {
-    @State private var shown = false
-
-    func body(content: Content) -> some View {
-        content
-            .offset(x: shown ? 0 : MacScreenMotion.distance)
-            .opacity(shown ? 1 : 0)
-            .onAppear {
-                withAnimation(AppMotion.screen) {
-                    shown = true
-                }
-            }
+    /// How far a Mac screen moves as it is pushed or returned to.
+    private enum MacScreenMotion {
+        static let distance: CGFloat = 60
     }
-}
 
-private struct MacReturnedScreen: ViewModifier {
-    let atRoot: Bool
-    @State private var offset: CGFloat = 0
-    @State private var opacity = 1.0
+    private struct MacPushedScreen: ViewModifier {
+        @State private var shown = false
 
-    func body(content: Content) -> some View {
-        content
-            .offset(x: offset)
-            .opacity(opacity)
-            .onChange(of: atRoot) { _, atRoot in
-                guard atRoot else {
-                    return
-                }
-                offset = -MacScreenMotion.distance
-                opacity = 0
-                // On the run loop's next turn: set in the same update, SwiftUI would draw only where it ends.
-                Task { @MainActor in
+        func body(content: Content) -> some View {
+            content
+                .offset(x: shown ? 0 : MacScreenMotion.distance)
+                .opacity(shown ? 1 : 0)
+                .onAppear {
                     withAnimation(AppMotion.screen) {
-                        offset = 0
-                        opacity = 1
+                        shown = true
                     }
                 }
-            }
+        }
     }
-}
+
+    private struct MacReturnedScreen: ViewModifier {
+        let atRoot: Bool
+        @State private var offset: CGFloat = 0
+        @State private var opacity = 1.0
+
+        func body(content: Content) -> some View {
+            content
+                .offset(x: offset)
+                .opacity(opacity)
+                .onChange(of: atRoot) { _, atRoot in
+                    guard atRoot else {
+                        return
+                    }
+                    offset = -MacScreenMotion.distance
+                    opacity = 0
+                    // On the run loop's next turn: set in the same update, SwiftUI would draw only where it ends.
+                    Task { @MainActor in
+                        withAnimation(AppMotion.screen) {
+                            offset = 0
+                            opacity = 1
+                        }
+                    }
+                }
+        }
+    }
 #endif
 
 /// Opens a value on the `NavigationStack` around it, for `StackLink`.
@@ -247,13 +249,13 @@ public struct StackPush {
     }
 }
 
-extension EnvironmentValues {
-    @Entry public var stackPush: StackPush?
+public extension EnvironmentValues {
+    @Entry var stackPush: StackPush?
 }
 
-extension View {
+public extension View {
     /// On a `NavigationStack` with `StackLink`s in it.
-    public func stackLinks(in path: Binding<NavigationPath>) -> some View {
+    func stackLinks(in path: Binding<NavigationPath>) -> some View {
         environment(\.stackPush, StackPush(path: path))
     }
 }
@@ -273,13 +275,13 @@ public struct StackLink<Value: Hashable, Label: View>: View {
 
     public var body: some View {
         #if os(iOS)
-        NavigationLink(value: value) { label }
+            NavigationLink(value: value) { label }
         #else
-        label
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(.rect)
-            .onTapGesture { push?(value) }
-            .accessibilityAddTraits(.isButton)
+            label
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
+                .onTapGesture { push?(value) }
+                .accessibilityAddTraits(.isButton)
         #endif
     }
 }
@@ -295,35 +297,35 @@ public struct TabStack<Path: Equatable, Root: View>: View {
     private let stack: (Binding<Path>, Root) -> NavigationStack<Path, Root>
 
     #if os(macOS)
-    @State private var leftOpen: Path?
+        @State private var leftOpen: Path?
     #endif
 
     public var body: some View {
         #if os(iOS)
-        stack($path, root)
+            stack($path, root)
         #else
-        stack($path, root)
-            .onDisappear { leftOpen = path }
-            .onAppear {
-                guard let open = leftOpen, open != empty else {
-                    return
+            stack($path, root)
+                .onDisappear { leftOpen = path }
+                .onAppear {
+                    guard let open = leftOpen, open != empty else {
+                        return
+                    }
+                    leftOpen = nil
+                    path = empty
+                    // On the next turn of the run loop, when the new stack is up, and without the push animation: the
+                    // screens are simply there, as if they had never gone.
+                    Task { @MainActor in
+                        var transaction = Transaction()
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) { path = open }
+                    }
                 }
-                leftOpen = nil
-                path = empty
-                // On the next turn of the run loop, when the new stack is up, and without the push animation: the
-                // screens are simply there, as if they had never gone.
-                Task { @MainActor in
-                    var transaction = Transaction()
-                    transaction.disablesAnimations = true
-                    withTransaction(transaction) { path = open }
-                }
-            }
         #endif
     }
 }
 
-extension TabStack where Path == NavigationPath {
-    public init(path: Binding<NavigationPath>, @ViewBuilder root: () -> Root) {
+public extension TabStack where Path == NavigationPath {
+    init(path: Binding<NavigationPath>, @ViewBuilder root: () -> Root) {
         _path = path
         self.root = root()
         empty = NavigationPath()
@@ -331,8 +333,8 @@ extension TabStack where Path == NavigationPath {
     }
 }
 
-extension TabStack {
-    public init<Screen: Hashable>(path: Binding<[Screen]>, @ViewBuilder root: () -> Root) where Path == [Screen] {
+public extension TabStack {
+    init<Screen: Hashable>(path: Binding<[Screen]>, @ViewBuilder root: () -> Root) where Path == [Screen] {
         _path = path
         self.root = root()
         empty = []

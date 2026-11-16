@@ -1,8 +1,8 @@
 import Foundation
-import Testing
-import UserNotifications
 @testable import PRHub
 @testable import PRKit
+import Testing
+import UserNotifications
 
 /// A tapped pr-worker alert opens its PR (docs/api.md, "Alerts"), and the one offer to turn alerts on.
 @MainActor

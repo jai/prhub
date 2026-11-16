@@ -96,7 +96,9 @@ final class PRListRefreshWatch {
     private(set) var startedAt: ContinuousClock.Instant?
     private var restingInsetTop: CGFloat?
 
-    var isRefreshing: Bool { startedAt != nil }
+    var isRefreshing: Bool {
+        startedAt != nil
+    }
 
     func began(rows: Int) -> PRKitEvent {
         startedAt = .now
@@ -110,10 +112,10 @@ final class PRListRefreshWatch {
         startedAt = nil
         let source: PRListRefreshSource = outcome == .ok ? .network : .cached
         logger.info("""
-            refresh finished outcome=\(outcome.rawValue, privacy: .public) ms=\(milliseconds, privacy: .public) \
-            rows=\(rowsBefore, privacy: .public)->\(rowsAfter, privacy: .public) \
-            source=\(source.rawValue, privacy: .public)
-            """)
+        refresh finished outcome=\(outcome.rawValue, privacy: .public) ms=\(milliseconds, privacy: .public) \
+        rows=\(rowsBefore, privacy: .public)->\(rowsAfter, privacy: .public) \
+        source=\(source.rawValue, privacy: .public)
+        """)
         return .listRefreshFinished(PRListRefreshFinish(
             outcome: outcome, milliseconds: milliseconds, rowsBefore: rowsBefore, rowsAfter: rowsAfter, source: source
         ))
@@ -147,11 +149,11 @@ final class PRListRefreshWatch {
             isInteracting: isInteracting, scene: PRListSceneState(scene)
         )
         logger.error("""
-            refresh stuck gap=\(stuck.gap, privacy: .public) offset=\(stuck.offsetY, privacy: .public) \
-            inset=\(stuck.insetTop, privacy: .public) resting=\(stuck.restingInsetTop, privacy: .public) \
-            refreshing=\(stuck.isRefreshing, privacy: .public) loading=\(stuck.isLoading, privacy: .public) \
-            scene=\(stuck.scene.rawValue, privacy: .public)
-            """)
+        refresh stuck gap=\(stuck.gap, privacy: .public) offset=\(stuck.offsetY, privacy: .public) \
+        inset=\(stuck.insetTop, privacy: .public) resting=\(stuck.restingInsetTop, privacy: .public) \
+        refreshing=\(stuck.isRefreshing, privacy: .public) loading=\(stuck.isLoading, privacy: .public) \
+        scene=\(stuck.scene.rawValue, privacy: .public)
+        """)
         return .listRefreshStuck(stuck)
     }
 

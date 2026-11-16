@@ -66,7 +66,7 @@ final class PRHubOfflineUITests: XCTestCase {
         parts.scheme = "prhub-pr"
         parts.host = "open"
         parts.queryItems = [URLQueryItem(name: "url", value: "https://github.com/acme/web/pull/412")]
-        XCUIDevice.shared.system.open(try XCTUnwrap(parts.url))
+        try XCUIDevice.shared.system.open(XCTUnwrap(parts.url))
 
         let notSaved = app.descendants(matching: .any)["pr-not-saved-offline"]
         XCTAssertTrue(notSaved.waitForExistence(timeout: 10), "the PR's offline state")

@@ -42,9 +42,9 @@ public final class PRNetwork {
     }
 }
 
-extension View {
+public extension View {
     /// One quiet line at the bottom while the device is offline: what is on screen is what was saved.
-    public func prKitOfflineBanner(_ controller: PRKitController) -> some View {
+    func prKitOfflineBanner(_ controller: PRKitController) -> some View {
         modifier(PROfflineBanner(network: controller.network))
     }
 }

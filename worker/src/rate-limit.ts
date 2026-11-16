@@ -44,7 +44,9 @@ function intHeader(response: Response, name: string): number | null {
 
 /** The backoff one answer calls for; null when it calls for none. */
 export function backoffOf(
-  response: Response, now: number, reserve: GitHubReserve,
+  response: Response,
+  now: number,
+  reserve: GitHubReserve,
 ): { kind: RateLimitKind; until: number } | null {
   const remaining = intHeader(response, "x-ratelimit-remaining");
   const limit = intHeader(response, "x-ratelimit-limit");
@@ -61,15 +63,25 @@ export function backoffOf(
   if (response.status === 429) {
     return { kind: "secondary", until: now + SECONDARY_DEFAULT_MS };
   }
-  if (remaining !== null && limit !== null && resetAt !== null && resetAt > now
-    && remaining < Math.max(reserve.floor, limit * reserve.share)) {
+  if (
+    remaining !== null &&
+    limit !== null &&
+    resetAt !== null &&
+    resetAt > now &&
+    remaining < Math.max(reserve.floor, limit * reserve.share)
+  ) {
     return { kind: remaining === 0 ? "primary" : "low", until: resetAt };
   }
   return null;
 }
 
 /** Counts the call and keeps what the answer says, the later and stricter backoff winning. */
-export function observe(state: RateLimitState, response: Response, now: number, reserve: GitHubReserve): void {
+export function observe(
+  state: RateLimitState,
+  response: Response,
+  now: number,
+  reserve: GitHubReserve,
+): void {
   state.calls += 1;
   const remaining = intHeader(response, "x-ratelimit-remaining");
   if (remaining !== null) {
@@ -85,7 +97,11 @@ export function observe(state: RateLimitState, response: Response, now: number, 
 }
 
 /** Whether a backoff stops a request: every kind stops background reads; `low` lets the person's own through. */
-export function stops(backoff: { kind: RateLimitKind; until: number } | null, now: number, isBackground: boolean): boolean {
+export function stops(
+  backoff: { kind: RateLimitKind; until: number } | null,
+  now: number,
+  isBackground: boolean,
+): boolean {
   return backoff !== null && backoff.until > now && (isBackground || backoff.kind !== "low");
 }
 
@@ -93,7 +109,10 @@ export function stops(backoff: { kind: RateLimitKind; until: number } | null, no
 const held = new Map<string, { kind: RateLimitKind; until: number }>();
 const MAX_HELD = 1_000;
 
-export function heldBackoff(key: string, now: number): { kind: RateLimitKind; until: number } | null {
+export function heldBackoff(
+  key: string,
+  now: number,
+): { kind: RateLimitKind; until: number } | null {
   const backoff = held.get(key);
   if (backoff && backoff.until <= now) {
     held.delete(key);
@@ -102,7 +121,10 @@ export function heldBackoff(key: string, now: number): { kind: RateLimitKind; un
   return backoff ?? null;
 }
 
-export function holdBackoff(key: string, backoff: { kind: RateLimitKind; until: number } | null): void {
+export function holdBackoff(
+  key: string,
+  backoff: { kind: RateLimitKind; until: number } | null,
+): void {
   if (!backoff) {
     return;
   }
@@ -114,7 +136,11 @@ export function holdBackoff(key: string, backoff: { kind: RateLimitKind; until: 
 
 /** The answer a request gets while its token waits: GitHub's own 429, with the wait. */
 export function waitAnswer(until: number, now: number): Response {
-  return Response.json({ message: "PRHub is waiting for GitHub's rate limit to reset." }, {
-    status: 429, headers: { "retry-after": String(Math.max(1, Math.ceil((until - now) / 1_000))) },
-  });
+  return Response.json(
+    { message: "PRHub is waiting for GitHub's rate limit to reset." },
+    {
+      status: 429,
+      headers: { "retry-after": String(Math.max(1, Math.ceil((until - now) / 1_000))) },
+    },
+  );
 }

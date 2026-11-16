@@ -23,7 +23,8 @@ const words = (text) => text.trim().split(/\s+/);
  * No option on any list names a file to read or write, or a program to run.
  */
 const DIFF = {
-  flags: words(`-p --patch --no-patch -s --stat --shortstat --numstat --name-only --name-status --summary --raw -w -b
+  flags:
+    words(`-p --patch --no-patch -s --stat --shortstat --numstat --name-only --name-status --summary --raw -w -b
     --ignore-all-space --ignore-space-change --no-renames -M -R --patience --histogram --minimal --no-color --word-diff
     --full-index --binary --abbrev`),
   attached: words("-U --unified --diff-filter --stat-width --abbrev"),
@@ -32,15 +33,24 @@ const DIFF = {
 
 /** A history. `-S` and `-G` search it for a string, and `-L` names a range of a file in the repo's history. */
 const LOG = {
-  flags: [...DIFF.flags, ...words(`--oneline --graph --decorate --no-decorate --all --branches --tags --remotes --merges
+  flags: [
+    ...DIFF.flags,
+    ...words(`--oneline --graph --decorate --no-decorate --all --branches --tags --remotes --merges
     --no-merges --first-parent --reverse --date-order --topo-order --author-date-order --abbrev-commit
     --no-abbrev-commit --full-history --simplify-merges --ancestry-path --left-right --cherry-pick --cherry-mark
     --boundary --follow -i --regexp-ignore-case --all-match --invert-grep -E --extended-regexp -F --fixed-strings -m
-    --cc --full-diff --source --use-mailmap --parents --children --no-walk --count --notes --no-notes --pretty`)],
-  attached: [...DIFF.attached, ...words(`-n --max-count --skip --since --until --after --before --author --committer
-    --grep -S -G -L --format --pretty --date --min-parents --max-parents --decorate-refs`)],
-  separate: [...DIFF.separate, ...words(`-n --max-count --skip --since --until --after --before --author --committer
-    --grep -S -G -L --date --min-parents --max-parents`)],
+    --cc --full-diff --source --use-mailmap --parents --children --no-walk --count --notes --no-notes --pretty`),
+  ],
+  attached: [
+    ...DIFF.attached,
+    ...words(`-n --max-count --skip --since --until --after --before --author --committer
+    --grep -S -G -L --format --pretty --date --min-parents --max-parents --decorate-refs`),
+  ],
+  separate: [
+    ...DIFF.separate,
+    ...words(`-n --max-count --skip --since --until --after --before --author --committer
+    --grep -S -G -L --date --min-parents --max-parents`),
+  ],
   counts: true,
 };
 
@@ -50,41 +60,79 @@ const none = { flags: [], attached: [], separate: [] };
  * Git subcommands that only read, each with the only options it takes. An option not listed is refused, and so is
  * every abbreviation: `--ignore-revs-f` is not `--ignore-revs-file`, it is unknown.
  */
-export const GIT_READS = new Map(Object.entries({
-  log: LOG,
-  show: LOG,
-  "rev-list": LOG,
-  shortlog: { flags: words("-s --summary -n --numbered -e --email --all --merges --no-merges"),
-    attached: words("--since --until --after --before --author --max-count --format"),
-    separate: words("--since --until --after --before --author --max-count"), counts: true },
-  diff: { ...DIFF, flags: [...DIFF.flags, "--cached", "--staged", "--merge-base"] },
-  grep: { flags: words(`-n --line-number -i --ignore-case -w --word-regexp -v --invert-match -l --files-with-matches
+export const GIT_READS = new Map(
+  Object.entries({
+    log: LOG,
+    show: LOG,
+    "rev-list": LOG,
+    shortlog: {
+      flags: words("-s --summary -n --numbered -e --email --all --merges --no-merges"),
+      attached: words("--since --until --after --before --author --max-count --format"),
+      separate: words("--since --until --after --before --author --max-count"),
+      counts: true,
+    },
+    diff: { ...DIFF, flags: [...DIFF.flags, "--cached", "--staged", "--merge-base"] },
+    grep: {
+      flags:
+        words(`-n --line-number -i --ignore-case -w --word-regexp -v --invert-match -l --files-with-matches
     -L --files-without-match --count -h -H --full-name -E --extended-regexp -F --fixed-strings -G --basic-regexp
     -P --perl-regexp -I --heading --break --cached --all-match --and --or --not --only-matching --column -p
     --show-function -W --function-context -a --text`),
-    attached: words("-e -A -B -C --context --after-context --before-context --max-depth -m --max-count"),
-    separate: words("-e -A -B -C --context --after-context --before-context --max-depth -m --max-count") },
-  blame: { flags: words("-l -s -e --show-email -w -M -C --porcelain --line-porcelain -t --root --show-name --show-number -f -n"),
-    attached: words("-L"), separate: words("-L") },
-  describe: { flags: words("--tags --all --always --long --contains --exact-match --first-parent --abbrev"),
-    attached: words("--abbrev --match --exclude --candidates"), separate: words("--match --exclude --candidates") },
-  "rev-parse": { ...none, flags: words("--short --abbrev-ref --verify -q --quiet --symbolic-full-name --is-shallow-repository") },
-  "merge-base": { ...none, flags: words("--is-ancestor --all --octopus --independent") },
-  "name-rev": { ...none, flags: words("--tags --name-only --always") },
-  "ls-files": { ...none, flags: words("--cached --stage -s --full-name --error-unmatch --deleted --modified") },
-  "ls-tree": { flags: words("-r -t -d --name-only --name-status -l --long --full-name --full-tree --abbrev"),
-    attached: words("--abbrev"), separate: [] },
-  "cat-file": { ...none, flags: words("-t -s -p -e") },
-  "for-each-ref": { flags: [],
-    attached: words("--contains --no-contains --merged --no-merged --points-at --sort --format --count"),
-    separate: words("--contains --no-contains --merged --no-merged --points-at --sort --format --count") },
-}));
+      attached: words(
+        "-e -A -B -C --context --after-context --before-context --max-depth -m --max-count",
+      ),
+      separate: words(
+        "-e -A -B -C --context --after-context --before-context --max-depth -m --max-count",
+      ),
+    },
+    blame: {
+      flags: words(
+        "-l -s -e --show-email -w -M -C --porcelain --line-porcelain -t --root --show-name --show-number -f -n",
+      ),
+      attached: words("-L"),
+      separate: words("-L"),
+    },
+    describe: {
+      flags: words("--tags --all --always --long --contains --exact-match --first-parent --abbrev"),
+      attached: words("--abbrev --match --exclude --candidates"),
+      separate: words("--match --exclude --candidates"),
+    },
+    "rev-parse": {
+      ...none,
+      flags: words(
+        "--short --abbrev-ref --verify -q --quiet --symbolic-full-name --is-shallow-repository",
+      ),
+    },
+    "merge-base": { ...none, flags: words("--is-ancestor --all --octopus --independent") },
+    "name-rev": { ...none, flags: words("--tags --name-only --always") },
+    "ls-files": {
+      ...none,
+      flags: words("--cached --stage -s --full-name --error-unmatch --deleted --modified"),
+    },
+    "ls-tree": {
+      flags: words("-r -t -d --name-only --name-status -l --long --full-name --full-tree --abbrev"),
+      attached: words("--abbrev"),
+      separate: [],
+    },
+    "cat-file": { ...none, flags: words("-t -s -p -e") },
+    "for-each-ref": {
+      flags: [],
+      attached: words(
+        "--contains --no-contains --merged --no-merged --points-at --sort --format --count",
+      ),
+      separate: words(
+        "--contains --no-contains --merged --no-merged --points-at --sort --format --count",
+      ),
+    },
+  }),
+);
 
 /**
  * Writers and runners, refused wherever they appear, whatever the lists above say: a last guard if a list is ever
  * wrong. `-c` and `-o` here also take every option that starts with them, so grep counts with `--count`.
  */
-const NEVER = /^(?:--output|-o|--ext-diff|--textconv|--open-files-in-pager|-O|--exec|--upload-pack|--config|-c|--git-dir|--work-tree|--namespace)/;
+const NEVER =
+  /^(?:--output|-o|--ext-diff|--textconv|--open-files-in-pager|-O|--exec|--upload-pack|--config|-c|--git-dir|--work-tree|--namespace)/;
 
 /** A path argument as given: none absolute, from home, or climbing. */
 function outsidePath(arg) {
@@ -174,22 +222,33 @@ export function realGitDir(dir, scope, args) {
 const REPO = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9_.-]{1,100}$/;
 
 export function vetRepo(repo) {
-  return typeof repo === "string" && REPO.test(repo) && !repo.split("/").some((part) => part === "." || part === "..")
-    ? null : "Name a repo as owner/name.";
+  return typeof repo === "string" &&
+    REPO.test(repo) &&
+    !repo.split("/").some((part) => part === "." || part === "..")
+    ? null
+    : "Name a repo as owner/name.";
 }
 
 /** A branch, tag or commit: no option, no climbing, no spaces. */
 export function vetRef(ref) {
-  return ref === undefined || (typeof ref === "string" && /^[A-Za-z0-9_][\w./-]{0,199}$/.test(ref) && !ref.includes(".."))
-    ? null : "Name a branch, tag or commit.";
+  return ref === undefined ||
+    (typeof ref === "string" && /^[A-Za-z0-9_][\w./-]{0,199}$/.test(ref) && !ref.includes(".."))
+    ? null
+    : "Name a branch, tag or commit.";
 }
 
 const API = "https://api.github.com";
 
 /** Why an API path is refused, or null for a path on GitHub's REST API. Only GET is ever sent. */
 export function vetApiPath(path) {
-  if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//") || path.length > 1_000
-    || /[\s\\@#]/.test(path) || path.split("?")[0].split("/").includes("..")) {
+  if (
+    typeof path !== "string" ||
+    !path.startsWith("/") ||
+    path.startsWith("//") ||
+    path.length > 1_000 ||
+    /[\s\\@#]/.test(path) ||
+    path.split("?")[0].split("/").includes("..")
+  ) {
     return "Give a path on GitHub's REST API, such as /repos/owner/name/pulls/1/reviews.";
   }
   return new URL(path, API).origin === API ? null : "Only api.github.com can be read.";
@@ -212,13 +271,20 @@ function realOf(path) {
 }
 
 const DENY = (reason) => ({
-  hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason },
+  hookSpecificOutput: {
+    hookEventName: "PreToolUse",
+    permissionDecision: "deny",
+    permissionDecisionReason: reason,
+  },
 });
 
 /** Whether `repo` is in `reachable`, the repos this question's token names; null names no limit. GitHub ignores case. */
 export function inGrant(repo, reachable) {
-  return reachable === null || reachable === undefined
-    || reachable.some((one) => one.toLowerCase() === String(repo).toLowerCase());
+  return (
+    reachable === null ||
+    reachable === undefined ||
+    reachable.some((one) => one.toLowerCase() === String(repo).toLowerCase())
+  );
 }
 
 /**
@@ -232,45 +298,69 @@ export const WEB_TOOLS = ["WebSearch", "WebFetch"];
 export function readOnlyHooks(cwd, clones, reachable = null) {
   const roots = reachable ? [cwd, ...reachable.map((repo) => `${clones}/${repo}`)] : [cwd, clones];
   // No matcher: every tool comes here. A hook that fails blocks its call rather than letting it through.
-  return [{
-    onFailure: "block",
-    hooks: [async (input) => {
-      const name = input.tool_name;
-      const given = input.tool_input ?? {};
-      if (["Read", "Grep", "Glob"].includes(name)) {
-        const { file_path: file, path, pattern, glob } = given;
-        const target = file ?? path ?? cwd;
-        // A Glob pattern, and Grep's file filter, are paths too: absolute or climbing ones reach outside.
-        const patterns = [name === "Glob" ? pattern : null, glob].filter((value) => typeof value === "string");
-        const escapes = patterns.some((value) => isAbsolute(value) || value.startsWith("~") || value.split(/[\\/]/).includes(".."));
-        const inRoot = roots.some((root) => isInside(root, target))
-          || (reachable !== null && isInside(clones, target) && cloneInGrant(clones, target, reachable));
-        return inRoot && !escapes ? {}
-          : DENY("Only the checkout and the repos you cloned can be read.");
-      }
-      // The web, open by Jai's choice (2026-11-13: "we need feature richness"): WebFetch can put what the agent read in a
-      // URL it fetches, so a prompt in a PR could send code out. The tokens can't go: no tool reads them.
-      if (WEB_TOOLS.includes(name)) {
-        return {};
-      }
-      // A draft for the reviewer's phone: it reaches nothing, and posts nothing.
-      if ([`draft_review`, `github_act`, `linear_act`].some((one) => name === `mcp__${SERVER}__${one}`)) {
-        return {};
-      }
-      const granted = (repo) => (inGrant(repo, reachable) ? null : cantAccess(repo));
-      const reason = name === `mcp__${SERVER}__git`
-        ? vetGit(given.args) ?? (given.repo === undefined ? null : vetRepo(given.repo) ?? granted(given.repo))
-        : name === `mcp__${SERVER}__clone_repo` ? vetRepo(given.repo) ?? vetRef(given.ref) ?? granted(given.repo)
-          : name === `mcp__${SERVER}__github_api` ? vetApiPath(given.path)
-            : "Only reading is allowed.";
-      return reason === null ? {} : DENY(reason);
-    }],
-  }];
+  return [
+    {
+      onFailure: "block",
+      hooks: [
+        async (input) => {
+          const name = input.tool_name;
+          const given = input.tool_input ?? {};
+          if (["Read", "Grep", "Glob"].includes(name)) {
+            const { file_path: file, path, pattern, glob } = given;
+            const target = file ?? path ?? cwd;
+            // A Glob pattern, and Grep's file filter, are paths too: absolute or climbing ones reach outside.
+            const patterns = [name === "Glob" ? pattern : null, glob].filter(
+              (value) => typeof value === "string",
+            );
+            const escapes = patterns.some(
+              (value) =>
+                isAbsolute(value) || value.startsWith("~") || value.split(/[\\/]/).includes(".."),
+            );
+            const inRoot =
+              roots.some((root) => isInside(root, target)) ||
+              (reachable !== null &&
+                isInside(clones, target) &&
+                cloneInGrant(clones, target, reachable));
+            return inRoot && !escapes
+              ? {}
+              : DENY("Only the checkout and the repos you cloned can be read.");
+          }
+          // The web, open by Jai's choice (2026-11-13: "we need feature richness"): WebFetch can put what the agent read in a
+          // URL it fetches, so a prompt in a PR could send code out. The tokens can't go: no tool reads them.
+          if (WEB_TOOLS.includes(name)) {
+            return {};
+          }
+          // A draft for the reviewer's phone: it reaches nothing, and posts nothing.
+          if (
+            [`draft_review`, `github_act`, `linear_act`].some(
+              (one) => name === `mcp__${SERVER}__${one}`,
+            )
+          ) {
+            return {};
+          }
+          const granted = (repo) => (inGrant(repo, reachable) ? null : cantAccess(repo));
+          const reason =
+            name === `mcp__${SERVER}__git`
+              ? (vetGit(given.args) ??
+                (given.repo === undefined ? null : (vetRepo(given.repo) ?? granted(given.repo))))
+              : name === `mcp__${SERVER}__clone_repo`
+                ? (vetRepo(given.repo) ?? vetRef(given.ref) ?? granted(given.repo))
+                : name === `mcp__${SERVER}__github_api`
+                  ? vetApiPath(given.path)
+                  : "Only reading is allowed.";
+          return reason === null ? {} : DENY(reason);
+        },
+      ],
+    },
+  ];
 }
 
 /** Whether a path under `clones` is in a repo of `reachable`, matched without case as GitHub names repos. */
 function cloneInGrant(clones, target, reachable) {
-  const [owner, name] = relative(realOf(clones), realOf(isAbsolute(target) ? target : resolve(clones, target))).split(/[\\/]/);
+  const [owner, name] = relative(
+    realOf(clones),
+    realOf(isAbsolute(target) ? target : resolve(clones, target)),
+  ).split(/[\\/]/);
   return Boolean(owner && name) && inGrant(`${owner}/${name}`, reachable);
 }
 
@@ -279,7 +369,9 @@ const KEPT = 60_000;
 
 function said(text, token) {
   const clean = [token, process.env.CLAUDE_CODE_OAUTH_TOKEN].reduce(
-    (kept, secret) => (secret ? kept.split(secret).join("[redacted]") : kept), String(text));
+    (kept, secret) => (secret ? kept.split(secret).join("[redacted]") : kept),
+    String(text),
+  );
   return clean.length > KEPT ? `${clean.slice(0, KEPT)}\n[cut at ${KEPT} characters]` : clean;
 }
 
@@ -288,19 +380,32 @@ export function cantAccess(repo) {
   return `You can't access ${repo}: the reviewer can't see it, or the GitHub App isn't installed on it. Say so; don't guess what it holds.`;
 }
 
-const reply = (text, token, isError = false) => ({ content: [{ type: "text", text: said(text, token) }], isError });
+const reply = (text, token, isError = false) => ({
+  content: [{ type: "text", text: said(text, token) }],
+  isError,
+});
 
 /**
  * Set on every git command, over anything a repo's config says: no fsmonitor or hook program, no pager or editor, no
  * ssh, and https the one protocol (a blobless clone fetches what it lacks over it).
  */
-export const SAFE_GIT = ["core.fsmonitor=false", "core.hooksPath=/dev/null", "core.pager=cat", "core.editor=false",
-  "core.sshCommand=false", "protocol.allow=never", "protocol.https.allow=always"].flatMap((setting) => ["-c", setting]);
+export const SAFE_GIT = [
+  "core.fsmonitor=false",
+  "core.hooksPath=/dev/null",
+  "core.pager=cat",
+  "core.editor=false",
+  "core.sshCommand=false",
+  "protocol.allow=never",
+  "protocol.https.allow=always",
+].flatMap((setting) => ["-c", setting]);
 
 /** Put after a read subcommand: no external diff or textconv program, whatever the repo's config names. */
 const NO_PROGRAMS = {
-  log: ["--no-ext-diff", "--no-textconv"], show: ["--no-ext-diff", "--no-textconv"], diff: ["--no-ext-diff", "--no-textconv"],
-  blame: ["--no-textconv"], grep: ["--no-textconv"],
+  log: ["--no-ext-diff", "--no-textconv"],
+  show: ["--no-ext-diff", "--no-textconv"],
+  diff: ["--no-ext-diff", "--no-textconv"],
+  blame: ["--no-textconv"],
+  grep: ["--no-textconv"],
 };
 
 /** A repo's config, read only once git has set it up: a defence beside `SAFE_GIT`, as no read tool writes it. */
@@ -313,14 +418,25 @@ export function lockConfig(dir) {
 /** Git with no config but the repo's own, no pager, no prompt, and none of this process's secrets. */
 export function gitEnv() {
   return {
-    PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: "/nonexistent", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null",
-    GIT_TERMINAL_PROMPT: "0", GIT_PAGER: "cat", PAGER: "cat", GIT_OPTIONAL_LOCKS: "0",
+    PATH: process.env.PATH ?? "/usr/bin:/bin",
+    HOME: "/nonexistent",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_TERMINAL_PROMPT: "0",
+    GIT_PAGER: "cat",
+    PAGER: "cat",
+    GIT_OPTIONAL_LOCKS: "0",
   };
 }
 
 /** The token as one command's header: never on disk, and never in the agent's sight. */
 export function authArgs(token) {
-  return token ? ["-c", `http.extraHeader=Authorization: Basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`] : [];
+  return token
+    ? [
+        "-c",
+        `http.extraHeader=Authorization: Basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`,
+      ]
+    : [];
 }
 
 /** Most bytes of output kept from one git command: the rest is dropped and the command stopped. */
@@ -333,7 +449,9 @@ const GIT_OUTPUT_MAX = 8 * 1024 * 1024;
 export function runGit(dir, args, token, timeout = 120_000) {
   return new Promise((done) => {
     const child = spawn("git", ["-C", dir, ...SAFE_GIT, ...authArgs(token), ...args], {
-      env: gitEnv(), stdio: ["ignore", "pipe", "pipe"], timeout,
+      env: gitEnv(),
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout,
     });
     const out = [];
     const err = [];
@@ -354,7 +472,10 @@ export function runGit(dir, args, token, timeout = 120_000) {
         done({ ok: true, text: stdout });
         return;
       }
-      done({ ok: false, text: Buffer.concat(err).toString().trim() || `git exited ${code ?? signal ?? "?"}` });
+      done({
+        ok: false,
+        text: Buffer.concat(err).toString().trim() || `git exited ${code ?? signal ?? "?"}`,
+      });
     });
   });
 }
@@ -365,7 +486,16 @@ export function runGit(dir, args, token, timeout = 120_000) {
  * checkout alone. `reachable`, hosted, names the repos the token reaches: no other clone is read or made.
  */
 export function readTools({
-  prDir, prRepo, clones, scope, token, locked, reachable = null, onDraft = () => {}, onAct = () => {}, onLinear = () => {},
+  prDir,
+  prRepo,
+  clones,
+  scope,
+  token,
+  locked,
+  reachable = null,
+  onDraft = () => {},
+  onAct = () => {},
+  onLinear = () => {},
 }) {
   const draftReview = draftReviewTool(onDraft);
   const act = actTool(onAct);
@@ -374,11 +504,19 @@ export function readTools({
   const git = tool(
     "git",
     `Runs one read-only git command, without a shell: ${[...GIT_READS.keys()].join(", ")}, each with a fixed set of options; a refused option says which ones it takes. \`repo\` (owner/name) picks a repo you cloned with clone_repo; leave it out for the PR's checkout of ${prRepo}.`,
-    { args: z.array(z.string()).min(1).describe('The subcommand and its arguments, such as ["log", "--oneline", "-20"]'),
-      repo: z.string().optional() },
+    {
+      args: z
+        .array(z.string())
+        .min(1)
+        .describe('The subcommand and its arguments, such as ["log", "--oneline", "-20"]'),
+      repo: z.string().optional(),
+    },
     async ({ args, repo }) => {
-      const refused = vetGit(args) ?? (repo === undefined ? null
-        : vetRepo(repo) ?? (inGrant(repo, reachable) ? null : cantAccess(repo)));
+      const refused =
+        vetGit(args) ??
+        (repo === undefined
+          ? null
+          : (vetRepo(repo) ?? (inGrant(repo, reachable) ? null : cantAccess(repo))));
       if (refused) {
         return reply(refused, token, true);
       }
@@ -390,19 +528,28 @@ export function readTools({
         return reply(real.refused, token, true);
       }
       const [command, ...rest] = args;
-      const { ok, text } = await runGit(real.dir, [command, ...(NO_PROGRAMS[command] ?? []), ...rest], token);
+      const { ok, text } = await runGit(
+        real.dir,
+        [command, ...(NO_PROGRAMS[command] ?? []), ...rest],
+        token,
+      );
       return reply(text || "(no output)", token, !ok);
     },
   );
   if (!token) {
-    return createSdkMcpServer({ name: SERVER, tools: [git, draftReview, act, linear], alwaysLoad: true });
+    return createSdkMcpServer({
+      name: SERVER,
+      tools: [git, draftReview, act, linear],
+      alwaysLoad: true,
+    });
   }
   const cloneRepo = tool(
     "clone_repo",
     "Clones a GitHub repo, read only, at its default branch or `ref` (a branch, tag or commit), with its branches and tags. Read it with Read, Grep and Glob at the directory it names, or with git and `repo`. Cloning again updates it.",
     { repo: z.string().describe("owner/name"), ref: z.string().optional() },
     async ({ repo, ref }) => {
-      const refused = vetRepo(repo) ?? vetRef(ref) ?? (inGrant(repo, reachable) ? null : cantAccess(repo));
+      const refused =
+        vetRepo(repo) ?? vetRef(ref) ?? (inGrant(repo, reachable) ? null : cantAccess(repo));
       if (refused) {
         return reply(refused, token, true);
       }
@@ -416,21 +563,42 @@ export function readTools({
           }
           await runGit(dir, ["remote", "add", "origin", `https://github.com/${repo}.git`], null);
         }
-        const specs = ["+HEAD:refs/remotes/origin/HEAD", "+refs/heads/*:refs/remotes/origin/*", "+refs/tags/*:refs/tags/*"];
-        const fetched = await runGit(dir, ["fetch", "-q", "--filter=blob:none", "origin", ...specs], token, 300_000);
+        const specs = [
+          "+HEAD:refs/remotes/origin/HEAD",
+          "+refs/heads/*:refs/remotes/origin/*",
+          "+refs/tags/*:refs/tags/*",
+        ];
+        const fetched = await runGit(
+          dir,
+          ["fetch", "-q", "--filter=blob:none", "origin", ...specs],
+          token,
+          300_000,
+        );
         if (!fetched.ok) {
-          return reply(`Could not clone ${repo}: ${fetched.text}\n${cantAccess(repo)}`, token, true);
+          return reply(
+            `Could not clone ${repo}: ${fetched.text}\n${cantAccess(repo)}`,
+            token,
+            true,
+          );
         }
         if (ref && /^[0-9a-f]{40}$/.test(ref)) {
           await runGit(dir, ["fetch", "-q", "--filter=blob:none", "origin", ref], token, 300_000);
         }
         const wanted = ref === undefined ? ["origin/HEAD"] : [`origin/${ref}`, ref];
         for (const target of wanted) {
-          const moved = await runGit(dir, ["checkout", "-q", "--force", "--detach", target], token, 300_000);
+          const moved = await runGit(
+            dir,
+            ["checkout", "-q", "--force", "--detach", target],
+            token,
+            300_000,
+          );
           if (moved.ok) {
             lockConfig(dir);
             const head = await runGit(dir, ["rev-parse", "HEAD"], null);
-            return reply(`${repo} is at ${head.text.trim()} (${ref ?? "default branch"}), in ${dir}.`, token);
+            return reply(
+              `${repo} is at ${head.text.trim()} (${ref ?? "default branch"}), in ${dir}.`,
+              token,
+            );
           }
         }
         return reply(`${repo} has no branch, tag or commit ${ref}.`, token, true);
@@ -448,24 +616,34 @@ export function readTools({
       }
       try {
         const response = await fetch(new URL(path, API), {
-          method: "GET", redirect: "manual", signal: AbortSignal.timeout(60_000),
+          method: "GET",
+          redirect: "manual",
+          signal: AbortSignal.timeout(60_000),
           headers: {
-            Accept: "application/vnd.github+json", Authorization: `Bearer ${token}`, "User-Agent": "prhub-ask",
+            Accept: "application/vnd.github+json",
+            Authorization: `Bearer ${token}`,
+            "User-Agent": "prhub-ask",
             "X-GitHub-Api-Version": "2022-11-28",
           },
         });
         const where = response.headers.get("location");
         const body = where ? `Redirected to ${where}` : await response.text();
         const named = /^\/repos\/([^/?]+\/[^/?]+)/.exec(path)?.[1];
-        const denied = (response.status === 404 || response.status === 403) && named && named !== prRepo
-          ? `\n${cantAccess(named)}` : "";
+        const denied =
+          (response.status === 404 || response.status === 403) && named && named !== prRepo
+            ? `\n${cantAccess(named)}`
+            : "";
         return reply(`HTTP ${response.status}\n${body}${denied}`, token, !response.ok);
       } catch (error) {
         return reply(`GitHub could not be reached: ${error?.message ?? error}`, token, true);
       }
     },
   );
-  return createSdkMcpServer({ name: SERVER, tools: [git, cloneRepo, githubApi, draftReview, act, linear], alwaysLoad: true });
+  return createSdkMcpServer({
+    name: SERVER,
+    tools: [git, cloneRepo, githubApi, draftReview, act, linear],
+    alwaysLoad: true,
+  });
 }
 
 /** The most line comments one draft holds: a review past this is a wall, not a review. */
@@ -482,15 +660,25 @@ function draftReviewTool(onDraft) {
     {
       event: z.enum(["APPROVE", "REQUEST_CHANGES", "COMMENT"]),
       body: z.string().max(20_000).describe("The review's own words, in GitHub's Markdown"),
-      comments: z.array(z.object({
-        path: z.string().min(1), line: z.number().int().positive(), side: z.enum(["LEFT", "RIGHT"]),
-        body: z.string().min(1).max(5_000),
-      })).max(DRAFT_COMMENTS).default([]),
+      comments: z
+        .array(
+          z.object({
+            path: z.string().min(1),
+            line: z.number().int().positive(),
+            side: z.enum(["LEFT", "RIGHT"]),
+            body: z.string().min(1).max(5_000),
+          }),
+        )
+        .max(DRAFT_COMMENTS)
+        .default([]),
     },
     async ({ event, body, comments }) => {
       onDraft({ event, body, comments });
       const lines = comments.length === 1 ? "1 line comment" : `${comments.length} line comments`;
-      return reply(`Drafted: ${event} with ${lines}. Nothing is posted: the reviewer sees the draft under your answer and posts it. Say in one line what the draft does; don't repeat it.`, null);
+      return reply(
+        `Drafted: ${event} with ${lines}. Nothing is posted: the reviewer sees the draft under your answer and posts it. Say in one line what the draft does; don't repeat it.`,
+        null,
+      );
     },
   );
 }
@@ -515,7 +703,10 @@ A line comment must be on a line the diff shows.`,
     { action: z.record(z.string(), z.unknown()).describe("One action, as above") },
     async ({ action }) => {
       onAct(action);
-      return reply("Queued: it goes to GitHub as the reviewer when your turn ends, and the chat shows the result. Don't say it is done yet.", null);
+      return reply(
+        "Queued: it goes to GitHub as the reviewer when your turn ends, and the chat shows the result. Don't say it is done yet.",
+        null,
+      );
     },
   );
 }
@@ -533,17 +724,29 @@ function linearActTool(onLinear) {
     "linear_act",
     `Proposes a comment on one of this PR's Linear tickets, posted as the reviewer once they confirm it on their phone. Only when the reviewer asked for it in their message ("tag Octbot on the ticket", "comment on the ticket"). \`issue\` is a ticket key the PR names, such as ENG-12. Write @Name for each person or agent to mention, as the reviewer named them ("@Octbot"): the Worker finds them in Linear. Up to ${LINEAR_ACTS} a turn.`,
     {
-      issue: z.string().regex(/^[A-Za-z][A-Za-z0-9]{0,9}-\d+$/).describe("The ticket's key, such as ENG-12"),
+      issue: z
+        .string()
+        .regex(/^[A-Za-z][A-Za-z0-9]{0,9}-\d+$/)
+        .describe("The ticket's key, such as ENG-12"),
       body: z.string().min(1).max(10_000).describe("The comment, in Markdown, with @Name mentions"),
     },
     async ({ issue, body }) => {
       onLinear({ issue: issue.toUpperCase(), body });
-      return reply(`Proposed: a comment on ${issue.toUpperCase()}. Nothing is posted: the reviewer sees it under your answer and posts it. Say in one line what it asks; don't say it is posted.`, null);
+      return reply(
+        `Proposed: a comment on ${issue.toUpperCase()}. Nothing is posted: the reviewer sees it under your answer and posts it. Say in one line what it asks; don't say it is posted.`,
+        null,
+      );
     },
   );
 }
 
 /** The tools' names, for `allowedTools`. */
 export function readToolNames(hasToken) {
-  return ["git", ...(hasToken ? ["clone_repo", "github_api"] : []), "draft_review", "github_act", "linear_act"].map((name) => `mcp__${SERVER}__${name}`);
+  return [
+    "git",
+    ...(hasToken ? ["clone_repo", "github_api"] : []),
+    "draft_review",
+    "github_act",
+    "linear_act",
+  ].map((name) => `mcp__${SERVER}__${name}`);
 }

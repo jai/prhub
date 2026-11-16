@@ -1,7 +1,7 @@
 import DurableNetworking
 import Foundation
-import Testing
 @testable import PRKit
+import Testing
 
 /// The host's way in and out: what it gives the kit, what it asks of it, and what the kit tells it.
 @MainActor
@@ -10,7 +10,10 @@ struct PRKitControllerTests {
     final class Host: PRKitHost {
         let access = PRViewerAccess.offline
         var configuration = PRKitConfiguration.everything
-        var outbox: (any PRKitOutbox)? { nil }
+        var outbox: (any PRKitOutbox)? {
+            nil
+        }
+
         let apnsEnvironment = "sandbox"
         var samples: PRSampleSet?
         let launchOptions = PRKitLaunchOptions.none
@@ -21,8 +24,10 @@ struct PRKitControllerTests {
         }
 
         let transport: any HTTPTransport = URLSessionTransport.background
-        func log(_ line: String) {}
-        func receive(_ event: PRKitEvent) { events.append(event) }
+        func log(_: String) {}
+        func receive(_ event: PRKitEvent) {
+            events.append(event)
+        }
     }
 
     @Test func textThatNamesAPRShowsItAndOtherTextDoesNot() {

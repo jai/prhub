@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PRKit
+import Testing
 
 /// What the phone reads from a row's `ticket` and a list PR's `review_due_at`, and what an older Worker's answer reads as.
 struct PRListDecodeTests {
@@ -26,9 +26,9 @@ struct PRListDecodeTests {
     }
 
     static let row = #"""
-        {"repo": "acme/app", "number": 7, "title": "Retry uploads", "head": "abc", "revision": "abc-main",
-         "diff": "ready", "detail": "v1", "status": null, "keyLines": null
-        """#
+    {"repo": "acme/app", "number": 7, "title": "Retry uploads", "head": "abc", "revision": "abc-main",
+     "diff": "ready", "detail": "v1", "status": null, "keyLines": null
+    """#
 
     @Test func aRowsTicketDecodesAndAnOlderWorkersRowHasNone() throws {
         let ticket = #""ticket": {"key": "ENG-7", "url": "https://linear.app/acme/issue/ENG-7", "title": "Retry", "#
@@ -51,7 +51,8 @@ struct PRListDecodeTests {
 
     @Test func aRowsTicketsDecodeInOrder() throws {
         let one = { (key: String) in #"{"key": "\#(key)", "url": null, "title": "\#(key)", "state": "Todo", "#
-            + #""state_type": "unstarted", "state_color": null, "found": true}"# }
+            + #""state_type": "unstarted", "state_color": null, "found": true}"#
+        }
         let json = Self.row + #", "ticket": \#(one("DEVOP-1")), "tickets": [\#(one("DEVOP-1")), \#(one("DEVOP-2"))]}"#
         let row = try JSONDecoder().decode(PullRequestRow.self, from: Data(json.utf8))
         #expect(row.tickets?.map(\.key) == ["DEVOP-1", "DEVOP-2"])
