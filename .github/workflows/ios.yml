@@ -103,7 +103,9 @@ jobs:
     runs-on: xcode-27
     timeout-minutes: 60
     strategy:
-      fail-fast: false
+      # The hourly release stops at the first failed slice: the run can only fail then, and while it runs every newer
+      # release start waits behind it (2026-11-16: two hours on GitHub's slow Macs). A run by hand shows every slice.
+      fail-fast: ${{ github.workflow == 'hourly-release' }}
       matrix:
         # Two slices on the iPhone and three on the iPad; by hand with `only`, one job a device.
         include: >-
@@ -154,11 +156,21 @@ jobs:
           # A failing test runs once more: GitHub's Macs time out reading the screen or fail to quit the app now and
           # then ("Timed out while evaluating UI query", "Failed to terminate"), and one of those failed a whole
           # hourly release (2026-11-14). A real failure fails both times.
-          xcodebuild test-without-building -xctestrun build/Products/*.xctestrun \
-            -destination "id=$SIMULATOR" -retry-tests-on-failure -test-iterations 2 \
-            -resultBundlePath build/PRHub.xcresult "${tests[@]}" \
-            | grep -E --line-buffered "^Test (Suite|Case|session)|^\s+(Executed|✔|✘)|error:|\*\* TEST|Testing (failed|started)|: (error|failed)" || true
-          xcrun xcresulttool get test-results summary --path build/PRHub.xcresult --compact > build/summary.json
+          # A slice that ran no test at all failed before testing (the Simulator "unable to connect", the runner "crashed
+          # with signal term while preparing to run tests": GitHub's Macs, 2026-11-16): reboot it and run once more.
+          for attempt in 1 2; do
+            rm -rf build/PRHub.xcresult build/summary.json
+            xcodebuild test-without-building -xctestrun build/Products/*.xctestrun \
+              -destination "id=$SIMULATOR" -retry-tests-on-failure -test-iterations 2 \
+              -resultBundlePath build/PRHub.xcresult "${tests[@]}" \
+              | grep -E --line-buffered "^Test (Suite|Case|session)|^\s+(Executed|✔|✘)|error:|\*\* TEST|Testing (failed|started)|: (error|failed)" || true
+            if xcrun xcresulttool get test-results summary --path build/PRHub.xcresult --compact > build/summary.json 2>/dev/null &&
+              [ "$(jq '.passedTests + .failedTests' build/summary.json)" -gt 0 ]; then
+              break
+            fi
+            echo "::warning::attempt $attempt ran no tests: the Simulator or the runner failed before testing"
+            [ "$attempt" = 2 ] || { xcrun simctl shutdown "$SIMULATOR" || true; xcrun simctl boot "$SIMULATOR"; }
+          done
           jq -r '"\(.result): \(.passedTests) passed, \(.failedTests) failed, \(.skippedTests) skipped", (.testFailures[]? | "FAILED \(.testIdentifierString): \(.failureText)")' build/summary.json | tee -a "$GITHUB_STEP_SUMMARY"
           jq -e '.failedTests == 0 and .passedTests > 0' build/summary.json > /dev/null
       - name: Zip the result bundle
