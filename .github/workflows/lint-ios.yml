@@ -14,7 +14,7 @@ jobs:
   lint-ios:
     # 24.04: SwiftLint's Linux build needs libxml2.so.2, which 26.04 (ubuntu-latest) no longer has.
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 5
     env:
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:

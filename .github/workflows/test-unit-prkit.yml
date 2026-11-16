@@ -13,7 +13,7 @@ permissions:
 jobs:
   test-unit-prkit:
     runs-on: xcode-27
-    timeout-minutes: 30
+    timeout-minutes: 10
     env:
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
