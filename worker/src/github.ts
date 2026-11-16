@@ -2,6 +2,7 @@ import { type Env, githubLogin, isSet } from "./env.ts";
 import { renewAfterUnauthorized } from "./hosted.ts";
 import { gitHubReserveOf, limitsOf } from "./limits.ts";
 import { backoffOf, heldBackoff, holdBackoff, observe, stops, waitAnswer } from "./rate-limit.ts";
+import { eachGroup, readGroups, searchGroups } from "./read-app.ts";
 import {
   parseSha,
   prId,
@@ -358,11 +359,23 @@ export function contextsOf(number: number): string {
   } } } } } }`;
 }
 
-/** The second account's token reads go with (`GITHUB_READ_TOKEN`); null when there is none, and always on the hosted Worker. */
+/**
+ * The token reads go with: the read App's installation token for this env's reads (`GITHUB_READ_AS`, `read-app.ts`),
+ * else the second account's (`GITHUB_READ_TOKEN`). Null when there is neither, and always on the hosted Worker.
+ */
 export function readToken(env: Env): string | null {
-  return !isSet(env.SIGNED_IN_USER_ID) && isSet(env.GITHUB_READ_TOKEN)
-    ? env.GITHUB_READ_TOKEN
-    : null;
+  return readerOf(env)?.token ?? null;
+}
+
+/** `readToken`, and the key its calls' backoff is held under. */
+function readerOf(env: Env): { token: string; key: string } | null {
+  if (isSet(env.SIGNED_IN_USER_ID)) {
+    return null;
+  }
+  if (env.GITHUB_READ_AS) {
+    return env.GITHUB_READ_AS;
+  }
+  return isSet(env.GITHUB_READ_TOKEN) ? { token: env.GITHUB_READ_TOKEN, key: "self:read" } : null;
 }
 
 /**
@@ -400,12 +413,10 @@ async function github(
   accept: string,
   init: RequestInit = {},
 ): Promise<Response> {
-  const reader = readsAsAnyone(path, init) ? readToken(env) : null;
+  const reader = readsAsAnyone(path, init) ? readerOf(env) : null;
   const key = isSet(env.SIGNED_IN_USER_ID)
     ? `user:${env.SIGNED_IN_USER_ID}`
-    : reader
-      ? "self:read"
-      : "self";
+    : (reader?.key ?? "self");
   const started = Date.now();
   const held = heldBackoff(key, started);
   if (held && stops(held, started, env.GITHUB_RATE !== undefined)) {
@@ -432,7 +443,7 @@ async function github(
     holdBackoff(key, backoffOf(response, now, reserve));
     return response;
   };
-  const response = await send(reader ?? env.GITHUB_TOKEN);
+  const response = await send(reader?.token ?? env.GITHUB_TOKEN);
   if (response.status !== 401 || !isSet(env.SIGNED_IN_USER_ID)) {
     return response;
   }
@@ -997,20 +1008,31 @@ async function search(q: string, env: Env): Promise<Listing[]> {
 
 /**
  * Every open PR on a list, by every page: a short answer would read as PRs that have gone. Jai has reviewed far more
- * than his list holds, so what only that search found counts for the rows already held.
+ * than his list holds, so what only that search found counts for the rows already held. With the read App, each
+ * installation searches, and the owner's token searches the owners none of them did (`searchGroups`).
  */
 export async function searchListings(env: Env): Promise<Map<PrId, Listing>> {
   const login = await githubLogin(env);
-  const [listed, reviewed] = await Promise.all([
-    Promise.all(searchesOf(login).map((q) => search(q, env))),
-    search(reviewedSearchOf(login), env),
-  ]);
+  const groups = (await searchGroups(env)).map(({ env: reader, exclude }) => ({
+    env: reader,
+    items: [exclude ? ` ${exclude}` : ""],
+  }));
+  const answers = await eachGroup(groups, ([suffix], reader) =>
+    Promise.all([
+      Promise.all(searchesOf(login).map((q) => search(`${q}${suffix}`, reader))),
+      search(`${reviewedSearchOf(login)}${suffix}`, reader),
+    ]),
+  );
   const found = new Map<PrId, Listing>();
-  for (const listing of reviewed) {
-    found.set(listing.id, { ...listing, reviewedOnly: true });
+  for (const [, reviewed] of answers) {
+    for (const listing of reviewed) {
+      found.set(listing.id, { ...listing, reviewedOnly: true });
+    }
   }
-  for (const listing of listed.flat()) {
-    found.set(listing.id, listing);
+  for (const [listed] of answers) {
+    for (const listing of listed.flat()) {
+      found.set(listing.id, listing);
+    }
   }
   return found;
 }
@@ -1174,12 +1196,38 @@ export function withViewer(node: Node, viewer: ViewerNode | null): Node {
   };
 }
 
+/** The PRs of each owner are read with the env `readGroups` gives them, so the read App's tokens read what they can. */
+async function readByOwner<Answer>(
+  refs: PullRequestRef[],
+  env: Env,
+  read: (refs: PullRequestRef[], env: Env) => Promise<Map<PrId, Answer>>,
+): Promise<Map<PrId, Answer>> {
+  const groups = await readGroups(env, refs, (ref) => repoParts(ref.repo).owner);
+  if (groups.length === 1 && groups[0]?.env === env) {
+    return read(refs, env);
+  }
+  const answers = await eachGroup(groups, read);
+  return new Map(answers.flatMap((answer) => [...answer]));
+}
+
 /** `lookUp` asks Linear about ticket keys: the index passes its cache (`cachedTickets`). */
-export async function readPullRequests(
+export function readPullRequests(
   refs: PullRequestRef[],
   env: Env,
   asked: ReadonlySet<string> = new Set(),
   lookUp: (keys: string[]) => Promise<Map<string, Ticket>> = (keys) => lookUpTickets(keys, env),
+  cache?: GitHubCache,
+): Promise<Map<PrId, PullRequest | null>> {
+  return readByOwner(refs, env, (owned, reader) =>
+    readOwnedPullRequests(owned, reader, asked, lookUp, cache),
+  );
+}
+
+async function readOwnedPullRequests(
+  refs: PullRequestRef[],
+  env: Env,
+  asked: ReadonlySet<string>,
+  lookUp: (keys: string[]) => Promise<Map<string, Ticket>>,
   cache?: GitHubCache,
 ): Promise<Map<PrId, PullRequest | null>> {
   const [data, login] = await Promise.all([readNodes(refs, env), githubLogin(env)]);
@@ -1218,7 +1266,14 @@ const CHECKS_FIELDS = `headRefOid updatedAt reviewDecision mergeable mergeStateS
  * `.policy.yml` and membership REST calls besides. A PR GitHub has no answer for maps to null; one it refused (SAML,
  * say) maps to `"error"`, and the rest are still read. Throws only when the whole query failed.
  */
-export async function readChecks(
+export function readChecks(
+  refs: PullRequestRef[],
+  env: Env,
+): Promise<Map<PrId, ChecksNode | null | "error">> {
+  return readByOwner(refs, env, readOwnedChecks);
+}
+
+async function readOwnedChecks(
   refs: PullRequestRef[],
   env: Env,
 ): Promise<Map<PrId, ChecksNode | null | "error">> {

@@ -322,6 +322,7 @@ var reads as unset.
 | `GITHUB_TOKEN` | secret | The person's PAT: classic with `repo`, or fine-grained (permissions in [deploy/AGENTS.md](../deploy/AGENTS.md)) |
 | `GITHUB_LOGIN` | var | Their login; unset reads it from the token. The searches name it, not `@me`, so they stay this person's with `GITHUB_READ_TOKEN` set. Set it beside that token: unset, each isolate spends a `GITHUB_TOKEN` call reading it |
 | `GITHUB_READ_TOKEN` | secret | A second account's PAT that makes the reads (searches, PR reads, diffs, files, `.policy.yml` and team checks), so they cost that account's rate limit. Writes, and the reads that ask about the viewer (viewed files, draft reviews, what they may resolve, the repo list), stay on `GITHUB_TOKEN`. The account needs read access to every repo the Worker lists. Ignored when `HOSTED=on` |
+| `GITHUB_READ_APP_ID`, `GITHUB_READ_APP_KEY` | var, secret | A GitHub App whose installation tokens make the PR index's reads (searches, PR reads, checks, `.policy.yml`), one token per installation, kept until five minutes before its hour ends, so they cost each installation's rate limit. Each read goes once per installation for the PRs its account owns, and the answers merge. Owners without an installation on all their repos, writes and the viewer's own reads go as with `GITHUB_READ_TOKEN` unset (or set). The App needs read access to contents, pull requests, issues, checks, actions, statuses and metadata. The key is PKCS#8 (`openssl pkcs8 -topk8 -nocrypt`). Ignored when `HOSTED=on` |
 | `GITHUB_ORGS` | var | Default filter for the app, and the owners `GET /repos` lists |
 | `APP_LATEST_URL` | var | Where `app_latest` is read ([App updates](#app-updates)); unset: PRHub's own, `off`: none |
 | `PR_ALERTS` | var | Visible alerts: `review_requested`, `approved`, `changes_requested`, comma-separated, or `off`. Unset: `review_requested` |
@@ -1032,7 +1033,8 @@ the person's hour.
   Each backoff is in `/events` once as `rate_limited` (`kind` `low`, `primary` or `secondary`, `until`, `remaining`,
   `limit`). Each hosted poll records its cost as `polled` (`calls`, `remaining`, `limit`). The same applies to a
   self-hosted Worker's token. With `GITHUB_READ_TOKEN` set, its calls are held apart from `GITHUB_TOKEN`'s, so a read
-  token that runs out stops the reads, not the writes; a background run waits when either runs low.
+  token that runs out stops the reads, not the writes; a background run waits when either runs low. The read App's
+  installation tokens are held apart the same way, each on its own.
 - **Sign-in, per IP.** `/auth/github/start` and `/auth/github/finish` answer `429 limit_reached` past
   `sign_in_starts_per_ip_per_minute` and `sign_in_finishes_per_ip_per_minute` ([Limits](#limits)). Each IP is
   counted by its SHA-256 in an `IpLimit` object, which deletes itself when its last count expires.

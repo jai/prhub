@@ -22,6 +22,14 @@ export interface Env extends LimitVars {
    */
   GITHUB_READ_TOKEN?: string;
   /**
+   * Optional: a GitHub App whose installation tokens make the PR index's reads (`read-app.ts`), one per installation, so
+   * they cost each installation's hour. Its id, and its PKCS#8 key. Owners without an installation on all their repos
+   * read as before (`GITHUB_READ_TOKEN`, else `GITHUB_TOKEN`), and so do writes and the viewer's own reads. Read only:
+   * contents, pull requests, issues, checks, actions, statuses and metadata. Ignored on the hosted Worker.
+   */
+  GITHUB_READ_APP_ID?: string;
+  GITHUB_READ_APP_KEY?: string;
+  /**
    * Optional: the owners (orgs or users) the app filters to by default, comma-separated. The PR list never filters by it;
    * the repo index (`GET /repos`) lists only these owners' repos when it is set.
    */
@@ -151,6 +159,8 @@ export interface Env extends LimitVars {
   SIGNED_IN_USER_ID?: string;
   /** Set by a route that says what it spent (`Server-Timing`): each GitHub call counts one; never a var. */
   GITHUB_CALLS?: { count: number };
+  /** Set by the read App on the env one installation's reads go with (`read-app.ts`); never a var. */
+  GITHUB_READ_AS?: { token: string; key: string };
   /** Set by the PR index on the env a background run reads with (`rate-limit.ts`); never a var. */
   GITHUB_RATE?: RateLimitState;
   DIFFS: R2Bucket;

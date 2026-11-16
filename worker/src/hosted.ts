@@ -114,6 +114,8 @@ export function userEnv(
     ...env,
     GITHUB_TOKEN: user.token,
     GITHUB_READ_TOKEN: undefined,
+    GITHUB_READ_APP_ID: undefined,
+    GITHUB_READ_APP_KEY: undefined,
     GITHUB_LOGIN: user.login,
     SIGNED_IN_USER_ID: user.userId,
     GITHUB_ORGS: undefined,
