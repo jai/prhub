@@ -45,7 +45,12 @@ cannot use is in `/events` as `limits_config_error`.
 
 ## Deploy
 
-From the repo root:
+Each `vX.Y.Z` GitHub Release deploys the hosted Worker through `.github/workflows/deploy.yml` (tests, then
+`wrangler deploy` with this config). `gh workflow run deploy.yml -f tag=vX.Y.Z` deploys a tag again. Its repo
+variables `CLOUDFLARE_ACCOUNT_ID`, `PRHUB_GITHUB_APP_ID`, `PRHUB_GITHUB_APP_CLIENT_ID` and `PRHUB_APNS_KEY_ID`, and its
+secret `CLOUDFLARE_API_TOKEN`, are set once.
+
+By hand, only in an emergency Jai asks for, and for the first setup. From the repo root:
 
 ```sh
 (cd worker && npm ci && npm test && npm run typecheck)

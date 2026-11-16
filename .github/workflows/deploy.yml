@@ -1,0 +1,67 @@
+# Deploys the hosted Worker `prhub` (docs/hosted-deploy.md) from each vX.Y.Z GitHub Release, which the hourly release
+# makes once the full tests passed, and by hand for a tag. The only production path for the hosted Worker: wrangler
+# deploy with deploy/hosted's config, which also builds and pushes the AI container (agent/Dockerfile). The Worker's
+# secrets stay as they are. The account and the App's ids are repo variables, kept out of this public repo's files.
+name: deploy
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The vX.Y.Z tag to deploy."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-hosted
+  cancel-in-progress: false
+
+jobs:
+  hosted:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Test
+        working-directory: worker
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+          npm run typecheck
+      - name: Render the hosted config
+        working-directory: deploy/hosted
+        env:
+          ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          APP_ID: ${{ vars.PRHUB_GITHUB_APP_ID }}
+          CLIENT_ID: ${{ vars.PRHUB_GITHUB_APP_CLIENT_ID }}
+          APNS_KEY_ID: ${{ vars.PRHUB_APNS_KEY_ID }}
+        run: |
+          sed -e "s/__CLOUDFLARE_ACCOUNT_ID__/$ACCOUNT_ID/" -e "s/__GITHUB_APP_ID__/$APP_ID/" \
+              -e "s/__GITHUB_APP_CLIENT_ID__/$CLIENT_ID/" -e "s/__APNS_KEY_ID__/$APNS_KEY_ID/" \
+              wrangler.template.jsonc > wrangler.jsonc
+          ! grep -q '__[A-Z0-9_]*__' wrangler.jsonc
+      - name: wrangler deploy
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler deploy --config ../deploy/hosted/wrangler.jsonc
+      - name: Check
+        run: |
+          url=https://prhub.jai-f89.workers.dev
+          curl -fsS "$url/" > /dev/null
+          curl -fsS "$url/.well-known/apple-app-site-association" | grep -q webcredentials
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$url/auth/github/start")
+          [[ $code == 400 ]] || { echo "auth/github/start answered $code, not 400"; exit 1; }

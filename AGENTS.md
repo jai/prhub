@@ -56,9 +56,9 @@ works new `feedback` issues, checks that each feedback chat's work landed on `ma
   [docs/push-relay.md](docs/push-relay.md). Whoever changes API behaviour updates the contract in the same commit.
 - **Push to `main`, then deploy. No pull requests.** GitHub enforces it: no new branches (except `ci/…` and
   release-please's), and `main` takes only signed, linear pushes, never a force push; `v*` tags never move. Commit (signed) on `main`, `git pull --rebase`, run the local
-  checks below for what you touched, push, and deploy what changed in the same session:
-  - `worker/` or `agent/`: the hosted Worker ([docs/hosted-deploy.md](docs/hosted-deploy.md)).
-  - `PRKit/`: a new `v*` tag; `app/`: a PRHub release ("Releases" below).
+  checks below for what you touched, and push. Never deploy by hand: each `vX.Y.Z` release ("Releases" below)
+  deploys the hosted Worker (`.github/workflows/deploy.yml`) and starts the app's TestFlight build, and PRKit's
+  users pin the same tags. A deploy by hand is for an emergency Jai asks for ([docs/hosted-deploy.md](docs/hosted-deploy.md)).
   Jai's Agent Pager follows on its own: within 10 minutes it moves to `main`'s head and to the newest `v*` tag, tests,
   and deploys. Nothing to commit there, and never deploy its Worker by hand.
   Merging is not releasing. Every push to `main` runs only the fast checks on GitHub's own runners: `scrub`, `worker`,
