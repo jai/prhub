@@ -75,7 +75,7 @@ make -C app ui-test        # the samples flow, and pictures of every screen in a
 make lint                  # formatters, linters, DESIGN.md's token rules, gitleaks (secrets and private names)
 ```
 
-CI runs the fast ones on every push to main, and the UI tests before each release. The app's tests
+CI, releases and deploys: [docs/workflow.md](docs/workflow.md). The app's tests
 need no Worker and no secrets: they run on the sample PRs.
 
 ## Use PRKit in your app

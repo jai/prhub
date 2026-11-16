@@ -48,9 +48,8 @@ cannot use is in `/events` as `limits_config_error`.
 
 ## Deploy
 
-Each `vX.Y.Z` GitHub Release, made once every test passed on that commit, deploys the hosted Worker through
-`.github/workflows/deploy-worker.yml` (`wrangler deploy` with this config). `gh workflow run deploy-worker.yml -f
-tag=vX.Y.Z` deploys a tag again. The repo variables above and the secret `CLOUDFLARE_API_TOKEN` are set once.
+CI deploys the hosted Worker: [workflow.md](workflow.md). The repo variables above and the secret
+`CLOUDFLARE_API_TOKEN` are set once.
 
 By hand, only in an emergency Jai asks for, and for the first setup. From the repo root:
 
