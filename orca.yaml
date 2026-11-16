@@ -1,4 +1,4 @@
-# Orca runs scripts.setup in each new worktree of this repo: install the git hooks (Makefile `setup`).
+# Orca runs scripts.setup in each new worktree of this repo: install the git hooks of .pre-commit-config.yaml.
 scripts:
   setup: |
-    make setup
+    mise exec prek@0.5.10 -- prek install --hook-type pre-commit --hook-type pre-push
