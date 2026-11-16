@@ -23,6 +23,7 @@ final class PRHubPRPageUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["pr-summary"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Medium risk"].exists && app.staticTexts["1 bug found"].exists)
         XCTAssertTrue(app.staticTexts["What this does"].exists)
+        XCTAssertTrue(app.staticTexts["Requirements mismatch"].exists, "the ticket's requirements, under the bugs")
         try picture("summary-on-page")
         app.buttons["key-lines-summary-bug-src/checkout/CheckoutError.tsx:RIGHT:9"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["key-line-note"].waitForExistence(timeout: 5))

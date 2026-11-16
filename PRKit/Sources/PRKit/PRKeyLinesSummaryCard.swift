@@ -15,12 +15,34 @@ extension PRKeyLines {
             var asItem: Item { Item(path: path, line: line, side: side, kind: "risk", why: why) }
         }
 
+        /// Whether the PR does what its Linear ticket asks (docs/api.md, "Requirements").
+        public struct Requirements: Decodable, Sendable {
+            /// `fits`, `mismatch` or `multiple`. A state this build does not know is not shown.
+            public let state: String
+            /// The ticket checked, or the tickets named when there are several.
+            public let tickets: [String]
+            /// A mismatch: what the PR misses, one short bullet each.
+            public let gaps: [String]
+
+            /// The heading's words, or nil for a state this build does not know.
+            var title: String? {
+                switch state {
+                case "fits": "Requirements fit"
+                case "mismatch": "Requirements mismatch"
+                case "multiple": "Multiple ticket support not yet implemented"
+                default: nil
+                }
+            }
+        }
+
         /// `low`, `medium` or `high`.
         public let risk: String
         public let riskWhy: String
         /// 3 to 5 short bullets: what the PR does.
         public let points: [String]
         public let bugs: [Bug]
+        /// None when the PR names no Linear ticket, or the answer was made before tickets were checked.
+        public let requirements: Requirements?
 
         /// "High risk": the heading's words. A level this build does not know is said as it came.
         var riskTitle: String {
@@ -38,8 +60,9 @@ extension PRKeyLines {
     }
 }
 
-/// The PR at a glance, above its key lines: its risk and why, the bugs found (each a tap to its line), and what it does.
-/// Three parts, each under a heading of an icon and words (DESIGN.md, "A PR at a glance"): the icons share one column
+/// The PR at a glance, above its key lines: its risk and why, the bugs found (each a tap to its line), whether it meets
+/// its ticket, and what it does. Up to four parts, each under a heading of an icon and words (DESIGN.md, "A PR at a
+/// glance"): the icons share one column
 /// and every word starts in the next, so a heading reads as a heading and a bullet's second line stays under its first.
 /// Above the key lines it sits on the fill; on a PR's page it is one of the page's cards.
 struct PRKeyLinesSummaryCard: View {
@@ -96,6 +119,16 @@ struct PRKeyLinesSummaryCard: View {
                     .accessibilityIdentifier("key-lines-summary-bug-\(bug.id)")
                 }
             }
+            if let requirements = summary.requirements, let title = requirements.title {
+                part(
+                    title, icon: requirementsIcon(requirements.state), tone: requirementsTone(requirements.state),
+                    id: "key-lines-summary-requirements"
+                ) {
+                    ForEach(Array(requirements.gaps.enumerated()), id: \.offset) { _, gap in
+                        line(mark: "•") { Text(verbatim: gap) }
+                    }
+                }
+            }
             if !summary.points.isEmpty {
                 part("What this does", icon: .whatItDoes, tone: .inkQuiet, id: "key-lines-summary-points") {
                     ForEach(Array(summary.points.enumerated()), id: \.offset) { _, point in
@@ -103,6 +136,22 @@ struct PRKeyLinesSummaryCard: View {
                     }
                 }
             }
+        }
+    }
+
+    private func requirementsIcon(_ state: String) -> AppIcon {
+        switch state {
+        case "fits": .requirementsMet
+        case "mismatch": .requirementsMismatch
+        default: .requirementsUnchecked
+        }
+    }
+
+    private func requirementsTone(_ state: String) -> Color {
+        switch state {
+        case "fits": .toneGood
+        case "mismatch": .toneBad
+        default: .inkQuiet
         }
     }
 

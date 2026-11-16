@@ -179,7 +179,9 @@ extension PRSampleSet {
                  "points": ["Adds a Retry button when a payment fails", "Retries through a new retryPayment call",
                             "Disables the button while a retry runs"],
                  "bugs": [{"path": "src/checkout/CheckoutError.tsx", "line": 9, "side": "RIGHT",
-                           "why": "A thrown retry leaves the button disabled for good."}]},
+                           "why": "A thrown retry leaves the button disabled for good."}],
+                 "requirements": {"state": "mismatch", "tickets": ["WEB-31"],
+                                  "gaps": ["No limit on how many times a payment can be retried"]}},
      "context": 100, "leftOut": []}
     """
 
@@ -205,7 +207,8 @@ extension PRSampleSet {
     {"items": [{"path": "app/routes/password_reset.py", "line": 5, "side": "RIGHT", "kind": "risk",
                 "why": "The limit is per email, so one client can still try many addresses. Add a limit per IP too?"}],
      "summary": {"risk": "low", "riskWhy": "One small, contained limit on password resets.",
-                 "points": ["Limits password reset requests per email", "Answers 429 past the limit"], "bugs": []},
+                 "points": ["Limits password reset requests per email", "Answers 429 past the limit"], "bugs": [],
+                 "requirements": {"state": "multiple", "tickets": ["API-88", "SEC-12"], "gaps": []}},
      "context": 100, "leftOut": []}
     """
 

@@ -582,11 +582,14 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
   scrolls sideways, as threads and file headers do.
 - **A PR at a glance:** `PRKeyLinesSummaryCard`, above the key lines on `groundFill`, and on a PR's page under its
   header as one of the page's cards (`prCard`), when the PR's key lines are already on the phone: the page never asks
-  for them. Three parts, `Space.md` apart:
-  its risk and why, the bugs found (each a tap to its line), and what it does. Each part has a heading, an icon and
-  words through `IconText`'s line, `appSubheadline` semibold: the risk's `AppIcon.risk` in `toneBad` (high) or
-  `toneWaiting` (medium), `.riskLow` in `toneGood`; `.ok` in `toneGood` for "No bugs found", `.bugsFound` in `toneBad`
-  when there are some; `.whatItDoes`, quiet, over "What this does". Under a heading every line is `appFootnote` in the
+  for them. Up to four parts, `Space.md` apart:
+  its risk and why, the bugs found (each a tap to its line), whether it meets its Linear ticket, and what it does. Each
+  part has a heading, an icon and words through `IconText`'s line, `appSubheadline` semibold: the risk's
+  `AppIcon.risk` in `toneBad` (high) or `toneWaiting` (medium), `.riskLow` in `toneGood`; `.ok` in `toneGood` for "No
+  bugs found", `.bugsFound` in `toneBad` when there are some; `.requirementsMet` in `toneGood` for "Requirements fit"
+  (nothing under it), `.requirementsMismatch` in `toneBad` for "Requirements mismatch" with each gap a bullet, and
+  `.requirementsUnchecked`, quiet, when the PR names several tickets; no part when it names none; `.whatItDoes`,
+  quiet, over "What this does". Under a heading every line is `appFootnote` in the
   words' column, and a bullet's dot sits in the icons' column, so a second line stays under the first. No emoji: a
   heading's colour is its icon's tone.
 - **A PR's link:** a long press on a PR's row, and on Open in GitHub in a PR's bar (a click and hold on the Mac),

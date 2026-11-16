@@ -256,6 +256,22 @@ struct PRKeyLinesSummaryTests {
         #expect(try summary(risk: "high", bugs: 3).bugsTitle == "3 bugs found")
     }
 
+    @Test func theRequirementsLineSaysFitsMismatchOrMultipleAndAnUnknownStateNothing() throws {
+        func requirements(_ state: String, gaps: [String] = []) throws -> PRKeyLines.Summary.Requirements? {
+            let quoted = gaps.map { "\"\($0)\"" }.joined(separator: ",")
+            let json = #"{"risk": "low", "riskWhy": "", "points": [], "bugs": [],"#
+                + #" "requirements": {"state": "\#(state)", "tickets": ["CORE-12"], "gaps": [\#(quoted)]}}"#
+            return try JSONDecoder().decode(PRKeyLines.Summary.self, from: Data(json.utf8)).requirements
+        }
+        #expect(try requirements("fits")?.title == "Requirements fit")
+        let mismatch = try requirements("mismatch", gaps: ["Skips Fridays"])
+        #expect(mismatch?.title == "Requirements mismatch" && mismatch?.gaps == ["Skips Fridays"])
+        #expect(try requirements("multiple")?.title == "Multiple ticket support not yet implemented")
+        #expect(try requirements("partly")?.title == nil)
+        let older = #"{"risk": "low", "riskWhy": "", "points": [], "bugs": []}"#
+        #expect(try JSONDecoder().decode(PRKeyLines.Summary.self, from: Data(older.utf8)).requirements == nil)
+    }
+
     @Test func oneKeyLineIsCountedAsOne() {
         #expect(PRKeyLines.counted(1) == "1 key line")
         #expect(PRKeyLines.counted(0) == "0 key lines" && PRKeyLines.counted(3) == "3 key lines")
