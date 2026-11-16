@@ -151,8 +151,10 @@ test("GET /device/config", () => {
     GITHUB_TOKEN: "t",
     AI_ON_API_KEY: "on",
     ANTHROPIC_API_KEY: "k",
-    PUSH_RELAY_URL: "https://relay",
-    PUSH_RELAY_KEY: "rks_x",
+    APNS_BUNDLE_ID: "b",
+    APNS_KEY_ID: "i",
+    APNS_TEAM_ID: "t",
+    APNS_KEY_P8: "p",
     GITHUB_ORGS: "acme",
   } as Env;
   matchesFixture(

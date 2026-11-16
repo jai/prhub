@@ -33,7 +33,7 @@
             didFailToRegisterForRemoteNotificationsWithError _: any Error
         ) {}
 
-        /// PRHub's only background push is the pr-worker's silent wake, through the relay; its alerts are taps. The
+        /// PRHub's only background push is the pr-worker's silent wake; its alerts are taps. The
         /// completion-handler variant on purpose: UIKit's handler asserts the main thread.
         func application(
             _: UIApplication,

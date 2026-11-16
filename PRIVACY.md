@@ -1,7 +1,6 @@
 # PRHub privacy policy
 
-This policy covers PRHub, an iPhone app for reviewing GitHub pull requests (PRs), and the push relay that Jai Govindani
-runs for it.
+This policy covers PRHub, an iPhone app for reviewing GitHub pull requests (PRs), with a Worker you run yourself.
 
 If you sign in with GitHub, you use the hosted PRHub service instead, and
 [its privacy policy](docs/privacy/hosted.md) applies.
@@ -68,18 +67,9 @@ Your pr-worker runs in your Cloudflare account, and only you control it.
 With an Anthropic API key, the AI features send PR diffs, PR descriptions and your questions to Anthropic's API.
 Anthropic bills these calls to your key, and Anthropic's terms cover that data.
 
-## Push through Jai's relay
+## Push
 
-Push is optional. Without it, the app updates when you open it.
-
-Apple accepts pushes for PRHub only from Jai's Apple developer account. To push, your pr-worker sends each wake through
-Jai's relay, a Cloudflare Worker in Jai's account. A wake contains your phone's push token and the word `pr_sync`. It
-contains no PR content.
-
-- The relay sends the wake to Apple's push service and stores no push token and no message.
-- For each push, the relay logs your relay key's ID, the push type and Apple's answer. Cloudflare keeps these logs
-  for up to 7 days.
-- Jai keeps a list of relay keys, each with a label such as your GitHub username, so that he can revoke a key.
+A Worker you run yourself sends no push: the app updates when you open it.
 
 ## TestFlight
 
@@ -88,5 +78,5 @@ it to Jai. [Apple's privacy policy](https://www.apple.com/legal/privacy/) covers
 
 ## Contact
 
-For questions about this policy, or to have your relay key revoked, open an issue on
+For questions about this policy, open an issue on
 [jai/prhub](https://github.com/jai/prhub/issues/new).

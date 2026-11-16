@@ -9,7 +9,7 @@ import {
   type HeldStatus,
   type ReadPullRequest,
 } from "../src/alerts.ts";
-import { relayBody, sendDirect, SYNC_WAKE } from "../src/apns.ts";
+import { sendDirect } from "../src/apns.ts";
 import type { Env } from "../src/env.ts";
 import { pullRequestSummary, summaryOf } from "../src/github.ts";
 import {
@@ -152,23 +152,6 @@ test("an alert names the PR for a tap to open, and fits APNs whatever the title"
   assert.ok(Array.from(aps.alert.title).length <= 120);
   assert.ok(aps["thread-id"].length <= 64);
   assert.ok(new TextEncoder().encode(JSON.stringify(long.payload)).byteLength < 4096);
-});
-
-test("through the relay an alert is a priority-10 alert push with no collapse id; the wake is unchanged", () => {
-  const [alert] = alertsFor(null, read(), requests, NOW);
-  const body = relayBody("abcd", "production", 1_000, alertMessage(alert)) as Record<
-    string,
-    unknown
-  >;
-  assert.equal(body.push_type, "alert");
-  assert.equal(body.priority, 10);
-  assert.equal(body.collapse_id, null);
-  assert.equal(body.expiration, 1_000 + 86_400);
-  assert.deepEqual((body.payload as { pr: unknown }).pr, { repo: "acme/api", number: 7 });
-  assert.deepEqual(
-    relayBody("abcd", "production", 1_000),
-    relayBody("abcd", "production", 1_000, SYNC_WAKE),
-  );
 });
 
 test("straight to APNs an alert sends alert headers, and the wake keeps its own", async () => {

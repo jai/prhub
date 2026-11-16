@@ -10,8 +10,8 @@ into each person's own Cloudflare account and acting on GitHub with their own to
   accepts both; an unset `APP_TOKEN` or `HUB_TOKEN` admits nobody.
 - **Identity.** `GITHUB_LOGIN` is optional: unset, the Worker reads the token's user (`GET /user`) once per isolate.
 - **Features follow the configuration** (`GET /device/config`).
-- **Push** goes through Jai's relay ([push-relay.md](push-relay.md)) when `PUSH_RELAY_URL` and `PUSH_RELAY_KEY` are set;
-  the relay's topic is PRHub's bundle ID.
+- **Push** goes straight to APNs when the Worker has PRHub's APNs key (`APNS_*`), or to Agent Pager on Jai's instance;
+  a self-hosted Worker without the key sends none.
 
 The hosted Worker, which everyone signs in to with GitHub, is the same code with `HOSTED=on`:
 [Hosted sign-in](#hosted-sign-in).
@@ -22,7 +22,7 @@ Every other route (`/prs`, `/prs/merged`, `/prs/{owner}/{repo}/{n}/…`, `/repos
 Request bodies are parsed where they arrive (`worker/src/boundary.ts`); one that is not JSON, or not the route's
 shape, answers `400`, and nothing of it is kept. `POST /device/register` takes `{"token": "<APNs token, hex>", "host":
 "production" | "sandbox"}` and keeps the token lowercased, with the fingerprint of the bearer that sent it; any other
-token (one the relay would refuse on every push) answers `400 {"error": {"code": "validation_error", "message"}}`.
+token (one APNs would refuse on every push) answers `400 {"error": {"code": "validation_error", "message"}}`.
 A token registered again belongs to the device that sent it last. Unpairing (`DELETE /device/pair`) and hosted sign-out
 (`POST /auth/signout`) remove that device's registrations, so no alert reaches a phone that left. Once per PR index,
 on its first tick (hosted: the person's first poll), registrations kept before this rule, and those of devices no
@@ -150,7 +150,7 @@ Auth: a paired secret or `APP_TOKEN`. `Cache-Control: no-store`. The app reads i
 | `features.key_lines` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ANTHROPIC_API_KEY` with `AI_ON_API_KEY=on` | Shows the Key lines panel and capsule |
 | `features.rewrite` | `CLAUDE_CODE_OAUTH_TOKEN` and `AGENT`, or `ANTHROPIC_API_KEY` with `AI_ON_API_KEY=on` | Shows Rewrite on the description |
 | `features.feedback` | `FEEDBACKKIT_URL`, `FEEDBACKKIT_APP` and `FEEDBACKKIT_TOKEN` ([Feedback](#feedback)) | Shows Feedback |
-| `features.push` | the relay (`PUSH_RELAY_URL`, `PUSH_RELAY_KEY`), or direct APNs (`APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8`, `APNS_BUNDLE_ID`) | Registers for push; off: syncs on open and foreground only |
+| `features.push` | direct APNs (`APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8`, `APNS_BUNDLE_ID`), or Agent Pager (`AGENT_PAGER_URL`, `AGENT_PAGER_PUSH_TOKEN`) | Registers for push; off: syncs on open and foreground only |
 | `features.webhooks` | `WEBHOOK_SECRET` | Diagnostics only: updates in seconds rather than about a minute ([Webhook reads](#webhook-reads)) |
 | `login` | the GitHub login the Worker acts as; `null` if GitHub could not be asked | "Your PRs", and whose review a row shows |
 | `orgs` | `GITHUB_ORGS`, comma-separated; absent when unset | The PR filter's default selection |
@@ -325,8 +325,6 @@ var reads as unset.
 | `GITHUB_ORGS` | var | Default filter for the app, and the owners `GET /repos` lists |
 | `APP_LATEST_URL` | var | Where `app_latest` is read ([App updates](#app-updates)); unset: PRHub's own, `off`: none |
 | `PR_ALERTS` | var | Visible alerts: `review_requested`, `approved`, `changes_requested`, comma-separated, or `off`. Unset: `review_requested` |
-| `PUSH_RELAY_URL` | var | Jai's relay base URL |
-| `PUSH_RELAY_KEY` | secret | This Worker's relay key, `rks_…` |
 | `ANTHROPIC_API_KEY` | secret | Key lines, rewrites; Ask's key when `ASK_ANTHROPIC_API_KEY` is unset |
 | `AI_ON_API_KEY` | var | `on`: key lines, rewrites and Ask may run on an API key (the Worker's or a hosted person's). Unset or anything else: on the subscription alone, and an API key turns no AI on |
 | `CLAUDE_CODE_OAUTH_TOKEN` | secret | A Claude subscription's token (`claude setup-token`). With `AGENT` bound, key lines and rewrites run on it ([AI on a subscription](#ai-on-a-subscription)) and win over `ANTHROPIC_API_KEY` |
@@ -353,11 +351,10 @@ The webhook App's manifest points at the origin `/github/setup` was opened on, s
 credentials stay in R2 at `setup/github-app.json` until read once (`POST /github/app-credentials`, or
 `wrangler r2 object get` as the guide does).
 
-Push through the relay sends the same silent wake and alerts (below) as direct APNs. The silent wake: `push_type`
-`background`, priority 5, `collapse_id` `pr-sync`, 30-minute expiry, payload `{"aps": {"content-available": 1}, "reason": "pr_sync"}`. A push
-the relay refuses is recorded in `/events` with `status: null` and `reason` `relay_unauthorized`,
-`relay_rate_limited`, `relay_rejected`, `relay_http_<status>` or `relay_bad_response`; a network failure is
-`fetch_error: network` or `fetch_error: timeout`.
+The silent wake: `push_type` `background`, priority 5, `collapse_id` `pr-sync`, 30-minute expiry, payload
+`{"aps": {"content-available": 1}, "reason": "pr_sync"}`. A push Agent Pager refuses is recorded in `/events` with
+`status: null` and `reason` `pager_unauthorized`, `pager_rate_limited`, `pager_rejected`, `pager_http_<status>` or
+`pager_bad_response`; a network failure is `fetch_error: network` or `fetch_error: timeout`.
 
 ## AI model choice
 
@@ -719,10 +716,10 @@ When one is sent:
   PR left every list is not sent (`alert_dropped`). Each held alert is in `/events` as `push_delayed` with `{kind, pr,
   ms, reason}`, `reason` being `ready`, `moved` or `timed_out`.
 - To every device registered on the production host, as the wake is (a Simulator's sandbox registration gets none),
-  through the relay when it is set, else direct APNs; a Worker with neither sends none. Each send is in `/events` as `kind: "alert"` with `{kind, pr, title, held_ms, status, reason}`.
+  straight to APNs (or to Agent Pager on Jai's instance); a Worker without either sends none. Each send is in `/events` as `kind: "alert"` with `{kind, pr, title, held_ms, status, reason}`.
 
 The push: `push_type` `alert`, priority 10, no `collapse_id`, 24-hour expiry, and this payload (at most about 1 KB, well
-under APNs' and the relay's 4096 bytes):
+under APNs' 4096 bytes):
 
 ```json
 {

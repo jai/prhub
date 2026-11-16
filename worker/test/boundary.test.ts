@@ -68,7 +68,7 @@ test("a junk device token is refused with a 400 and never stored", async () => {
   assert.deepEqual(
     [...devices],
     [[TOKEN, { host: "sandbox", fingerprint: await fingerprintOf(SECRET) }]],
-    "kept lowercased, as the relay keeps it, with the device that sent it",
+    "kept lowercased, with the device that sent it",
   );
   const anonymous = post(JSON.stringify({ token: TOKEN, host: "sandbox" }), {});
   assert.equal((await registerRoute(anonymous, index)).status, 401);

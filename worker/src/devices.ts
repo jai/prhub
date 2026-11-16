@@ -19,7 +19,7 @@ function invalid(message: string): Response {
 }
 
 /**
- * `POST /device/register`. A token the relay would refuse on every push is refused here instead, and never kept. The
+ * `POST /device/register`. A token APNs would refuse on every push is refused here instead, and never kept. The
  * token is kept with the bearer's fingerprint, so unpairing or signing out that device takes it along.
  */
 export async function registerRoute(request: Request, index: DeviceIndex): Promise<Response> {

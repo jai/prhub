@@ -19,7 +19,6 @@ import {
   type PushOutcome,
   sendDirect,
   sendViaPager,
-  sendViaRelay,
   SYNC_WAKE,
 } from "./apns";
 import { aiConfigOf } from "./config";
@@ -1260,10 +1259,7 @@ export class PrIndex extends DurableObject<Env> {
       .toArray();
     let delivered = false;
     for (const { token, host } of devices) {
-      const { status, reason } =
-        mode === "relay"
-          ? await sendViaRelay(token, host, this.env, seconds, message)
-          : await sendDirect(token, host, jwt, this.env, seconds, message);
+      const { status, reason } = await sendDirect(token, host, jwt, this.env, seconds, message);
       this.addEvent(kind, { ...detail, status, reason });
       if (status === 200) {
         delivered = true;

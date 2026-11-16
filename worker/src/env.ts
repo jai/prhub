@@ -53,13 +53,10 @@ export interface Env extends LimitVars {
   APNS_KEY_P8?: string;
   /**
    * Jai's instance only: pushes go to his Agent Pager Worker (`POST /pr-push`), never to a device, so Agent Pager hears
-   * from one Worker. Wins over the relay and direct APNs.
+   * from one Worker. Wins over direct APNs.
    */
   AGENT_PAGER_URL?: string;
   AGENT_PAGER_PUSH_TOKEN?: string;
-  /** Push through Jai's relay (docs/push-relay.md), for the public PR app. Wins over direct APNs when both are set. */
-  PUSH_RELAY_URL?: string;
-  PUSH_RELAY_KEY?: string;
   /** Key lines and rewrites, when AI does not run on the subscription. */
   ANTHROPIC_API_KEY?: string;
   /**

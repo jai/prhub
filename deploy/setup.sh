@@ -6,7 +6,7 @@
 #   2. finds or creates the R2 bucket `<worker>-diffs`;
 #   3. renders wrangler.template.jsonc into deploy/wrangler.jsonc;
 #   4. deploys the Worker;
-#   5. sets the secrets that are given: GITHUB_TOKEN, PUSH_RELAY_KEY, ANTHROPIC_API_KEY, ASK_GITHUB_TOKEN;
+#   5. sets the secrets that are given: GITHUB_TOKEN, ANTHROPIC_API_KEY, ASK_GITHUB_TOKEN;
 #   6. checks the Worker answers;
 #   7. prints a one-time pairing link (and QR code) for PRHub.
 #
@@ -16,8 +16,6 @@
 #   GITHUB_TOKEN           required, secret   fine-grained PAT (permissions in AGENTS.md)
 #   WORKER_NAME            default pr-review
 #   GITHUB_ORGS            optional           owners PRHub filters to by default, comma-separated
-#   PUSH_RELAY_URL         optional           the relay's base URL, from Jai; with PUSH_RELAY_KEY
-#   PUSH_RELAY_KEY         optional, secret   this Worker's relay key, rks_…, from Jai
 #   ANTHROPIC_API_KEY      optional, secret   key lines, rewrites, and Ask AI's key
 #   ASK_AGENT_ID ASK_ENVIRONMENT_ID ASK_VAULT_ID ASK_CREDENTIAL_ID   optional   from `npm run ask-agent`
 #   ASK_GITHUB_TOKEN       optional, secret   a read-only PAT for Ask AI's agent (else it gets GITHUB_TOKEN)
@@ -62,10 +60,6 @@ ask CLOUDFLARE_ACCOUNT_ID "Cloudflare account ID"
 ask GITHUB_TOKEN "GitHub fine-grained personal access token" secret
 WORKER_NAME="${WORKER_NAME:-pr-review}"
 [[ "$WORKER_NAME" =~ ^[a-z0-9][a-z0-9-]{0,55}$ ]] || die "WORKER_NAME must be lowercase letters, digits and hyphens"
-PUSH_RELAY_URL="${PUSH_RELAY_URL:-}"
-if [ -n "$PUSH_RELAY_URL" ]; then
-	[[ "$PUSH_RELAY_URL" =~ ^https://[^[:space:]/]+/?$ ]] || die "PUSH_RELAY_URL must be https://<host>"
-fi
 
 if [ ! -d "$root/worker/node_modules" ]; then
 	say "installing the Worker's dependencies"
@@ -104,11 +98,10 @@ fi
 
 # 3. Render the config. Node does the substitution so any value stays valid JSON.
 # shellcheck disable=SC2016
-WORKER_NAME="$WORKER_NAME" CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" R2_BUCKET="$bucket" \
-	PUSH_RELAY_URL="${PUSH_RELAY_URL%/}" node -e '
+WORKER_NAME="$WORKER_NAME" CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" R2_BUCKET="$bucket" node -e '
 const fs = require("fs");
 const [template, out] = process.argv.slice(1);
-const names = ["WORKER_NAME", "CLOUDFLARE_ACCOUNT_ID", "R2_BUCKET", "PUSH_RELAY_URL", "GITHUB_ORGS",
+const names = ["WORKER_NAME", "CLOUDFLARE_ACCOUNT_ID", "R2_BUCKET", "GITHUB_ORGS",
   "REVIEW_SLA_UTC_OFFSET_HOURS", "REVIEW_SLA_HOURS", "REVIEW_SLA_WEEKDAYS",
   "ASK_AGENT_ID", "ASK_ENVIRONMENT_ID", "ASK_VAULT_ID", "ASK_CREDENTIAL_ID"];
 const text = fs.readFileSync(template, "utf8").replace(/__([A-Z0-9_]+)__/g, (whole, name) => {
@@ -125,7 +118,7 @@ wrangler deploy --config "$config" >&2 || die "wrangler deploy failed"
 say "deployed at $worker_url"
 
 # 5. Secrets: each one given, never echoed.
-for name in GITHUB_TOKEN PUSH_RELAY_KEY ANTHROPIC_API_KEY ASK_GITHUB_TOKEN; do
+for name in GITHUB_TOKEN ANTHROPIC_API_KEY ASK_GITHUB_TOKEN; do
 	if [ -n "${!name:-}" ]; then
 		printf '%s' "${!name}" | wrangler secret put "$name" --config "$config" >/dev/null 2>&1 || die "could not set $name"
 		say "set $name"

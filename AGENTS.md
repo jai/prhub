@@ -1,7 +1,7 @@
 # AGENTS.md
 
 This repo is the source of PRHub: an iPhone app for reviewing GitHub pull requests, PRKit (the Swift package with its
-PR screens), the Cloudflare Worker that each person deploys to their own account, and the push relay.
+PR screens), and the Cloudflare Worker (hosted as `prhub`; self-hosting is on its way out).
 
 **CI rules:** before you add or change a workflow, or build, test, run a simulator or drive a desktop on one of
 Jai's Macs, read [RULES.md in jai/ci](https://github.com/jai/ci/blob/main/RULES.md).
@@ -37,11 +37,11 @@ works new `feedback` issues, checks that each feedback chat's work landed on `ma
 ## If you are changing the code
 
 - Layout: `PRKit/` with the root `Package.swift` (the PR screens as a Swift package), `app/` (the PRHub app,
-  XcodeGen), `worker/` (the Worker), `relay/` (the push relay), `deploy/` (template, `setup.sh`, deployment guide,
+  XcodeGen), `worker/` (the Worker), `deploy/` (template, `setup.sh`, deployment guide,
   `github-app/`), `docs/` (contracts, `fixtures/`, plans), `scripts/` (`ask-trace.sh`),
   `e2e/` (agentic bug bashes and repro tests on the Simulator, [e2e/README.md](e2e/README.md)).
 - Contracts: [docs/api.md](docs/api.md) (pairing, `/device/config`, every var and secret) and
-  [docs/push-relay.md](docs/push-relay.md). Whoever changes API behaviour updates the contract in the same commit.
+  the hosted deploy, [docs/hosted-deploy.md](docs/hosted-deploy.md). Whoever changes API behaviour updates the contract in the same commit.
 - **Push to `main`, then deploy. No pull requests.** GitHub enforces it: no new branches (except `ci/…`), and `main` takes only signed, linear pushes, never a force push; `v*` tags never move. Commit (signed) on `main`, `git pull --rebase`, run the local
   checks below for what you touched, and push. Never deploy by hand: each `vX.Y.Z` release ("Releases" below)
   deploys the hosted Worker (`.github/workflows/deploy-worker.yml`) and starts the app's TestFlight build, and PRKit's
@@ -56,7 +56,7 @@ works new `feedback` issues, checks that each feedback chat's work landed on `ma
   logs a week as an artifact.
   A UI test's `waitForExistence` looks at once and every 0.1 s (`app/PRHubUITests/FastWaits.swift`), so use it freely.
   Xcode Cloud makes the builds only, from the `v*` tag each release makes.
-- Tests: `npm test` and `npm run typecheck` in `worker/` and `relay/`. The worker's contract test compares what the
+- Tests: `npm test` and `npm run typecheck` in `worker/`. The worker's contract test compares what the
   real builders send with `docs/fixtures/*.json`; after a deliberate change run `UPDATE_FIXTURES=1 npm test` and
   commit the fixtures with the code.
 - iOS: Swift 6, iOS 26, SwiftUI, Xcode 26. `swift test` for PRKit; `make -C app test` and `make -C app ui-test` for
@@ -82,9 +82,9 @@ works new `feedback` issues, checks that each feedback chat's work landed on `ma
 - Public repo: `make lint` runs gitleaks (`.gitleaks.toml`), which fails on a secret or a private name, id or host,
   in the pre-commit hook and in CI. Test data
   uses made-up names (`acme`, `octocat`).
-- Jai's own deployments (his Worker and the relay) build from a pinned ref of this repo with private config kept
+- Jai's own deployments build from a pinned ref of this repo with private config kept
   elsewhere. Nothing here may depend on that config.
-- Commits: conventional (`feat(worker): …`, `fix(relay): …`, `feat(prkit): …`, `fix(app): …`, `docs: …`), signed.
+- Commits: conventional (`feat(worker): …`, `feat(prkit): …`, `fix(app): …`, `docs: …`), signed.
 
 ## Analytics
 

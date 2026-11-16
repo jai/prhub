@@ -91,7 +91,7 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        # The pr-worker's silent wake, through the relay.
+        # The pr-worker's silent wake.
         UIBackgroundModes:
           - remote-notification
     # Generated too: XcodeGen rewrites this file on every `generate`, so the keys live here. Push, for the silent wake;

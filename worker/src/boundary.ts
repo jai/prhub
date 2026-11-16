@@ -50,7 +50,7 @@ export async function bodyOf(request: Request): Promise<{ value: unknown } | nul
 
 // --- Devices --------------------------------------------------------------------------------------------------------
 
-/** Apple's token for one install. The relay refuses anything else with `invalid_device_token` on every push. */
+/** Apple's token for one install. Anything else is refused with `invalid_device_token`. */
 const DEVICE_TOKEN = /^[0-9a-fA-F]{2,200}$/;
 
 export interface DeviceRegistration {
@@ -58,7 +58,7 @@ export interface DeviceRegistration {
   host: ApnsHost;
 }
 
-/** `POST /device/register`: `{token, host}`, the token lowercased as the relay keeps it. */
+/** `POST /device/register`: `{token, host}`, the token lowercased. */
 export const parseDeviceRegistration = parser<DeviceRegistration>(
   z.object({
     token: z

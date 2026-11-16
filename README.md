@@ -20,8 +20,6 @@ on GitHub with your own token. Your coding agent deploys it for you.
 - A GitHub personal access token (PAT, classic) with the `repo`, `workflow` and `read:org` scopes and an expiry, such
   as 90 days. It covers every org you belong to and your own repos.
 - Optional: an Anthropic API key, for key lines, description rewrites and Ask AI. Model calls bill to your key.
-- Optional: a relay key from Jai, for push. With push, the app updates when a PR changes. Without push, the app
-  updates when you open it. To get a key, [open an issue](https://github.com/jai/prhub/issues/new).
 - A coding agent, such as Claude Code or Codex, on a computer with git, Node.js 24 or later, curl and jq.
 
 ## Deploy the Worker
@@ -54,7 +52,7 @@ pairing code works once and expires after 30 minutes. For a new code, ask your a
 
 Being changed ([docs/plans/workers-rearchitecture.md](docs/plans/workers-rearchitecture.md)): PRHub becomes hosted
 only. The target is one Worker, `prhub`, with a test copy, `prhub-test`, and the PR code also as a library that another
-Worker imports (`worker/src/lib.ts`). Self-hosting and the push relay below are on their way out.
+Worker imports (`worker/src/lib.ts`). Self-hosting below is on its way out; the push relay is gone (2026-11-16), so a self-hosted Worker sends no push.
 
 Current move: 1, the library (2026-11-10).
 
@@ -64,7 +62,6 @@ Current move: 1, the library (2026-11-10).
 - `PRKit/` and `Package.swift`: PRKit, the Swift package with the PR screens, their models and the Worker client
   ([PRKit/README.md](PRKit/README.md)). Other apps add this repo as a package and embed the screens as one tab.
 - `worker/`: the Worker each person deploys. `deploy/` has its template, `setup.sh` and the agent's deployment guide.
-- `relay/`: the push relay that Jai runs, which forwards silent pushes to Apple ([docs/push-relay.md](docs/push-relay.md)).
 - `docs/`: the Worker's API ([docs/api.md](docs/api.md)), the fixtures the app's tests decode, and plans.
 - `DESIGN.md`: the app's design tokens and parts.
 
@@ -72,7 +69,6 @@ Current move: 1, the library (2026-11-10).
 
 ```sh
 (cd worker && npm ci && npm test && npm run typecheck)
-(cd relay && npm ci && npm test && npm run typecheck)
 swift test                 # PRKit, on macOS
 make -C app test           # the app's and PRKit's unit tests on an iOS Simulator (Xcode 26, XcodeGen)
 make -C app ui-test        # the samples flow, and pictures of every screen in app/build/screenshots
@@ -93,9 +89,7 @@ Add the `PRKit` product to the app target, then follow [PRKit/README.md](PRKit/R
 ## Privacy
 
 Your Worker, your token and your PR data stay in your Cloudflare account. The Worker sends data only to GitHub, and to
-Anthropic when the AI features are on. Only push goes through Jai: your Worker sends each silent push through Jai's
-relay to Apple. A push carries your phone's push token and the text `pr_sync`, and no PR content. The relay stores no
-push token and no message. It logs each push with your relay key's ID and Apple's answer.
+Anthropic when the AI features are on. A self-hosted Worker sends no push: the app updates when you open it.
 
 The full policy is in [PRIVACY.md](PRIVACY.md). The hosted service, which you reach with Sign in with GitHub, has its
 own: [docs/privacy/hosted.md](docs/privacy/hosted.md).

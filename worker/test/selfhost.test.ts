@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BUILT_IN_GUIDE, guideSource } from "../src/ai.ts";
-import { pushMode, relayBody, relayOutcome, sendViaPager } from "../src/apns.ts";
+import { pagerOutcome, pushMode, sendViaPager } from "../src/apns.ts";
 import { deviceConfig } from "../src/config.ts";
 import type { Env } from "../src/env.ts";
 import {
@@ -92,8 +92,10 @@ test("each feature follows what serves it", () => {
       AI_ON_API_KEY: "on",
       ANTHROPIC_API_KEY: "k",
       ...ask,
-      PUSH_RELAY_URL: "https://relay",
-      PUSH_RELAY_KEY: "rks_x",
+      APNS_BUNDLE_ID: "b",
+      APNS_KEY_ID: "i",
+      APNS_TEAM_ID: "t",
+      APNS_KEY_P8: "p",
       GITHUB_ORGS: "acme, , beta",
     }),
     "alex",
@@ -147,46 +149,30 @@ test("each feature follows what serves it", () => {
   );
 });
 
-test("push goes through the relay when it is set, else APNs with a whole key, else nowhere", () => {
+test("push goes to APNs with a whole key, else nowhere", () => {
   const apns = { APNS_BUNDLE_ID: "b", APNS_KEY_ID: "i", APNS_TEAM_ID: "t", APNS_KEY_P8: "p" };
-  assert.equal(
-    pushMode(env({ ...apns, PUSH_RELAY_URL: "https://relay", PUSH_RELAY_KEY: "rks_x" })),
-    "relay",
-  );
   assert.equal(pushMode(env(apns)), "apns");
   assert.equal(pushMode(env({ ...apns, APNS_KEY_P8: "" })), "none");
-  assert.equal(pushMode(env({ PUSH_RELAY_URL: "https://relay" })), "none");
+  assert.equal(pushMode(env({})), "none");
 });
 
-test("the relay gets the same silent wake APNs would", () => {
-  assert.deepEqual(relayBody("abcd", "production", 1_000), {
-    device_token: "abcd",
-    apns_env: "production",
-    push_type: "background",
-    priority: 5,
-    collapse_id: "pr-sync",
-    expiration: 2_800,
-    payload: { aps: { "content-available": 1 }, reason: "pr_sync" },
-  });
-});
-
-test("the relay's answer reads as APNs' own, and its refusals as reasons with no status", () => {
-  assert.deepEqual(relayOutcome(200, { apns_status: 200, apns_id: "x", reason: null }), {
+test("Agent Pager's answer reads as APNs' own, and its refusals as reasons with no status", () => {
+  assert.deepEqual(pagerOutcome(200, { apns_status: 200, apns_id: "x", reason: null }), {
     status: 200,
     reason: null,
   });
-  assert.deepEqual(relayOutcome(200, { apns_status: 410, reason: "Unregistered" }), {
+  assert.deepEqual(pagerOutcome(200, { apns_status: 410, reason: "Unregistered" }), {
     status: 410,
     reason: "Unregistered",
   });
-  assert.deepEqual(relayOutcome(200, { apns_status: null, reason: "apns_key_invalid" }), {
+  assert.deepEqual(pagerOutcome(200, { apns_status: null, reason: "apns_key_invalid" }), {
     status: null,
     reason: "apns_key_invalid",
   });
-  assert.deepEqual(relayOutcome(200, "nonsense"), { status: null, reason: "relay_bad_response" });
-  assert.deepEqual(relayOutcome(401, null), { status: null, reason: "relay_unauthorized" });
-  assert.deepEqual(relayOutcome(429, null), { status: null, reason: "relay_rate_limited" });
-  assert.deepEqual(relayOutcome(503, null), { status: null, reason: "relay_http_503" });
+  assert.deepEqual(pagerOutcome(200, "nonsense"), { status: null, reason: "pager_bad_response" });
+  assert.deepEqual(pagerOutcome(401, null), { status: null, reason: "pager_unauthorized" });
+  assert.deepEqual(pagerOutcome(429, null), { status: null, reason: "pager_rate_limited" });
+  assert.deepEqual(pagerOutcome(503, null), { status: null, reason: "pager_http_503" });
 });
 
 test("the webhook App is made on the org when one is named, else on the user, for this Worker's origin", () => {
@@ -220,18 +206,17 @@ test("the rewrite reads the guide named in GUIDE_REPO, else uses its own", () =>
   assert.ok(BUILT_IN_GUIDE.length > 0);
 });
 
-test("Jai's instance hands every push to his Agent Pager Worker, over the relay and its own key", () => {
+test("Jai's instance hands every push to his Agent Pager Worker, over its own key", () => {
   const pager = {
     AGENT_PAGER_URL: "https://agent-pager.example",
     AGENT_PAGER_PUSH_TOKEN: "t".repeat(40),
   };
-  const relay = { PUSH_RELAY_URL: "https://relay.example", PUSH_RELAY_KEY: "k" };
   const apns = { APNS_KEY_ID: "k", APNS_TEAM_ID: "t", APNS_KEY_P8: "p", APNS_BUNDLE_ID: "b" };
-  assert.equal(pushMode(env({ ...pager, ...relay, ...apns })), "pager");
-  assert.equal(pushMode(env({ AGENT_PAGER_URL: pager.AGENT_PAGER_URL, ...relay })), "relay");
+  assert.equal(pushMode(env({ ...pager, ...apns })), "pager");
+  assert.equal(pushMode(env({ AGENT_PAGER_URL: pager.AGENT_PAGER_URL, ...apns })), "apns");
 });
 
-test("a push to Agent Pager carries the message as it is, and its answer reads as the relay's", async () => {
+test("a push to Agent Pager carries the message as it is, and its answer reads as APNs'", async () => {
   const sent: { url: string; init: RequestInit }[] = [];
   const realFetch = globalThis.fetch;
   globalThis.fetch = (async (url: string, init: RequestInit) => {

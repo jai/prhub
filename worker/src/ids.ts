@@ -45,7 +45,7 @@ export type Fingerprint = Brand<string, "Fingerprint">;
 /** SHA-256 of a pairing code, lowercase hex: the code's name in R2 and in the spent codes (`codeHashOf`). */
 export type CodeHash = Brand<string, "CodeHash">;
 
-/** A device's APNs token: hex, as Apple gives it, lowercased (the relay's rule, relay/src/validate.ts). */
+/** A device's APNs token: hex, as Apple gives it, lowercased. */
 export type DeviceToken = Brand<string, "DeviceToken">;
 
 /** `owner/name`, as GitHub names a repo. */

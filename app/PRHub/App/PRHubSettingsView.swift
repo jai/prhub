@@ -161,7 +161,7 @@ struct PRHubSettingsView: View {
                 .accessibilityIdentifier("prhub-worker-host")
             PRValueLine("GitHub login", value: connection.config?.login ?? "Not read yet")
             if let config = connection.config {
-                PRValueLine("Push", value: config.isOn(.push) ? "On, through the relay" : "Off: syncs when opened")
+                PRValueLine("Push", value: config.isOn(.push) ? "On" : "Off: syncs when opened")
                 PRValueLine(
                     "Updates", value: config.isOn(.webhooks) ? "Within seconds (webhooks)" : "About once a minute"
                 )

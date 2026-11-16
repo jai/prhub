@@ -1,7 +1,7 @@
 # The fast checks, on every push to main and before every release (release.yml). Three jobs, so a red one says which:
 #   Lint              make lint, make typecheck: formatters' checks, SwiftLint (with DESIGN.md's token rules), oxlint,
 #                     ruff, actionlint, ShellCheck, gitleaks (secrets and private names: this repo is public), type checks
-#   Unit Tests        make test: PRKit's swift test; the Worker's, the relay's and the AI container's node tests
+#   Unit Tests        make test: PRKit's swift test; the Worker's and the AI container's node tests
 #   Unit Tests (app)  make test-app: the app's unit tests on an iPhone Simulator
 # The slow UI tests are test-ui.yml. On GitHub's runners (Xcode 27.2 image), free for a public repo.
 name: ci

@@ -15,8 +15,6 @@
     "GITHUB_LOGIN": "",
     // The owners PRHub filters to by default, comma-separated; empty shows every owner.
     "GITHUB_ORGS": "__GITHUB_ORGS__",
-    // Push through Jai's relay to PRHub (com.jaigovindani.prreview). Empty: no push; the app syncs when opened.
-    "PUSH_RELAY_URL": "__PUSH_RELAY_URL__",
     // Optional review SLA, e.g. "7", "9-18", "1,2,3,4,5" for UTC+7, 09:00-18:00, Monday to Friday. Empty: off.
     "REVIEW_SLA_UTC_OFFSET_HOURS": "__REVIEW_SLA_UTC_OFFSET_HOURS__",
     "REVIEW_SLA_HOURS": "__REVIEW_SLA_HOURS__",

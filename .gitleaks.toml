@@ -21,7 +21,7 @@ description = "A private host, account id, key id, bundle id or credential path"
 regex = '''(jai-f89|f8966459|31d7953b|H8839T272X|B765L3Q2GZ|bbbcdf62-cba8-48ed-a884-49e673b9916c|com\.jaigovindani\.agentpager|\.credentials/|(?i)borg[- ]cube|(?i)jais?-mac-mini|mac-mini-users|op://|\bagent_01|\benv_01|\bvlt_0|\bvcrd_|\brks_[A-Za-z0-9]{16}|\bops_[A-Za-z0-9]{20})'''
 
 [allowlist]
-description = "Public URLs (the shared relay, the hosted Worker), PostHog's public project key, the tests' made-up keys"
+description = "The hosted Worker's public URL, PostHog's public project key, the tests' made-up keys"
 regexTarget = "line"
-regexes = ['''https://(agent-pager-relay|prhub)\.jai-f89\.workers\.dev''', '''\bprhub\.jai-f89\.workers\.dev''', '''PRHUB_ANALYTICS_KEY = phc_''']
+regexes = ['''https://prhub\.jai-f89\.workers\.dev''', '''\bprhub\.jai-f89\.workers\.dev''', '''PRHUB_ANALYTICS_KEY = phc_''']
 paths = ['''(^|/)package-lock\.json$''', '''(^|/)Package\.resolved$''', '''^\.gitleaks\.toml$''', '''(^|/)node_modules/''', '''(^|/)\.build/''', '''(^|/)build/''', '''^worker/test/''', '''^app/PRHubTests/''']

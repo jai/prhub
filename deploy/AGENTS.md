@@ -4,10 +4,10 @@ What PRHub is and what the Worker costs: [README.md](../README.md).
 
 For a coding agent setting up PRHub for its human. PRHub is an iPhone app for reviewing GitHub pull requests. You
 deploy its backend, `worker/`, into your human's Cloudflare account, acting on GitHub with their own token. The app
-pairs with the Worker you deploy. Nothing you deploy talks to Jai's Workers. The one shared service, optional, is Jai's
-push relay, which sends your Worker's silent pushes to Apple.
+pairs with the Worker you deploy. Nothing you deploy talks to Jai's Workers. A self-hosted Worker sends no push: the
+app syncs when it is opened.
 
-Contracts: [docs/api.md](../docs/api.md) (pairing, config, every var and secret), [docs/push-relay.md](../docs/push-relay.md) (the relay).
+Contracts: [docs/api.md](../docs/api.md) (pairing, config, every var and secret).
 
 ## What you deploy
 
@@ -15,7 +15,6 @@ Contracts: [docs/api.md](../docs/api.md) (pairing, config, every var and secret)
 - It reads GitHub with one personal access token (PAT). No GitHub App is needed: the cron finds changes
   within about a minute. An optional webhook App makes it seconds ("Faster updates", below).
 - Optional: an Anthropic API key, for key lines and description rewrites, and for Ask AI after one more script.
-- Optional: push through Jai's relay, so the phone wakes for changes. Without it the app syncs when it is opened.
 - Never on a self-hosted Worker: Feedback (Jai's own builder agent).
 
 ## Prerequisites
@@ -44,8 +43,7 @@ Ask your human for each of these. Never print or commit a secret. Pass secrets i
      org may hold it for an owner's approval. Fine-grained tokens have no Checks permission; check runs still read.
 3. **Optional, an Anthropic API key** (console.anthropic.com), for key lines, rewrites and Ask AI. Model calls are
    billed to it; Ask AI caps each PR's session at $2.
-4. **Optional, a relay key from Jai**, for push. The key starts `rks_`; Jai issues one per Worker: ask in an issue on [jai/prhub](https://github.com/jai/prhub/issues/new).
-5. **On the machine you run from**: git, Node.js 24 or later with npm, `curl`, `jq`, bash. Optional: `qrencode`, to
+4. **On the machine you run from**: git, Node.js 24 or later with npm, `curl`, `jq`, bash. Optional: `qrencode`, to
    print the pairing link as a QR code.
 
 ## Steps
@@ -108,7 +106,6 @@ made for another resource owner or waits for an org owner's approval.
 
 ```sh
 export GITHUB_ORGS=<owner>[,<owner>]      # optional: the app's default filter
-export PUSH_RELAY_URL=https://agent-pager-relay.jai-f89.workers.dev; read -rs PUSH_RELAY_KEY && export PUSH_RELAY_KEY   # optional
 read -rs ANTHROPIC_API_KEY && export ANTHROPIC_API_KEY                                        # optional
 deploy/setup.sh
 ```
@@ -118,7 +115,7 @@ Optional settings: `WORKER_NAME` (default `pr-review`), and a review SLA week: `
 human a due time one working day out.
 
 What it does: checks both tokens, finds or creates the R2 bucket `<worker>-diffs`, writes
-`deploy/wrangler.jsonc` (gitignored), deploys, sets each secret given (`GITHUB_TOKEN`, `PUSH_RELAY_KEY`,
+`deploy/wrangler.jsonc` (gitignored), deploys, sets each secret given (`GITHUB_TOKEN`,
 `ANTHROPIC_API_KEY`, `ASK_GITHUB_TOKEN`), checks the Worker, and prints a pairing link. It is safe to run again: a
 secret not given is kept, and a new run prints a new code. Give it the same optional vars each run, because the
 config is rendered again from them.
@@ -239,7 +236,6 @@ far slower than before.
 | A write answers `403 Resource not accessible by personal access token` | A permission is missing (merge needs Contents write) | Edit the token's permissions; no redeploy needed |
 | `/device/pair` answers `pairing_code_invalid` | The code is used, expired or mistyped | Mint a new one (step 6) |
 | A paired app gets `401` | Another phone was paired without `--app`, replacing it | Pair it again with `--app "<label>"` |
-| Push events show `relay_unauthorized` | The relay key is wrong or revoked | Ask Jai for a new key; re-run setup with it |
 | Key lines or rewrite answer `404 … not set up` | No `ANTHROPIC_API_KEY` | Re-run setup with it |
 | Ask AI answers `404 … not set up` | The four `ASK_*` ids or the key are missing | Step 7 |
 
@@ -249,4 +245,4 @@ Logs: `cd worker && npx wrangler@4 tail <worker name> --config ../deploy/wrangle
 
 - The Worker URL, that it is on their Cloudflare account, and that it acts on GitHub as them, with their PAT.
 - Which optional features are on (`/device/config`), and what each needs to turn on.
-- That push, if on, goes through Jai's relay, which forwards each wake to Apple and keeps nothing.
+- That a self-hosted Worker sends no push: the app syncs when it is opened.

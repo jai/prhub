@@ -102,8 +102,7 @@ export function canMintInstallationTokens(env: Env): boolean {
  * The Worker as it acts for one signed-in person: their token and login, their objects (`user:<id>`), their R2 prefix.
  * AI runs on the person's own Anthropic key: key lines and rewrites once they gave it, Ask once Ask's resources
  * exist in their org and the Worker can mint installation tokens. Key lines and rewrites run on the Worker's
- * subscription only for `SUBSCRIPTION_LOGINS`. Never on the Worker's own key, and Feedback, the
- * relay stay off; Linear uses only the person’s own key.
+ * subscription only for `SUBSCRIPTION_LOGINS`. Never on the Worker's own key, and Feedback stays off; Linear uses only the person’s own key.
  */
 export function userEnv(
   env: Env,

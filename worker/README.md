@@ -11,7 +11,6 @@ follow [deploy/AGENTS.md](../deploy/AGENTS.md), the deployment guide.
 - Stores each PR's diff in R2 (Cloudflare's object storage) and serves it to the app.
 - Sends your reviews, comments and merges to GitHub as you, with your PAT.
 - With an Anthropic API key: picks the key lines of a diff, rewrites PR descriptions, and runs Ask AI.
-- With a relay key: wakes the app with a silent push when a PR changes.
 
 ## Cost
 

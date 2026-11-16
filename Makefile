@@ -1,9 +1,9 @@
 # >>> repo header
 # jai/prhub: the root Makefile (new). Built from jai/ci makefile.template; regenerate with jai/ci makefiles/sync.py.
 #
-# Languages: Swift (app/, PRKit/, Package.swift), TypeScript (worker/, relay/, e2e/), JavaScript (agent/), shell.
+# Languages: Swift (app/, PRKit/, Package.swift), TypeScript (worker/, e2e/), JavaScript (agent/), shell.
 #
-# The worker and relay type checks read src/, as tsc -p tsconfig.json did: the tests run on node --test. Type-aware
+# The worker type check reads src/, as tsc -p tsconfig.json did: the tests run on node --test. Type-aware
 # rules that fire on today's code are off in worker/.oxlintrc.json until fixed. SwiftLint's limits are today's code.
 # pyrefly needs uv: mise.toml pins it. app/Tools/design's JavaScript is not formatted or linted yet.
 # app/Makefile stays as it is; `make -C app test` runs the app's tests on a Simulator, as the ios workflow does.
@@ -79,7 +79,7 @@ SH_FILES = $(shell git ls-files '*.sh' | xargs grep -l -E '^\#!.*(bash|/sh)' 2>/
 ZSH_FILES = $(shell git ls-files '*.sh' '*.zsh' | xargs grep -l -E '^\#!.*zsh' 2>/dev/null)
 
 # >>> repo parts
-PARTS := app worker relay agent e2e py public
+PARTS := app worker agent e2e py public
 
 app_PATHS := app/% PRKit/% Package.swift Package.resolved .swiftformat .swiftlint.yml
 .PHONY: app-setup app-fmt app-lint app-typecheck app-test
@@ -109,20 +109,6 @@ worker-typecheck:
 	cd worker && $(OXLINT) --type-aware --type-check --deny-warnings src
 worker-test:
 	npm --prefix worker test
-
-relay_PATHS := relay/% .oxfmtrc.json
-.PHONY: relay-setup relay-fmt relay-lint relay-typecheck relay-test
-relay-setup:
-	npm --prefix relay ci --no-audit --no-fund
-relay-fmt:
-	$(OXFMT) relay
-relay-lint:
-	$(OXFMT) --check relay
-	cd relay && $(OXLINT) --deny-warnings
-relay-typecheck:
-	cd relay && $(OXLINT) --type-aware --type-check --deny-warnings src
-relay-test:
-	npm --prefix relay test
 
 # agent/ is plain JavaScript (.mjs) with no TypeScript to check.
 agent_PATHS := agent/% .oxfmtrc.json
