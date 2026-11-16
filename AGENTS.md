@@ -7,26 +7,12 @@ PR screens), the Cloudflare Worker that each person deploys to their own account
 Jai's Macs, read [RULES.md in jai/ci](https://github.com/jai/ci/blob/main/RULES.md).
 
 <!-- BEGIN jai/ci standard section -->
-## Shipping (standard for all of Jai's projects)
+## CI, releases and deploys
 
-- **Push to main.** Work on `main` in your own clone or worktree. No feature branches and
-  no pull requests. The only pull requests are the ones bots open (release-please);
-  they merge themselves once green. Dependabot is off (Jai, 2026-11-15).
-- **Land a change:** commit small (Conventional Commits, signed), `git pull --rebase origin
-  main`, run this repo's fast checks, push. A push rejected because main moved means
-  someone landed first: rebase, run the checks again, push again. Never force-push.
-- **Main stays green.** Watch the run for your commit (`gh run watch`). If your push turns
-  main red, fixing it is your next task: fix forward, or `git revert` your commit, within
-  the hour.
-- **Deploy through CI.** For conformance and correctness, production deploys run in the
-  repo's deploy workflow. A manual deploy is fine in an exceptional case or when the user
-  asks for one.
-- **Releases are not yours to cut.** An hourly job tests main's newest commit and releases
-  it if it passes. Do not tag or bump versions by hand.
-- **Unfinished work** goes behind a feature flag, not on a branch.
-- **Parallel agents:** one worktree each, small changes, rebase often.
-- **Where CI runs and what you may run on Jai's Macs:**
-  [RULES.md in jai/ci](https://github.com/jai/ci/blob/main/RULES.md).
+This repo follows [RULES.md in jai/ci](https://github.com/jai/ci/blob/main/RULES.md), the
+one place for these rules: push to main (no branches or pull requests), main stays green,
+release-please releases hourly, the release tag deploys, and what you may run on Jai's
+Macs. Read it before you change a workflow, release, deploy or run work on a Mac.
 <!-- END jai/ci standard section -->
 
 **Checks:** run `make setup` once per clone, and `make check` before you push.
