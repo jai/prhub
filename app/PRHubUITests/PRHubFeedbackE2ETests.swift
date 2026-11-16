@@ -54,8 +54,9 @@ final class PRHubFeedbackE2ETests: XCTestCase {
         try XCTSkipIf(seeded.isEmpty, "an end-to-end run only: the e2e workflow sends the screenshot first")
         try launchOnTheLiveWorker()
 
+        // The row's title is a text inside its button, which has no label of its own (FeedbackKit 0.5).
         let row = app.descendants(matching: .any).matching(identifier: "feedback-thread")
-            .matching(NSPredicate(format: "label BEGINSWITH %@", seeded)).firstMatch
+            .containing(NSPredicate(format: "label BEGINSWITH %@", seeded)).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 20), "the chat with the screenshot")
         row.tap()
         let thumbnail = app.descendants(matching: .any)
