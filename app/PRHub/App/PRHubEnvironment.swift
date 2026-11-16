@@ -103,7 +103,7 @@ final class PRHubEnvironment {
         connection: WorkerConnection, access: PRViewerAccess = .offline, samples: PRSampleSet? = nil,
         isSample: Bool = false, alertPermission: PRHubAlertPermission = PRHubAlertPermission(),
         usage: UsageAnalytics = .disabled(), outbox: (any PRKitOutbox)? = nil, update: PRHubUpdate? = nil,
-        transport: (any HTTPTransport)? = nil, feedbackClient: FeatureClient? = nil
+        transport: (any HTTPTransport)? = nil
     ) {
         self.alertPermission = alertPermission
         self.update = update ?? PRHubUpdate()
@@ -116,7 +116,7 @@ final class PRHubEnvironment {
         self.outbox = nil
         self.isSample = isSample
         navigation = PRHubNavigation(pullRequests: prs)
-        feedback = FeatureRequestsModel(client: feedbackClient ?? FeatureClient(viewer: prs.client))
+        feedback = FeatureRequestsModel(client: FeatureClient(viewer: prs.client))
         #if os(iOS)
             metricKit = nil
         #endif

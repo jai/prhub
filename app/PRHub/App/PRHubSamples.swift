@@ -1,5 +1,4 @@
 import DurableNetworking
-import FeatureKit
 import Foundation
 
 /// "Try with sample PRs": PRHub with no pr-worker, for anyone who has not deployed one yet, App Review included. The
@@ -20,7 +19,7 @@ extension PRHubEnvironment {
     static func offline(
         config: DeviceConfig, access: PRViewerAccess = .offline, samples: PRSampleSet? = nil, worker: URL,
         defaultsSuite: String, isSample: Bool, usage: UsageAnalytics = .disabled(), outbox: (any PRKitOutbox)? = nil,
-        checksUpdates: Bool = false, transport: (any HTTPTransport)? = nil, feedbackClient: FeatureClient? = nil
+        checksUpdates: Bool = false, transport: (any HTTPTransport)? = nil
     ) -> PRHubEnvironment {
         let defaults = UserDefaults(suiteName: defaultsSuite) ?? .standard
         defaults.set(try? JSONEncoder().encode(config), forKey: WorkerConnection.configKey)
@@ -31,8 +30,7 @@ extension PRHubEnvironment {
         )
         return PRHubEnvironment(
             connection: connection, access: access, samples: samples, isSample: isSample, usage: usage, outbox: outbox,
-            update: PRHubUpdate(defaults: defaults, isEnabled: checksUpdates, usage: usage), transport: transport,
-            feedbackClient: feedbackClient
+            update: PRHubUpdate(defaults: defaults, isEnabled: checksUpdates, usage: usage), transport: transport
         )
     }
 }

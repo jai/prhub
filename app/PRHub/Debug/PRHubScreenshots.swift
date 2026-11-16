@@ -54,9 +54,6 @@
             if arguments.contains("-PRHubStubWorker") {
                 return PRHubStubWorker.environment(arguments)
             }
-            if arguments.contains("-PRHubFeedbackE2E"), let environment = PRHubFeedbackE2E.environment() {
-                return environment
-            }
             if let index = arguments.firstIndex(of: "-PRHubOutboxCheck"), arguments.indices.contains(index + 1),
                let worker = URL(string: arguments[index + 1])
             {
