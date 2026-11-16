@@ -37,9 +37,40 @@ jobs:
           node-version: 24
       - run: node --test release/version.test.mjs release/app-latest.test.mjs
 
-  decide:
+  # "Always latest" (#54): the newest AgentChatKit and FeedbackKit the ranges allow, committed to main when they moved,
+  # so the tests below run on, and the tag ships, exactly those. Its failure only skips the move: decide still runs.
+  kits:
     if: github.event_name != 'push'
     needs: test
+    runs-on: xcode-27
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      HAS_APP_KEY: ${{ secrets.JAI_AGENTS_PRIVATE_KEY != '' }}
+    outputs:
+      changed: ${{ steps.kits.outputs.changed }}
+      kits: ${{ steps.kits.outputs.kits }}
+    steps:
+      - id: app-token
+        if: env.HAS_APP_KEY == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: 5757830
+          private-key: ${{ secrets.JAI_AGENTS_PRIVATE_KEY }}
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+      - name: Xcode 27.2
+        run: sudo xcode-select -s /Applications/Xcode_27.2.app
+      - id: kits
+        run: scripts/newest-kits.sh
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+
+  decide:
+    if: ${{ !cancelled() && github.event_name != 'push' && needs.test.result == 'success' }}
+    needs: [test, kits]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -56,6 +87,8 @@ jobs:
           node-version: 24
       - id: decide
         run: |
+          # The kits job may have moved main a moment ago.
+          git fetch -q origin main
           head=$(git rev-parse origin/main)
           # A head whose release run failed before (red tests) waits for the next push, or a run with retry.
           failed=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/hourly-release.yml/runs?head_sha=$head&status=failure&per_page=1" -q .total_count)
@@ -102,6 +135,26 @@ jobs:
         env:
           SHA: ${{ needs.decide.outputs.sha }}
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+
+  # Newest kits that fail the tests: logged and filed as a feedback issue (#54). Main keeps them until someone fixes
+  # forward or pins them back; a release waits for that.
+  kits-failed:
+    needs: [kits, ios]
+    if: ${{ failure() && needs.kits.outputs.changed == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - run: |
+          echo "::error::the newest kits fail the tests: $KITS"
+          gh issue create -R "$GITHUB_REPOSITORY" --label feedback \
+            --title "Newest kits fail PRHub's tests: $KITS" \
+            --body "The hourly release took the newest kits ($KITS) and its tests failed: $RUN. Fix forward, or pin the failing kit back in Package.swift, then the release goes again."
+        env:
+          KITS: ${{ needs.kits.outputs.kits }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GH_TOKEN: ${{ github.token }}
 
   app-latest:
     if: github.event_name != 'push'
