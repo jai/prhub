@@ -119,6 +119,8 @@ private struct PRHubTabs: View {
         container
             .readableContentWidth()
             .prKitEnvironment(environment.prs)
+            // A Worker that starts or stops naming FeedbackKit's direct root moves the Feedback tab to that path.
+            .onChange(of: environment.connection.config?.feedbackDirect) { environment.followFeedbackPath() }
             .alertsOffer(environment.alertPermission)
             .updateOffer(environment.update)
             .environment(\.loadsAuthorAvatars, !environment.isSample)

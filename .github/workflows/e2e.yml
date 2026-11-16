@@ -84,8 +84,9 @@ jobs:
         run: |
           test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer rks_wrong' -H 'content-type: application/json' -d '{}' "$RELAY_URL/v1/push")" = 401
 
-  # The Feedback tab against FeedbackKit's live Worker as its test app (#51), on the iPhone: a message goes from the
-  # tab, and the runner's echo comes back once it has delivered it. The test app's chats are deleted before and after.
+  # The Feedback tab against FeedbackKit's live Worker as its test app (#51), on the iPhone, on FeedbackKit's direct
+  # path (#53): a message goes from the tab and the runner's echo comes back once it has delivered it, and a sent
+  # screenshot shows in its message and opens. The test app's chats are deleted before and after.
   # Repo secrets: FEEDBACKKIT_E2E_URL (the Worker's root) and FEEDBACKKIT_E2E_APP_KEY (the test app's key).
   feedback-ui:
     runs-on: xcode-27
@@ -122,6 +123,13 @@ jobs:
           ls build/DerivedData/Build/Products/*.xctestrun
       - name: Delete test chats left by an earlier run
         run: scripts/feedbackkit-e2e.sh clean
+      # A real screenshot from this Simulator, sent with a chat's first message, for the screenshot test (#53).
+      - name: Send a chat with a screenshot
+        run: |
+          xcrun simctl io "$SIMULATOR" screenshot --type=jpeg "$RUNNER_TEMP/seed.jpg"
+          text="End-to-end screenshot $GITHUB_RUN_ID"
+          scripts/feedbackkit-e2e.sh seed-screenshot "$text" "$RUNNER_TEMP/seed.jpg"
+          echo "SCREENSHOT_TEXT=$text" >> "$GITHUB_ENV"
       - name: The Feedback end-to-end test
         working-directory: app
         run: |
@@ -130,6 +138,7 @@ jobs:
           echo "::add-mask::$token"
           # Not skipped here: a skip would pass without checking anything.
           TEST_RUNNER_FEEDBACKKIT_E2E_URL="$FEEDBACKKIT_E2E_URL" TEST_RUNNER_FEEDBACKKIT_E2E_TOKEN="$token" \
+          TEST_RUNNER_FEEDBACKKIT_E2E_SCREENSHOT_TEXT="$SCREENSHOT_TEXT" \
             xcodebuild test-without-building -xctestrun build/DerivedData/Build/Products/*.xctestrun \
             -destination "id=$SIMULATOR" -resultBundlePath build/PRHub.xcresult \
             -only-testing:PRHubUITests/PRHubFeedbackE2ETests \
@@ -137,7 +146,7 @@ jobs:
           xcrun xcresulttool get test-results summary --path build/PRHub.xcresult --compact > build/summary.json
           jq -r '"\(.result): \(.passedTests) passed, \(.failedTests) failed, \(.skippedTests) skipped"' build/summary.json \
             | tee -a "$GITHUB_STEP_SUMMARY"
-          jq -e '.failedTests == 0 and .skippedTests == 0 and .passedTests == 1' build/summary.json > /dev/null
+          jq -e '.failedTests == 0 and .skippedTests == 0 and .passedTests == 2' build/summary.json > /dev/null
       - name: Delete this run's test chats
         if: always()
         run: scripts/feedbackkit-e2e.sh clean

@@ -44,6 +44,13 @@ struct DeviceConfig: Codable, Equatable, Sendable {
     var appLatest: AppLatest?
     /// `metrickit`: the phone sends its MetricKit reports (`PRHubMetricKit`, docs/api.md "MetricKit reports").
     var metricKit: Bool
+    /// `feedback_direct`: FeedbackKit's root, where Feedback goes itself with a token from `POST /feedback/token`. Nil:
+    /// through the Worker's `/feedback` routes.
+    var feedbackDirect: FeedbackDirectRoot?
+
+    struct FeedbackDirectRoot: Codable, Equatable, Sendable {
+        var url: URL
+    }
 
     /// `app_latest`: each group's newest build; one this build cannot read is nil.
     struct AppLatest: Codable, Equatable, Sendable {
@@ -125,7 +132,8 @@ struct DeviceConfig: Codable, Equatable, Sendable {
     init(
         features: Set<DeviceFeature>, ownerName: String? = nil, appVersionMin: String? = nil, push: String? = nil,
         login: String? = nil, orgs: [String]? = nil, hosted: Bool = false, account: Account? = nil,
-        installations: [GitHubInstallation]? = nil, appLatest: AppLatest? = nil, metricKit: Bool = false
+        installations: [GitHubInstallation]? = nil, appLatest: AppLatest? = nil, metricKit: Bool = false,
+        feedbackDirect: FeedbackDirectRoot? = nil
     ) {
         self.features = features
         self.ownerName = ownerName
@@ -138,6 +146,7 @@ struct DeviceConfig: Codable, Equatable, Sendable {
         self.installations = installations
         self.appLatest = appLatest
         self.metricKit = metricKit
+        self.feedbackDirect = feedbackDirect
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -152,6 +161,7 @@ struct DeviceConfig: Codable, Equatable, Sendable {
         case installations
         case appLatest = "app_latest"
         case metricKit = "metrickit"
+        case feedbackDirect = "feedback_direct"
     }
 
     /// One entry of `installations`: one this build cannot read is left out, not the whole list.
@@ -195,6 +205,9 @@ struct DeviceConfig: Codable, Equatable, Sendable {
             .compactMap(\.value)
         appLatest = try? container.decodeIfPresent(AppLatest.self, forKey: .appLatest)
         metricKit = (try? container.decodeIfPresent(Bool.self, forKey: .metricKit)) == true
+        // Only an https root: anything else stays on the Worker's routes.
+        feedbackDirect = (try? container.decodeIfPresent(FeedbackDirectRoot.self, forKey: .feedbackDirect))
+            .flatMap { $0.url.scheme == "https" ? $0 : nil }
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -217,6 +230,7 @@ struct DeviceConfig: Codable, Equatable, Sendable {
         if metricKit {
             try container.encode(metricKit, forKey: .metricKit)
         }
+        try container.encodeIfPresent(feedbackDirect, forKey: .feedbackDirect)
     }
 
     func isOn(_ feature: DeviceFeature) -> Bool {

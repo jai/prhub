@@ -20,7 +20,12 @@ final class PRHubEnvironment {
     @ObservationIgnored let outbox: PRHubOutbox?
     let navigation: PRHubNavigation
     /// The Feedback tab's requests, over the PR screens' connection. Kept for the app's life, so drafts outlive the tab.
-    let feedback: FeatureRequestsModel
+    /// The Feedback tab's: on FeedbackKit's direct path while the Worker's config names one, else through the Worker
+    /// (`followFeedbackPath`).
+    private(set) var feedback: FeatureRequestsModel
+    /// The FeedbackKit root `feedback` is on; nil through the Worker.
+    @ObservationIgnored private var feedbackRoot: URL?
+    @ObservationIgnored private var feedbackTokens: PRHubFeedbackTokens?
     /// Anonymous usage events, and Settings' switch for them.
     let usage: UsageAnalytics
     /// Runs on the bundled samples (`PRHubEnvironment.sample()`), with no Worker.
@@ -73,8 +78,11 @@ final class PRHubEnvironment {
         )
         refusals.connection = connection
         navigation = PRHubNavigation(pullRequests: prs)
-        // Its chats as last read, offline too.
-        feedback = FeatureRequestsModel(client: FeatureClient(viewer: prs.client, keptIn: prs.keptFolder))
+        let tokens = PRHubFeedbackTokens(client: prs.client)
+        feedbackTokens = tokens
+        let root = connection.config?.feedbackDirect?.url
+        feedbackRoot = root
+        feedback = FeatureRequestsModel(client: Self.feedbackClient(prs: prs, root: root, tokens: tokens))
         isSample = false
         let connection = connection
         host.config = { connection.config }
@@ -172,6 +180,30 @@ final class PRHubEnvironment {
         if connection.isPaired {
             endSample()
         }
+    }
+
+    /// FeedbackKit's direct path when the Worker names its root (`feedback_direct`), with tokens from the Worker; else
+    /// the Worker's `/feedback` routes, whose chats are kept on the device for offline.
+    static func feedbackClient(prs: PRKitController, root: URL?, tokens: PRHubFeedbackTokens) -> FeatureClient {
+        guard let root else {
+            return FeatureClient(viewer: prs.client, keptIn: prs.keptFolder)
+        }
+        let direct = FeedbackDirect(baseURL: root, token: { renew in try await tokens.token(renew: renew) })
+        return FeatureClient(direct: direct)
+    }
+
+    /// A new config that names another FeedbackKit root, or none: the Feedback tab moves to that path. Nothing when it
+    /// is the same.
+    func followFeedbackPath() {
+        guard let tokens = feedbackTokens else {
+            return
+        }
+        let root = connection.config?.feedbackDirect?.url
+        guard root != feedbackRoot else {
+            return
+        }
+        feedbackRoot = root
+        feedback = FeatureRequestsModel(client: Self.feedbackClient(prs: prs, root: root, tokens: tokens))
     }
 
     /// Settings' Disconnect: the Worker forgets this phone, the phone forgets the Worker and every PR it mirrored, so

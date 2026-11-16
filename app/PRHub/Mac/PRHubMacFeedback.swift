@@ -32,6 +32,8 @@ struct PRHubMacFeedback: View {
             }
         }
         .prKitEnvironment(shown.prs)
+        // Open on its own, this window follows the Worker's FeedbackKit path too.
+        .onChange(of: environment.connection.config?.feedbackDirect) { environment.followFeedbackPath() }
         .font(.appBody)
         .id(textScale)
         .frame(minWidth: 480, minHeight: 480)
