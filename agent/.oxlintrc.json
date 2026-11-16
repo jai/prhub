@@ -1,0 +1,10 @@
+{
+  "$schema": "../worker/node_modules/oxlint/configuration_schema.json",
+  "plugins": ["unicorn", "oxc", "node"],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "no-control-regex": "off"
+  }
+}

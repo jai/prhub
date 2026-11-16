@@ -1,0 +1,3 @@
+# actionlint (make lint): xcode-27 is the GitHub-hosted Xcode 27 image (a larger-runner label).
+self-hosted-runner:
+  labels: [xcode-27]

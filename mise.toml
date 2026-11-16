@@ -1,0 +1,3 @@
+[tools]
+# pipx: tools (pyrefly, in the Makefile) install through uv.
+uv = "0.13.8"

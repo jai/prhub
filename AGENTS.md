@@ -29,6 +29,8 @@ Jai's Macs, read [RULES.md in jai/ci](https://github.com/jai/ci/blob/main/RULES.
   [RULES.md in jai/ci](https://github.com/jai/ci/blob/main/RULES.md).
 <!-- END jai/ci standard section -->
 
+**Checks:** run `make setup` once per clone, and `make check` before you push.
+
 ## If you were asked to deploy PRHub
 
 Follow [deploy/AGENTS.md](deploy/AGENTS.md). It is the whole deployment guide: prerequisites, each step with a check,

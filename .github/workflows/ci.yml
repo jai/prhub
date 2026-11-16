@@ -1,0 +1,53 @@
+# The standard checks (jai/ci TESTS.md) on every push and pull request: Lint runs make lint typecheck, Unit Tests
+# runs make test (PRKit's swift test, and node --test for the Worker, the relay and the AI container's read tools).
+# On the Xcode 27.2 image, as ios.yml's build: GitHub's own runners, free for a public repo. ios.yml (the app's build
+# and UI test slices) and worker.yml (the scrub and the Worker bundles) stay as they are.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: xcode-27
+    timeout-minutes: 20
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    steps:
+      - name: Xcode 27.2
+        run: sudo xcode-select -s /Applications/Xcode_27.2.app
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: make setup
+      - run: make lint typecheck
+
+  test:
+    name: Unit Tests
+    runs-on: xcode-27
+    timeout-minutes: 20
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    steps:
+      - name: Xcode 27.2
+        run: sudo xcode-select -s /Applications/Xcode_27.2.app
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: make setup
+      - run: make test

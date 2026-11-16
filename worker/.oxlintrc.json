@@ -1,0 +1,28 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "node"],
+  "categories": {
+    "correctness": "error"
+  },
+  "ignorePatterns": ["dist/**", "dist-hosted/**"],
+  "rules": {
+    "typescript/no-base-to-string": "off",
+    "typescript/restrict-template-expressions": "off",
+    "typescript/unbound-method": "off",
+    "typescript/await-thenable": "off",
+    "typescript/no-unsafe-unary-minus": "off",
+    "typescript/require-array-sort-compare": "off"
+  },
+  "overrides": [
+    {
+      "files": ["test/**", "tests/**"],
+      "rules": {
+        "typescript/unbound-method": "off",
+        "typescript/no-floating-promises": "off",
+        "no-unsafe-optional-chaining": "off",
+        "no-constant-binary-expression": "off",
+        "unicorn/no-useless-spread": "off"
+      }
+    }
+  ]
+}

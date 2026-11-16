@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "node"],
+  "categories": {
+    "correctness": "error"
+  },
+  "ignorePatterns": ["dist/**", "dist-hosted/**"],
+  "overrides": [
+    {
+      "files": ["test/**", "tests/**"],
+      "rules": {
+        "typescript/unbound-method": "off",
+        "typescript/no-floating-promises": "off",
+        "no-unsafe-optional-chaining": "off",
+        "no-constant-binary-expression": "off",
+        "unicorn/no-useless-spread": "off"
+      }
+    }
+  ]
+}

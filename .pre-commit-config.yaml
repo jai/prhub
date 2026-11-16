@@ -1,0 +1,28 @@
+repos:
+  - repo: local
+    hooks:
+      - id: lint
+        name: make lint
+        entry: make lint
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+      - id: check
+        name: make check
+        entry: make check
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+      # The two work domains are split by quotes, so scripts/scrub.sh, which keeps them out of this public repo,
+      # passes this file.
+      - id: author
+        name: author is not a work address
+        entry: >-
+          sh -c 'case "$(git var GIT_AUTHOR_IDENT)" in
+          *"@e"wa-services.com">"*|*"@f"inn-app.com">"*)
+          echo "This commit is by a work address; this repo takes jai@govindani.com:
+          git config user.email jai@govindani.com" >&2; exit 1;; esac'
+        language: system
+        always_run: true
+        pass_filenames: false
+        stages: [pre-commit]

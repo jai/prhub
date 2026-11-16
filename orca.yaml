@@ -1,0 +1,4 @@
+# Orca runs scripts.setup in each new worktree of this repo: install the git hooks (Makefile `setup`).
+scripts:
+  setup: |
+    make setup
