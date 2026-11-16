@@ -17,8 +17,8 @@ final class PRHubDiffFontUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    // One test per appearance: together they launch the app 18 times, which took up to 8 minutes, and on a slow CI Mac
-    // the one test that did both was killed at 8 minutes (issue #56). A slice is no shorter than its longest test.
+    /// One test per appearance: together they launch the app 18 times, which took up to 8 minutes, and on a slow CI Mac
+    /// the one test that did both was killed at 8 minutes (issue #56). A slice is no shorter than its longest test.
     func testTheDiffInEveryFontAndSizeLight() throws {
         try diffInEveryFontAndSize(.light)
     }
