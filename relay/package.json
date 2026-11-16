@@ -7,7 +7,6 @@
   "scripts": {
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "deploy": "wrangler deploy",
     "tail": "wrangler tail agent-pager-relay --format pretty"
   },
   "devDependencies": {
