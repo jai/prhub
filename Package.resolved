@@ -1,13 +1,13 @@
 {
-  "originHash" : "9d1dc31395be94cbd5aeeb9eef0a1afb23f0e448554c9b4342324e245727c933",
+  "originHash" : "ab646cb71651e72ae0323dbdf974dad9f0aa2b0c314a3e89ac9f701f96520600",
   "pins" : [
     {
       "identity" : "agentchatkit",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/jai/agentchatkit",
       "state" : {
-        "revision" : "f5cf34b0a71a84de685cb13e37c8eb9ff6998c60",
-        "version" : "0.2.0"
+        "revision" : "e754a4da0a61d1e0a6c360890f0b7ca47c76089b",
+        "version" : "0.4.1"
       }
     },
     {
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/jai/feedbackkit",
       "state" : {
-        "revision" : "eb79697bf14c8472954d98a046b4ed26fe1ce112",
-        "version" : "0.2.0"
+        "revision" : "f41c9db877e46b09beb2248ae758c86b04f26f11",
+        "version" : "0.5.0"
       }
     }
   ],
