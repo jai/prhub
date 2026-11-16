@@ -190,14 +190,7 @@ struct PRAskSheet: View {
 
     @ViewBuilder private var chatStatus: some View {
         if isWorking {
-            HStack(spacing: Space.sm) {
-                ProgressView().controlSize(.small)
-                Text(session.askChat?.activity ?? "Thinking")
-                    .font(.appCaption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, PRStyle.inset)
-            .accessibilityIdentifier("pr-ask-working")
+            ChatWorkingLine(activity: session.askChat?.activity ?? "Thinking", identifier: "pr-ask-working")
         } else if let problem = session.askChat?.problem {
             if session.askChat?.unsentQuestion != nil {
                 failure(problem)
