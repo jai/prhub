@@ -352,8 +352,16 @@ model and effort has its own cached answer; the built-in default keeps the cache
 so answers made then are still served. An answer made before then has no `model`, `effort` or `costCents`.
 
 A key lines answer also has `summary`: `risk` (`low`, `medium`, `high`), `riskWhy` (one sentence), `points` (3 to 5
-bullets: what the PR does) and `bugs` (`{path, line, side, why}`, each at a line the diff shows; empty when none was
-found). Answers are kept under `key-lines-v2-<context>`: one made before the summary is made again when next asked for.
+bullets: what the PR does), `bugs` (`{path, line, side, why}`, each at a line the diff shows; empty when none was
+found) and `requirements`. Answers are kept under `key-lines-v3-<context>`: one made before `requirements` is made
+again when next asked for.
+
+**Requirements.** `requirements` is `{state, tickets, gaps}`: whether the PR does what its Linear ticket asks. The
+Worker reads the keys its title, branch and description name (as for `tickets`) and asks Linear, with the person's
+`LINEAR_API_KEY`, which it has. One ticket: its title and description go to the model with the diff, and `state` is
+`fits` (`gaps` empty) or `mismatch` (`gaps`: 1 to 4 short bullets, what the PR misses). More than one: `multiple`,
+with no check yet. No `requirements` when the PR names no ticket Linear has, or there is no Linear key, or Linear
+doesn't answer. The answer is of the ticket as it was when the key lines were made.
 
 A failed key lines or rewrite answer is `{"error": "…"}`, with `"moved": true` when the PR had moved past the asked
 commit: the app then reads the PR at its newest commit and asks again, once. The app reads a passing failure (no
