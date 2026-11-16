@@ -30,8 +30,9 @@ struct PRHubFeedbackDirectTests {
     }
 
     @Test func aTokenIsKeptUntilAMinuteBeforeItEndsAndRenewAsksAgain() async throws {
-        let later = Date.now.addingTimeInterval(15 * 60)
-            .ISO8601Format(.iso8601.year().month().day().time(includingFractionalSeconds: true))
+        // As the Worker's toISOString() writes it: milliseconds and Z.
+        let later = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+            .format(Date.now.addingTimeInterval(15 * 60))
         let worker = StubWorker([
             .reply(status: 200, body: answer("one", later)), .reply(status: 200, body: answer("two", later)),
         ])
