@@ -1,7 +1,57 @@
 repos:
   - repo: local
     hooks:
-      # The lint and test hooks are out while the CI moves to docs/workflow.md; they come back per component.
+      # docs/workflow.md: before each commit, the lint of each component with staged files; before each push, the
+      # unit tests of each component the push changes.
+      - id: lint-ios
+        name: make lint-ios
+        entry: make lint-ios
+        language: system
+        pass_filenames: false
+        files: '^(app/|DESIGN\.md$|\.swiftlint\.yml$|\.swiftformat$)'
+        stages: [pre-commit]
+      - id: lint-prkit
+        name: make lint-prkit
+        entry: make lint-prkit
+        language: system
+        pass_filenames: false
+        files: '^(PRKit/|Package\.(swift|resolved)$|\.swiftlint\.yml$|\.swiftformat$)'
+        stages: [pre-commit]
+      - id: lint-worker
+        name: make lint-worker
+        entry: make lint-worker
+        language: system
+        pass_filenames: false
+        files: '^(worker/|agent/|deploy/hosted/|scripts/ask-trace\.sh$)'
+        stages: [pre-commit]
+      - id: lint-workflows
+        name: make lint-workflows
+        entry: make lint-workflows
+        language: system
+        pass_filenames: false
+        files: '^\.github/workflows/'
+        stages: [pre-commit]
+      - id: test-unit-ios
+        name: make test-unit-ios
+        entry: make test-unit-ios
+        language: system
+        pass_filenames: false
+        files: '^(app/|PRKit/|Package\.(swift|resolved)$)'
+        stages: [pre-push]
+      - id: test-unit-prkit
+        name: make test-unit-prkit
+        entry: make test-unit-prkit
+        language: system
+        pass_filenames: false
+        files: '^(PRKit/|Package\.(swift|resolved)$)'
+        stages: [pre-push]
+      - id: test-unit-worker
+        name: make test-unit-worker
+        entry: make test-unit-worker
+        language: system
+        pass_filenames: false
+        files: '^(worker/|docs/fixtures/)'
+        stages: [pre-push]
       # The two work domains are split by quotes, so gitleaks (.gitleaks.toml), which keeps them out of this public
       # repo, passes this file.
       - id: author
