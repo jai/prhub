@@ -101,15 +101,18 @@ jobs:
           RETRY: ${{ inputs.retry }}
           GH_TOKEN: ${{ github.token }}
 
+  # Not skipped by a failed kits job upstream: GitHub skips a job when any job before it failed, unless its condition
+  # says otherwise.
   ios:
     needs: decide
-    if: needs.decide.outputs.sha != ''
+    if: ${{ !cancelled() && needs.decide.result == 'success' && needs.decide.outputs.sha != '' }}
     uses: ./.github/workflows/ios.yml
     with:
       ref: ${{ needs.decide.outputs.sha }}
 
   release:
     needs: [decide, ios]
+    if: ${{ !cancelled() && needs.decide.result == 'success' && needs.ios.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
