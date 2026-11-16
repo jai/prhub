@@ -9,6 +9,7 @@ The CI workflow for PRHub. Part 1 is the standard for each of Jai's repos (jai/c
 - [ ] Agents push to `main`.
 - [ ] After the push, the release workflows make the release with no person.
 - [ ] Standard tools and standard make targets do the work.
+- [ ] Shell scripts are bash.
 - [ ] Each name says what the thing does: each workflow, make target, hook, script and file.
 
 ## Components
