@@ -8,6 +8,7 @@ import { postAskLinear } from "./ask-linear";
 import { acceptAsk, askPr, withQueued } from "./ask-queue";
 import { bodyOf, parseAskInput, parseKeyLineMark } from "./boundary";
 import { eventRoute, registerRoute, unpairRoute } from "./devices";
+import { metricsRoute } from "./metrickit.ts";
 import {
   aiConfigOf, askConfigured, deviceConfig, featureKitConfigured,
 } from "./config";
@@ -484,6 +485,9 @@ async function deviceRoute(
   }
   if (pathname === "/device/event") {
     return eventRoute(request, prIndex(env));
+  }
+  if (pathname === "/device/metrics") {
+    return metricsRoute(request, env);
   }
   return null;
 }

@@ -3,6 +3,7 @@ import type { AppLatest } from "./app-latest.ts";
 import { makesAnswers, onApiKey, onSubscription } from "./agent-container.ts";
 import { type Env, isSet } from "./env.ts";
 import { feedbackDirectURL } from "./feedback-token.ts";
+import { metricKitOn } from "./metrickit.ts";
 import { type LimitName, limitsConfig, limitsOf } from "./limits.ts";
 import { type AiConfig, type AiFeature, type FeatureModels, featureModels, parseAiConfig } from "./models.ts";
 
@@ -31,6 +32,8 @@ export interface DeviceConfig {
   feedback_direct?: { url: string };
   /** The newest build each TestFlight group can install (`app-latest.ts`). Absent when it could not be read. */
   app_latest?: AppLatest;
+  /** True when the phone sends its MetricKit reports (`metrickit.ts`). Absent when it does not. */
+  metrickit?: true;
 }
 
 let parsed: { key: string; config: AiConfig } | null = null;
@@ -80,5 +83,6 @@ export function deviceConfig(env: Env, login: string | null, latest?: AppLatest)
     limits: limitsConfig(limitsOf(env)),
     ...(direct && featureKitConfigured(env) ? { feedback_direct: { url: direct } } : {}),
     ...(latest ? { app_latest: latest } : {}),
+    ...(metricKitOn(env) ? { metrickit: true as const } : {}),
   };
 }

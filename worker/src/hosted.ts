@@ -20,6 +20,7 @@ import {
   type RateLimitName, readNowGapOf,
 } from "./limits.ts";
 import { authorizeUrl, exchangeCode, type Fetch, type OAuthApp, readUser } from "./oauth.ts";
+import { metricKitLogins } from "./metrickit.ts";
 import { deviceSecretOf, fingerprintOf, sha256Hex } from "./pairing.ts";
 import { backoffOf } from "./rate-limit.ts";
 import {
@@ -91,6 +92,7 @@ export function userEnv(env: Env, user: { userId: string; login: string; token: 
     WEBHOOK_SECRET: undefined,
     ANTHROPIC_API_KEY: ai.anthropicKey ?? undefined,
     CLAUDE_CODE_OAUTH_TOKEN: subscriptionLogins(env).has(user.login.toLowerCase()) ? env.CLAUDE_CODE_OAUTH_TOKEN : undefined,
+    METRICKIT: metricKitLogins(env).has(user.login.toLowerCase()) ? "on" : undefined,
     ASK_ANTHROPIC_API_KEY: undefined,
     ASK_AGENT_ID: ask?.agent_id,
     ASK_ENVIRONMENT_ID: ask?.environment_id,

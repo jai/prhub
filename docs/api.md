@@ -158,12 +158,38 @@ Auth: a paired secret or `APP_TOKEN`. `Cache-Control: no-store`. The app reads i
 | `limits` | always: each limit in force on this Worker, by name, in the unit its name ends with; `null` is off ([Limits](#limits)) | Explains a `429 limit_reached` |
 | `feedback_direct` | `{url}`: FeedbackKit's root, when `FEEDBACKKIT_APP_KEY` and `FEEDBACKKIT_PUBLIC_URL` are set too ([Feedback](#feedback)) | Sends feedback to FeedbackKit itself with a token from `POST /feedback/token` |
 | `app_latest` | the newest PRHub build each TestFlight group can install, `{internal?, public?}`, each `{version, build}`; absent when it could not be read ([App updates](#app-updates)) | Update available, when its group's build is newer than the running one |
+| `metrickit` | `true` when `METRICKIT=on`, or on the hosted Worker the person's login is in `METRICKIT_LOGINS`; absent otherwise ([MetricKit reports](#metrickit-reports)) | Sends each MetricKit payload to `POST /device/metrics` |
 
 The example leaves out `limits`; [`device-config.json`](fixtures/device-config.json) and
 [`device-config-hosted.json`](fixtures/device-config-hosted.json) show it for each mode. In the example, `rewrite`
 and `ask` are shortened: each lists the same `allowed` entries as `key_lines`. A key the app
 does not know is ignored; a feature the Worker does not send is off. Routes for a feature that is off
 answer `404 {"error": "<feature> is not set up on this Worker."}`. Answers: `200` · `401`.
+
+## MetricKit reports
+
+For measuring what PRHub costs a phone in energy over days. Off unless the Worker's operator turns it on for
+themselves: `METRICKIT=on` on a self-hosted Worker, `METRICKIT_LOGINS` (GitHub logins, comma-separated) on the hosted
+one. `GET /device/config` then says `"metrickit": true`, and the app sends each payload iOS hands it
+(`MXMetricPayload`, about once a day, and each `MXDiagnosticPayload`), and the ones iOS still holds at launch.
+
+### `POST /device/metrics`
+
+Auth: a paired or session secret. Body, at most 2 MB:
+
+```json
+{ "kind": "metric", "payload": "<MetricKit's jsonRepresentation(), as a string>", "build": "301",
+  "os": "iPhone OS 27.2 (24C101)", "device": "iPhone13,3" }
+```
+
+`kind` is `metric` or `diagnostic`. The Worker keeps it in R2 at `metrickit/<day>/<kind>-<hash>.json` (on the hosted
+Worker under `users/<user id>/`, so Delete account removes it), `<day>` being the UTC day of the payload's
+`timeStampEnd` (else `timeStampBegin`, else today), `<hash>` the first 16 hex digits of the payload's SHA-256: a payload
+sent twice is one object. The object is `{kind, day, received_at, build, os, device, payload}`, `payload` parsed.
+Answers: `204` · `400 validation_error` · `404` when it is off for this person.
+
+Agents read them with Cloudflare's R2 API: list
+`GET /accounts/<account>/r2/buckets/<bucket>/objects?prefix=users/<user id>/metrickit/<day>/`, then get each key.
 
 ## App updates
 
@@ -307,6 +333,8 @@ var reads as unset.
 | `CLAUDE_CODE_OAUTH_TOKEN` | secret | A Claude subscription's token (`claude setup-token`). With `AGENT` bound, key lines and rewrites run on it ([AI on a subscription](#ai-on-a-subscription)) and win over `ANTHROPIC_API_KEY` |
 | `AGENT` | container binding | `AgentContainer`, the Agent SDK container built from `agent/Dockerfile` |
 | `SUBSCRIPTION_LOGINS` | var | Hosted only: the GitHub logins, comma-separated, whose AI runs on `CLAUDE_CODE_OAUTH_TOKEN`. Unset: nobody's |
+| `METRICKIT` | var | `on`: the phone sends its MetricKit reports ([MetricKit reports](#metrickit-reports)). Unset: off |
+| `METRICKIT_LOGINS` | var | Hosted only: the GitHub logins, comma-separated, whose phones send MetricKit reports. Unset: nobody's |
 | `ASK_AGENT_ID`, `ASK_ENVIRONMENT_ID`, `ASK_VAULT_ID`, `ASK_CREDENTIAL_ID` | var | From `npm run ask-agent` |
 | `ASK_GITHUB_TOKEN` | secret | A read-only PAT for Ask's agent; unset, it gets `GITHUB_READ_TOKEN`, else `GITHUB_TOKEN`. On a subscription, only it or the Ask App lets the agent clone other repos and read GitHub's API |
 | `ASK_GITHUB_APP_ID`, `ASK_GITHUB_APP_KEY` | secret | A GitHub App that mints a read-only token per question; wins over the PATs. The key is PKCS#8 (`BEGIN PRIVATE KEY`); GitHub's download is PKCS#1, so pipe it through `openssl pkcs8 -topk8 -nocrypt` |

@@ -72,6 +72,10 @@ export interface Env extends LimitVars {
   AI_ON_API_KEY?: string;
   /** Hosted only: the comma-separated GitHub logins whose AI runs on the Worker's subscription. Unset: nobody's. */
   SUBSCRIPTION_LOGINS?: string;
+  /** `on`: the phone sends its MetricKit reports to `POST /device/metrics` (`metrickit.ts`). Hosted: `METRICKIT_LOGINS`. */
+  METRICKIT?: string;
+  /** Hosted only: the comma-separated GitHub logins whose phones send MetricKit reports. Unset: nobody's. */
+  METRICKIT_LOGINS?: string;
   /** Ask (`ask.ts`): the key whose org holds the agent and environment. Unset: `ANTHROPIC_API_KEY`. */
   ASK_ANTHROPIC_API_KEY?: string;
   ASK_AGENT_ID?: string;

@@ -27,6 +27,11 @@ through the PRHub GitHub App. The service stores these items:
 - **Your feedback.** What you send from the Feedback tab, and the link to the issue it opened, so that you can
   follow the chat in the app.
 - **Your phone's push token**, when you allow notifications. The service uses it to send pushes to your phone.
+- **Energy and performance reports, only for accounts the operator lists.** For a battery study, the service may
+  turn on Apple's MetricKit reports for named accounts (`METRICKIT_LOGINS`); today only the operator's own. Those
+  phones send the daily report iOS makes (CPU, energy, network, launch and hang times, and crash and hang call
+  stacks of PRHub itself), with the app build, iOS version and phone model. They contain no PR content and are
+  deleted with the account. No other account sends them.
 - **Activity records.** The last 5,000 events of your account, such as syncs, pushes and errors, so that problems
   can be found. They contain no PR content.
 - **Request counts.** The service counts your requests to enforce its limits. It counts sign-in attempts by a hash of

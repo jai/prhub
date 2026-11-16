@@ -51,6 +51,12 @@ PostHog, an analytics service that processes it for Jai in its EU region (Frankf
 
 Debug builds, test runs and builds of this repo without a PostHog key send nothing.
 
+## Energy and performance reports
+
+When your pr-worker's operator sets `METRICKIT=on`, the app sends your pr-worker the daily report iOS makes about PRHub
+(Apple's MetricKit: CPU, energy, network, launch and hang times, and crash and hang call stacks of PRHub itself), with
+the app build, iOS version and phone model. They contain no PR content. They go to your pr-worker only. Off unless set.
+
 ## What your pr-worker keeps
 
 Your pr-worker runs in your Cloudflare account, and only you control it.
