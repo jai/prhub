@@ -1,0 +1,58 @@
+# Deploys the hosted Worker `prhub` (docs/hosted-deploy.md) from each vX.Y.Z GitHub Release, which release.yml makes
+# once every test passed on that commit, and by hand for a tag. The only production path for the hosted Worker:
+# wrangler deploy with deploy/hosted/wrangler.jsonc, which also builds and pushes the AI container (agent/Dockerfile).
+# The Worker's secrets stay as they are. The account and four vars come from the repo's variables, kept out of this
+# public repo's files.
+name: deploy-worker
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The vX.Y.Z tag to deploy."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+        working-directory: worker
+      - name: wrangler deploy
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          APP_ID: ${{ vars.PRHUB_GITHUB_APP_ID }}
+          CLIENT_ID: ${{ vars.PRHUB_GITHUB_APP_CLIENT_ID }}
+          APNS_KEY_ID: ${{ vars.PRHUB_APNS_KEY_ID }}
+          FEEDBACKKIT_PUBLIC_URL: ${{ vars.FEEDBACKKIT_PUBLIC_URL }}
+        run: |
+          npx wrangler deploy --config ../deploy/hosted/wrangler.jsonc \
+            --var "GITHUB_APP_ID:$APP_ID" --var "GITHUB_APP_CLIENT_ID:$CLIENT_ID" \
+            --var "APNS_KEY_ID:$APNS_KEY_ID" --var "FEEDBACKKIT_PUBLIC_URL:$FEEDBACKKIT_PUBLIC_URL"
+      - name: The live Worker answers
+        run: |
+          url=https://prhub.jai-f89.workers.dev
+          curl -fsS "$url/" > /dev/null
+          curl -fsS "$url/.well-known/apple-app-site-association" | grep -q webcredentials
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$url/auth/github/start")" = 400

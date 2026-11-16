@@ -1,0 +1,36 @@
+# The app's UI tests on the iPhone and the iPad Simulators (`make test-ui`), on the samples: no Worker, no GitHub. Slow,
+# so not on every push: before every release (release.yml), and by hand.
+name: test-ui
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-ui:
+    name: UI Tests (${{ matrix.device }})
+    runs-on: xcode-27
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        device: ["iPhone 17", "iPad Pro 13-inch (M5)"]
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: sudo xcode-select -s /Applications/Xcode_27.2.app
+      - uses: jdx/mise-action@v5
+      - run: make test-ui SIM_NAME="$DEVICE"
+        env:
+          DEVICE: ${{ matrix.device }}
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: test-ui-${{ matrix.device }}
+          path: app/build/DerivedData/Logs/Test
+          retention-days: 7
+          if-no-files-found: ignore

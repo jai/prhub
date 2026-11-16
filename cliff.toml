@@ -1,0 +1,24 @@
+# git-cliff: the next version and the release notes, from the conventional commits since the newest vX.Y.Z tag
+# (generate-release-candidate.yml, release.yml). feat: minor, fix or perf: patch, a breaking change (`!` or a
+# BREAKING CHANGE footer): major. Other types are skipped, so they release nothing on their own.
+[changelog]
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+{{ group | striptags | trim }}
+{% for commit in commits %}- {{ commit.message | split(pat="\n") | first | trim }}
+{% endfor %}
+{% endfor %}"""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+tag_pattern = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+commit_parsers = [
+  { message = "^feat", group = "Features" },
+  { message = "^fix", group = "Fixes" },
+  { message = "^perf", group = "Performance" },
+  { body = ".*BREAKING", group = "Breaking changes" },
+  { message = "^[a-z]+(\\(.*\\))?!:", group = "Breaking changes" },
+  { message = ".*", skip = true },
+]

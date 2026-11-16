@@ -38,28 +38,22 @@ works new `feedback` issues, checks that each feedback chat's work landed on `ma
 
 - Layout: `PRKit/` with the root `Package.swift` (the PR screens as a Swift package), `app/` (the PRHub app,
   XcodeGen), `worker/` (the Worker), `relay/` (the push relay), `deploy/` (template, `setup.sh`, deployment guide,
-  `github-app/`), `docs/` (contracts, `fixtures/`, plans), `release/` (TestFlight), `scripts/` (repo checks),
+  `github-app/`), `docs/` (contracts, `fixtures/`, plans), `scripts/` (`ask-trace.sh`),
   `e2e/` (agentic bug bashes and repro tests on the Simulator, [e2e/README.md](e2e/README.md)).
 - Contracts: [docs/api.md](docs/api.md) (pairing, `/device/config`, every var and secret) and
   [docs/push-relay.md](docs/push-relay.md). Whoever changes API behaviour updates the contract in the same commit.
-- **Push to `main`, then deploy. No pull requests.** GitHub enforces it: no new branches (except `ci/…` and
-  release-please's), and `main` takes only signed, linear pushes, never a force push; `v*` tags never move. Commit (signed) on `main`, `git pull --rebase`, run the local
+- **Push to `main`, then deploy. No pull requests.** GitHub enforces it: no new branches (except `ci/…`), and `main` takes only signed, linear pushes, never a force push; `v*` tags never move. Commit (signed) on `main`, `git pull --rebase`, run the local
   checks below for what you touched, and push. Never deploy by hand: each `vX.Y.Z` release ("Releases" below)
-  deploys the hosted Worker (`.github/workflows/deploy.yml`) and starts the app's TestFlight build, and PRKit's
+  deploys the hosted Worker (`.github/workflows/deploy-worker.yml`) and starts the app's TestFlight build, and PRKit's
   users pin the same tags. A deploy by hand is for an emergency Jai asks for ([docs/hosted-deploy.md](docs/hosted-deploy.md)).
   Jai's Agent Pager follows on its own: within 10 minutes it moves to `main`'s head and to the newest `v*` tag, tests,
   and deploys. Nothing to commit there, and never deploy its Worker by hand.
-  Merging is not releasing. Every push to `main` runs only the fast checks on GitHub's own runners: `scrub`, `worker`,
-  `relay`, and, when PRKit, the app or DESIGN.md change, `design` and `build` on a Mac (`.github/workflows/ios.yml`,
-  the `xcode-27` image: the app and its tests build once, and PRKit's `swift test` runs). No Xcode Cloud workflow
-  starts on a push or a pull request. Once an hour, when `main` changed the app, the hourly release ("Releases" below)
-  runs the full tests on `main`'s head, then releases it if they pass: five `test (…)` jobs run the unit and UI
-  tests from `build`, two slices on the iPhone 17 and three on the 13-inch iPad Pro
-  (`scripts/ui-test-slices.py`, by each test's seconds in `app/PRHubUITests/times.txt`; a new test needs no entry).
-  A slice is no shorter than its longest test, so keep a long walk as several tests. A red hourly run is fixed next,
-  by whoever pushed the commits it tested (GitHub → Actions → hourly-release). Each test job keeps
-  its result bundle a week: `gh run download <run> -n 'xcresult-iPhone 17-1'` (device, then slice), then
-  `xcrun xcresulttool export attachments`. Every test by hand: `gh workflow run ios.yml`. One test by hand: `gh workflow run ios.yml -f only=PRHubUITests/<Class>/<test>`.
+  Merging is not releasing. Every push to `main` runs the fast checks, `ci` (`.github/workflows/ci.yml`), on GitHub's
+  own runners (the `xcode-27` image): **Lint** (`make lint typecheck`), **Unit Tests** (`make test`) and **Unit Tests
+  (app)** (`make test-app`, the app's unit tests on an iPhone Simulator). A red `ci` on `main` is fixed next, by
+  whoever pushed. The slow **UI Tests** (`test-ui.yml`, `make test-ui` on the iPhone 17 and the 13-inch iPad Pro) run
+  only for a release ("Releases" below), or by hand: `gh workflow run test-ui.yml`. Each UI test job keeps its test
+  logs a week as an artifact.
   A UI test's `waitForExistence` looks at once and every 0.1 s (`app/PRHubUITests/FastWaits.swift`), so use it freely.
   Xcode Cloud makes the builds only, from the `v*` tag each release makes.
 - Tests: `npm test` and `npm run typecheck` in `worker/` and `relay/`. The worker's contract test compares what the
@@ -74,7 +68,8 @@ works new `feedback` issues, checks that each feedback chat's work landed on `ma
   breaking change for them, so it needs a new minor version tag.
 - Design: [DESIGN.md](DESIGN.md) is the one design reference for PRKit and PRHub (Agent Pager follows it for PRKit's
   screens). Build new UI from its tokens and shared parts; its "Making a change" table says which line to edit. Never
-  type a font size, colour, padding, corner or animation in a view: `scripts/design-lint.sh` fails CI on one. Token
+  type a font size, colour, padding, corner or animation in a view: SwiftLint's `design_*` rules (`.swiftlint.yml`)
+  fail `make lint` on one; a real exception is `// swiftlint:disable:next design_<rule> - <why>`. Token
   changes go in DESIGN.md, then `make -C app design`.
 - App build options live in `app/Config/PRHub.xcconfig` and reach the app through Info.plist (`PRHubBuild`):
   `PRHUB_HOSTED_HOST` (the hosted Worker: Sign in with GitHub, its HTTPS callback and the `webcredentials`
@@ -84,7 +79,8 @@ works new `feedback` issues, checks that each feedback chat's work landed on `ma
   `PRHUB_SAMPLES` (default `YES`; App Review needs it). A Debug build takes each as a launch argument for the UI tests
   (`-PRHubSelfHosted YES`); `-PRHubFirstRun` and `-PRHubHosted` run against a fake hosted Worker
   (`app/PRHub/Debug/PRHubScreenshots.swift`).
-- Public repo: run `scripts/scrub.sh` before every push. It fails on a private name, id, host or token. Test data
+- Public repo: `make lint` runs gitleaks (`.gitleaks.toml`), which fails on a secret or a private name, id or host,
+  in the pre-commit hook and in CI. Test data
   uses made-up names (`acme`, `octocat`).
 - Jai's own deployments (his Worker and the relay) build from a pinned ref of this repo with private config kept
   elsewhere. Nothing here may depend on that config.
@@ -113,22 +109,22 @@ new event that breaks a rule below is a privacy policy change, not a code change
 
 ## Releases
 
-- **Releases are automatic.** Never tag `v*`, edit `MARKETING_VERSION` or edit `CURRENT_PROJECT_VERSION` by hand.
-- **The hourly release** (`.github/workflows/hourly-release.yml`) runs when jai/ci's release-clock Worker starts it,
-  at the top of each hour. `release/version.mjs plan` reads the conventional commits since the newest `vX.Y.Z` tag on
-  `main`. Below 1.0.0, a `feat` or breaking change bumps the minor and a `fix` or `perf` the patch; other types make no
-  release. When a release is due, `ios.yml` runs the full tests on main's head. When they pass,
-  `release/version.mjs publish` tags the commit (annotated; the message lists the feat and fix subjects) and makes a
-  GitHub Release with the same notes. Red tests release nothing. `gh workflow run hourly-release.yml -f retry=true`
-  runs it now and tries a red commit again.
-- **The tag starts the build.** Xcode Cloud's workflow starts on a `v*` tag, never on a push, and hands the build to
-  TestFlight. `app/ci_scripts/ci_post_clone.sh` sets `MARKETING_VERSION` to the newest tag reachable from the commit
-  and `CURRENT_PROJECT_VERSION` to Xcode Cloud's build number. `app/ci_scripts/ci_post_xcodebuild.sh` writes the tag's
-  notes as What to Test. Xcode Cloud's **Next Build Number** (App Store Connect → PRHub → Xcode Cloud → Settings) must
-  stay above TestFlight's highest build, or the upload is refused.
+- **Releases are automatic.** Never tag `rc-*` or `v*`, edit `MARKETING_VERSION` or edit `CURRENT_PROJECT_VERSION` by
+  hand. A release is one commit: tagged as a release candidate, tested, then released.
+- **Generate release candidate** (`.github/workflows/generate-release-candidate.yml`): jai/ci's release-clock starts it
+  every 3 hours when `main` has a `feat`, `fix`, `perf` or breaking commit since the newest `vX.Y.Z`. git-cliff
+  (`cliff.toml`) gives the next version (feat: minor, fix or perf: patch, breaking: major; other types release
+  nothing) and it tags `main`'s head `rc-vX.Y.Z`. One candidate at a time: while an `rc-*` tag exists, it cuts nothing.
+  By hand: `gh workflow run generate-release-candidate.yml`.
+- **Release** (`.github/workflows/release.yml`), on the `rc-*` tag: `ci` and `test-ui` on that commit. Green: the
+  commit gets `vX.Y.Z` and a GitHub Release, both with git-cliff's notes. Green or red, the `rc-*` tag is then deleted.
+  A red candidate is not fixed: fix forward on `main`, and the next candidate takes it.
+- **The tag starts the build.** Xcode Cloud's "PRHub TestFlight External" starts on a `v*` tag, never on a push, and
+  ships iOS and macOS to the external group. `app/ci_scripts/ci_post_clone.sh` generates the project, sets
+  `MARKETING_VERSION` from the tag (`CI_TAG`) and `CURRENT_PROJECT_VERSION` to Xcode Cloud's build number. Xcode
+  Cloud's **Next Build Number** (App Store Connect → PRHub → Xcode Cloud → Settings) must stay above TestFlight's
+  highest build, or the upload is refused. The GitHub Release deploys the hosted Worker (`deploy-worker.yml`).
 - **PRKit's versions are the same tags.** Apps pin PRKit (`from: "0.1.0"`); Jai's Agent Pager is one of them.
-- **Update available.** `release/app-latest.mjs`, in the same hourly run, writes the newest build each TestFlight group
-  can install to `app-latest.json` on the branch `ci/app-latest`, which the Workers' `GET /device/config` reads.
 - Xcode Cloud resolves packages only from a `Package.resolved`. `app/Package.resolved` pins the remote ones (PostHog)
   and `app/ci_scripts/ci_post_clone.sh` copies it into the generated project. When `project.yml`'s packages change,
   run `xcodebuild -resolvePackageDependencies` in `app/` and copy the project's `Package.resolved` back to `app/`.

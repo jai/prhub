@@ -1,0 +1,48 @@
+# Generate a release candidate: tag main's head rc-vX.Y.Z, where vX.Y.Z is what git-cliff makes of the conventional
+# commits since the newest vX.Y.Z tag (feat: minor, fix or perf: patch, a breaking change: major; nothing else
+# releases). release.yml then tests that commit and releases it. One candidate at a time: while an rc-* tag exists,
+# this cuts nothing; release.yml deletes it when it ends, green or red. jai/ci's release-clock starts it every 3 hours
+# when main has a feat, fix, perf or breaking commit since the newest release; anyone can start it by hand.
+name: generate release candidate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generate-release-candidate
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # The jai-agents App's token: a tag pushed with github.token starts no workflow, so release.yml would not run.
+      - id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: 5757830
+          private-key: ${{ secrets.JAI_AGENTS_PRIVATE_KEY }}
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+      - run: |
+          open=$(git ls-remote --tags origin 'refs/tags/rc-*' | sed 's#.*refs/tags/##')
+          if [ -n "$open" ]; then
+            echo "nothing cut: $open is still being tested"
+            exit 0
+          fi
+          last=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*')
+          next=$(npx --yes git-cliff@2.14.2 --bumped-version)
+          if [ "$next" = "$last" ]; then
+            echo "nothing cut: no feat, fix, perf or breaking change since $last"
+            exit 0
+          fi
+          git tag "rc-$next"
+          git push origin "refs/tags/rc-$next"
+          echo "release candidate rc-$next: $(git log -1 --format='%h %s')"

@@ -114,7 +114,7 @@ motion; the shared parts below set how each thing looks. Agent Pager embeds PRKi
 PRKit draws.
 
 **The rule:** new UI is built from these tokens and parts. A view never types a font size, colour, padding, gap,
-corner or animation. `scripts/design-lint.sh` fails CI when one does (see Checking).
+corner or animation. SwiftLint's `design_*` rules fail `make lint` and CI when one does (see Checking).
 
 **How an agent uses this:** find the object's part in Components and put each element in its named place. If no part
 fits, extend the nearest one rather than writing a near-copy. If that isn't possible, stop and ask.
@@ -657,11 +657,11 @@ detour (Ask AI, Delete account).
 
 ## Checking
 
-- `scripts/design-lint.sh` (or `make -C app design-lint`): no font size, colour, padding, gap, corner, animation or SF
-  Symbol name typed in a view outside PRKitDesign; a symbol is its meaning in `AppIcon`. CI's design job runs it with
-  `make -C app design-check`. A real exception carries `// design-lint: allow <why>` on its line or the line above; a
-  file waiting on other work is listed in `scripts/design-lint-allow.txt` with its reason, or with `[symbols]` to be
-  let off that one rule. AppIcon's raw values are unique, so the compiler refuses two meanings on one symbol: give the
+- SwiftLint's `design_font`, `design_colour`, `design_space`, `design_corner`, `design_motion` and `design_symbols`
+  rules (`.swiftlint.yml`, run by `make lint`): no font size, colour, padding, gap, corner, animation or SF Symbol
+  name typed in a view outside PRKitDesign; a symbol is its meaning in `AppIcon`. `make typecheck` runs
+  `make -C app design-check`. A real exception is `// swiftlint:disable:next design_<rule> - <why>` on the line
+  above; a file waiting on other work is in that rule's `excluded` list. AppIcon's raw values are unique, so the compiler refuses two meanings on one symbol: give the
   new meaning its own symbol, or use the existing case if it is the same meaning.
 - `make -C app ui-test` writes a picture of every screen in the feature map, in light, dark and large text, to
   `app/build/screenshots` (CI uploads them). Look at them before calling UI work done; an agent reads the images, it

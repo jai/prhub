@@ -1,10 +1,10 @@
 // The hosted PRHub Worker (docs/hosted-deploy.md): one Worker on Jai's personal Cloudflare account that everyone signs
-// in to with the PRHub GitHub App. Render it to wrangler.jsonc beside it (gitignored) by filling each placeholder, then
-// `npx wrangler@4 deploy --config deploy/hosted/wrangler.jsonc` from the repo root. Contract: docs/api.md, "Hosted
-// sign-in" and "Webhook routing". Secrets are never here: `wrangler secret put` (the runbook lists them).
+// in to with the PRHub GitHub App. .github/workflows/deploy-worker.yml deploys it from each vX.Y.Z release. The account
+// (CLOUDFLARE_ACCOUNT_ID) and four vars that stay out of this public repo come from the repo's variables at deploy, as
+// `wrangler deploy --var`: GITHUB_APP_ID, GITHUB_APP_CLIENT_ID, APNS_KEY_ID, FEEDBACKKIT_PUBLIC_URL. Contract:
+// docs/api.md, "Hosted sign-in" and "Webhook routing". Secrets are never here: `wrangler secret put` (the runbook).
 {
   "name": "prhub",
-  "account_id": "__CLOUDFLARE_ACCOUNT_ID__",
   "main": "../../worker/src/index.ts",
   "compatibility_date": "2026-09-01",
   "workers_dev": true,
@@ -12,15 +12,11 @@
   // No cron: each person's account polls every 10 minutes (an alarm), and webhooks bring changes within seconds.
   "vars": {
     "HOSTED": "on",
-    // From the App's settings page: its App ID (installation tokens for Ask) and its client ID (`Iv…`, sign-in).
-    "GITHUB_APP_ID": "__GITHUB_APP_ID__",
-    "GITHUB_APP_CLIENT_ID": "__GITHUB_APP_CLIENT_ID__",
     // The app that may catch the sign-in callback (`/.well-known/apple-app-site-association`).
     "APPLE_APP_ID": "K2P9X73SPT.com.jaigovindani.prreview",
     // Push straight to APNs with Jai's key; APNS_KEY_P8 is a secret.
     "APNS_BUNDLE_ID": "com.jaigovindani.prreview",
     "APNS_TEAM_ID": "K2P9X73SPT",
-    "APNS_KEY_ID": "__APNS_KEY_ID__",
     // AI runs on each person's own Anthropic key, or on the Worker's subscription (CLAUDE_CODE_OAUTH_TOKEN, a secret)
     // for SUBSCRIPTION_LOGINS only. Defaults from docs/plans/ai-model-eval.md.
     "SUBSCRIPTION_LOGINS": "jai,poom",
@@ -30,8 +26,7 @@
     // Feedback goes to the FeedbackKit Worker (jai/feedbackkit, docs/worker.md) as PRHub, through the FEEDBACKKIT binding below;
     // FEEDBACKKIT_TOKEN is a secret. The app talks to FeedbackKit itself at FEEDBACKKIT_PUBLIC_URL with a token this
     // Worker signs with FEEDBACKKIT_APP_KEY (a secret: PRHub's key in FeedbackKit's APP_KEYS); docs/api.md, "Feedback".
-    "FEEDBACKKIT_APP": "prhub",
-    "FEEDBACKKIT_PUBLIC_URL": "__FEEDBACKKIT_PUBLIC_URL__"
+    "FEEDBACKKIT_APP": "prhub"
     // Limits (docs/api.md, "Limits") take their hosted defaults; set a LIMIT_* var here to change one.
   },
   // FeedbackKit on the same account: Cloudflare refuses a fetch of its workers.dev URL, so through a binding.

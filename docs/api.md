@@ -194,17 +194,16 @@ Agents read them with Cloudflare's R2 API: list
 ## App updates
 
 `app_latest` comes from `app-latest.json` on this repo's branch `ci/app-latest`
-(`https://raw.githubusercontent.com/jai/prhub/ci/app-latest/app-latest.json`). Every hour
-`.github/workflows/hourly-release.yml` runs `release/app-latest.mjs`, which asks App Store Connect for PRHub's
-processed, unexpired builds and writes the file when it changed: `internal` is the newest build internal testers can
-install, `public` the newest the Public group can (after Beta App Review). Never edit it by hand.
+(`https://raw.githubusercontent.com/jai/prhub/ci/app-latest/app-latest.json`): `internal` is the newest build internal
+testers can install, `public` the newest the Public group can (after Beta App Review). Nothing writes it since
+2026-11-16 (the hourly job that asked App Store Connect was removed with the old release), so it stays at its last
+builds and the app shows no newer one. Never edit it by hand.
 
 - The Worker keeps it 10 minutes per isolate and waits at most 1.5 s for it (`worker/src/app-latest.ts`). A failed
   read answers the last one, or leaves `app_latest` out. `APP_LATEST_URL` reads another file (a fork's app); `off` leaves
   it out.
 - The app (`PRHubUpdate`) compares its group's build with its own `CFBundleShortVersionString` and `CFBundleVersion`:
-  an Internal - TestFlight build (`PRHUB_INTERNAL_TESTFLIGHT`, set by `app/ci_scripts/ci_post_clone.sh`) with
-  `internal`, any other with `public`. A newer one shows "Update available: PRHub <version> (<build>)": **Update** opens
+  a build with `PRHUB_INTERNAL_TESTFLIGHT` with `internal`, any other with `public`. A newer one shows "Update available: PRHub <version> (<build>)": **Update** opens
   TestFlight on PRHub, **Later** skips that build. Checked at launch and on return to the front, at most hourly; never
   in a Debug build.
 
@@ -1058,4 +1057,4 @@ Bindings: `DIFFS`, `PR_INDEX`, `AI_JOBS` as above, plus `USER_ACCOUNTS` (class `
 `SignIn`), `INSTALLATIONS` (class `Installation`) and `IP_LIMITS` (class `IpLimit`), all SQLite-backed
 (`new_sqlite_classes`). `HOSTED=on` without the client ID, client secret, token key or any of the four bindings answers
 `503 not_configured` on every route but `/`, rather than act as a self-hosted Worker. The
-template is `deploy/hosted/wrangler.template.jsonc`.
+config is `deploy/hosted/wrangler.jsonc`.

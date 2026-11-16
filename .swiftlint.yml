@@ -79,3 +79,47 @@ custom_rules:
     regex: "buttonStyle\\(\\.bordered"
     message: "A PR's buttons are PRButtonStyle: the system's are capsules (DESIGN.md)."
     severity: error
+  # DESIGN.md's tokens own every font, colour, gap, corner, animation and SF Symbol in view code. A real exception:
+  # `// swiftlint:disable:next design_<rule>` with the reason. `excluded`: files waiting on a token or the navigation rework.
+  design_font:
+    excluded: '.*/PRKit/Sources/PRKit/(DiffStyle|Phone/DiffTableCells|Mac/DiffTableCells\+Mac)\.swift'
+    included: '.*/(PRKit/Sources/PRKit|PRKit/Sources/FeatureKit|app/PRHub)/.*\.swift'
+    regex: '\.system\(\s*size:|\.custom\(|(?:UI|NS)Font\.(?:systemFont|monospacedSystemFont)\(ofSize:\s*\d|\.font\(\s*\.(?:largeTitle|title|title2|title3|headline|subheadline|body|callout|footnote|caption|caption2)\b'
+    excluded_match_kinds: [comment, doccomment]
+    message: 'A font size or system text style: use an AppFont style (.appFootnote, .app(.caption, design: .monospaced)), DESIGN.md.'
+    severity: error
+  design_colour:
+    excluded: '.*/PRKit/Sources/PRKit/(DiffStyle|Phone/DiffTableCells|Mac/DiffTableCells\+Mac)\.swift'
+    included: '.*/(PRKit/Sources/PRKit|PRKit/Sources/FeatureKit|app/PRHub)/.*\.swift'
+    regex: '(?:Color|UIColor|NSColor)\(\s*(?:red|white|hue|srgbRed|displayP3Red):|#colorLiteral|Color\(\s*"|(?:\bColor|(?:UI|NS)Color)\.(?:red|green|blue|orange|yellow|purple|pink|gray|grey|black|white|teal|indigo|mint|cyan|brown)\b|\bsystem(?:Red|Green|Blue|Orange|Yellow|Purple|Pink|Gray|Teal|Indigo|Mint|Cyan|Brown)\b|(?:foregroundStyle|foregroundColor|tint|fill|stroke|strokeBorder|background)\(\s*\.(?:red|green|blue|orange|yellow|purple|pink|gray|grey|black|white|teal|indigo|mint|cyan|brown)\b|tint:\s*\.(?:red|green|blue|orange|yellow|purple|pink|gray|grey|black|white|teal|indigo|mint|cyan|brown)\b'
+    excluded_match_kinds: [comment, doccomment]
+    message: 'A colour: use its role (Color.toneGood, .inkQuiet, .groundCard) from AppColor.swift, DESIGN.md.'
+    severity: error
+  design_space:
+    excluded: '.*/PRKit/Sources/PRKit/(DiffStyle|Phone/DiffTableCells|Mac/DiffTableCells\+Mac)\.swift'
+    included: '.*/(PRKit/Sources/PRKit|PRKit/Sources/FeatureKit|app/PRHub)/.*\.swift'
+    regex: '\.padding\(\s*(?:(?:\.\w+|\[[^\]]*\])\s*,\s*)?-?(?:\d*\.)?\d*[1-9]\d*(?:\.\d+)?\s*\)|\bspacing:\s*-?(?:\d*\.)?\d*[1-9]\d*(?:\.\d+)?\b|EdgeInsets\([^)]*:\s*-?(?:\d*\.)?\d*[1-9]\d*(?:\.\d+)?'
+    excluded_match_kinds: [comment, doccomment]
+    message: 'A padding or gap: use a Space step, or the part''s measure in PRKitDesign/Metrics.swift, DESIGN.md.'
+    severity: error
+  design_corner:
+    excluded: '.*/PRKit/Sources/PRKit/(DiffStyle|Phone/DiffTableCells|Mac/DiffTableCells\+Mac)\.swift'
+    included: '.*/(PRKit/Sources/PRKit|PRKit/Sources/FeatureKit|app/PRHub)/.*\.swift'
+    regex: 'cornerRadius:\s*-?(?:\d*\.)?\d*[1-9]\d*(?:\.\d+)?\b|\.cornerRadius\(\s*-?(?:\d*\.)?\d*[1-9]\d*(?:\.\d+)?'
+    excluded_match_kinds: [comment, doccomment]
+    message: 'A corner: use Radius or the part''s measure in PRKitDesign/Metrics.swift, DESIGN.md.'
+    severity: error
+  design_motion:
+    excluded: '.*/PRKit/Sources/PRKit/(DiffStyle|Phone/DiffTableCells|Mac/DiffTableCells\+Mac)\.swift'
+    included: '.*/(PRKit/Sources/PRKit|PRKit/Sources/FeatureKit|app/PRHub)/.*\.swift'
+    regex: '(?:withAnimation|\.animation|Transaction\(animation:)\s*\(?\s*(?:Animation)?\.(?:easeInOut|easeIn|easeOut|linear|spring|snappy|smooth|bouncy|interpolatingSpring|default)\b|\bAnimation\.(?:easeInOut|easeIn|easeOut|linear|spring|snappy|smooth|bouncy|interpolatingSpring|default)\b|withAnimation\s*\{'
+    excluded_match_kinds: [comment, doccomment]
+    message: 'An animation: use AppMotion (.fold, .swap, .press, .screen), DESIGN.md.'
+    severity: error
+  design_symbols:
+    included: '.*/(PRKit/Sources/PRKit|PRKit/Sources/FeatureKit|app/PRHub)/.*\.swift'
+    excluded: ['.*/PRKit/Sources/PRKit/(DiffStyle|Phone/DiffTableCells|Mac/DiffTableCells\+Mac)\.swift', '.*/(PRKit/Sources/PRKit/(PRScreen|PRDiffPage|PRDescriptionView|PRsView|Lists/PrListBlock|Parts/PlatformModifiers|PRThreadCard|Lists/LinearParts|Parts/Composer)|app/PRHub/App/PRHubRootView)\.swift']
+    regex: '\b(?:systemName|systemImage):\s*[^,)]*"|\bsymbol\s*=\s*"'
+    excluded_match_kinds: [comment, doccomment]
+    message: 'An SF Symbol''s name: use its meaning from AppIcon (PRKitDesign/AppIcon.swift), DESIGN.md.'
+    severity: error

@@ -66,7 +66,7 @@ Current move: 1, the library (2026-11-10).
 - `worker/`: the Worker each person deploys. `deploy/` has its template, `setup.sh` and the agent's deployment guide.
 - `relay/`: the push relay that Jai runs, which forwards silent pushes to Apple ([docs/push-relay.md](docs/push-relay.md)).
 - `docs/`: the Worker's API ([docs/api.md](docs/api.md)), the fixtures the app's tests decode, and plans.
-- `release/`: the hourly release's version and tag (`version.mjs`) and the app's Update available data (`app-latest.mjs`). `DESIGN.md`: the app's design tokens and parts.
+- `DESIGN.md`: the app's design tokens and parts.
 
 ## Build and test
 
@@ -76,10 +76,10 @@ Current move: 1, the library (2026-11-10).
 swift test                 # PRKit, on macOS
 make -C app test           # the app's and PRKit's unit tests on an iOS Simulator (Xcode 26, XcodeGen)
 make -C app ui-test        # the samples flow, and pictures of every screen in app/build/screenshots
-scripts/scrub.sh           # fails if a private name or value is in the repo
+make lint                  # formatters, linters, DESIGN.md's token rules, gitleaks (secrets and private names)
 ```
 
-CI runs these on every push and pull request, and a nightly end-to-end check against a test Worker. The app's tests
+CI runs the fast ones on every push to main, and the UI tests before each release. The app's tests
 need no Worker and no secrets: they run on the sample PRs.
 
 ## Use PRKit in your app

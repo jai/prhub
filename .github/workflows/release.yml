@@ -1,0 +1,65 @@
+# Release: on each rc-vX.Y.Z tag (generate-release-candidate.yml), ci.yml (Lint, Unit Tests) and test-ui.yml (UI
+# Tests) run on that commit. Green: the same commit gets the tag vX.Y.Z and a GitHub Release, both with git-cliff's
+# list of the release's feat, fix and perf commits. The v tag starts Xcode Cloud ("PRHub TestFlight External": iOS and
+# macOS, the external group); the release starts deploy-worker.yml. Green or red, the rc tag is deleted at the end, so
+# the next candidate can be cut. A red candidate is not fixed: the fix goes to main and the next candidate takes it.
+name: release
+
+on:
+  push:
+    tags: ["rc-v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+  test-ui:
+    uses: ./.github/workflows/test-ui.yml
+
+  release:
+    needs: [ci, test-ui]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # The jai-agents App's token: a release made with github.token starts no workflow, so deploy-worker.yml would not
+      # run, and github.token cannot tag a commit that changes .github/workflows.
+      - id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: 5757830
+          private-key: ${{ secrets.JAI_AGENTS_PRIVATE_KEY }}
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+      - run: |
+          version=${GITHUB_REF_NAME#rc-}
+          npx --yes git-cliff@2.14.2 --unreleased --tag "$version" --strip all > "$RUNNER_TEMP/notes.md"
+          git -c user.name='jai-agents[bot]' -c user.email='356602356+jai-agents[bot]@users.noreply.github.com' \
+            tag -a "$version" -F "$RUNNER_TEMP/notes.md"
+          git push origin "refs/tags/$version"
+          gh release create "$version" --verify-tag --title "$version" --notes-file "$RUNNER_TEMP/notes.md"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+  # Green or red, so the next candidate can be cut.
+  end-candidate:
+    needs: [release]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: 5757830
+          private-key: ${{ secrets.JAI_AGENTS_PRIVATE_KEY }}
+      - run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$GITHUB_REF_NAME"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}

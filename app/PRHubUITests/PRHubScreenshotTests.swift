@@ -17,8 +17,8 @@ final class PRHubScreenshotTests: XCTestCase {
         continueAfterFailure = false
     }
 
-    /// A look a test: together they are the suite's longest walk (10 minutes on CI's iPhone, 19 on its iPad), and as
-    /// three tests CI runs them on three Macs at once (scripts/ui-test-slices.py).
+    /// A look a test: together they are the suite's longest walk (10 minutes on CI's iPhone, 19 on its iPad), so
+    /// it is three tests.
     func testEveryScreenInLight() throws {
         try pictures(.light)
     }

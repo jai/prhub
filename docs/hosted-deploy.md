@@ -15,14 +15,17 @@ custom domain is chosen. Self-hosted Workers use [deploy/AGENTS.md](../deploy/AG
 
 ## Configuration
 
-Vars, filled into `deploy/hosted/wrangler.template.jsonc` (the rest of its vars are fixed there):
+`deploy/hosted/wrangler.jsonc` is the config, committed. Five values stay out of this public repo and come from the
+repo's variables at deploy: the account (`CLOUDFLARE_ACCOUNT_ID`, which wrangler reads from the environment) and four
+vars, each a `wrangler deploy --var`:
 
-| Placeholder | Value |
-|---|---|
-| `__CLOUDFLARE_ACCOUNT_ID__` | The account's ID |
-| `__GITHUB_APP_ID__` | The App's App ID |
-| `__GITHUB_APP_CLIENT_ID__` | The App's client ID (`Iv…`) |
-| `__APNS_KEY_ID__` | The ID of Jai's APNs key |
+| Repo variable | Worker var | Value |
+|---|---|---|
+| `CLOUDFLARE_ACCOUNT_ID` | (the account) | The account's ID |
+| `PRHUB_GITHUB_APP_ID` | `GITHUB_APP_ID` | The App's App ID |
+| `PRHUB_GITHUB_APP_CLIENT_ID` | `GITHUB_APP_CLIENT_ID` | The App's client ID (`Iv…`) |
+| `PRHUB_APNS_KEY_ID` | `APNS_KEY_ID` | The ID of Jai's APNs key |
+| `FEEDBACKKIT_PUBLIC_URL` | `FEEDBACKKIT_PUBLIC_URL` | FeedbackKit's public URL |
 
 Secrets, each with `wrangler secret put`, from the password manager:
 
@@ -45,21 +48,19 @@ cannot use is in `/events` as `limits_config_error`.
 
 ## Deploy
 
-Each `vX.Y.Z` GitHub Release deploys the hosted Worker through `.github/workflows/deploy.yml` (tests, then
-`wrangler deploy` with this config). `gh workflow run deploy.yml -f tag=vX.Y.Z` deploys a tag again. Its repo
-variables `CLOUDFLARE_ACCOUNT_ID`, `PRHUB_GITHUB_APP_ID`, `PRHUB_GITHUB_APP_CLIENT_ID` and `PRHUB_APNS_KEY_ID`, and its
-secret `CLOUDFLARE_API_TOKEN`, are set once.
+Each `vX.Y.Z` GitHub Release, made once every test passed on that commit, deploys the hosted Worker through
+`.github/workflows/deploy-worker.yml` (`wrangler deploy` with this config). `gh workflow run deploy-worker.yml -f
+tag=vX.Y.Z` deploys a tag again. The repo variables above and the secret `CLOUDFLARE_API_TOKEN` are set once.
 
 By hand, only in an emergency Jai asks for, and for the first setup. From the repo root:
 
 ```sh
 (cd worker && npm ci && npm test && npm run typecheck)
 npx wrangler@4 r2 bucket create prhub-hosted          # once
-sed -e "s/__CLOUDFLARE_ACCOUNT_ID__/$ACCOUNT_ID/" -e "s/__GITHUB_APP_ID__/$APP_ID/" \
-    -e "s/__GITHUB_APP_CLIENT_ID__/$CLIENT_ID/" -e "s/__APNS_KEY_ID__/$APNS_KEY_ID/" \
-    deploy/hosted/wrangler.template.jsonc > deploy/hosted/wrangler.jsonc
 cd worker
-npx wrangler@4 deploy --config ../deploy/hosted/wrangler.jsonc
+CLOUDFLARE_ACCOUNT_ID=$ACCOUNT_ID npx wrangler@4 deploy --config ../deploy/hosted/wrangler.jsonc \
+    --var "GITHUB_APP_ID:$APP_ID" --var "GITHUB_APP_CLIENT_ID:$CLIENT_ID" \
+    --var "APNS_KEY_ID:$APNS_KEY_ID" --var "FEEDBACKKIT_PUBLIC_URL:$FEEDBACKKIT_PUBLIC_URL"
 ```
 
 Then each secret, piped so it is never printed or kept in the shell history:

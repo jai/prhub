@@ -32,7 +32,7 @@ public struct LinearStateCircle: View {
             case "started":
                 ZStack {
                     Circle().strokeBorder(lineWidth: 1.5)
-                    // design-lint: allow the pie's gap inside Linear's 13 pt ring is the mark's drawing
+                    // swiftlint:disable:next design_space - the pie's gap inside Linear's 13 pt ring is the mark's drawing
                     LinearStatePie().padding(3)
                 }
             case "unstarted":
@@ -96,6 +96,7 @@ public enum LinearPalette {
     }
 
     private static func hex(_ value: UInt32) -> Color {
+        // swiftlint:disable:next design_colour - Linear's own state colours, drawn as Linear draws them
         Color(
             red: Double((value >> 16) & 0xFF) / 255, green: Double((value >> 8) & 0xFF) / 255,
             blue: Double(value & 0xFF) / 255

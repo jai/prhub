@@ -79,9 +79,9 @@ SH_FILES = $(shell git ls-files '*.sh' | xargs grep -l -E '^\#!.*(bash|/sh)' 2>/
 ZSH_FILES = $(shell git ls-files '*.sh' '*.zsh' | xargs grep -l -E '^\#!.*zsh' 2>/dev/null)
 
 # >>> repo parts
-PARTS := app worker relay agent e2e py
+PARTS := app worker relay agent e2e py public
 
-app_PATHS := app/% PRKit/% Package.swift Package.resolved .swiftformat .swiftlint.yml scripts/design-lint%
+app_PATHS := app/% PRKit/% Package.swift Package.resolved .swiftformat .swiftlint.yml
 .PHONY: app-setup app-fmt app-lint app-typecheck app-test
 app-setup:
 	@:
@@ -90,8 +90,6 @@ app-fmt:
 app-lint:
 	$(SWIFTFORMAT) app PRKit Package.swift --lint
 	$(SWIFTLINT) lint --strict --quiet
-	scripts/design-lint.sh
-	scripts/scrub.sh
 app-typecheck:
 	swift build -j $(JOBS)
 	$(MAKE) -C app design-check
@@ -155,8 +153,8 @@ e2e-typecheck:
 	cd e2e && $(OXLINT) --type-aware --type-check --deny-warnings
 e2e-test:
 	@:
-# The Python scripts: the UI test slicer and the GitHub App setup.
-PY_FILES := scripts/ui-test-slices.py deploy/github-app/create.py
+# The Python script: the GitHub App setup.
+PY_FILES := deploy/github-app/create.py
 py_PATHS := $(PY_FILES) ruff.toml
 .PHONY: py-setup py-fmt py-lint py-typecheck py-test
 py-setup:
@@ -170,6 +168,20 @@ py-typecheck:
 	$(PYREFLY) check $(PY_FILES)
 py-test:
 	@:
+# public: this repo is public. gitleaks (.gitleaks.toml) fails on a secret or a private name or id in any file.
+public_PATHS := %
+.PHONY: public-setup public-fmt public-lint public-typecheck public-test
+public-setup public-fmt public-typecheck public-test:
+	@:
+public-lint:
+	$(GITLEAKS) dir . --no-banner --redact
+
+# Outside the standard: the app's tests on a Simulator (CI's test and test-ui workflows; slow, so not in make check).
+.PHONY: test-app test-ui
+test-app:
+	$(MAKE) -C app test
+test-ui:
+	$(MAKE) -C app ui-test
 # <<< repo parts
 
 # Repo-wide: GitHub workflows, shell scripts, and secrets in the staged changes.

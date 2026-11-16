@@ -2,11 +2,15 @@
 SIM_NAME ?= iPhone 17
 SIM_DESTINATION ?= platform=iOS Simulator,name=$(SIM_NAME)
 DERIVED ?= build/DerivedData
+XCODEGEN ?= mise exec xcodegen@2.46.0 -- xcodegen
 
-.PHONY: project build test ui-test screenshots design design-check design-lint
+.PHONY: project build test ui-test screenshots design design-check
 
+# The project, and app/Package.resolved in it so every build takes the same remote packages.
 project:
-	xcodegen generate --spec project.yml --quiet
+	$(XCODEGEN) generate --spec project.yml --quiet
+	mkdir -p PRHub.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+	cp Package.resolved PRHub.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
 build: project
 	xcodebuild build -project PRHub.xcodeproj -scheme PRHub -destination '$(SIM_DESTINATION)' \
@@ -28,7 +32,3 @@ design:
 
 design-check:
 	cd Tools/design && { [ -d node_modules ] || npm ci --silent; } && node generate.mjs --check
-
-# No font size, colour, padding, corner or animation typed in a view (scripts/design-lint.sh).
-design-lint:
-	../scripts/design-lint.sh

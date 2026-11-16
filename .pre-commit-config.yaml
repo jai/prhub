@@ -13,8 +13,8 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-push]
-      # The two work domains are split by quotes, so scripts/scrub.sh, which keeps them out of this public repo,
-      # passes this file.
+      # The two work domains are split by quotes, so gitleaks (.gitleaks.toml), which keeps them out of this public
+      # repo, passes this file.
       - id: author
         name: author is not a work address
         entry: >-
