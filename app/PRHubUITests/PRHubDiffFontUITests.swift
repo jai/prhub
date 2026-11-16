@@ -17,15 +17,23 @@ final class PRHubDiffFontUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    func testTheDiffInEveryFontAndSize() throws {
-        for appearance in [XCUIDevice.Appearance.light, .dark] {
-            for font in Self.fonts {
-                openDiff(font: font, appearance: appearance)
-                let viewed = app.buttons["file-viewed-0"]
-                XCTAssertGreaterThanOrEqual(viewed.frame.width, 44, "\(font): the viewed mark's target")
-                XCTAssertGreaterThanOrEqual(viewed.frame.height, 44, "\(font): the viewed mark's target")
-                try picture("diff-font-\(font.replacingOccurrences(of: ":", with: "-"))-\(name(appearance))")
-            }
+    // One test per appearance: together they launch the app 18 times, which took up to 8 minutes, and on a slow CI Mac
+    // the one test that did both was killed at 8 minutes (issue #56). A slice is no shorter than its longest test.
+    func testTheDiffInEveryFontAndSizeLight() throws {
+        try diffInEveryFontAndSize(.light)
+    }
+
+    func testTheDiffInEveryFontAndSizeDark() throws {
+        try diffInEveryFontAndSize(.dark)
+    }
+
+    private func diffInEveryFontAndSize(_ appearance: XCUIDevice.Appearance) throws {
+        for font in Self.fonts {
+            openDiff(font: font, appearance: appearance)
+            let viewed = app.buttons["file-viewed-0"]
+            XCTAssertGreaterThanOrEqual(viewed.frame.width, 44, "\(font): the viewed mark's target")
+            XCTAssertGreaterThanOrEqual(viewed.frame.height, 44, "\(font): the viewed mark's target")
+            try picture("diff-font-\(font.replacingOccurrences(of: ":", with: "-"))-\(name(appearance))")
         }
     }
 
