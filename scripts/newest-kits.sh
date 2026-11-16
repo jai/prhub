@@ -49,22 +49,40 @@ fi
 echo "newest: $kits"
 [ "${1:-}" = "--local" ] && exit 0
 
-# One signed commit on main's head, through the API: blobs, a tree on the head's, the commit, the ref moved.
+# One signed commit on main's head, through the API: blobs, a tree on the head's, the commit, the ref moved. A push in
+# between makes the move "not a fast forward" (HTTP 422, run 43835886494): build the commit on the new head and try again.
 repo="$GITHUB_REPOSITORY"
-head=$(git rev-parse HEAD)
-tree=$(gh api "repos/$repo/git/commits/$head" -q .tree.sha)
 entries=()
 for file in Package.resolved app/Package.resolved; do
 	blob=$(gh api "repos/$repo/git/blobs" -f encoding=base64 -f content="$(base64 <"$file" | tr -d '\n')" -q .sha)
 	entries+=(-f "tree[][path]=$file" -f "tree[][mode]=100644" -f "tree[][type]=blob" -f "tree[][sha]=$blob")
 done
-new_tree=$(gh api "repos/$repo/git/trees" -f base_tree="$tree" "${entries[@]}" -q .sha)
 message="fix(deps): newest kits: $kits
 
 The hourly release resolved Package.swift's ranges to the newest versions (#54); the
 release's tests run on this commit."
-commit=$(gh api "repos/$repo/git/commits" -f message="$message" -f tree="$new_tree" -f "parents[]=$head" -q .sha)
-gh api -X PATCH "repos/$repo/git/refs/heads/main" -f sha="$commit" -F force=false >/dev/null
+for try in 1 2 3; do
+	head=$(gh api "repos/$repo/git/ref/heads/main" -q .object.sha)
+	tree=$(gh api "repos/$repo/git/commits/$head" -q .tree.sha)
+	new_tree=$(gh api "repos/$repo/git/trees" -f base_tree="$tree" "${entries[@]}" -q .sha)
+	if [ "$new_tree" = "$tree" ]; then
+		echo "main's head ${head:0:7} has these kits already"
+		{
+			echo "changed=false"
+			echo "kits=$kits"
+		} >>"$GITHUB_OUTPUT"
+		exit 0
+	fi
+	commit=$(gh api "repos/$repo/git/commits" -f message="$message" -f tree="$new_tree" -f "parents[]=$head" -q .sha)
+	if out=$(gh api -X PATCH "repos/$repo/git/refs/heads/main" -f sha="$commit" -F force=false 2>&1); then
+		break
+	fi
+	case $out in
+	*"not a fast forward"*) [ "$try" -lt 3 ] && echo "main moved past ${head:0:7}; building on its new head" && continue ;;
+	esac
+	echo "$out" >&2
+	exit 1
+done
 echo "committed ${commit:0:7} on main"
 {
 	echo "changed=true"
