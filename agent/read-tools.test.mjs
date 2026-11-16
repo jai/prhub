@@ -23,6 +23,11 @@ import {
   vetRef,
 } from "./read-tools.mjs";
 
+// Inside a git hook (the pre-push hook runs these tests) GIT_DIR and its kin point at this repo: a test repo ignores them.
+const gitFree = Object.fromEntries(
+  Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")),
+);
+
 test("git reads pass", () => {
   for (const args of [
     ["log", "--oneline", "-20"],
@@ -182,7 +187,7 @@ test("the git tool runs a read in the checkout, refuses a write itself, and keep
   const root = mkdtempSync(`${tmpdir()}/ask-`);
   const cwd = `${root}/acme/api/7`;
   mkdirSync(cwd, { recursive: true });
-  const run = (...args) => execFileSync("git", ["-C", cwd, ...args]);
+  const run = (...args) => execFileSync("git", ["-C", cwd, ...args], { env: gitFree });
   run("init", "-q");
   writeFileSync(`${cwd}/a.txt`, "secret-token-value\n");
   run("add", "a.txt");
@@ -257,7 +262,7 @@ function scopeWithLink() {
   const root = mkdtempSync(`${tmpdir()}/ask-`);
   const cwd = `${root}/acme/api/7`;
   mkdirSync(cwd, { recursive: true });
-  const run = (...args) => execFileSync("git", ["-C", cwd, ...args]);
+  const run = (...args) => execFileSync("git", ["-C", cwd, ...args], { env: gitFree });
   run("init", "-q");
   writeFileSync(`${cwd}/a.txt`, "one\n");
   symlinkSync("/etc/hosts", `${cwd}/link`);
