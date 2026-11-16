@@ -194,10 +194,10 @@ Agents read them with Cloudflare's R2 API: list
 ## App updates
 
 `app_latest` comes from `app-latest.json` on this repo's branch `ci/app-latest`
-(`https://raw.githubusercontent.com/jai/prhub/ci/app-latest/app-latest.json`): `internal` is the newest build internal
-testers can install, `public` the newest the Public group can (after Beta App Review). Nothing writes it since
-2026-11-16 (the hourly job that asked App Store Connect was removed with the old release), so it stays at its last
-builds and the app shows no newer one. Never edit it by hand.
+(`https://raw.githubusercontent.com/jai/prhub/ci/app-latest/app-latest.json`). Every hour
+`.github/workflows/app-latest.yml` runs `release/app-latest.mjs`, which asks App Store Connect for PRHub's
+processed, unexpired builds and writes the file when it changed: `internal` is the newest build internal testers can
+install, `public` the newest the Public group can (after Beta App Review). Never edit it by hand.
 
 - The Worker keeps it 10 minutes per isolate and waits at most 1.5 s for it (`worker/src/app-latest.ts`). A failed
   read answers the last one, or leaves `app_latest` out. `APP_LATEST_URL` reads another file (a fork's app); `off` leaves
