@@ -236,6 +236,8 @@ final class PRSession: Hashable {
             reportContent(networkMilliseconds: 0, decodeMilliseconds: parseMilliseconds)
             if opening.cache == .stale, let newer = opening.reads {
                 await refresh(to: newer)
+            } else if opening.readsLive {
+                await refresh(to: nil)
             }
         case .failed:
             return
@@ -259,8 +261,9 @@ final class PRSession: Hashable {
         }
     }
 
-    /// The newer copy, over the one on screen. A failure leaves the older copy up: the next sync brings the new one.
-    private func refresh(to newer: PullRequestRow) async {
+    /// The newer copy, over the one on screen: `newer` at its version, or nil for GitHub now. A failure leaves the older
+    /// copy up: the next sync brings the new one.
+    private func refresh(to newer: PullRequestRow?) async {
         guard let fetched = try? await model.fetch(ref, row: newer), case .ready = state else {
             return
         }

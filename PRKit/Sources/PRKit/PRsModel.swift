@@ -466,9 +466,10 @@ final class PRsModel {
 
     /// What a tap pushes. The PR is read and parsed here, on the main thread, so its time counts from the tap. Whatever
     /// the phone holds of it shows at once; `newer`, a row it does not hold yet, is read behind it from the Worker's
-    /// stored copy. With nothing on the phone the screen reads `newer`, else `row`, at their versions.
+    /// stored copy. With nothing on the phone the screen reads `newer`, else `row`, at their versions. `readsLive`: a
+    /// PR on no list, whose copy on the phone may be days old, is read live behind it.
     func session(
-        for row: PullRequestRow, source: PROpenReport.Source = .list, newer: PullRequestRow? = nil
+        for row: PullRequestRow, source: PROpenReport.Source = .list, newer: PullRequestRow? = nil, readsLive: Bool = false
     ) -> PRSession {
         let tappedAt = CACurrentMediaTime()
         let ref = PullRequestRef(repo: row.repo, number: row.number)
@@ -476,7 +477,7 @@ final class PRsModel {
         let content = localContent(row)
         let opening = PROpening(
             source: source, cache: content == nil ? .miss : newer == nil ? .hit : .stale,
-            reads: content == nil ? newer ?? row : newer
+            reads: content == nil ? newer ?? row : newer, readsLive: readsLive && content != nil && newer == nil
         )
         return PRSession(
             ref: ref, title: newer?.title ?? row.title, content: content, keyLines: localKeyLines(row),
@@ -485,8 +486,9 @@ final class PRsModel {
     }
 
     /// A PR named by a link or an alert: from the phone if it holds it. `pushed` is the row an alert carried (docs/api.md,
-    /// "Alerts"), its files on the phone when the Notification Service Extension fetched them. Else the session reads
-    /// the PR from the Worker: `pushed` at its version, or, for a PR on no list, live.
+    /// "Alerts"), its files on the phone when the Notification Service Extension fetched them (kept while the alert can
+    /// be tapped, `PRAlertedFiles`); a PR on no list is then read live behind them. Else the session reads the PR from
+    /// the Worker: `pushed` at its version, or, for a PR on no list, live.
     func session(
         for ref: PullRequestRef, pushed: PullRequestRow? = nil, source: PROpenReport.Source = .link
     ) -> PRSession {
@@ -495,7 +497,7 @@ final class PRsModel {
         }
         let listed = rows.first(where: isThisPR)
         if let pushed, isThisPR(pushed), mirror.isLocal(pushed) || listed == nil {
-            return session(for: pushed, source: source)
+            return session(for: pushed, source: source, readsLive: listed == nil)
         }
         if let listed {
             let isNewer = pushed.map { isThisPR($0) && ($0.detail != listed.detail || $0.revision != listed.revision) }
@@ -820,6 +822,8 @@ struct PROpening: Sendable {
     /// What the screen reads: with nothing on the phone, its content; with an older copy, the newer one behind it. Nil:
     /// nothing to read (a hit), or a PR on no list, read live.
     let reads: PullRequestRow?
+    /// A PR on no list, shown from the phone: read live behind it.
+    var readsLive = false
 }
 
 extension Duration {

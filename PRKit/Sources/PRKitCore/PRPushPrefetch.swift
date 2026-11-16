@@ -114,16 +114,26 @@ public struct PRPushPrefetch: Sendable {
             return .notPaired
         }
         if isLocal(row) {
+            PRAlertedFiles(directory: directory).note(Self.files(of: row))
             return .alreadyLocal
         }
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         do {
-            return try await withDeadline(deadline) { try await download(row) }
+            let outcome = try await withDeadline(deadline) { try await download(row) }
+            if outcome == .landed {
+                PRAlertedFiles(directory: directory).note(Self.files(of: row))
+            }
+            return outcome
         } catch is DeadlineExceeded {
             return .timedOut
         } catch {
             return .failed
         }
+    }
+
+    /// Every file of the row the mirror may hold: its description, its diff and its key lines.
+    static func files(of row: PullRequestRow) -> [String] {
+        [row.detailFileName, row.hasDiff ? row.diffFileName : nil, row.keyLinesFileName].compactMap(\.self)
     }
 
     /// The row's set as the mirror reads it: its description and, unless GitHub won't give one, its diff.
@@ -169,6 +179,39 @@ public struct PRPushPrefetch: Sendable {
     /// A stored detail and key lines are JSON objects; anything else is not written, and the tap reads the PR itself.
     private static func isObject(_ data: Data) -> Bool {
         (try? JSONSerialization.jsonObject(with: data)) is [String: Any]
+    }
+}
+
+/// The files each alert's prefetch put on the phone, and when. An alert stays in Notification Center long after the
+/// mirror would prune the files of a PR on no list (`PRMirror.RetryPolicy.keepsUnlisted`), and a tap on it then waited
+/// on the network. The mirror keeps these files for `keptFor`. Written only by the prefetch; the app reads it.
+public struct PRAlertedFiles: Sendable {
+    public static let fileName = "alerted.json"
+    /// How long an alert is likely to be tapped from Notification Center.
+    public static let keptFor: TimeInterval = 7 * 24 * 60 * 60
+    let file: URL
+
+    public init(directory: URL) {
+        file = directory.appending(path: Self.fileName)
+    }
+
+    /// `names` alerted at `now`. Entries older than `keptFor` are removed.
+    public func note(_ names: [String], at now: Date = .now) {
+        var entries = live(at: now)
+        for name in names {
+            entries[name] = now
+        }
+        try? JSONEncoder().encode(entries).write(to: file, options: .atomic)
+    }
+
+    /// The files of alerts that are not older than `keptFor`.
+    public func names(at now: Date = .now) -> Set<String> {
+        Set(live(at: now).keys)
+    }
+
+    private func live(at now: Date) -> [String: Date] {
+        let entries = (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode([String: Date].self, from: $0) }
+        return (entries ?? [:]).filter { now.timeIntervalSince($0.value) < Self.keptFor }
     }
 }
 

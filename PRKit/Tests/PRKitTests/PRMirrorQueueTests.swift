@@ -227,6 +227,29 @@ struct PRMirrorQueueTests {
         ), "this sync did prune")
     }
 
+    /// Serverless-Operations#649 on 2026-11-16: an alert tapped 2.5 hours after it came, its PR on no list. Prune had
+    /// removed the files its prefetch brought, and the PR waited 7.5 s on the network.
+    @Test func pruneKeepsAnAlertsFilesWhileItCanBeTapped() async throws {
+        let rows = [row(1)]
+        await worker.set(list: rows)
+        let directory = Self.ownDirectory()
+        let mirror = mirror(in: directory)
+        for name in ["alerted.diff", "expired.diff"] {
+            try Data("diff".utf8).write(to: directory.appending(path: name))
+        }
+        let alerted = PRAlertedFiles(directory: directory)
+        alerted.note(["expired.diff"], at: .now.addingTimeInterval(-PRAlertedFiles.keptFor - 1))
+        alerted.note(["alerted.diff"])
+        _ = await mirror.begin(rows, generation: 1)
+        _ = await mirror.sync(generation: 1)
+        let exists = { (name: String) in
+            FileManager.default.fileExists(atPath: directory.appending(path: name).path(percentEncoded: false))
+        }
+        #expect(exists("alerted.diff"), "an alert's PR on no list, kept past keepsUnlisted")
+        #expect(exists(PRAlertedFiles.fileName))
+        #expect(!exists("expired.diff"), "this sync did prune")
+    }
+
     @Test func noMoreThanSixFilesDownloadAtOnce() async {
         let rows = (1 ... 20).map { row($0) }
         await worker.set(list: rows, delay: .milliseconds(50))

@@ -18,8 +18,8 @@ import PRKitDesign
 ///   One failing PR holds up no other.
 /// - The newest list wins: each list has a generation, and only the newest one's rows are published. A download that
 ///   only an older list wanted is cancelled; a cancelled download writes nothing and is no failure.
-/// - Prune runs after publishing the newest list, and keeps what that list and the shown rows name and every file
-///   still downloading.
+/// - Prune runs after publishing the newest list, and keeps what that list and the shown rows name, every file still
+///   downloading, and the files of an alert that can still be tapped (`PRAlertedFiles`).
 actor PRMirror {
     static let parallelDownloads = 6
     /// Reads other than the PRs' own files, each a last good answer (`PRsModel.kept`): the merged lists. Disconnect
@@ -294,12 +294,13 @@ actor PRMirror {
 
     /// Keeps what the newest list and the shown rows name, every file still downloading, any file younger than
     /// `keepsUnlisted` (an alert's PR that the Notification Service Extension fetched before the list named it,
-    /// `PRPushPrefetch`), and the kept reads. Anything else — a file of an old revision, a temporary file left by a
-    /// crash — goes.
+    /// `PRPushPrefetch`), an alert's files while it can still be tapped (`PRAlertedFiles`), and the kept reads.
+    /// Anything else — a file of an old revision, a temporary file left by a crash — goes.
     private func prune() {
         let wanted = Set((latest + shown).flatMap(\.files))
             .union(inFlight.keys).union(ending.values)
-            .union([Self.rowsFile, PRPushPrefetchLog.fileName, Self.keptFolder])
+            .union(PRAlertedFiles(directory: directory).names())
+            .union([Self.rowsFile, PRPushPrefetchLog.fileName, PRAlertedFiles.fileName, Self.keptFolder])
         let manager = FileManager.default
         let keys: Set<URLResourceKey> = [.contentModificationDateKey]
         let files = (try? manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: Array(keys))) ?? []
