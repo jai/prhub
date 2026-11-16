@@ -6,12 +6,47 @@
 // install (every build, as release builds go to the Internal group too), `public` the newest external testers can
 // (the Public group, once Beta App Review approved it). It writes them to app-latest.json on the branch ci/app-latest,
 // which the Workers read (worker/src/app-latest.ts), and only when they changed.
-// Needs ASC_KEY_P8, ASC_KEY_ID and ASC_ISSUER_ID (as release/cadence.mjs), and, to write, GITHUB_TOKEN with contents
+// Needs ASC_KEY_P8 (the .p8 key's PEM text), ASC_KEY_ID and ASC_ISSUER_ID, and, to write, GITHUB_TOKEN with contents
 // write and GITHUB_REPOSITORY. --dry-run prints the file and writes nothing. Exits non-zero only when an API fails.
+import { createPrivateKey, sign } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { client, githubClient } from "./cadence.mjs";
+import { githubClient } from "./version.mjs";
 
-/** PRHub's App Store Connect app (release/ship.sh). */
+const API = "https://api.appstoreconnect.apple.com/v1/";
+
+function base64URL(data) {
+  return Buffer.from(data).toString("base64url");
+}
+
+/** An App Store Connect API token (ES256 JWT, 10 minutes) from the .p8 key. */
+export function token({ keyPEM, keyID, issuerID, now = Math.floor(Date.now() / 1000) }) {
+  const header = base64URL(JSON.stringify({ alg: "ES256", kid: keyID, typ: "JWT" }));
+  const claims = base64URL(JSON.stringify({ iss: issuerID, iat: now, exp: now + 600, aud: "appstoreconnect-v1" }));
+  const signature = sign("sha256", Buffer.from(`${header}.${claims}`), {
+    key: createPrivateKey(keyPEM),
+    dsaEncoding: "ieee-p1363",
+  });
+  return `${header}.${claims}.${base64URL(signature)}`;
+}
+
+/** A small App Store Connect client: `request(method, path, body?)` returns the parsed JSON document. */
+export function client({ keyPEM, keyID, issuerID, fetchImpl = fetch }) {
+  return async function request(method, path, body) {
+    const response = await fetchImpl(path.startsWith("https://") ? path : API + path, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token({ keyPEM, keyID, issuerID })}`,
+        ...(body ? { "Content-Type": "application/json" } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const text = await response.text();
+    if (!response.ok) throw new Error(`${method} ${path}: HTTP ${response.status} ${text}`);
+    return JSON.parse(text);
+  };
+}
+
+/** PRHub's App Store Connect app. */
 export const APP_ID = "6831601628";
 export const BRANCH = "ci/app-latest";
 export const PATH = "app-latest.json";

@@ -1,18 +1,23 @@
-# PRHub's hourly release, the only thing that starts an Xcode Cloud workflow: none starts there on a push or a pull
-# request. Once an hour, and only when main changed the app since the last release (release/cadence.mjs decide), it
-# runs the full tests on GitHub's Macs (ios.yml) on main's head, and when they pass releases that commit
-# (release/cadence.mjs release): ci/release points at it, the next version's tag and GitHub Release
-# (release/version.mjs), and Xcode Cloud's Internal - TestFlight, the Mac's, and PRHub Release when a release commit is
-# waiting, all on ci/release. Red tests release nothing, and the head is not tried again; the next push is.
-# And the newest build each TestFlight group can install, for the app's "Update available": release/app-latest.mjs
-# writes it to app-latest.json on the branch ci/app-latest, which the Workers' GET /device/config reads.
+# PRHub's hourly release, started by jai/ci's release-clock Worker (workflow_dispatch) at the top of each hour. When
+# main's head has a feat or fix since the newest vX.Y.Z tag (release/version.mjs plan), it runs the full tests on
+# GitHub's Macs (ios.yml) on that commit, and when they pass tags it with the next version and makes its GitHub
+# Release (release/version.mjs publish). The tag starts Xcode Cloud's tag-started workflow, which builds that commit for
+# TestFlight. Red tests release nothing, and a head whose release failed is not tried again until a new push, or a run
+# by hand with retry. And the newest build each TestFlight group can install, for the app's "Update available":
+# release/app-latest.mjs writes it to app-latest.json on the branch ci/app-latest, which the Workers' GET
+# /device/config reads.
 name: hourly-release
 
 on:
   push:
     branches: [main]
-    paths: [release/cadence*.mjs, release/version*.mjs, release/app-latest*.mjs, .github/workflows/hourly-release.yml]
+    paths: [release/version*.mjs, release/app-latest*.mjs, .github/workflows/hourly-release.yml]
   workflow_dispatch:
+    inputs:
+      retry:
+        description: "Try main's head again even if its release failed before."
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -30,7 +35,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - run: node --test release/cadence.test.mjs release/version.test.mjs release/app-latest.test.mjs
+      - run: node --test release/version.test.mjs release/app-latest.test.mjs
 
   decide:
     if: github.event_name != 'push'
@@ -50,12 +55,18 @@ jobs:
         with:
           node-version: 24
       - id: decide
-        run: node release/cadence.mjs decide
+        run: |
+          head=$(git rev-parse origin/main)
+          # A head whose release run failed before (red tests) waits for the next push, or a run with retry.
+          failed=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/hourly-release.yml/runs?head_sha=$head&status=failure&per_page=1" -q .total_count)
+          if [[ $failed != 0 && $RETRY != true ]]; then
+            echo "nothing to release: a release of ${head:0:7} failed before"
+            exit 0
+          fi
+          node release/version.mjs plan
         env:
-          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          GITHUB_TOKEN: ${{ github.token }}
+          RETRY: ${{ inputs.retry }}
+          GH_TOKEN: ${{ github.token }}
 
   ios:
     needs: decide
@@ -73,7 +84,7 @@ jobs:
     env:
       HAS_APP_KEY: ${{ secrets.JAI_AGENTS_PRIVATE_KEY != '' }}
     steps:
-      # The jai-agents GitHub App token can tag, and move ci/release to, a commit that changes .github/workflows;
+      # The jai-agents GitHub App token can tag a commit that changes .github/workflows;
       # github.token cannot (no workflows permission). github.token is the fallback until the repo has the App's key.
       - id: app-token
         if: env.HAS_APP_KEY == 'true'
@@ -87,12 +98,9 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - run: node release/cadence.mjs release "$SHA"
+      - run: node release/version.mjs publish "$SHA"
         env:
           SHA: ${{ needs.decide.outputs.sha }}
-          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
 
   app-latest:

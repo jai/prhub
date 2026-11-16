@@ -66,7 +66,7 @@ Current move: 1, the library (2026-11-10).
 - `worker/`: the Worker each person deploys. `deploy/` has its template, `setup.sh` and the agent's deployment guide.
 - `relay/`: the push relay that Jai runs, which forwards silent pushes to Apple ([docs/push-relay.md](docs/push-relay.md)).
 - `docs/`: the Worker's API ([docs/api.md](docs/api.md)), the fixtures the app's tests decode, and plans.
-- `release/`: `ship.sh`, which uploads a TestFlight build. `DESIGN.md`: the app's design tokens and parts.
+- `release/`: the hourly release's version and tag (`version.mjs`) and the app's Update available data (`app-latest.mjs`). `DESIGN.md`: the app's design tokens and parts.
 
 ## Build and test
 

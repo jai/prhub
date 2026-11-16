@@ -2,8 +2,7 @@
 // stubbed GitHub.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { githubClient } from "./cadence.mjs";
-import { bumpOf, newestTag, notesFor, planVersion, publishVersion, withoutSignature } from "./version.mjs";
+import { bumpOf, githubClient, newestTag, notesFor, planVersion, publishVersion, withoutSignature } from "./version.mjs";
 
 const HEAD = "h".repeat(40);
 const c = (subject, body = "") => ({ subject, body });
