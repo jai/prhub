@@ -13,7 +13,8 @@ permissions:
 
 jobs:
   lint-ios:
-    runs-on: ubuntu-latest
+    # 24.04: SwiftLint's Linux build needs libxml2.so.2, which 26.04 (ubuntu-latest) no longer has.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
@@ -23,4 +24,6 @@ jobs:
         with:
           node-version: 24
       - uses: jdx/mise-action@v5
+      # zsh -n checks the zsh scripts (shellcheck reads no zsh).
+      - run: sudo apt-get install -y --no-install-recommends zsh
       - run: make lint-ios

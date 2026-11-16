@@ -23,4 +23,6 @@ jobs:
         with:
           node-version: 24
       - uses: jdx/mise-action@v5
+      # zsh -n checks the zsh scripts (shellcheck reads no zsh).
+      - run: sudo apt-get install -y --no-install-recommends zsh
       - run: make lint-worker
