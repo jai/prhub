@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/jai/agentchatkit",
       "state" : {
-        "revision" : "e754a4da0a61d1e0a6c360890f0b7ca47c76089b",
-        "version" : "0.4.1"
+        "revision" : "d99241e7766c273ee2b7e3550bb7bcfaf61af0a0",
+        "version" : "0.4.2"
       }
     },
     {
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/jai/durable-networking",
       "state" : {
-        "revision" : "4c2c7bec285d86b0fc50fd1773bd80d23fbc787f",
-        "version" : "0.4.0"
+        "revision" : "1874c12c5e3b12136935afe5f3aaf9e2afa1eb55",
+        "version" : "0.6.0"
       }
     },
     {
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/jai/feedbackkit",
       "state" : {
-        "revision" : "f41c9db877e46b09beb2248ae758c86b04f26f11",
-        "version" : "0.5.0"
+        "revision" : "5eb4e252602ffcf613bea73158f93ce6b2062baa",
+        "version" : "0.6.1"
       }
     }
   ],
