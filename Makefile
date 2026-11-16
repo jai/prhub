@@ -20,7 +20,7 @@ SHELL := /bin/bash
 
 X := mise exec
 ACTIONLINT  := $(X) actionlint@1.7.12 -- actionlint
-GITLEAKS    := $(X) gitleaks@8.30.1 -- gitleaks dir --no-banner --redact
+GITLEAKS    := $(X) gitleaks@8.30.1 -- gitleaks dir --config .gitleaks.toml --no-banner --redact
 SWIFTFORMAT := $(X) swiftformat@0.64.7 -- swiftformat
 SWIFTLINT   := $(X) swiftlint@0.65.1 -- swiftlint lint --strict --quiet
 XCODEGEN    := $(X) xcodegen@2.46.0 -- xcodegen
