@@ -36,6 +36,14 @@ struct AnalyticsTests {
         .pullRequestOpened(.push, .hit, timeToContentMs: 180, networkMs: 0, decodeMs: 40),
         .pullRequestsSynced(.pull, .changed), .pullRequestWriteRefused, .pushPrefetch(.landed, milliseconds: 412),
         .requestFailed(.feedback, .status(404)), .updateOffered(.internal, build: 235), .updateAnswered(.later),
+        .listRefreshStarted(rows: 5), .listRefreshFinished(PRListRefreshFinish(
+            outcome: .ok, milliseconds: 840, rowsBefore: 5, rowsAfter: 6, source: .network
+        )),
+        .listRefreshStuck(PRListRefreshStuck(
+            gap: 62, offsetY: -124, insetTop: 62, restingInsetTop: 62, isRefreshing: false, isLoading: true,
+            isInteracting: false, scene: .active
+        )),
+        .listRefreshBackgrounded(milliseconds: 1200),
     ]
 
     // swiftlint:disable:next cyclomatic_complexity - one arm per case, by design
@@ -62,13 +70,17 @@ struct AnalyticsTests {
         case .requestFailed: 18
         case .updateOffered: 19
         case .updateAnswered: 20
+        case .listRefreshStarted: 21
+        case .listRefreshFinished: 22
+        case .listRefreshStuck: 23
+        case .listRefreshBackgrounded: 24
         }
     }
 
     // MARK: - What an event can carry
 
     @Test func everyCaseIsListed() {
-        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0...20))
+        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0...24))
     }
 
     @Test func eachEventHasItsOwnSnakeCaseName() {
@@ -101,6 +113,8 @@ struct AnalyticsTests {
                 + PRPushPrefetch.Outcome.allCases.map(\.rawValue)
                 + PRRequestArea.allCases.map(\.rawValue) + RequestFailureKind.allCases.map(\.rawValue)
                 + TestFlightGroup.allCases.map(\.rawValue) + UpdateAnswer.allCases.map(\.rawValue)
+                + PRListRefreshOutcome.allCases.map(\.rawValue) + PRListRefreshSource.allCases.map(\.rawValue)
+                + PRListSceneState.allCases.map(\.rawValue)
                 + ["push", "other_push", "foreground", "pull", "changed", "unchanged", "failed"]
         )
         for (key, value) in event.properties {

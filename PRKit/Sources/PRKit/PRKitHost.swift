@@ -176,6 +176,14 @@ public enum PRKitEvent: Equatable, Sendable {
     /// A request to the Worker failed: what it was for, and its status or why there was none. Each area's kind of
     /// failure at most once a minute (`PRViewerClient.reporting`).
     case requestFailed(PRRequestArea, PRRequestFailure)
+    /// A pull to refresh of the PR list began, with how many rows the list had (issue #55).
+    case listRefreshStarted(rows: Int)
+    /// That refresh ended: how, how long it took, and the rows before and after.
+    case listRefreshFinished(PRListRefreshFinish)
+    /// Two seconds after a refresh ended the list was not back at rest: its geometry and state then.
+    case listRefreshStuck(PRListRefreshStuck)
+    /// The app left the foreground while a refresh ran, this long after it began.
+    case listRefreshBackgrounded(milliseconds: Int)
 }
 
 /// One PR opened, from the tap to its content on screen (`PRKitEvent.contentShown`).

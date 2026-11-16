@@ -104,6 +104,9 @@ struct PRsList: View {
     @AppStorage("prShowsMergedReviews") private var showsReviewedMerged = false
     @AppStorage("prListOrder") private var order = PRListOrder.sla
     @AppStorage("prListGrouping") private var grouping = PRListGrouping.none
+    /// The pull to refresh's start, end and whether the list came back to rest (issue #55).
+    @State private var refreshWatch = PRListRefreshWatch()
+    @Environment(\.scenePhase) private var scenePhase
 
     private var orgFilter: PROrgFilter {
         savedOrgFilter ?? model.orgDefault.filter(owners: model.orgs)
@@ -247,13 +250,47 @@ struct PRsList: View {
                 )
             }
         }
-        .refreshable {
-            await model.refresh(.pull)
-            if showsMergedHere { await model.loadMerged(on: page) }
+        .refreshable { await pullToRefresh() }
+        .onScrollGeometryChange(for: PRListScrollRest.self) { geometry in
+            PRListScrollRest(offsetY: geometry.contentOffset.y, insetTop: geometry.contentInsets.top)
+        } action: { _, rest in
+            refreshWatch.geometry = rest
+        }
+        .onScrollPhaseChange { _, phase in
+            refreshWatch.isInteracting = phase == .interacting || phase == .tracking
+        }
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            refreshWatch.scene = phase
+            if phase == .background, let event = refreshWatch.backgrounded() {
+                model.onEvent(event)
+            }
         }
         // Again when the network comes back, over the saved list.
         .task(id: "\(page.rawValue)-\(showsMergedHere)-\(model.network.isOnline)") {
             if showsMergedHere { await model.loadMerged(on: page) }
+        }
+    }
+
+    /// A pull to refresh, watched (issue #55): when it starts and ends and how, and two seconds later whether the list
+    /// is back at rest.
+    private func pullToRefresh() async {
+        let rowsBefore = model.rows.count
+        model.onEvent(refreshWatch.began(rows: rowsBefore))
+        let synced = await model.refresh(.pull)
+        if showsMergedHere { await model.loadMerged(on: page) }
+        let outcome: PRListRefreshOutcome = if Task.isCancelled {
+            .cancelled
+        } else if synced == .failed {
+            model.network.isOnline ? .error : .offline
+        } else {
+            .ok
+        }
+        model.onEvent(refreshWatch.ended(outcome, rowsBefore: rowsBefore, rowsAfter: model.rows.count))
+        Task { @MainActor [refreshWatch, model] in
+            try? await Task.sleep(for: PRListRefreshWatch.settle)
+            if let event = refreshWatch.stuck(isLoading: model.isSyncing) {
+                model.onEvent(event)
+            }
         }
     }
 
