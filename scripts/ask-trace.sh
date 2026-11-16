@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 # What happened to one Ask turn, from Workers Logs: every `ask_event` line with its id (docs/api.md, "Tracing an Ask").
 #   scripts/ask-trace.sh <turn id, or its first 8 characters from the chat's failure line> [worker] [hours back]
 # worker: the Worker's name, `prhub` (hosted, the default) or `agent-pager`. Needs CLOUDFLARE_API_TOKEN (Workers
@@ -22,7 +22,7 @@ answer=$(curl -sS -X POST "https://api.cloudflare.com/client/v4/accounts/$accoun
     -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "$query")
 # Cloudflare's own refusal (a bad token, no access) is not an empty trace: say it and fail.
 if [[ $(jq -r '.success // false' <<< "$answer" 2>/dev/null) != true ]]; then
-    echo "ask-trace: Cloudflare refused the query: $(jq -c '.errors // .' <<< "$answer" 2>/dev/null || print -r -- "$answer")" >&2
+    echo "ask-trace: Cloudflare refused the query: $(jq -c '.errors // .' <<< "$answer" 2>/dev/null || printf '%s\n' "$answer")" >&2
     exit 1
 fi
 jq -r '.result.events.events // [] | sort_by(.timestamp) | if length == 0 then "no ask_event lines for that turn" else

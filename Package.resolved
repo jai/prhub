@@ -1,5 +1,5 @@
 {
-  "originHash" : "3df902c2852447a6df3de1525439737c016635ceb791205166c3b55f09197b9d",
+  "originHash" : "b681d4ef890aeb0abf6cd7ae7ce3afe0019aab1c9d2ea99920a34ff317963884",
   "pins" : [
     {
       "identity" : "agentchatkit",
@@ -26,15 +26,6 @@
       "state" : {
         "revision" : "f39473433fa689ecc3528468d5b4b6319ce1ab0e",
         "version" : "0.7.0"
-      }
-    },
-    {
-      "identity" : "posthog-ios",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/PostHog/posthog-ios",
-      "state" : {
-        "revision" : "4e9850f767988f394e8584b0bf61ce85674775eb",
-        "version" : "3.93.6"
       }
     }
   ],

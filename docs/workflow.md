@@ -137,9 +137,9 @@ These workflows do not follow the `lint-`, `test-` and `deploy-` names in the Wo
 
 | Target | Runs |
 | --- | --- |
-| `make lint-ios` | SwiftFormat, SwiftLint with the DESIGN.md token rules, the design-token check, gitleaks |
+| `make lint-ios` | SwiftFormat, SwiftLint with the DESIGN.md token rules, the design-token check, shellcheck, gitleaks |
 | `make lint-prkit` | SwiftFormat, SwiftLint with the DESIGN.md token rules, gitleaks |
-| `make lint-worker` | oxlint, oxfmt, tsc, gitleaks |
+| `make lint-worker` | oxlint, oxfmt, tsc, shellcheck, gitleaks |
 | `make lint-workflows` | actionlint |
 | `make test-unit-ios` | `swift test` on the app packages |
 | `make test-unit-prkit` | `swift test` on PRKit |

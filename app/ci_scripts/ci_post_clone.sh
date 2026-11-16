@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 # Xcode Cloud, after the clone. Only what the build cannot do without:
 # - The project is generated (*.xcodeproj is gitignored): XcodeGen makes app/PRHub.xcodeproj, and app/Package.resolved
 #   goes into it, because Xcode Cloud resolves packages only from a Package.resolved.

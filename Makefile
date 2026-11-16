@@ -1,8 +1,9 @@
 # PRHub's make targets: the ones docs/workflow.md lists, and no others. Each CI workflow runs the target of its name.
 #
-#   make lint-ios                 SwiftFormat, SwiftLint with the DESIGN.md token rules, the design-token check, gitleaks
+#   make lint-ios                 SwiftFormat, SwiftLint with the DESIGN.md token rules, the design-token check,
+#                                 shellcheck, gitleaks
 #   make lint-prkit               SwiftFormat, SwiftLint with the DESIGN.md token rules, gitleaks
-#   make lint-worker              oxlint, oxfmt, tsc, gitleaks
+#   make lint-worker              oxlint, oxfmt, tsc, shellcheck, gitleaks
 #   make lint-workflows           actionlint
 #   make test-unit-ios            swift test on the app packages (PRHubTests)
 #   make test-unit-prkit          swift test on PRKit (PRKitTests)
@@ -20,6 +21,7 @@ SHELL := /bin/bash
 
 X := mise exec
 ACTIONLINT  := $(X) actionlint@1.7.12 -- actionlint
+SHELLCHECK  := $(X) shellcheck@0.11.0 -- shellcheck
 GITLEAKS    := $(X) gitleaks@8.30.1 -- gitleaks dir --config .gitleaks.toml --no-banner --redact
 SWIFTFORMAT := $(X) swiftformat@0.64.7 -- swiftformat
 SWIFTLINT   := $(X) swiftlint@0.65.1 -- swiftlint lint --strict --quiet
@@ -33,7 +35,7 @@ lint-ios:
 	$(SWIFTFORMAT) app --lint
 	$(SWIFTLINT) app/PRHub app/PRHubTests app/PRHubUITests
 	$(MAKE) -C app design-check
-	zsh -n app/ci_scripts/ci_post_clone.sh
+	$(SHELLCHECK) app/ci_scripts/ci_post_clone.sh
 	$(GITLEAKS) app
 	$(GITLEAKS) DESIGN.md
 
@@ -49,7 +51,7 @@ lint-worker:
 	cd worker && $(OXLINT) --deny-warnings
 	cd worker && $(OXLINT) --type-aware --type-check --deny-warnings src
 	cd agent && npx --yes oxlint@1.93.0 --deny-warnings
-	zsh -n scripts/ask-trace.sh
+	$(SHELLCHECK) scripts/ask-trace.sh
 	$(GITLEAKS) worker
 	$(GITLEAKS) agent
 	$(GITLEAKS) deploy/hosted
