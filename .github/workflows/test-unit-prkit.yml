@@ -6,7 +6,6 @@ on:
     branches: [main]
     paths: ["PRKit/**", "Package.swift", "Package.resolved", ".swiftlint.yml", ".swiftformat", "Makefile", ".github/workflows/test-unit-prkit.yml"]
   workflow_call:
-  workflow_dispatch:
 
 permissions:
   contents: read

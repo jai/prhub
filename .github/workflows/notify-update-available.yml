@@ -1,7 +1,7 @@
 # notify-update-available (docs/workflow.md): each hour, release/app-latest.mjs asks App Store Connect for the newest
 # build each TestFlight group can install and writes it to app-latest.json on the branch ci/app-latest, which the
 # Worker's GET /device/config reads for the app's "Update available" (docs/api.md, "App updates"). jai/ci's
-# release-clock starts it; by hand too.
+# release-clock starts it, through workflow_dispatch.
 name: notify-update-available
 
 on:

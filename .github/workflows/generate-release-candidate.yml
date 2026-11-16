@@ -1,5 +1,5 @@
 # Generate a release candidate for each component (docs/workflow.md): ios, worker and prkit. jai/ci's release-clock
-# starts it every 3 hours; anyone can start it by hand. For each component, git-cliff gets the next version from the
+# starts it every 3 hours, through workflow_dispatch. For each component, git-cliff gets the next version from the
 # conventional commits that change the component's files since its newest release tag (feat: minor, fix or perf: patch,
 # a breaking change: major; nothing else releases). The RC tag is rc-<component>-v<version>-<short hash>, on the newest
 # commit of main that changes the component (docs/workflow.md, Part 2). Its push starts release.yml.

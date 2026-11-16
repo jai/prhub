@@ -1,10 +1,9 @@
-# The app's UI tests (make test-ui-ios): the UI test plan on the iPhone and iPad Simulators. In each ios release, and
-# by hand. Each job keeps its test logs for a week.
+# The app's UI tests (make test-ui-ios): the UI test plan on the iPhone and iPad Simulators, only in each ios release
+# (release.yml). Each job keeps its test logs for a week.
 name: test-ui-ios
 
 on:
   workflow_call:
-  workflow_dispatch:
 
 permissions:
   contents: read
