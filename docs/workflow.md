@@ -150,6 +150,11 @@ These workflows do not follow the `lint-`, `test-` and `deploy-` names in the Wo
 | `make lint` | All lint targets |
 | `make all-tests` | All test targets |
 
+## Hooks
+
+- [ ] This adds to Part 1: before the lint, the pre-commit hook runs each tool that can fix a file on the staged files, and adds them back to the commit: swiftformat and `swiftlint --fix` (Swift), oxfmt and `oxlint --fix` (TypeScript and JavaScript), and `make -C app design` when DESIGN.md changes. The commit stops only for what no tool can fix.
+- [ ] After each edit, the Claude Code hook `.claude/hooks/format_file.py` formats the file (swiftformat, oxfmt).
+
 ## Not in CI
 
 - [ ] The self-host kit (`deploy/setup.sh`, `deploy/wrangler.template.jsonc`, `deploy/github-app/`). The code stays.
