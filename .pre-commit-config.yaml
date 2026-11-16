@@ -1,18 +1,7 @@
 repos:
   - repo: local
     hooks:
-      - id: lint
-        name: make lint
-        entry: make lint
-        language: system
-        pass_filenames: false
-        stages: [pre-commit]
-      - id: check
-        name: make check
-        entry: make check
-        language: system
-        pass_filenames: false
-        stages: [pre-push]
+      # The lint and test hooks are out while the CI moves to docs/workflow.md; they come back per component.
       # The two work domains are split by quotes, so gitleaks (.gitleaks.toml), which keeps them out of this public
       # repo, passes this file.
       - id: author
