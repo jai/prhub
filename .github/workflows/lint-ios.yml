@@ -1,0 +1,26 @@
+# The ios component's lint (make lint-ios): SwiftFormat, SwiftLint with DESIGN.md's token rules, the design-token check, gitleaks. On each push that changes the app, and in each ios release.
+name: lint-ios
+
+on:
+  push:
+    branches: [main]
+    paths: ["app/**", "PRKit/**", "Package.swift", "Package.resolved", "DESIGN.md", ".swiftlint.yml", ".swiftformat", "Makefile", ".github/workflows/lint-ios.yml"]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-ios:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: jdx/mise-action@v5
+      - run: make lint-ios

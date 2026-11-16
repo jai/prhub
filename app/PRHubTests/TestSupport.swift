@@ -1,16 +1,12 @@
 import Foundation
 import Synchronization
 
-/// The worker's golden fixtures (docs/fixtures/) this target reads, copied into the test bundle (project.yml): Xcode
-/// Cloud's test Mac has the built products and no sources.
+/// The worker's golden fixtures (docs/fixtures/), read where they are in the repo: `swift test` runs from the sources.
 enum Fixture {
-    private final class InBundle {}
-
     static func data(_ name: String) throws -> Data {
-        guard let url = Bundle(for: InBundle.self).url(forResource: name, withExtension: nil) else {
-            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: name])
-        }
-        return try Data(contentsOf: url)
+        let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appending(path: "../../docs/fixtures", directoryHint: .isDirectory)
+        return try Data(contentsOf: fixtures.appending(path: name))
     }
 }
 

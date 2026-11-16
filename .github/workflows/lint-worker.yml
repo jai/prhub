@@ -1,0 +1,26 @@
+# The worker component's lint (make lint-worker): oxlint, oxfmt, tsc, gitleaks. On each push that changes the Worker, and in each worker release.
+name: lint-worker
+
+on:
+  push:
+    branches: [main]
+    paths: ["worker/**", "agent/**", "deploy/hosted/**", "docs/fixtures/**", "scripts/ask-trace.sh", "Makefile", ".github/workflows/lint-worker.yml"]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: jdx/mise-action@v5
+      - run: make lint-worker

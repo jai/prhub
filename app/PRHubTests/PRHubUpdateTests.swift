@@ -1,5 +1,5 @@
 import Foundation
-@testable import PRHub
+@testable import PRHubCore
 import Testing
 
 /// Update available (`PRHubUpdate`): a newer build for this build's TestFlight group, at most hourly, and Later.

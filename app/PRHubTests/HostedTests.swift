@@ -1,5 +1,5 @@
 import Foundation
-@testable import PRHub
+@testable import PRHubCore
 import Testing
 
 private let worker = URL(string: "https://prhub.example.workers.dev")!
@@ -306,9 +306,20 @@ struct HostedConfigTests {
         overrides.removePersistentDomain(forName: suite)
     }
 
-    @Test func theAppsBuildSignsInAndHidesSelfHosting() {
-        // app/Config/PRHub.xcconfig's defaults.
-        let build = PRHubBuild(info: Bundle.main.infoDictionary ?? [:])
+    @Test func theAppsBuildSignsInAndHidesSelfHosting() throws {
+        // app/Config/PRHub.xcconfig's defaults, under the Info.plist keys project.yml gives them.
+        let file = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "../Config/PRHub.xcconfig")
+        let settings = try String(contentsOf: file, encoding: .utf8).split(separator: "\n").reduce(into: [String: String]()) {
+            let parts = $1.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+            if parts.count == 2 {
+                $0[parts[0]] = parts[1]
+            }
+        }
+        let keys = [
+            "PRHubHostedHost": "PRHUB_HOSTED_HOST", "PRHubSignInWithGitHub": "PRHUB_SIGN_IN_GITHUB",
+            "PRHubSelfHosted": "PRHUB_SELF_HOSTED", "PRHubSamples": "PRHUB_SAMPLES",
+        ]
+        let build = PRHubBuild(info: keys.compactMapValues { settings[$0] })
         #expect(build.signInWithGitHub && build.samples && !build.selfHosted)
         #expect(build.hostedURL?.scheme == "https")
     }

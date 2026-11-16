@@ -108,7 +108,13 @@ These workflows do not follow the `lint-`, `test-` and `deploy-` names in the Wo
 | `prkit` | The Swift package that other apps use (`PRKit/`, `Package.swift`) | `v<version>` |
 
 - [ ] `prkit` is the exception to `<component>-v<version>`. Swift Package Manager reads only `v<version>` tags, and Agent Pager pins PRKit by version.
+- [ ] `prkit` is the whole package in `Package.swift`: PRKitCore, PRKitDesign, PRKit and FeatureKit. Swift Package Manager gives one version to a package.
 - [ ] The app contains PRKit. So a change to PRKit also makes an `ios` RC, and the `ios` release also runs `test-unit-prkit`.
+- [ ] `PRHubCore` in `Package.swift` is not a component. It compiles the app's logic files (`app/PRHub` without its views) so that `swift test` runs `PRHubTests`.
+
+## Release candidate
+
+- [ ] This overrides Part 1: `generate-release-candidate` tags the newest commit of `main` that changes the component, not the head of `main`. git-cliff reads a component's commits by path (`--include-path`), and it does not see a release tag on a commit that changes none of those paths.
 
 ## Clock
 

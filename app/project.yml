@@ -131,12 +131,10 @@ targets:
       - target: PRHubNotifications
         destinationFilters: [iOS]
     scheme:
-      testTargets:
-        - PRHubTests
-        - PRHubUITests
-        # The PR screens' own tests, run with the app's.
-        - package: PRKit/PRKitTests
-      gatherCoverageData: true
+      # The UI tests come only from this plan (docs/workflow.md). The unit tests are `swift test` (Package.swift).
+      testPlans:
+        - path: PRHubUITests.xctestplan
+          defaultPlan: true
 
   # The Notification Service Extension: fetches an alert's PR into the app group's mirror before the tap
   # (`PRPushPrefetch`), within iOS's time for it, and shows the alert either way.
@@ -182,23 +180,6 @@ targets:
       - package: PRKit
         product: PRKitCore
       - package: DurableNetworking
-
-  PRHubTests:
-    type: bundle.unit-test
-    platform: iOS
-    sources:
-      - PRHubTests
-      # The worker's fixtures these tests read, in the bundle: Xcode Cloud's test Mac has no sources.
-      - path: ../docs/fixtures/device-config.json
-        buildPhase: resources
-      - path: ../docs/fixtures/device-config-hosted.json
-        buildPhase: resources
-    dependencies:
-      - target: PRHub
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.jaigovindani.prreview.tests
-        GENERATE_INFOPLIST_FILE: YES
 
   # The app in sample mode: onboarding, the lists, a PR, its diff and key lines, Settings. No Worker, no secrets.
   PRHubUITests:

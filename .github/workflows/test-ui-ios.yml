@@ -1,6 +1,6 @@
-# The app's UI tests on the iPhone and the iPad Simulators (`make test-ui`), on the samples: no Worker, no GitHub. Slow,
-# so not on every push: before every release (release.yml), and by hand.
-name: test-ui
+# The app's UI tests (make test-ui-ios): the UI test plan on the iPhone and iPad Simulators. In each ios release, and
+# by hand. Each job keeps its test logs for a week.
+name: test-ui-ios
 
 on:
   workflow_call:
@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  test-ui:
-    name: UI Tests (${{ matrix.device }})
+  test-ui-ios:
+    name: test-ui-ios (${{ matrix.device }})
     runs-on: xcode-27
     timeout-minutes: 300
     strategy:
@@ -21,16 +21,16 @@ jobs:
     env:
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
-      - uses: actions/checkout@v5
       - run: sudo xcode-select -s /Applications/Xcode_27.2.app
+      - uses: actions/checkout@v5
       - uses: jdx/mise-action@v5
-      - run: make test-ui SIM_NAME="$DEVICE"
+      - run: make test-ui-ios SIM_NAME="$DEVICE"
         env:
           DEVICE: ${{ matrix.device }}
       - uses: actions/upload-artifact@v5
         if: always()
         with:
-          name: test-ui-${{ matrix.device }}
+          name: test-ui-ios-${{ matrix.device }}
           path: app/build/DerivedData/Logs/Test
           retention-days: 7
           if-no-files-found: ignore

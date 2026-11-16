@@ -1,0 +1,22 @@
+# actionlint on the workflow files (make lint-workflows), on each push that changes them.
+name: lint-workflows
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-workflows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v5
+      - run: make lint-workflows

@@ -98,5 +98,4 @@ good revision until a pull.
 
 ## Tests
 
-`swift test` at the repo root runs `PRKitTests` on macOS; `make -C app test` runs them again on an iOS Simulator with the
-app's own tests. `FixtureContractTests` and `PRPushTests` decode the Worker's golden fixtures in `docs/fixtures/`.
+`make test-unit-prkit` (`swift test --filter PRKitTests` at the repo root) runs `PRKitTests` on macOS. `FixtureContractTests` and `PRPushTests` decode the Worker's golden fixtures in `docs/fixtures/`.

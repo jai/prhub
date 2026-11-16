@@ -195,7 +195,7 @@ Agents read them with Cloudflare's R2 API: list
 
 `app_latest` comes from `app-latest.json` on this repo's branch `ci/app-latest`
 (`https://raw.githubusercontent.com/jai/prhub/ci/app-latest/app-latest.json`). Every hour
-`.github/workflows/app-latest.yml` runs `release/app-latest.mjs`, which asks App Store Connect for PRHub's
+`.github/workflows/notify-update-available.yml` runs `release/app-latest.mjs`, which asks App Store Connect for PRHub's
 processed, unexpired builds and writes the file when it changed: `internal` is the newest build internal testers can
 install, `public` the newest the Public group can (after Beta App Review). Never edit it by hand.
 

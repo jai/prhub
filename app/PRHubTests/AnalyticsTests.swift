@@ -1,5 +1,5 @@
 import Foundation
-@testable import PRHub
+@testable import PRHubCore
 import Testing
 
 /// Usage analytics (AGENTS.md, "Analytics"): what each event carries, PRKit's events, the switch in Settings, and that

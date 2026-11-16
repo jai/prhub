@@ -1,34 +1,56 @@
-# Release: on each rc-vX.Y.Z tag (generate-release-candidate.yml), ci.yml (Lint, Unit Tests) and test-ui.yml (UI
-# Tests) run on that commit. Green: the same commit gets the tag vX.Y.Z and a GitHub Release, both with git-cliff's
-# list of the release's feat, fix and perf commits. The v tag starts Xcode Cloud ("PRHub TestFlight External": iOS and
-# macOS, the external group); the release starts deploy-worker.yml. Green or red, the rc tag is deleted at the end, so
-# the next candidate can be cut. A red candidate is not fixed: the fix goes to main and the next candidate takes it.
+# Release (docs/workflow.md): on each rc-<component>-v<version>-<short hash> tag, the component's lint and tests run on
+# that commit through workflow_call, so the concurrency group holds until the end. All green: the release tag
+# (ios-v<version>, worker-v<version>, or v<version> for prkit) and the GitHub Release, with git-cliff's notes. A red test
+# stops the release; the next RC gets the same version. RC tags stay, as the record of what was tested.
+# ios-v starts Xcode Cloud ("PRHub TestFlight External"); worker-v starts deploy-worker.yml.
 name: release
 
 on:
   push:
-    tags: ["rc-v*"]
+    tags: ["rc-ios-v*", "rc-worker-v*", "rc-prkit-v*"]
 
 permissions:
   contents: read
 
 concurrency:
-  group: release
+  group: release-${{ startsWith(github.ref_name, 'rc-ios-') && 'ios' || startsWith(github.ref_name, 'rc-worker-') && 'worker' || 'prkit' }}
   cancel-in-progress: false
 
 jobs:
-  ci:
-    uses: ./.github/workflows/ci.yml
-  test-ui:
-    uses: ./.github/workflows/test-ui.yml
+  lint-ios:
+    if: startsWith(github.ref_name, 'rc-ios-')
+    uses: ./.github/workflows/lint-ios.yml
+  test-unit-ios:
+    if: startsWith(github.ref_name, 'rc-ios-')
+    uses: ./.github/workflows/test-unit-ios.yml
+  test-ui-ios:
+    if: startsWith(github.ref_name, 'rc-ios-')
+    uses: ./.github/workflows/test-ui-ios.yml
+  # The app contains PRKit: an ios release runs PRKit's tests too (docs/workflow.md, Part 2).
+  test-unit-prkit:
+    if: startsWith(github.ref_name, 'rc-ios-') || startsWith(github.ref_name, 'rc-prkit-')
+    uses: ./.github/workflows/test-unit-prkit.yml
+  lint-prkit:
+    if: startsWith(github.ref_name, 'rc-prkit-')
+    uses: ./.github/workflows/lint-prkit.yml
+  lint-worker:
+    if: startsWith(github.ref_name, 'rc-worker-')
+    uses: ./.github/workflows/lint-worker.yml
+  test-unit-worker:
+    if: startsWith(github.ref_name, 'rc-worker-')
+    uses: ./.github/workflows/test-unit-worker.yml
+  test-integration-worker:
+    if: startsWith(github.ref_name, 'rc-worker-')
+    uses: ./.github/workflows/test-integration-worker.yml
 
   release:
-    needs: [ci, test-ui]
+    needs: [lint-ios, test-unit-ios, test-ui-ios, test-unit-prkit, lint-prkit, lint-worker, test-unit-worker, test-integration-worker]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # The jai-agents App's token: a release made with github.token starts no workflow, so deploy-worker.yml would not
-      # run, and github.token cannot tag a commit that changes .github/workflows.
+      # The jai-agents App's token, made here after the tests (it stops after 1 hour). A tag or release made with
+      # github.token starts no workflow, so neither Xcode Cloud's start nor deploy-worker.yml would follow.
       - id: app-token
         uses: actions/create-github-app-token@v2
         with:
@@ -38,28 +60,25 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
-      - run: |
-          version=${GITHUB_REF_NAME#rc-}
-          npx --yes git-cliff@2.14.2 --unreleased --tag "$version" --strip all > "$RUNNER_TEMP/notes.md"
+      - env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          rest=${GITHUB_REF_NAME#rc-}
+          component=${rest%%-*}
+          version=${rest#"$component"-v}
+          version=${version%-*}
+          case $component in
+            ios) tag="ios-v$version"; prefix=ios-v; paths=(app PRKit Package.swift Package.resolved DESIGN.md) ;;
+            worker) tag="worker-v$version"; prefix=worker-v; paths=(worker agent deploy/hosted docs/fixtures) ;;
+            prkit) tag="v$version"; prefix=v; paths=(PRKit Package.swift Package.resolved) ;;
+          esac
+          include=()
+          for path in "${paths[@]}"; do
+            if [ -d "$path" ]; then include+=(--include-path "$path/**"); else include+=(--include-path "$path"); fi
+          done
+          npx --yes git-cliff@2.14.2 --unreleased --tag "$tag" --strip all \
+            --tag-pattern "^${prefix}[0-9]+\.[0-9]+\.[0-9]+$" "${include[@]}" > "$RUNNER_TEMP/notes.md"
           git -c user.name='jai-agents[bot]' -c user.email='356602356+jai-agents[bot]@users.noreply.github.com' \
-            tag -a "$version" -F "$RUNNER_TEMP/notes.md"
-          git push origin "refs/tags/$version"
-          gh release create "$version" --verify-tag --title "$version" --notes-file "$RUNNER_TEMP/notes.md"
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-
-  # Green or red, so the next candidate can be cut.
-  end-candidate:
-    needs: [release]
-    if: always()
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - id: app-token
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: 5757830
-          private-key: ${{ secrets.JAI_AGENTS_PRIVATE_KEY }}
-      - run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$GITHUB_REF_NAME"
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+            tag -a "$tag" -F "$RUNNER_TEMP/notes.md"
+          git push origin "refs/tags/$tag"
+          gh release create "$tag" --verify-tag --title "$tag" --notes-file "$RUNNER_TEMP/notes.md"

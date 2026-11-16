@@ -1,5 +1,5 @@
 import Foundation
-@testable import PRHub
+@testable import PRHubCore
 @testable import PRKit
 import Testing
 import UserNotifications

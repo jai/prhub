@@ -1,6 +1,6 @@
 import DurableNetworking
 import Foundation
-@testable import PRHub
+@testable import PRHubCore
 import Testing
 
 /// PR writes and questions saved on the device until the Worker has them (`PRHubOutbox`, issue #52).

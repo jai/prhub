@@ -1,17 +1,17 @@
-# Deploys the hosted Worker `prhub` (docs/hosted-deploy.md) from each vX.Y.Z GitHub Release, which release.yml makes
-# once every test passed on that commit, and by hand for a tag. The only production path for the hosted Worker:
+# Deploys the Worker `prhub` (docs/hosted-deploy.md) from each worker-v<version> tag, which release.yml makes once the
+# worker's tests passed on that commit, and by hand for a tag. The only production path for the hosted Worker:
 # wrangler deploy with deploy/hosted/wrangler.jsonc, which also builds and pushes the AI container (agent/Dockerfile).
 # The Worker's secrets stay as they are. The account and four vars come from the repo's variables, kept out of this
 # public repo's files.
 name: deploy-worker
 
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["worker-v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "The vX.Y.Z tag to deploy."
+        description: "The worker-v<version> tag to deploy."
         required: true
         type: string
 
@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v5
         with:

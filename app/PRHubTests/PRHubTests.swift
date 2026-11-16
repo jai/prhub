@@ -1,5 +1,5 @@
 import Foundation
-@testable import PRHub
+@testable import PRHubCore
 @testable import PRKit
 import Testing
 
@@ -230,7 +230,7 @@ struct PRHubTests {
     }
 
     @Test func settingsSaysWhichAIFeaturesTheWorkerHas() {
-        #expect(PRHubSettingsView.aiWords(DeviceConfig(features: [.askAI, .rewrite])) == "Ask AI, Rewrite")
-        #expect(PRHubSettingsView.aiWords(DeviceConfig(features: [.push])) == "Off: no Anthropic key on the Worker")
+        #expect(DeviceConfig(features: [.askAI, .rewrite]).aiWords == "Ask AI, Rewrite")
+        #expect(DeviceConfig(features: [.push]).aiWords == "Off: no Anthropic key on the Worker")
     }
 }

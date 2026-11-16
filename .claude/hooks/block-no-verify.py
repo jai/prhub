@@ -3,7 +3,7 @@
 Copied from jai/agent-pager ci/hooks/no_verify.py; change it there first.
 
 Refuses `git commit` or `git push` with --no-verify or -n (alone or in a short-flag group such as -an), and a SKIP=
-prefix on either. Hooks are the fast local check; a failing hook gets fixed, not skipped (AGENTS.md). Exit 2 blocks
+prefix on either. Hooks are the fast local check; a failing hook gets fixed, not skipped (docs/workflow.md). Exit 2 blocks
 the call and shows the reason to the agent.
 """
 
@@ -88,7 +88,7 @@ def main() -> int:
     if refused(command):
         print(
             "Refused: git commit/push with --no-verify, -n or SKIP= skips this repo's hooks. "
-            "Fix what the hook reports and run the command without it (AGENTS.md).",
+            "Fix what the hook reports and run the command without it (docs/workflow.md).",
             file=sys.stderr,
         )
         return 2

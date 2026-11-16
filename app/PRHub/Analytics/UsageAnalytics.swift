@@ -73,16 +73,21 @@ final class UsageAnalytics {
     }
 
     static func live() -> UsageAnalytics {
-        #if DEBUG
-            let isDebugBuild = true
+        // PRHubCore (Package.swift) builds this file for the unit tests without PostHog: no project, so nothing is sent.
+        #if !canImport(PostHog)
+            return UsageAnalytics(hasProject: false, sink: nil, defaults: .standard)
         #else
-            let isDebugBuild = false
+            #if DEBUG
+                let isDebugBuild = true
+            #else
+                let isDebugBuild = false
+            #endif
+            return make(
+                project: AnalyticsProject(info: Bundle.main.infoDictionary ?? [:]), isDebugBuild: isDebugBuild,
+                isRunningTests: AppIdentity.isRunningTests, defaults: .standard,
+                vendor: { PostHogAnalytics(project: $0, isSharing: $1) }
+            )
         #endif
-        return make(
-            project: AnalyticsProject(info: Bundle.main.infoDictionary ?? [:]), isDebugBuild: isDebugBuild,
-            isRunningTests: AppIdentity.isRunningTests, defaults: .standard,
-            vendor: { PostHogAnalytics(project: $0, isSharing: $1) }
-        )
     }
 
     func record(_ event: AnalyticsEvent) {

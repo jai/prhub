@@ -2,11 +2,11 @@
 # Xcode Cloud, after the clone. Only what the build cannot do without:
 # - The project is generated (*.xcodeproj is gitignored): XcodeGen makes app/PRHub.xcodeproj, and app/Package.resolved
 #   goes into it, because Xcode Cloud resolves packages only from a Package.resolved.
-# - The version is the release tag that started the build (CI_TAG, vX.Y.Z); the build number is Xcode Cloud's.
+# - The version is the release tag that started the build (CI_TAG, ios-v<version>); the build number is Xcode Cloud's.
 set -euo pipefail
 app=$CI_PRIMARY_REPOSITORY_PATH/app
-version=${CI_TAG:?the build must start from a vX.Y.Z tag}
-version=${version#v}
+version=${CI_TAG:?the build must start from an ios-v<version> tag}
+version=${version#ios-v}
 sed -i '' -E "s/^([[:space:]]*MARKETING_VERSION:).*/\1 $version/" "$app/project.yml"
 sed -i '' -E "s/^([[:space:]]*CURRENT_PROJECT_VERSION:).*/\1 ${CI_BUILD_NUMBER:?}/" "$app/project.yml"
 echo "PRHub $version ($CI_BUILD_NUMBER)"

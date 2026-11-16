@@ -1,5 +1,5 @@
 import Foundation
-@testable import PRHub
+@testable import PRHubCore
 import Testing
 
 /// Where the PRHub App is installed (`installations` of `GET /device/config`): Settings' GitHub access and what the

@@ -165,7 +165,7 @@ struct PRHubSettingsView: View {
                 PRValueLine(
                     "Updates", value: config.isOn(.webhooks) ? "Within seconds (webhooks)" : "About once a minute"
                 )
-                PRValueLine("AI", value: Self.aiWords(config))
+                PRValueLine("AI", value: config.aiWords)
                     .accessibilityIdentifier("prhub-ai-features")
                 if config.isOn(.push), AppIdentity.receivesPushes {
                     reviewAlertsLine
@@ -217,11 +217,5 @@ struct PRHubSettingsView: View {
             PRValueLine("Review alerts", value: "…")
                 .task { await permission.reload() }
         }
-    }
-
-    /// The model-backed features this Worker has a key for, or that it has none.
-    static func aiWords(_ config: DeviceConfig) -> String {
-        let names = [DeviceFeature.askAI, .keyLines, .rewrite].filter(config.isOn).map(\.title)
-        return names.isEmpty ? "Off: no Anthropic key on the Worker" : names.joined(separator: ", ")
     }
 }

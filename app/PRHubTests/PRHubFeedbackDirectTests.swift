@@ -1,6 +1,6 @@
 import DurableNetworking
 import Foundation
-@testable import PRHub
+@testable import PRHubCore
 import Testing
 
 /// Feedback's direct path (issue #53): the config names FeedbackKit's root, and tokens come from the Worker.

@@ -12,7 +12,7 @@ export interface AppLatest {
   public?: AppBuild;
 }
 
-/** Where `.github/workflows/app-latest.yml` publishes it (release/app-latest.mjs). `APP_LATEST_URL` overrides. */
+/** Where `.github/workflows/notify-update-available.yml` publishes it (release/app-latest.mjs). `APP_LATEST_URL` overrides. */
 export const APP_LATEST_URL =
   "https://raw.githubusercontent.com/jai/prhub/ci/app-latest/app-latest.json";
 

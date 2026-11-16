@@ -53,6 +53,31 @@ let package = Package(
             ],
             path: "PRKit/Sources/FeatureKit"
         ),
+        // The app's logic, for its unit tests: app/PRHub's files without its views, compiled again here so `swift test`
+        // runs PRHubTests with no simulator (docs/workflow.md). The app target still builds the same files itself.
+        .target(
+            name: "PRHubCore",
+            dependencies: [
+                "PRKit", "PRKitCore", "FeatureKit", .product(name: "DurableNetworking", package: "durable-networking"),
+            ],
+            path: "app/PRHub",
+            // The views, the app's entry and PostHog stay in the app target only.
+            exclude: [
+                "Analytics/PostHogAnalytics.swift",
+                "App/AppDelegate.swift",
+                "App/PRHubApp.swift",
+                "App/PRHubRootView.swift",
+                "App/PRHubSettingsView.swift",
+                "Debug/PRHubScreenshots.swift",
+                "Mac",
+                "Views",
+            ]
+        ),
+        .testTarget(
+            name: "PRHubTests",
+            dependencies: ["PRHubCore", "PRKit", "PRKitCore", .product(name: "DurableNetworking", package: "durable-networking")],
+            path: "app/PRHubTests"
+        ),
         .testTarget(
             name: "PRKitTests",
             dependencies: ["PRKit", "FeatureKit", .product(name: "DurableNetworking", package: "durable-networking")],

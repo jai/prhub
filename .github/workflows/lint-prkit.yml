@@ -1,0 +1,23 @@
+# The prkit component's lint (make lint-prkit): SwiftFormat, SwiftLint with DESIGN.md's token rules, gitleaks. On each push that changes PRKit, and in each prkit release.
+name: lint-prkit
+
+on:
+  push:
+    branches: [main]
+    paths: ["PRKit/**", "Package.swift", "Package.resolved", ".swiftlint.yml", ".swiftformat", "Makefile", ".github/workflows/lint-prkit.yml"]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-prkit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v5
+      - run: make lint-prkit

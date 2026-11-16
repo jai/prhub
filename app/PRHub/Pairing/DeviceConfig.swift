@@ -245,3 +245,11 @@ struct DeviceConfig: Codable, Equatable, Sendable {
         features.contains(feature)
     }
 }
+
+extension DeviceConfig {
+    /// Settings' AI line: the model-backed features this Worker has a key for, or that it has none.
+    var aiWords: String {
+        let names = [DeviceFeature.askAI, .keyLines, .rewrite].filter(isOn).map(\.title)
+        return names.isEmpty ? "Off: no Anthropic key on the Worker" : names.joined(separator: ", ")
+    }
+}

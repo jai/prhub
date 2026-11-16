@@ -658,12 +658,12 @@ detour (Ask AI, Delete account).
 ## Checking
 
 - SwiftLint's `design_font`, `design_colour`, `design_space`, `design_corner`, `design_motion` and `design_symbols`
-  rules (`.swiftlint.yml`, run by `make lint`): no font size, colour, padding, gap, corner, animation or SF Symbol
-  name typed in a view outside PRKitDesign; a symbol is its meaning in `AppIcon`. `make typecheck` runs
-  `make -C app design-check`. A real exception is `// swiftlint:disable:next design_<rule> - <why>` on the line
+  rules (`.swiftlint.yml`, run by `make lint-ios` and `make lint-prkit`): no font size, colour, padding, gap, corner,
+  animation or SF Symbol name typed in a view outside PRKitDesign; a symbol is its meaning in `AppIcon`. `make lint-ios`
+  also runs `make -C app design-check`. A real exception is `// swiftlint:disable:next design_<rule> - <why>` on the line
   above; a file waiting on other work is in that rule's `excluded` list. AppIcon's raw values are unique, so the compiler refuses two meanings on one symbol: give the
   new meaning its own symbol, or use the existing case if it is the same meaning.
-- `make -C app ui-test` writes a picture of every screen in the feature map, in light, dark and large text, to
+- `make test-ui-ios` writes a picture of every screen in the feature map, in light, dark and large text, to
   `app/build/screenshots` (CI uploads them). Look at them before calling UI work done; an agent reads the images, it
   doesn't count on a script to judge them.
 - A screenshot cannot show motion. Record the Simulator (`xcrun simctl io <udid> recordVideo <file>`) while the UI

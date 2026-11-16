@@ -1,0 +1,24 @@
+# The app's unit tests (make test-unit-ios): swift test on PRHubTests, with no simulator. On each push that changes the app, and in each ios release.
+name: test-unit-ios
+
+on:
+  push:
+    branches: [main]
+    paths: ["app/**", "PRKit/**", "Package.swift", "Package.resolved", "DESIGN.md", ".swiftlint.yml", ".swiftformat", "Makefile", ".github/workflows/test-unit-ios.yml"]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-unit-ios:
+    runs-on: xcode-27
+    timeout-minutes: 30
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    steps:
+      - run: sudo xcode-select -s /Applications/Xcode_27.2.app
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v5
+      - run: make test-unit-ios

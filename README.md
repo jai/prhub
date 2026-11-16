@@ -70,8 +70,9 @@ Current move: 1, the library (2026-11-10).
 ```sh
 (cd worker && npm ci && npm test && npm run typecheck)
 swift test                 # PRKit, on macOS
-make -C app test           # the app's and PRKit's unit tests on an iOS Simulator (Xcode 26, XcodeGen)
-make -C app ui-test        # the samples flow, and pictures of every screen in app/build/screenshots
+make test-unit-ios         # the app's unit tests: swift test, no Simulator
+make test-unit-prkit       # PRKit's unit tests: swift test
+make test-ui-ios           # the UI test plan: the samples flow, and pictures of every screen in app/build/screenshots
 make lint                  # formatters, linters, DESIGN.md's token rules, gitleaks (secrets and private names)
 ```
 

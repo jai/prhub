@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -I \"$CLAUDE_PROJECT_DIR/.claude/hooks/no_verify.py\""
+            "command": "python3 -I \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-no-verify.py\""
           }
         ]
       }

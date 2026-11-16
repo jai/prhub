@@ -50,7 +50,7 @@ struct AccountKeySection: View {
                 .accessibilityIdentifier("prhub-\(provider.rawValue)-key-set")
                 .transition(.fold)
                 if provider == .anthropic, let config = connection.config {
-                    PRValueLine("AI", value: PRHubSettingsView.aiWords(config))
+                    PRValueLine("AI", value: config.aiWords)
                         .accessibilityIdentifier("prhub-ai-features")
                         .transition(.fold)
                 }

@@ -1,5 +1,5 @@
 import Foundation
-@testable import PRHub
+@testable import PRHubCore
 import Testing
 
 /// `POST /device/pair` (docs/api.md, "Pairing"): the request, and every answer the contract names as the words the
