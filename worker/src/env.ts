@@ -97,6 +97,14 @@ export interface Env extends LimitVars {
   FEEDBACKKIT?: Fetcher;
   FEEDBACKKIT_TOKEN?: string;
   FEEDBACKKIT_APP?: string;
+  /**
+   * FeedbackKit's direct path (`feedback-token.ts`): this app's key in FeedbackKit's `APP_KEYS` (a secret), with which
+   * this Worker signs a short token for the person it acts for, and FeedbackKit's public root, where the app then
+   * talks to FeedbackKit itself. Both set (and `FEEDBACKKIT_APP`), `POST /feedback/token` answers and
+   * `/device/config` names the root; else the app keeps sending feedback through this Worker.
+   */
+  FEEDBACKKIT_APP_KEY?: string;
+  FEEDBACKKIT_PUBLIC_URL?: string;
   /** AI model choice (`models.ts`): allowed models, the effort cap, and each feature's default. Unset: all, high, built in. */
   AI_MODELS_ALLOWED?: string;
   AI_EFFORT_MAX?: string;

@@ -2,6 +2,7 @@ import { pushMode } from "./apns.ts";
 import type { AppLatest } from "./app-latest.ts";
 import { makesAnswers, onApiKey, onSubscription } from "./agent-container.ts";
 import { type Env, isSet } from "./env.ts";
+import { feedbackDirectURL } from "./feedback-token.ts";
 import { type LimitName, limitsConfig, limitsOf } from "./limits.ts";
 import { type AiConfig, type AiFeature, type FeatureModels, featureModels, parseAiConfig } from "./models.ts";
 
@@ -23,6 +24,11 @@ export interface DeviceConfig {
   ai?: { features: Partial<Record<AiFeature, FeatureModels>> };
   /** Each limit in force in this Worker's mode, in its unit; null is off (docs/api.md, "Limits"). */
   limits: Partial<Record<LimitName, number | null>>;
+  /**
+   * FeedbackKit's direct path: its Worker's root, where the app sends feedback itself with a token from
+   * `POST /feedback/token`. Absent: feedback goes through this Worker's `/feedback` routes.
+   */
+  feedback_direct?: { url: string };
   /** The newest build each TestFlight group can install (`app-latest.ts`). Absent when it could not be read. */
   app_latest?: AppLatest;
 }
@@ -58,6 +64,7 @@ export function deviceConfig(env: Env, login: string | null, latest?: AppLatest)
   const on = ([["key_lines", model], ["rewrite", model], ["ask", ask]] as [AiFeature, boolean][])
     .filter(([, isOn]) => isOn).map(([feature]) => feature);
   const ai = aiConfigOf(env);
+  const direct = feedbackDirectURL(env);
   return {
     features: {
       ask_ai: ask,
@@ -71,6 +78,7 @@ export function deviceConfig(env: Env, login: string | null, latest?: AppLatest)
     ...(orgs.length > 0 ? { orgs } : {}),
     ...(on.length > 0 ? { ai: { features: Object.fromEntries(on.map((feature) => [feature, featureModels(ai, feature)])) } } : {}),
     limits: limitsConfig(limitsOf(env)),
+    ...(direct && featureKitConfigured(env) ? { feedback_direct: { url: direct } } : {}),
     ...(latest ? { app_latest: latest } : {}),
   };
 }

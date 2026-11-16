@@ -156,6 +156,7 @@ Auth: a paired secret or `APP_TOKEN`. `Cache-Control: no-store`. The app reads i
 | `orgs` | `GITHUB_ORGS`, comma-separated; absent when unset | The PR filter's default selection |
 | `ai.features.<feature>` | one entry per AI feature that is on (`key_lines`, `rewrite`, `ask`); `ai` is absent when none is | The model picker: `default` is what runs when the app sends no choice; `allowed` is every model and effort it may send ([AI model choice](#ai-model-choice)) |
 | `limits` | always: each limit in force on this Worker, by name, in the unit its name ends with; `null` is off ([Limits](#limits)) | Explains a `429 limit_reached` |
+| `feedback_direct` | `{url}`: FeedbackKit's root, when `FEEDBACKKIT_APP_KEY` and `FEEDBACKKIT_PUBLIC_URL` are set too ([Feedback](#feedback)) | Sends feedback to FeedbackKit itself with a token from `POST /feedback/token` |
 | `app_latest` | the newest PRHub build each TestFlight group can install, `{internal?, public?}`, each `{version, build}`; absent when it could not be read ([App updates](#app-updates)) | Update available, when its group's build is newer than the running one |
 
 The example leaves out `limits`; [`device-config.json`](fixtures/device-config.json) and
@@ -209,6 +210,20 @@ App routes (app auth):
 - `isWorking` from a send until the agent's turn ends; `problem` says why the last message was not passed on.
   `builderOnline`: the runner polled in the last 90 seconds and said its Mac answers. `notice`, when sending opens a public issue, says so;
   the app shows it above a new chat.
+
+**Direct.** With `FEEDBACKKIT_APP_KEY` (a secret: this app's key in FeedbackKit's `APP_KEYS`) and
+`FEEDBACKKIT_PUBLIC_URL` (FeedbackKit's `https` root) as well, the app talks to FeedbackKit itself, on its `/v2` routes,
+and the routes above stay as the fallback. FeedbackKit's live chat draws a sent screenshot only this way.
+
+| Route | Body | Answer |
+|---|---|---|
+| `POST /feedback/token` | | `{token, expires_at, url}`; `404` while the direct path is off |
+
+- `token`: a JWT, HS256 over `FEEDBACKKIT_APP_KEY`, with `iss` `FEEDBACKKIT_APP`, `sub` the GitHub login this Worker
+  acts for, `aud` `feedbackkit`, and `iat`/`exp` 15 minutes apart ([jai/feedbackkit `docs/api.md`, "Tokens"](https://github.com/jai/feedbackkit/blob/main/docs/api.md#tokens)).
+  `expires_at` is ISO 8601; `url` is FeedbackKit's root, before `/v2`. Never cached (`Cache-Control: no-store`).
+- `GET /device/config` names the root as `feedback_direct: {url}` while the direct path is on; absent, the app uses the
+  routes above.
 
 ## Rows and details
 

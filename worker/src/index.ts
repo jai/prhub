@@ -35,6 +35,7 @@ import { parseDelivery, verifySignature } from "./webhook";
 import { writeToGitHub } from "./write";
 import { carryRoute } from "./carry";
 import { busyAnswer, clientRefOf } from "./write-receipts";
+import { feedbackTokenRoute } from "./feedback-token.ts";
 
 import { Installation, IpLimit, SignIn, UserAccount } from "./account";
 import {
@@ -518,6 +519,10 @@ async function serveAuthorized(request: Request, env: Env, context: ExecutionCon
   const device = await deviceRoute(pathname, request, env, context);
   if (device) {
     return device;
+  }
+  if (pathname === "/feedback/token") {
+    return request.method === "POST" ? feedbackTokenRoute(env, await githubLogin(env))
+      : new Response("method not allowed\n", { status: 405 });
   }
   const feedback = FEEDBACK_PATH.exec(pathname);
   if (feedback) {

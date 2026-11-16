@@ -48,9 +48,11 @@ jobs:
           APP_ID: ${{ vars.PRHUB_GITHUB_APP_ID }}
           CLIENT_ID: ${{ vars.PRHUB_GITHUB_APP_CLIENT_ID }}
           APNS_KEY_ID: ${{ vars.PRHUB_APNS_KEY_ID }}
+          FEEDBACKKIT_PUBLIC_URL: ${{ vars.FEEDBACKKIT_PUBLIC_URL }}
         run: |
           sed -e "s/__CLOUDFLARE_ACCOUNT_ID__/$ACCOUNT_ID/" -e "s/__GITHUB_APP_ID__/$APP_ID/" \
               -e "s/__GITHUB_APP_CLIENT_ID__/$CLIENT_ID/" -e "s/__APNS_KEY_ID__/$APNS_KEY_ID/" \
+              -e "s#__FEEDBACKKIT_PUBLIC_URL__#$FEEDBACKKIT_PUBLIC_URL#" \
               wrangler.template.jsonc > wrangler.jsonc
           ! grep -q '__[A-Z0-9_]*__' wrangler.jsonc
       - name: wrangler deploy
