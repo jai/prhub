@@ -118,6 +118,14 @@ struct PRAskSendTests {
         #expect(session.askError == nil)
     }
 
+    @Test func aChatThatKeepsFailingIsReadLessOften() {
+        #expect(PRSession.askPollWait(afterFailures: 0) == .seconds(2))
+        #expect(PRSession.askPollWait(afterFailures: 1) == .seconds(4))
+        #expect(PRSession.askPollWait(afterFailures: 3) == .seconds(16))
+        #expect(PRSession.askPollWait(afterFailures: 4) == .seconds(30))
+        #expect(PRSession.askPollWait(afterFailures: 400) == .seconds(30))
+    }
+
     @Test func aQuestionTheWorkerCouldNotHandOverCanBeSentAgain() {
         let failed = PRAskChat(
             messages: [.init(id: "queued:ref-1", role: "you", text: "Is it tested?", anchor: nil)],

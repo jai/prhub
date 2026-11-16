@@ -5,6 +5,13 @@ import SwiftUI
 
 extension PRSession {
     static let askPollInterval: Duration = .seconds(2)
+    /// The longest wait between reads that keep failing: offline, a read every 2 seconds would keep the radio up.
+    static let askPollLongest: Duration = .seconds(30)
+
+    /// The wait before the next read: 2 seconds, doubled for each read in a row that failed, at most 30.
+    static func askPollWait(afterFailures failures: Int) -> Duration {
+        min(askPollInterval * (1 << min(failures, 5)), askPollLongest)
+    }
 
     /// The chat, about a line when there is one. Words already written go at once.
     func openAsk(about anchor: PRAskQuestion.Anchor? = nil, words: String = "") {
@@ -123,8 +130,10 @@ extension PRSession {
     }
 
     /// While the sheet shows: the conversation, every 2 seconds while the agent works or a question is on its way, and
-    /// once otherwise. A question in the outbox is on its way, not an error.
+    /// once otherwise; a read that keeps failing is tried less often (`askPollWait`). A question in the outbox is on its
+    /// way, not an error.
     func followAsk() async {
+        var failures = 0
         // The chat as last read shows at once; the Worker's answer replaces it.
         if askChat == nil {
             askChat = model.keptAskChat(ref)
@@ -149,7 +158,8 @@ extension PRSession {
             guard askChat?.isWorking == true || isSendingAsk || askSend.isOnItsWay || askError != nil else {
                 return
             }
-            try? await Task.sleep(for: Self.askPollInterval)
+            failures = askError == nil ? 0 : failures + 1
+            try? await Task.sleep(for: Self.askPollWait(afterFailures: failures))
         }
     }
 }
