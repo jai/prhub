@@ -1,6 +1,6 @@
 # DurableNetworking's rules (no_direct_networking, no_network_framework_import): every request goes through its
 # transports. Pinned to the tag Package.swift resolves.
-parent_config: https://raw.githubusercontent.com/jai/durable-networking/v0.2.0/swiftlint/hosts.yml
+parent_config: https://raw.githubusercontent.com/jai/durable-networking/v0.4.0/swiftlint/hosts.yml
 
 included:
   - PRKit/Sources

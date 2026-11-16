@@ -37,7 +37,7 @@ jobs:
           node-version: 24
       - run: node --test release/version.test.mjs release/app-latest.test.mjs
 
-  # "Always latest" (#54): the newest AgentChatKit and FeedbackKit the ranges allow, committed to main when they moved,
+  # "Always latest" (#54): the newest AgentChatKit, FeedbackKit and DurableNetworking the ranges allow, committed to main when they moved,
   # so the tests below run on, and the tag ships, exactly those. Its failure only skips the move: decide still runs.
   kits:
     if: github.event_name != 'push'

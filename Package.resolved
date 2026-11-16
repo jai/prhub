@@ -1,5 +1,5 @@
 {
-  "originHash" : "ab646cb71651e72ae0323dbdf974dad9f0aa2b0c314a3e89ac9f701f96520600",
+  "originHash" : "83f4bf0b404ee43f2f60b787141ca23062d1bf4fd3f23c384ac9918b7dd75689",
   "pins" : [
     {
       "identity" : "agentchatkit",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/jai/durable-networking",
       "state" : {
-        "revision" : "526af915d950d608d858fba4d200ef91aaef7f34",
-        "version" : "0.2.0"
+        "revision" : "4c2c7bec285d86b0fc50fd1773bd80d23fbc787f",
+        "version" : "0.4.0"
       }
     },
     {

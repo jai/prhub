@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# newest-kits.sh — the hourly release's first step (#54, "always latest"): resolves AgentChatKit and FeedbackKit to
-# the newest versions Package.swift's `from:` ranges allow, makes app/Package.resolved (what CI and Xcode Cloud build) agree with
+# newest-kits.sh — the hourly release's first step (#54, "always latest"): resolves AgentChatKit, FeedbackKit and
+# DurableNetworking to the newest versions Package.swift's `from:` ranges allow, makes app/Package.resolved (what CI and Xcode Cloud build) agree with
 # the root one (PRKit) for every package they share, and, when either changed, commits both to main through GitHub's
 # API (so the commit is signed) for the release's tests to run on. Prints `changed=` and `kits=` to GITHUB_OUTPUT.
 #
@@ -9,8 +9,8 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-# The kits only: DurableNetworking and the rest move when a kit needs them to.
-swift package update agentchatkit feedbackkit >/dev/null
+# Every kit: each blocks API breaks in its own CI (Jai: always latest, never breaking).
+swift package update agentchatkit feedbackkit durable-networking >/dev/null
 python3 - <<'PY'
 import json
 root = {p["identity"]: p for p in json.load(open("Package.resolved"))["pins"]}
