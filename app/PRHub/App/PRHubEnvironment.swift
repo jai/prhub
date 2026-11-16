@@ -31,6 +31,10 @@ final class PRHubEnvironment {
     let alertPermission: PRHubAlertPermission
     /// Update available, when TestFlight has a newer build than this one.
     let update: PRHubUpdate
+    #if os(iOS)
+    /// The battery soak's MetricKit reports, when the Worker asks for them. None for the samples, a check or a test.
+    @ObservationIgnored let metricKit: PRHubMetricKit?
+    #endif
     /// Set as the notification center's delegate at launch (`AppDelegate`), which holds it weakly.
     @ObservationIgnored private(set) lazy var notificationDelegate = PRHubNotificationDelegate(
         open: { [weak self] ref, row in self?.openAlert(ref, row: row) },
@@ -76,6 +80,14 @@ final class PRHubEnvironment {
         host.config = { connection.config }
         host.isCheckingInstallations = { connection.isCheckingInstallations }
         host.leavesForGitHub = { connection.leavesForGitHub($0) }
+        #if os(iOS)
+        let reports = PRHubMetricReports(directory: Self.metricKitDirectory) { [client = prs.client] report in
+            try await client.post("device/metrics", report)
+        }
+        metricKit = AppIdentity.isRunningTests ? nil : PRHubMetricKit(reports: reports)
+        // The config as last read: MetricKit hands its payloads early in a launch, a wake's too.
+        metricKit?.update(isOn: connection.config?.metricKit == true)
+        #endif
     }
 
     /// Over `access` (none: nothing is sent) and, for "Try with sample PRs", `samples`.
@@ -97,6 +109,9 @@ final class PRHubEnvironment {
         self.isSample = isSample
         navigation = PRHubNavigation(pullRequests: prs)
         feedback = FeatureRequestsModel(client: feedbackClient ?? FeatureClient(viewer: prs.client))
+        #if os(iOS)
+        metricKit = nil
+        #endif
         host.config = { connection.config }
         host.isCheckingInstallations = { connection.isCheckingInstallations }
         host.leavesForGitHub = { connection.leavesForGitHub($0) }
@@ -240,6 +255,17 @@ final class PRHubEnvironment {
         // The sync sends this launch's push token too, when the Worker pushes.
         await prs.refresh(.foreground)
         await offerAlertsIfDue()
+        #if os(iOS)
+        metricKit?.update(isOn: connection.config?.metricKit == true)
+        await metricKit?.flush()
+        #endif
+    }
+}
+
+extension PRHubEnvironment {
+    /// MetricKit's reports waiting to be sent: Application Support, which iOS never clears.
+    static var metricKitDirectory: URL {
+        URL.applicationSupportDirectory.appending(path: "MetricKit", directoryHint: .isDirectory)
     }
 }
 

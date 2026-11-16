@@ -42,6 +42,8 @@ struct DeviceConfig: Codable, Equatable, Sendable {
     /// The newest build each TestFlight group can install, for Update available (`PRHubUpdate`). Nil when the Worker
     /// does not say.
     var appLatest: AppLatest?
+    /// `metrickit`: the phone sends its MetricKit reports (`PRHubMetricKit`, docs/api.md "MetricKit reports").
+    var metricKit: Bool
 
     /// `app_latest`: each group's newest build; one this build cannot read is nil.
     struct AppLatest: Codable, Equatable, Sendable {
@@ -123,7 +125,7 @@ struct DeviceConfig: Codable, Equatable, Sendable {
     init(
         features: Set<DeviceFeature>, ownerName: String? = nil, appVersionMin: String? = nil, push: String? = nil,
         login: String? = nil, orgs: [String]? = nil, hosted: Bool = false, account: Account? = nil,
-        installations: [GitHubInstallation]? = nil, appLatest: AppLatest? = nil
+        installations: [GitHubInstallation]? = nil, appLatest: AppLatest? = nil, metricKit: Bool = false
     ) {
         self.features = features
         self.ownerName = ownerName
@@ -135,6 +137,7 @@ struct DeviceConfig: Codable, Equatable, Sendable {
         self.account = account
         self.installations = installations
         self.appLatest = appLatest
+        self.metricKit = metricKit
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -148,6 +151,7 @@ struct DeviceConfig: Codable, Equatable, Sendable {
         case account
         case installations
         case appLatest = "app_latest"
+        case metricKit = "metrickit"
     }
 
     /// One entry of `installations`: one this build cannot read is left out, not the whole list.
@@ -190,6 +194,7 @@ struct DeviceConfig: Codable, Equatable, Sendable {
         installations = (try? container.decodeIfPresent([LossyInstallation].self, forKey: .installations))?
             .compactMap(\.value)
         appLatest = try? container.decodeIfPresent(AppLatest.self, forKey: .appLatest)
+        metricKit = (try? container.decodeIfPresent(Bool.self, forKey: .metricKit)) == true
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -209,6 +214,9 @@ struct DeviceConfig: Codable, Equatable, Sendable {
         try container.encodeIfPresent(account, forKey: .account)
         try container.encodeIfPresent(installations, forKey: .installations)
         try container.encodeIfPresent(appLatest, forKey: .appLatest)
+        if metricKit {
+            try container.encode(metricKit, forKey: .metricKit)
+        }
     }
 
     func isOn(_ feature: DeviceFeature) -> Bool {
