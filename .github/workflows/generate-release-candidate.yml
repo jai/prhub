@@ -27,13 +27,13 @@ jobs:
         include:
           - component: ios
             tag: ios-v
-            paths: app PRKit Package.swift Package.resolved DESIGN.md
+            paths: app PRKit Package.swift Package.resolved DESIGN.md .swiftlint.yml .swiftformat Makefile .github/workflows .gitleaks.toml cliff.toml
           - component: worker
             tag: worker-v
-            paths: worker agent deploy/hosted docs/fixtures
+            paths: worker agent deploy/hosted docs/fixtures scripts/ask-trace.sh Makefile .github/workflows .gitleaks.toml cliff.toml
           - component: prkit
             tag: v
-            paths: PRKit Package.swift Package.resolved
+            paths: PRKit Package.swift Package.resolved .swiftlint.yml .swiftformat Makefile .github/workflows .gitleaks.toml cliff.toml
     steps:
       # The jai-agents App's token: a tag pushed with github.token starts no workflow, so release.yml would not run.
       - id: app-token
@@ -59,8 +59,8 @@ jobs:
             echo "nothing cut: a $COMPONENT release is queued or running"
             exit 0
           fi
-          # The newest commit that changes the component: its release tag must be on such a commit, or git-cliff's
-          # path filter does not see the tag the next time.
+          # The newest commit that changes the component or its CI files: its release tag must be on such a commit, or
+          # git-cliff's path filter does not see the tag the next time.
           git checkout -q "$(git log -1 --format=%H -- "${paths[@]}")"
           include=()
           for path in "${paths[@]}"; do

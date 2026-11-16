@@ -114,7 +114,7 @@ These workflows do not follow the `lint-`, `test-` and `deploy-` names in the Wo
 
 ## Release candidate
 
-- [ ] This overrides Part 1: `generate-release-candidate` tags the newest commit of `main` that changes the component, not the head of `main`. git-cliff reads a component's commits by path (`--include-path`), and it does not see a release tag on a commit that changes none of those paths.
+- [ ] This overrides Part 1: `generate-release-candidate` tags the newest commit of `main` that changes the component or its CI files (the Makefile, the workflows, the lint configs), not the head of `main`. git-cliff reads a component's commits by path (`--include-path`), and it does not see a release tag on a commit that changes none of those paths.
 
 ## Clock
 
