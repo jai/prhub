@@ -129,7 +129,7 @@ These workflows do not follow the `lint-`, `test-` and `deploy-` names in the Wo
 | `worker` | `lint-worker`: push, RC | `test-unit-worker`: push, RC | `test-integration-worker`: push, RC | | `deploy-worker`: `worker-v` tag |
 | `prkit` | `lint-prkit`: push, RC | `test-unit-prkit`: push, RC | | | None: apps get the `v` tag with Swift Package Manager |
 
-- [ ] Xcode Cloud's "PRHub TestFlight External" starts on the `ios-v` tag. It builds iOS and macOS and sends them to TestFlight internal and external testers.
+- [ ] Xcode Cloud's "PRHub TestFlight Internal and External" starts on the `ios-v` tag. It builds iOS and macOS and sends them to TestFlight internal and external testers.
 - [ ] `test-ui-ios` runs the UI tests that PRHub has today, on the iPhone and iPad simulators of GitHub's Mac runners.
 - [ ] `test-integration-worker` runs the `agent/` tests. They start a real `git` and a local server.
 - [ ] This repo is public. Each `lint-<component>` runs gitleaks on the files of its component.

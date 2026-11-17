@@ -2,7 +2,7 @@
 # that commit through workflow_call, so the concurrency group holds until the end. All green: the release tag
 # (ios-v<version>, worker-v<version>, or v<version> for prkit) and the GitHub Release, with git-cliff's notes. A red test
 # stops the release; the next RC gets the same version. RC tags stay, as the record of what was tested.
-# ios-v starts Xcode Cloud ("PRHub TestFlight External"); worker-v starts deploy-worker.yml.
+# ios-v starts Xcode Cloud ("PRHub TestFlight Internal and External"); worker-v starts deploy-worker.yml.
 name: release
 
 on:
