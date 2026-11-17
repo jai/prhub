@@ -106,6 +106,8 @@ struct PRsList: View {
     @AppStorage("prListGrouping") private var grouping = PRListGrouping.none
     /// The pull to refresh's start, end and whether the list came back to rest (issue #55).
     @State private var refreshWatch = PRListRefreshWatch()
+    /// Puts a list a refresh left pulled down back at rest.
+    @State private var scrollPosition = ScrollPosition(edge: .top)
     @Environment(\.scenePhase) private var scenePhase
 
     private var orgFilter: PROrgFilter {
@@ -253,6 +255,7 @@ struct PRsList: View {
                 )
             }
         }
+        .scrollPosition($scrollPosition)
         .refreshable { await pullToRefresh() }
         .onScrollGeometryChange(for: PRListScrollRest.self) { geometry in
             PRListScrollRest(offsetY: geometry.contentOffset.y, insetTop: geometry.contentInsets.top)
@@ -292,13 +295,25 @@ struct PRsList: View {
         } else {
             .ok
         }
+        await holdSpinner()
         model.onEvent(refreshWatch.ended(outcome, rowsBefore: rowsBefore, rowsAfter: model.rows.count))
         Task { @MainActor [refreshWatch, model] in
             try? await Task.sleep(for: PRListRefreshWatch.settle)
             if let event = refreshWatch.stuck(isLoading: model.isSyncing) {
                 model.onEvent(event)
+                withAnimation(AppMotion.fold) { scrollPosition.scrollTo(edge: .top) }
             }
         }
+    }
+
+    /// Keeps the spinner until the refresh may end (`PRListRefreshWatch.mayEnd`). In a task of its own, as SwiftUI can
+    /// cancel the pull's task when the rows change, and a cancelled sleep would end the spinner at once.
+    private func holdSpinner() async {
+        await Task { @MainActor [refreshWatch] in
+            while !refreshWatch.mayEnd() {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }.value
     }
 
     /// In the list, not the bar: it scrolls away with the first rows, so it costs no room while reading.

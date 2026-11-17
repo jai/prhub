@@ -87,6 +87,12 @@ final class PRListRefreshWatch {
     static let stuckPoints: CGFloat = 8
     /// How long after a refresh ends the list must be back at rest.
     static let settle: Duration = .seconds(2)
+    /// UIKit leaves the list pulled down when its refresh ends under the finger or a moment after it began (build 303:
+    /// a pull that joined a sync already running ended in 127 ms, and the list stayed 139 pt down). So a pull's
+    /// spinner stays this long at least, and until the finger lets go.
+    static let shortestSpin: Duration = .milliseconds(800)
+    /// A finger that never lets go does not hold the spinner past this.
+    static let longestHold: Duration = .seconds(10)
 
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "PRKit", category: "refresh")
     var geometry: PRListScrollRest?
@@ -119,6 +125,16 @@ final class PRListRefreshWatch {
         return .listRefreshFinished(PRListRefreshFinish(
             outcome: outcome, milliseconds: milliseconds, rowsBefore: rowsBefore, rowsAfter: rowsAfter, source: source
         ))
+    }
+
+    /// Whether the refresh may end now: it has spun `shortestSpin` and no finger is on the list, or it has waited
+    /// `longestHold`. Asked before `ended`.
+    func mayEnd(at now: ContinuousClock.Instant = .now) -> Bool {
+        guard let startedAt else {
+            return true
+        }
+        let elapsed = now - startedAt
+        return elapsed >= Self.longestHold || (elapsed >= Self.shortestSpin && !isInteracting)
     }
 
     /// The app left the foreground while a refresh ran.

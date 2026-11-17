@@ -64,6 +64,25 @@ struct PRListRefreshWatchTests {
         #expect(watch.stuck(isLoading: false) == nil)
     }
 
+    @Test func aQuickRefreshSpinsUntilTheShortestSpin() {
+        let watch = watch()
+        _ = watch.began(rows: 3)
+        let start = ContinuousClock.now
+        #expect(!watch.mayEnd(at: start + .milliseconds(127)))
+        #expect(watch.mayEnd(at: start + PRListRefreshWatch.shortestSpin + .milliseconds(1)))
+    }
+
+    @Test func aRefreshUnderTheFingerWaitsForItToLetGo() {
+        let watch = watch()
+        _ = watch.began(rows: 3)
+        watch.isInteracting = true
+        let start = ContinuousClock.now
+        #expect(!watch.mayEnd(at: start + .seconds(2)))
+        #expect(watch.mayEnd(at: start + PRListRefreshWatch.longestHold + .milliseconds(1)))
+        watch.isInteracting = false
+        #expect(watch.mayEnd(at: start + .seconds(2)))
+    }
+
     @Test func goingToTheBackgroundIsReportedOnlyMidRefresh() {
         let watch = watch()
         #expect(watch.backgrounded() == nil)
