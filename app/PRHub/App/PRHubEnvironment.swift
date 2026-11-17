@@ -284,8 +284,11 @@ final class PRHubEnvironment {
         }
         update.check(connection.config)
         sendPrefetchReports()
+        // Beside the sync: every alert still in Notification Center opens its PR from the phone.
+        async let alerts: Void = keepAlerts()
         // The sync sends this launch's push token too, when the Worker pushes.
         await prs.refresh(.foreground)
+        await alerts
         await offerAlertsIfDue()
         #if os(iOS)
             metricKit?.update(isOn: connection.config?.metricKit == true)
@@ -303,6 +306,12 @@ extension PRHubEnvironment {
 
 extension PRHubEnvironment {
     /// How PRHubNotifications' prefetches went since the last time the app was in front, as `push_prefetch` events.
+    /// The PRs of the alerts still in Notification Center, fetched if the Notification Service Extension missed them and
+    /// kept while the alerts stay: at each foreground and each silent wake.
+    func keepAlerts() async {
+        await prs.keepAlerts(PRHubNotificationDelegate.deliveredRows())
+    }
+
     func sendPrefetchReports() {
         for entry in PRPushPrefetchLog(directory: PRHubPRHost.mirrorDirectory()).drain() {
             usage.record(.pushPrefetch(entry.outcome, milliseconds: entry.milliseconds))

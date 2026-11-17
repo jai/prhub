@@ -753,7 +753,9 @@ wording only; ignore a `kind` the app does not know. A Notification Service Exte
 row first with `PRPushPrefetch` into `PRMirrorLocation.directory(appGroup:)`, the folder the host also names as
 `PRKitHost.mirrorDirectory`; the tap then shows the PR from the phone. The mirror keeps an alert's files for 7 days
 (`PRAlertedFiles`), so an alert tapped hours later still opens at once, though its PR is on no list; such a PR is read
-live behind the copy. Without the extension, the tap reads the row's stored copy, detail and diff side by side, and only
+live behind the copy. At each foreground and silent wake, the host passes the rows of the alerts still in Notification
+Center to `PRKitController.keepAlerts(_:)`: one the extension missed (a timeout, no network then) is fetched, and each
+one's files are kept another 7 days, so they stay while the alert does. Without the extension, the tap reads the row's stored copy, detail and diff side by side, and only
 a PR on no list is read live. Jai's Agent Pager app gets the same payload on its
 own topic.
 

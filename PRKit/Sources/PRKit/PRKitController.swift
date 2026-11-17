@@ -54,6 +54,13 @@ public final class PRKitController {
         await model.refresh(trigger)
     }
 
+    /// At each wake, the rows of the alerts still in Notification Center (`PRPush.row(in:)` of each), newest first: a
+    /// tap on any of them opens its PR from the phone. One the Notification Service Extension missed is fetched now,
+    /// and each one's files are kept while the alert stays. Ends by `deadline`.
+    public func keepAlerts(_ rows: [PullRequestRow], deadline: Duration = .seconds(20)) async {
+        await model.keepAlerts(rows, deadline: deadline)
+    }
+
     /// The push token, kept for this launch; it goes to a Worker that pushes, now and at each foreground sync.
     public func register(apnsToken: String) {
         model.register(apnsToken: apnsToken)

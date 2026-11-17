@@ -50,6 +50,13 @@ final class PRHubNotificationDelegate: NSObject, UNUserNotificationCenterDelegat
         respond(action: action, pullRequest: ref, row: row) { done() }
     }
 
+    /// The PR rows of the alerts still in Notification Center, newest first (`PRKitController.keepAlerts`).
+    static func deliveredRows() async -> [PullRequestRow] {
+        await UNUserNotificationCenter.current().deliveredNotifications()
+            .sorted { $0.date > $1.date }
+            .compactMap { PRPush.row(in: $0.request.content.userInfo) }
+    }
+
     /// Everything of a tap but the system's types, so a test can play it.
     func respond(
         action: String, pullRequest: PullRequestRef?, row: PullRequestRow? = nil,

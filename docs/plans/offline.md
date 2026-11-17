@@ -70,5 +70,9 @@ There are no widgets, menu bar extra, search screen or repo index.
   (Debug `-PRHubStubWorker`) into the real mirror, quits, opens again with no network (`-PRHubOffline`) and opens a
   saved PR's page. PRKit's tests cover each kept read after a relaunch. The Mac was checked by the same two launches
   and a snapshot of its window (`-PRHubSnapshot`); this repo has no Mac UI test target.
+- Alerts: each foreground and silent wake fetches the PR of any alert still in Notification Center that the
+  Notification Service Extension missed, and keeps its files while the alert stays (`PRKitController.keepAlerts`).
+  Feedback 2026-11-17: an alert tapped on cellular opened on "Reading this PR from GitHub" (build 300, 7.5 s); 907d883
+  had already stopped the prune that caused it.
 - Not kept: a PR opened from a link that was never on a list and never read, and the avatars beyond the system's URL
   cache. Each shows its own empty or retry state.

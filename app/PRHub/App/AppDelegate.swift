@@ -52,7 +52,11 @@
                 return
             }
             Task {
-                completionHandler(Self.backgroundResult(await PRHubEnvironment.shared.prs.refresh(.silentPush)))
+                // Beside the sync: the alerts in Notification Center, so a tap later never waits on the network.
+                async let alerts: Void = PRHubEnvironment.shared.keepAlerts()
+                let outcome = await PRHubEnvironment.shared.prs.refresh(.silentPush)
+                await alerts
+                completionHandler(Self.backgroundResult(outcome))
             }
         }
     }
