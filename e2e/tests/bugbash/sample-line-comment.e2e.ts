@@ -23,7 +23,7 @@ test(
   async ({ device, agent }) => {
     await launch(device, "paired");
     await agent.act(
-      'open the PR "fix: Keep the cart when the app is closed" and tap Edit description',
+      'open the PR "fix: Keep the cart when the app is closed", tap Edit description, then tap Edit description again to confirm',
     );
     await agent.act(
       'add the sentence "violet otter note." at the end of the description and tap Save',

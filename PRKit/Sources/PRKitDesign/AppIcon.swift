@@ -76,7 +76,11 @@ public enum AppIcon: String {
 
     /// A PR's page: asking AI, its checks, what people wrote.
     case askAI = "questionmark.bubble"
-    // A PR at a glance, above its key lines: its risk, the bugs found, its ticket's requirements, what it does.
+    /// The description's actions: Ask AI to sum up and explain the PR, the AI's rewrite, and editing it by hand.
+    case explainPR = "questionmark"
+    case rewriteDescription = "sparkles"
+    case editDescription = "pencil"
+    // A PR at a glance, above its key lines: its risk, the bugs found, its ticket's requirements, what it does, AI slop.
     case risk = "exclamationmark.shield.fill"
     case riskLow = "checkmark.shield.fill"
     case bugsFound = "ladybug.fill"
@@ -84,6 +88,7 @@ public enum AppIcon: String {
     case requirementsMismatch = "xmark.seal.fill"
     case requirementsUnchecked = "seal"
     case whatItDoes = "list.bullet"
+    case aiSlop = "trash.fill"
     case keyLinesOff = "key"
     case required = "asterisk"
     case openExternally = "arrow.up.right"

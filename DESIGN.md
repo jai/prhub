@@ -427,12 +427,13 @@ parts:
   ref:     { holds: "repo#N", font: appCaption quiet }
   byline:  { holds: "PRAvatar and '<who> wants <branch> in <base>'", font: appCaption quiet }
   tickets: { holds: "ObjectReferenceLines of TicketLine, awaitsLinear false", optional: true }
-  labels:  { holds: StatusChip per label, scrolls sideways, optional: true }
+  labels:  { holds: "an AI trash StatusChip in toneBad when the summary found the description reads as AI slop, then a StatusChip per label", scrolls sideways, optional: true }
 rules:
   - Who: the author's profile name, else their login. A bot's PR says "(bot)" after the bot's login, and leads with
     the person it was opened for when the Worker found one: "Mona Lisa via hubot (bot)". The face is that person's.
   - Tickets are the title's (in brackets), then the branch's, then the description's, as the Worker sends them, with
     Linear's state where it could ask. Without Linear a ticket is its key alone: no "Resolving…" that never resolves.
+  - AI trash shows only from key lines already on the phone, as the summary card does: the page never asks for them.
 antiPatterns:
   - A ticket key both in the title and on a ticket line.
   - A bot shown as if a person wrote the PR.
@@ -582,16 +583,23 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
   scrolls sideways, as threads and file headers do.
 - **A PR at a glance:** `PRKeyLinesSummaryCard`, above the key lines on `groundFill`, and on a PR's page under its
   header as one of the page's cards (`prCard`), when the PR's key lines are already on the phone: the page never asks
-  for them. Up to four parts, `Space.md` apart:
-  its risk and why, the bugs found (each a tap to its line), whether it meets its Linear ticket, and what it does. Each
+  for them. Up to five parts, `Space.md` apart:
+  its risk and why, the bugs found (each a tap to its line), whether it meets its Linear ticket, whether its
+  description reads as AI slop, and what it does. Each
   part has a heading, an icon and words through `IconText`'s line, `appSubheadline` semibold: the risk's
   `AppIcon.risk` in `toneBad` (high) or `toneWaiting` (medium), `.riskLow` in `toneGood`; `.ok` in `toneGood` for "No
   bugs found", `.bugsFound` in `toneBad` when there are some; `.requirementsMet` in `toneGood` for "Requirements fit"
   (nothing under it), `.requirementsMismatch` in `toneBad` for "Requirements mismatch" with each gap a bullet, and
-  `.requirementsUnchecked`, quiet, when the PR names several tickets; no part when it names none; `.whatItDoes`,
+  `.requirementsUnchecked`, quiet, when the PR names several tickets; no part when it names none; `.aiSlop` in
+  `toneBad` over "Reads as AI slop" with each tell a bullet, only when the description reads so; `.whatItDoes`,
   quiet, over "What this does". Under a heading every line is `appFootnote` in the
   words' column, and a bullet's dot sits in the icons' column, so a second line stays under the first. No emoji: a
   heading's colour is its icon's tone.
+- **A description's actions:** Explain (`AppIcon.explainPR`, which asks Ask AI to sum up and explain the whole PR;
+  only where Ask AI is on), Rewrite (`.rewriteDescription`) and Edit (`.editDescription`), as
+  `PRButtonStyle(.secondary, iconOnly: true)` buttons `Space.lg` apart, in a row of their own at the top of the
+  description's card with a divider under it: never over the words, where a tap meant for the text lands on one.
+  Rewrite and Edit each ask first in a confirmation dialog; Explain opens the chat at once.
 - **A PR's link:** a long press on a PR's row, and on Open in GitHub in a PR's bar (a click and hold on the Mac),
   offers Copy link; the bar's also offers Share. A tap on Open in GitHub still opens it.
 - **A key line's tick:** `PRKeyLineCheck`, `AppIcon.taskOpen` or `.taskDone` in `toneGood`, last in its heading in

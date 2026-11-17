@@ -40,6 +40,13 @@ public extension PRKeyLines {
             }
         }
 
+        /// Whether the PR's title and description read as unedited AI writing (docs/api.md, "AI slop").
+        public struct Slop: Decodable, Sendable {
+            public let isSlop: Bool
+            /// What gave it away, one short bullet each; empty when it isn't slop.
+            public let tells: [String]
+        }
+
         /// `low`, `medium` or `high`.
         public let risk: String
         public let riskWhy: String
@@ -48,6 +55,13 @@ public extension PRKeyLines {
         public let bugs: [Bug]
         /// None when the PR names no Linear ticket, or the answer was made before tickets were checked.
         public let requirements: Requirements?
+        /// None on an answer made before the check existed.
+        public let slop: Slop?
+
+        /// The description reads as AI slop: the page's red AI trash chip.
+        public var isSlop: Bool {
+            slop?.isSlop == true
+        }
 
         /// "High risk": the heading's words. A level this build does not know is said as it came.
         var riskTitle: String {
@@ -66,7 +80,7 @@ public extension PRKeyLines {
 }
 
 /// The PR at a glance, above its key lines: its risk and why, the bugs found (each a tap to its line), whether it meets
-/// its ticket, and what it does. Up to four parts, each under a heading of an icon and words (DESIGN.md, "A PR at a
+/// its ticket, whether its description reads as AI slop, and what it does. Up to five parts, each under a heading of an icon and words (DESIGN.md, "A PR at a
 /// glance"): the icons share one column
 /// and every word starts in the next, so a heading reads as a heading and a bullet's second line stays under its first.
 /// Above the key lines it sits on the fill; on a PR's page it is one of the page's cards.
@@ -131,6 +145,13 @@ struct PRKeyLinesSummaryCard: View {
                 ) {
                     ForEach(Array(requirements.gaps.enumerated()), id: \.offset) { _, gap in
                         line(mark: "•") { Text(verbatim: gap) }
+                    }
+                }
+            }
+            if let slop = summary.slop, slop.isSlop {
+                part("Reads as AI slop", icon: .aiSlop, tone: .toneBad, id: "key-lines-summary-slop") {
+                    ForEach(Array(slop.tells.enumerated()), id: \.offset) { _, tell in
+                        line(mark: "•") { Text(verbatim: tell) }
                     }
                 }
             }

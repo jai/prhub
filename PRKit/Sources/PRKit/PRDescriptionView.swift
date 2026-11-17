@@ -12,6 +12,9 @@ struct PRDescriptionView: View {
     @State private var action: PRReviewAction?
     /// The open box's height, as last laid out: a change of it is the box growing or shrinking as its words do.
     @State private var boxHeight: CGFloat = 0
+    /// Edit and Rewrite each ask first: a stray tap on either replaced the page with a box (Jai's feedback, build 300).
+    @State private var isConfirmingEdit = false
+    @State private var isConfirmingRewrite = false
     private static let descriptionEditor = "description-editor"
 
     private var folds: FoldSet {
@@ -112,10 +115,16 @@ struct PRDescriptionView: View {
         }
     }
 
+    /// GitHub's labels, after a red AI trash chip when the summary found the description reads as AI slop.
     @ViewBuilder private var labels: some View {
-        if !detail.labels.isEmpty {
+        let isSlop = session.summary?.isSlop == true
+        if isSlop || !detail.labels.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Space.xs) {
+                    if isSlop {
+                        StatusChip(text: "AI trash", tint: Color.toneBad)
+                            .accessibilityIdentifier("pr-ai-slop")
+                    }
                     ForEach(detail.labels) { StatusChip(text: $0.name, tint: Color(githubHex: $0.color)) }
                 }
             }
@@ -148,33 +157,57 @@ struct PRDescriptionView: View {
                 .id(Self.descriptionEditor)
                 .transition(.fold)
             } else {
-                let text = detail.body.isEmpty ? "No description." : PRMarkdown.clean(detail.body)
-                PRCommentText(text, firstBlockInset: 56) { index, checked in
-                    Task { await session.setCheckbox(index, checked: checked) }
+                VStack(alignment: .leading, spacing: Space.sm) {
+                    descriptionActions
+                    Divider()
+                    let text = detail.body.isEmpty ? "No description." : PRMarkdown.clean(detail.body)
+                    PRCommentText(text) { index, checked in
+                        Task { await session.setCheckbox(index, checked: checked) }
+                    }
                 }
-                .overlay(alignment: .topTrailing) { descriptionActions }
             }
         }
         .padding(PRStyle.inset)
         .prCard()
     }
 
+    /// Explain, Rewrite and Edit, in a row of their own above the words, apart from them and from each other, so a tap
+    /// meant for the text never lands on one. Rewrite and Edit ask first.
     private var descriptionActions: some View {
-        HStack(spacing: Space.md) {
+        HStack(spacing: Space.lg) {
+            Spacer(minLength: 0)
+            if session.offersAsk {
+                Button("Explain this PR", systemImage: AppIcon.explainPR.symbol) { session.explainPR() }
+                    .accessibilityIdentifier("pr-explain")
+            }
             if session.isRewriting {
                 ProgressView()
                     .controlSize(.small)
+                    .frame(minWidth: PRStyle.controlHeight, minHeight: PRStyle.controlHeight)
             } else if session.offersRewrite {
-                Button("Rewrite description", systemImage: "sparkles") {
-                    Task { await session.rewriteDescription() }
+                Button("Rewrite description", systemImage: AppIcon.rewriteDescription.symbol) {
+                    isConfirmingRewrite = true
                 }
                 .accessibilityIdentifier("pr-rewrite-description")
+                .confirmationDialog(
+                    "Rewrite the description with AI?", isPresented: $isConfirmingRewrite, titleVisibility: .visible
+                ) {
+                    Button("Rewrite description") { Task { await session.rewriteDescription() } }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("The AI writes a new Description section into a box. GitHub has it only when you tap Save.")
+                }
             }
-            Button("Edit description", systemImage: "pencil") { session.editDescription() }
+            Button("Edit description", systemImage: AppIcon.editDescription.symbol) { isConfirmingEdit = true }
                 .accessibilityIdentifier("pr-edit-description")
+                .confirmationDialog("Edit the description?", isPresented: $isConfirmingEdit, titleVisibility: .visible) {
+                    Button("Edit description") { session.editDescription() }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("It opens in a box. GitHub has your change only when you tap Save.")
+                }
         }
-        .labelStyle(.iconOnly)
-        .foregroundStyle(.secondary)
+        .buttonStyle(PRButtonStyle(.secondary, iconOnly: true))
     }
 
     @ViewBuilder private func entry(_ entry: PullRequestDetail.Entry) -> some View {

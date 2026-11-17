@@ -173,7 +173,8 @@ public struct PullRequestRow: Codable, Hashable, Identifiable, Sendable {
         "\(fileStem)__\(detail.replacing(":", with: "-")).json"
     }
 
+    /// `v4`: answers with the AI slop check (docs/api.md, "AI slop"). A file kept before it is read again.
     public var keyLinesFileName: String? {
-        keyLines.map { "\(fileStem)__\(head)__keylines\($0).json" }
+        keyLines.map { "\(fileStem)__\(head)__keylines-v4-\($0).json" }
     }
 }

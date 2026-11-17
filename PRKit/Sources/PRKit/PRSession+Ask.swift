@@ -35,6 +35,15 @@ extension PRSession {
         openAsk(about: anchor, words: "Explain this line. It was picked as a key line: \(item.why)")
     }
 
+    /// The chat about the whole PR, asked to sum it up and explain it: the description's ? button.
+    func explainPR() {
+        askAnchor = nil
+        openAsk(
+            words: "Summarize this PR and explain it in plain words: what it changes, why, and how it works. "
+                + "Then say what a reviewer should look at closely."
+        )
+    }
+
     /// Where the model keeps this PR's unsent question about `askAnchor`.
     var askDraftKey: String {
         let about = askAnchor.map { "|\($0.path):\($0.line):\($0.side)" } ?? ""

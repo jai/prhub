@@ -179,7 +179,8 @@ extension PRSampleSet {
                  "bugs": [{"path": "src/checkout/CheckoutError.tsx", "line": 9, "side": "RIGHT",
                            "why": "A thrown retry leaves the button disabled for good."}],
                  "requirements": {"state": "mismatch", "tickets": ["WEB-31"],
-                                  "gaps": ["No limit on how many times a payment can be retried"]}},
+                                  "gaps": ["No limit on how many times a payment can be retried"]},
+                 "slop": {"isSlop": true, "tells": ["Hype words: robust, seamless", "Lists each file it touched"]}},
      "context": 100, "leftOut": []}
     """
 
