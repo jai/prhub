@@ -1,4 +1,4 @@
-# PRKit's unit tests (make test-unit-prkit): swift test on PRKitTests. On each push that changes PRKit, and in each ios and prkit release.
+# PRKit's unit tests (make test-unit-prkit): swift test on PRKitUnitTests. On each push that changes PRKit, and in each ios and prkit release.
 name: test-unit-prkit
 
 on:

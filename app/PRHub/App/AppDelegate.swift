@@ -1,4 +1,5 @@
 #if os(iOS)
+    import PRHubCore
     import UIKit
     import UserNotifications
 

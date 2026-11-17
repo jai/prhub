@@ -95,7 +95,7 @@ final class PRSession: Hashable {
     var opensPanelOnArrival = false
     /// Set here first, so a file folds under Jai's thumb. GitHub follows, and a refusal puts it back.
     var viewedFiles: Set<String> = []
-    private(set) var changedLinesOnly = UserDefaults.standard.bool(forKey: PRSession.changedLinesKey)
+    private(set) var changedLinesOnly: Bool
     private(set) var jump: DiffJump?
     var isShowingNavigator = false
     /// Key lines first; the panel shows Files alone where the Worker has none.
@@ -163,8 +163,7 @@ final class PRSession: Hashable {
     }
 
     /// Lines of code the model sees either side of a change: 0 the diff alone, -1 the whole file.
-    private(set) var contextLines = UserDefaults.standard.object(forKey: PRSession.contextKey) as? Int
-        ?? PRKeyLines.defaultContext
+    private(set) var contextLines: Int
     private var keyLinesByContext: [Int: PRKeyLines] = [:]
     /// Key lines held without asking, at the chosen context or else any: `summary` reads the PR at a glance from them.
     var heldKeyLines: PRKeyLines? {
@@ -189,7 +188,9 @@ final class PRSession: Hashable {
         self.opening = opening ?? PROpening(source: .link, cache: content == nil ? .miss : .hit, reads: nil)
         let drafts = draftStore.load(ref)
         self.drafts = drafts
-        let changedLinesOnly = UserDefaults.standard.bool(forKey: Self.changedLinesKey)
+        let changedLinesOnly = model.defaults.bool(forKey: Self.changedLinesKey)
+        self.changedLinesOnly = changedLinesOnly
+        contextLines = model.defaults.object(forKey: Self.contextKey) as? Int ?? PRKeyLines.defaultContext
         state = (content?.replacing(drafts: drafts, changedLinesOnly: changedLinesOnly)).map(PRSessionState.ready)
             ?? .reading
         viewedFiles = Set(content?.detail.viewedFiles ?? [])
@@ -339,7 +340,7 @@ final class PRSession: Hashable {
 
     func setChangedLinesOnly(_ isOn: Bool) {
         changedLinesOnly = isOn
-        UserDefaults.standard.set(isOn, forKey: Self.changedLinesKey)
+        model.defaults.set(isOn, forKey: Self.changedLinesKey)
         setDrafts(drafts)
     }
 
@@ -500,7 +501,7 @@ private extension PRSession {
 extension PRSession {
     func setContextLines(_ context: Int) {
         contextLines = context
-        UserDefaults.standard.set(context, forKey: Self.contextKey)
+        model.defaults.set(context, forKey: Self.contextKey)
     }
 
     /// From the phone if it has them, and otherwise from the Worker, which runs the model once for each commit and

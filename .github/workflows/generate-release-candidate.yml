@@ -30,7 +30,7 @@ jobs:
             paths: app PRKit Package.swift Package.resolved DESIGN.md .swiftlint.yml .swiftformat Makefile .github/workflows .gitleaks.toml cliff.toml
           - component: worker
             tag: worker-v
-            paths: worker agent deploy/hosted docs/fixtures scripts/ask-trace.sh Makefile .github/workflows .gitleaks.toml cliff.toml
+            paths: worker agent deploy/hosted PRKit/Tests/PRContractFixtures/Fixtures scripts/ask-trace.sh Makefile .github/workflows .gitleaks.toml cliff.toml
           - component: prkit
             tag: v
             paths: PRKit Package.swift Package.resolved .swiftlint.yml .swiftformat Makefile .github/workflows .gitleaks.toml cliff.toml

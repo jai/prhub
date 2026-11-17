@@ -16,6 +16,7 @@ let package = Package(
         // Feature requests from inside an app, each a conversation with an agent that changes it: FeedbackKit
         // (jai/feedbackkit) over PRKit's Worker client.
         .library(name: "FeatureKit", targets: ["FeatureKit"]),
+        .library(name: "PRHubCore", targets: ["PRHubCore"]),
     ],
     dependencies: [
         // Every request the PR screens make goes through the host's transport from it (its README.md).
@@ -26,6 +27,11 @@ let package = Package(
         .package(url: "https://github.com/jai/feedbackkit", from: "0.5.0"),
     ],
     targets: [
+        .target(
+            name: "PRContractFixtures",
+            path: "PRKit/Tests/PRContractFixtures",
+            resources: [.copy("Fixtures")]
+        ),
         .target(
             name: "PRKitCore",
             dependencies: [
@@ -53,35 +59,48 @@ let package = Package(
             ],
             path: "PRKit/Sources/FeatureKit"
         ),
-        // The app's logic, for its unit tests: app/PRHub's files without its views, compiled again here so `swift test`
-        // runs PRHubTests with no simulator (docs/workflow.md). The app target still builds the same files itself.
+        // App behavior shared by PRHub and its host-free test targets.
         .target(
             name: "PRHubCore",
             dependencies: [
                 "PRKit", "PRKitCore", "FeatureKit", .product(name: "DurableNetworking", package: "durable-networking"),
             ],
-            path: "app/PRHub",
-            // The views, the app's entry and PostHog stay in the app target only.
-            exclude: [
-                "Analytics/PostHogAnalytics.swift",
-                "App/AppDelegate.swift",
-                "App/PRHubApp.swift",
-                "App/PRHubRootView.swift",
-                "App/PRHubSettingsView.swift",
-                "Debug/PRHubScreenshots.swift",
-                "Mac",
-                "Views",
-            ]
+            path: "app/PRHubCore"
+        ),
+        .target(name: "PRHubTestSupport", path: "app/PRHubTests/Support"),
+        .testTarget(
+            name: "PRHubUnitTests",
+            dependencies: [
+                "PRHubTestSupport", "PRHubCore", "PRKit", "PRKitCore",
+                .product(name: "DurableNetworking", package: "durable-networking"),
+            ],
+            path: "app/PRHubTests/Unit"
         ),
         .testTarget(
-            name: "PRHubTests",
-            dependencies: ["PRHubCore", "PRKit", "PRKitCore", .product(name: "DurableNetworking", package: "durable-networking")],
-            path: "app/PRHubTests"
+            name: "PRHubIntegrationTests",
+            dependencies: [
+                "PRHubTestSupport", "PRContractFixtures", "PRHubCore", "PRKit", "PRKitCore",
+                .product(name: "DurableNetworking", package: "durable-networking"),
+            ],
+            path: "app/PRHubTests/Integration"
         ),
         .testTarget(
-            name: "PRKitTests",
-            dependencies: ["PRKit", "FeatureKit", .product(name: "DurableNetworking", package: "durable-networking")],
-            path: "PRKit/Tests/PRKitTests"
+            name: "PRKitRenderingTests",
+            dependencies: ["PRKit", "PRKitDesign"],
+            path: "PRKit/Tests/PRKitRenderingTests"
+        ),
+        .testTarget(
+            name: "PRKitUnitTests",
+            dependencies: ["PRKit", "PRKitCore", .product(name: "DurableNetworking", package: "durable-networking")],
+            path: "PRKit/Tests/PRKitTests/Unit"
+        ),
+        .testTarget(
+            name: "PRKitIntegrationTests",
+            dependencies: [
+                "PRContractFixtures", "PRKit", "FeatureKit",
+                .product(name: "DurableNetworking", package: "durable-networking"),
+            ],
+            path: "PRKit/Tests/PRKitTests/Integration"
         ),
     ]
 )

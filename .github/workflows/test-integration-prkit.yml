@@ -1,0 +1,23 @@
+# Local storage and service tests on macOS, on push and release candidates.
+name: test-integration-prkit
+
+on:
+  push:
+    branches: [main]
+    paths: ["PRKit/**", "Package.swift", "Package.resolved", ".swiftlint.yml", ".swiftformat", "Makefile", ".github/workflows/test-integration-prkit.yml"]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test-integration-prkit:
+    runs-on: xcode-27
+    timeout-minutes: 10
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    steps:
+      - run: sudo xcode-select -s /Applications/Xcode_27.2.app
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v5
+      - run: make test-integration-prkit

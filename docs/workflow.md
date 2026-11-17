@@ -1,6 +1,6 @@
 # CI workflow
 
-The CI workflow for PRHub. Part 1 is the standard for each of Jai's repos (jai/ci `docs/workflow.md`). Part 2 is custom to PRHub.
+The CI workflow for PRHub. Part 1 follows the [pinned standard linked from the cleanup prompt](https://github.com/jai/ci/blob/8c65b2fcdda2257c81eb773f42f227c30ae1ebda/docs/workflow.md). Part 2 is custom to PRHub. Swift package tests run natively on macOS, as the cleanup prompt explicitly permits.
 
 # Part 1: Standard for each repo
 
@@ -111,7 +111,7 @@ These workflows do not follow the `lint-`, `test-` and `deploy-` names in the Wo
 - [ ] `prkit` is the exception to `<component>-v<version>`. Swift Package Manager reads only `v<version>` tags, and Agent Pager pins PRKit by version.
 - [ ] `prkit` is the whole package in `Package.swift`: PRKitCore, PRKitDesign, PRKit and FeatureKit. Swift Package Manager gives one version to a package.
 - [ ] The app contains PRKit. So a change to PRKit also makes an `ios` RC, and the `ios` release also runs `test-unit-prkit`.
-- [ ] `PRHubCore` in `Package.swift` is not a component. It compiles the app's logic files (`app/PRHub` without its views) so that `swift test` runs `PRHubTests`.
+- [ ] `PRHubCore` in `Package.swift` is not a component. It currently compiles the app's logic files (`app/PRHub` without its views) for the Swift package test targets.
 
 ## Release candidate
 
@@ -125,13 +125,18 @@ These workflows do not follow the `lint-`, `test-` and `deploy-` names in the Wo
 
 | Component | Lint | Unit | Integration | UI | Deploy |
 | --- | --- | --- | --- | --- | --- |
-| `ios` | `lint-ios`: push, RC | `test-unit-ios`: push, RC | | `test-ui-ios`: RC | Xcode Cloud: `ios-v` tag |
+| `ios` | `lint-ios`: push, RC | `test-unit-ios`: push, RC | `test-integration-ios`: push, RC | `test-ui-ios`: RC | Xcode Cloud: `ios-v` tag |
 | `worker` | `lint-worker`: push, RC | `test-unit-worker`: push, RC | `test-integration-worker`: push, RC | | `deploy-worker`: `worker-v` tag |
-| `prkit` | `lint-prkit`: push, RC | `test-unit-prkit`: push, RC | | | None: apps get the `v` tag with Swift Package Manager |
+| `prkit` | `lint-prkit`: push, RC | `test-unit-prkit`: push, RC | `test-integration-prkit`: push, RC | `test-ui-prkit`: RC | None: apps get the `v` tag with Swift Package Manager |
 
 - [ ] Xcode Cloud's "PRHub TestFlight Internal and External" starts on the `ios-v` tag. It builds iOS and macOS and sends them to TestFlight internal and external testers.
-- [ ] `test-ui-ios` runs the UI tests that PRHub has today, on the iPhone and iPad simulators of GitHub's Mac runners.
-- [ ] `test-integration-worker` runs the `agent/` tests. They start a real `git` and a local server.
+- [ ] Deployed-Worker checks live in the separate manual `PRHubE2ETests.xctestplan`; they require an explicitly paired test environment. The release UI plan never includes them. The optional outbox UI check still requires its local stand-in server (`PRHUB_OUTBOX_CHECK`).
+- [ ] `test-ui-ios` runs the complete `PRHubUITests.xctestplan` on iPhone and iPad. It includes UI automation and app-hosted rendering checks. Neither runs as a unit test.
+- [ ] `test-ui-prkit` selects the complete `PRKitRenderingTests` SwiftPM target on native macOS for AppKit and font checks, without an app host or signing credentials. The iOS rendering target compiles those same sources alongside its UIKit-only checks. It runs on ios and prkit RCs.
+- [ ] `test-unit-ios` selects `PRHubUnitTests`; `test-unit-prkit` selects `PRKitUnitTests`. These run code with controlled inputs, without storage, network or an app host.
+- [ ] `test-integration-ios` selects `PRHubIntegrationTests`; `test-integration-prkit` selects `PRKitIntegrationTests`. These own local persistence, Keychain and contract-resource checks.
+- [ ] The ios release also runs PRKit integration and rendering tests because the app contains PRKit. All test workflows remain inside the RC release run through `workflow_call`.
+- [ ] `test-integration-worker` runs Worker local-storage/contract tests, Worker runtime tests in workerd, and the `agent/` tests that start real git and a local server. External services are stubbed in local integration tests.
 - [ ] This repo is public. Each `lint-<component>` runs gitleaks on the files of its component.
 
 ## Make targets
@@ -140,13 +145,16 @@ These workflows do not follow the `lint-`, `test-` and `deploy-` names in the Wo
 | --- | --- |
 | `make lint-ios` | SwiftFormat, SwiftLint with the DESIGN.md token rules, the design-token check, shellcheck, gitleaks |
 | `make lint-prkit` | SwiftFormat, SwiftLint with the DESIGN.md token rules, gitleaks |
-| `make lint-worker` | oxlint, oxfmt, tsc, shellcheck, gitleaks |
+| `make lint-worker` | oxlint, oxfmt, production and test tsc, shellcheck, gitleaks |
 | `make lint-workflows` | actionlint |
-| `make test-unit-ios` | `swift test` on the app packages |
-| `make test-unit-prkit` | `swift test` on PRKit |
+| `make test-unit-ios` | `swift test --filter PRHubUnitTests` |
+| `make test-integration-ios` | `swift test --filter PRHubIntegrationTests` |
+| `make test-unit-prkit` | `swift test --filter PRKitUnitTests` |
+| `make test-integration-prkit` | `swift test --filter PRKitIntegrationTests` |
+| `make test-ui-prkit` | `swift test --filter PRKitRenderingTests` on native macOS |
 | `make test-ui-ios` | The UI test plan |
 | `make test-unit-worker` | The Worker unit tests |
-| `make test-integration-worker` | The `agent/` tests |
+| `make test-integration-worker` | Worker storage/contract tests, workerd tests, and `agent/` tests |
 | `make lint` | All lint targets |
 | `make all-tests` | All test targets |
 

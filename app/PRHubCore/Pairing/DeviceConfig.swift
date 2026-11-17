@@ -1,0 +1,255 @@
+import Foundation
+
+/// The features a pr-worker says it serves (`features` of `GET /device/config`, docs/api.md).
+public enum DeviceFeature: String, CaseIterable, Sendable {
+    case askAI = "ask_ai"
+    case keyLines = "key_lines"
+    case rewrite
+    case feedback
+    case push
+    case webhooks
+
+    var title: String {
+        switch self {
+        case .askAI: "Ask AI"
+        case .keyLines: "Key lines"
+        case .rewrite: "Rewrite"
+        case .feedback: "Feedback"
+        case .push: "Push"
+        case .webhooks: "Webhooks"
+        }
+    }
+}
+
+/// `GET /device/config`. A feature key the Worker does not send is off, a key this build does not know is ignored, and a
+/// value that is not a boolean is off.
+public struct DeviceConfig: Codable, Equatable, Sendable {
+    var features: Set<DeviceFeature>
+    var ownerName: String?
+    var appVersionMin: String?
+    var push: String?
+    /// A pr-worker's: the GitHub login it acts as, `nil` when GitHub could not be asked.
+    public internal(set) var login: String?
+    /// A pr-worker's `GITHUB_ORGS`: the PR filter's default selection. `nil` when unset.
+    var orgs: [String]?
+    /// The hosted Worker's (docs/api.md, "Hosted sign-in"): Settings then shows the account, not the Worker.
+    public internal(set) var hosted: Bool
+    /// The hosted Worker's person; nil on a self-hosted one.
+    public internal(set) var account: Account?
+    /// The hosted Worker's: where the PRHub App is installed for the person. Nil before the Worker first read them, and
+    /// on a self-hosted Worker.
+    public internal(set) var installations: [GitHubInstallation]?
+    /// The newest build each TestFlight group can install, for Update available (`PRHubUpdate`). Nil when the Worker
+    /// does not say.
+    var appLatest: AppLatest?
+    /// `metrickit`: the phone sends its MetricKit reports (`PRHubMetricKit`, docs/api.md "MetricKit reports").
+    var metricKit: Bool
+    /// `feedback_direct`: FeedbackKit's root, where Feedback goes itself with a token from `POST /feedback/token`. Nil:
+    /// through the Worker's `/feedback` routes.
+    public internal(set) var feedbackDirect: FeedbackDirectRoot?
+
+    public struct FeedbackDirectRoot: Codable, Equatable, Sendable {
+        var url: URL
+    }
+
+    /// `app_latest`: each group's newest build; one this build cannot read is nil.
+    struct AppLatest: Codable, Equatable, Sendable {
+        var `internal`: AppBuild?
+        var `public`: AppBuild?
+
+        init(internal internalBuild: AppBuild? = nil, public publicBuild: AppBuild? = nil) {
+            self.internal = internalBuild
+            self.public = publicBuild
+        }
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            `internal` = try? container.decodeIfPresent(AppBuild.self, forKey: .internal)
+            `public` = try? container.decodeIfPresent(AppBuild.self, forKey: .public)
+        }
+
+        func build(for group: TestFlightGroup) -> AppBuild? {
+            switch group {
+            case .internal: `internal`
+            case .public: `public`
+            }
+        }
+    }
+
+    /// `account` of `GET /device/config` on the hosted Worker.
+    public struct Account: Codable, Equatable, Sendable {
+        public enum State: String, Codable, Sendable {
+            case signedIn = "signed_in"
+            case signedOut = "signed_out"
+        }
+
+        public internal(set) var state: State
+        public internal(set) var login: String?
+        var userId: String?
+        /// Whether the person gave their own Anthropic key. The key itself is never answered.
+        public internal(set) var linearKey: Bool = false
+        /// Whether that Linear key may write comments, for Ask's comments on tickets: false when Linear said it can only
+        /// read, nil when not known (an older Worker, or Linear didn't say).
+        public internal(set) var linearCanComment: Bool?
+        public internal(set) var anthropicKey: Bool
+        /// A signed-out account's why: `revoked`, `refresh_expired` or `signed_out`.
+        public internal(set) var reason: String?
+
+        init(
+            state: State, login: String? = nil, userId: String? = nil, anthropicKey: Bool = false,
+            reason: String? = nil, linearKey: Bool = false, linearCanComment: Bool? = nil
+        ) {
+            self.state = state
+            self.login = login
+            self.userId = userId
+            self.linearKey = linearKey
+            self.linearCanComment = linearCanComment
+            self.anthropicKey = anthropicKey
+            self.reason = reason
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case state, login, reason
+            case userId = "user_id"
+            case linearKey = "linear_key"
+            case linearCanComment = "linear_can_comment"
+            case anthropicKey = "anthropic_key"
+        }
+
+        /// A state this build does not know reads as signed out: the app then offers Sign in again.
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            state = (try? container.decode(State.self, forKey: .state)) ?? .signedOut
+            login = try? container.decodeIfPresent(String.self, forKey: .login)
+            userId = try? container.decodeIfPresent(String.self, forKey: .userId)
+            anthropicKey = (try? container.decodeIfPresent(Bool.self, forKey: .anthropicKey)) == true
+            linearKey = (try? container.decodeIfPresent(Bool.self, forKey: .linearKey)) == true
+            linearCanComment = try? container.decodeIfPresent(Bool.self, forKey: .linearCanComment)
+            reason = try? container.decodeIfPresent(String.self, forKey: .reason)
+        }
+    }
+
+    init(
+        features: Set<DeviceFeature>, ownerName: String? = nil, appVersionMin: String? = nil, push: String? = nil,
+        login: String? = nil, orgs: [String]? = nil, hosted: Bool = false, account: Account? = nil,
+        installations: [GitHubInstallation]? = nil, appLatest: AppLatest? = nil, metricKit: Bool = false,
+        feedbackDirect: FeedbackDirectRoot? = nil
+    ) {
+        self.features = features
+        self.ownerName = ownerName
+        self.appVersionMin = appVersionMin
+        self.push = push
+        self.login = login
+        self.orgs = orgs
+        self.hosted = hosted
+        self.account = account
+        self.installations = installations
+        self.appLatest = appLatest
+        self.metricKit = metricKit
+        self.feedbackDirect = feedbackDirect
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case features
+        case ownerName = "owner_name"
+        case appVersionMin = "app_version_min"
+        case push
+        case login
+        case orgs
+        case hosted
+        case account
+        case installations
+        case appLatest = "app_latest"
+        case metricKit = "metrickit"
+        case feedbackDirect = "feedback_direct"
+    }
+
+    /// One entry of `installations`: one this build cannot read is left out, not the whole list.
+    private struct LossyInstallation: Decodable {
+        let value: GitHubInstallation?
+
+        init(from decoder: any Decoder) throws {
+            value = try? GitHubInstallation(from: decoder)
+        }
+    }
+
+    private struct FeatureKey: CodingKey {
+        let stringValue: String
+        var intValue: Int? {
+            nil
+        }
+
+        init(stringValue: String) {
+            self.stringValue = stringValue
+        }
+
+        init?(intValue _: Int) {
+            nil
+        }
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        var features: Set<DeviceFeature> = []
+        if let flags = try? container.nestedContainer(keyedBy: FeatureKey.self, forKey: .features) {
+            for key in flags.allKeys {
+                guard let feature = DeviceFeature(rawValue: key.stringValue) else {
+                    continue
+                }
+                if (try? flags.decode(Bool.self, forKey: key)) == true {
+                    features.insert(feature)
+                }
+            }
+        }
+        self.features = features
+        ownerName = try? container.decodeIfPresent(String.self, forKey: .ownerName)
+        appVersionMin = try? container.decodeIfPresent(String.self, forKey: .appVersionMin)
+        push = try? container.decodeIfPresent(String.self, forKey: .push)
+        login = try? container.decodeIfPresent(String.self, forKey: .login)
+        orgs = try? container.decodeIfPresent([String].self, forKey: .orgs)
+        hosted = (try? container.decodeIfPresent(Bool.self, forKey: .hosted)) == true
+        account = try? container.decodeIfPresent(Account.self, forKey: .account)
+        installations = (try? container.decodeIfPresent([LossyInstallation].self, forKey: .installations))?
+            .compactMap(\.value)
+        appLatest = try? container.decodeIfPresent(AppLatest.self, forKey: .appLatest)
+        metricKit = (try? container.decodeIfPresent(Bool.self, forKey: .metricKit)) == true
+        // Only an https root: anything else stays on the Worker's routes.
+        feedbackDirect = (try? container.decodeIfPresent(FeedbackDirectRoot.self, forKey: .feedbackDirect))
+            .flatMap { $0.url.scheme == "https" ? $0 : nil }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        var flags = container.nestedContainer(keyedBy: FeatureKey.self, forKey: .features)
+        for feature in DeviceFeature.allCases {
+            try flags.encode(features.contains(feature), forKey: FeatureKey(stringValue: feature.rawValue))
+        }
+        try container.encodeIfPresent(ownerName, forKey: .ownerName)
+        try container.encodeIfPresent(appVersionMin, forKey: .appVersionMin)
+        try container.encodeIfPresent(push, forKey: .push)
+        try container.encodeIfPresent(login, forKey: .login)
+        try container.encodeIfPresent(orgs, forKey: .orgs)
+        if hosted {
+            try container.encode(hosted, forKey: .hosted)
+        }
+        try container.encodeIfPresent(account, forKey: .account)
+        try container.encodeIfPresent(installations, forKey: .installations)
+        try container.encodeIfPresent(appLatest, forKey: .appLatest)
+        if metricKit {
+            try container.encode(metricKit, forKey: .metricKit)
+        }
+        try container.encodeIfPresent(feedbackDirect, forKey: .feedbackDirect)
+    }
+
+    public func isOn(_ feature: DeviceFeature) -> Bool {
+        features.contains(feature)
+    }
+}
+
+public extension DeviceConfig {
+    /// Settings' AI line: the model-backed features this Worker has a key for, or that it has none.
+    var aiWords: String {
+        let names = [DeviceFeature.askAI, .keyLines, .rewrite].filter(isOn).map(\.title)
+        return names.isEmpty ? "Off: no Anthropic key on the Worker" : names.joined(separator: ", ")
+    }
+}

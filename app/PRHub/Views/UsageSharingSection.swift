@@ -1,3 +1,4 @@
+import PRHubCore
 import SwiftUI
 
 /// Settings' "Share anonymous usage": on until the person turns it off. Shown only when the build names an analytics

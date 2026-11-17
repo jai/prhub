@@ -4,7 +4,7 @@ name: lint-worker
 on:
   push:
     branches: [main]
-    paths: ["worker/**", "agent/**", "deploy/hosted/**", "docs/fixtures/**", "scripts/ask-trace.sh", "Makefile", ".github/workflows/lint-worker.yml"]
+    paths: ["worker/**", "agent/**", "deploy/hosted/**", "PRKit/Tests/PRContractFixtures/Fixtures/**", "scripts/ask-trace.sh", "Makefile", ".github/workflows/lint-worker.yml"]
   workflow_call:
 
 permissions:

@@ -124,6 +124,8 @@ targets:
       - package: PRKit
         product: PRKit
       - package: PRKit
+        product: PRHubCore
+      - package: PRKit
         product: FeatureKit
       - package: DurableNetworking
       - package: PostHog
@@ -137,6 +139,8 @@ targets:
       testPlans:
         - path: PRHubUITests.xctestplan
           defaultPlan: true
+        - path: PRHubRenderingTests.xctestplan
+        - path: PRHubE2ETests.xctestplan
 
   # The Notification Service Extension: fetches an alert's PR into the app group's mirror before the tap
   # (`PRPushPrefetch`), within iOS's time for it, and shows the alert either way.
@@ -152,8 +156,8 @@ targets:
           - "Info.plist"
           - "PRHubNotifications.entitlements"
       # The app's own Keychain reads, for the paired Worker's URL and the device secret.
-      - path: PRHub/Pairing/WorkerURLStore.swift
-      - path: PRHub/Pairing/DeviceSecretStore.swift
+      - path: PRHubCore/Pairing/WorkerURLStore.swift
+      - path: PRHubCore/Pairing/DeviceSecretStore.swift
     info:
       path: PRHubNotifications/Info.plist
       properties:
@@ -193,7 +197,7 @@ targets:
         excludes:
           - "Info.plist"
       # The handoff's rules, the same as the app's.
-      - path: PRHub/App/PRHubOpenLink.swift
+      - path: PRHubCore/App/PRHubOpenLink.swift
     info:
       path: PRHubShare/Info.plist
       properties:
@@ -229,5 +233,35 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jaigovindani.prreview.uitests
         GENERATE_INFOPLIST_FILE: YES
-        # FastWaits.swift: XCTest's waits for an element look at once, then every 0.1 s, not once a second.
-        INFOPLIST_KEY_NSPrincipalClass: $(PRODUCT_MODULE_NAME).FastWaits
+
+  # iOS rendering checks use an app host; shared PRKit cases also run natively on Mac through SwiftPM.
+  PRHubRenderingTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - PRHubRenderingTests
+      - ../PRKit/Tests/PRKitRenderingTests
+    dependencies:
+      - target: PRHub
+      - package: PRKit
+        product: PRKit
+      - package: PRKit
+        product: PRHubCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jaigovindani.prreview.renderingtests
+        GENERATE_INFOPLIST_FILE: YES
+
+  # Manual checks against a paired deployed Worker; never included in the fixed-data release UI plan.
+  PRHubE2ETests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - PRHubE2ETests
+      - PRHubUITests/UITestSupport.swift
+    dependencies:
+      - target: PRHub
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jaigovindani.prreview.e2etests
+        GENERATE_INFOPLIST_FILE: YES

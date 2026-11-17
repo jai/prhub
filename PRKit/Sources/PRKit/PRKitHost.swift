@@ -2,7 +2,7 @@ import DurableNetworking
 import Foundation
 import PRKitCore
 
-/// What the app PRKit is embedded in gives it. PRHub's is `PRHubPRHost` (app/PRHub/App/PRHubHost.swift).
+/// What the app PRKit is embedded in gives it. PRHub's is `PRHubPRHost` (app/PRHubCore/App/PRHubHost.swift).
 @MainActor
 public protocol PRKitHost: AnyObject, Sendable {
     /// Where every request goes and the bearer it carries. Read once, when the kit is made.

@@ -10,7 +10,7 @@ final class PRHubPRPageUITests: XCTestCase {
     /// The rate limit's row: its title without `[API-88] [SEC-12]`, which show as its ticket lines.
     private let rateLimit = "Rate-limit the password reset endpoint"
 
-    override func setUp() {
+    @MainActor override func setUp() async throws {
         continueAfterFailure = false
         XCUIDevice.shared.appearance = .light
         XCUIDevice.shared.orientation = .portrait

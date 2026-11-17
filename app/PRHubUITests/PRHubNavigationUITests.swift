@@ -11,13 +11,13 @@ final class PRHubNavigationUITests: XCTestCase {
     private let checkout = "Show a retry button when checkout fails"
     private let checkoutRef = "acme/web#412"
 
-    override func setUp() {
+    @MainActor override func setUp() async throws {
         continueAfterFailure = false
         XCUIDevice.shared.appearance = .light
         XCUIDevice.shared.orientation = .portrait
     }
 
-    override func tearDown() {
+    @MainActor override func tearDown() async throws {
         XCUIDevice.shared.orientation = .portrait
     }
 

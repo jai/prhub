@@ -23,6 +23,15 @@ jobs:
   test-unit-ios:
     if: startsWith(github.ref_name, 'rc-ios-')
     uses: ./.github/workflows/test-unit-ios.yml
+  test-integration-ios:
+    if: startsWith(github.ref_name, 'rc-ios-')
+    uses: ./.github/workflows/test-integration-ios.yml
+  test-integration-prkit:
+    if: startsWith(github.ref_name, 'rc-ios-') || startsWith(github.ref_name, 'rc-prkit-')
+    uses: ./.github/workflows/test-integration-prkit.yml
+  test-ui-prkit:
+    if: startsWith(github.ref_name, 'rc-ios-') || startsWith(github.ref_name, 'rc-prkit-')
+    uses: ./.github/workflows/test-ui-prkit.yml
   test-ui-ios:
     if: startsWith(github.ref_name, 'rc-ios-')
     uses: ./.github/workflows/test-ui-ios.yml
@@ -44,7 +53,7 @@ jobs:
     uses: ./.github/workflows/test-integration-worker.yml
 
   release:
-    needs: [lint-ios, test-unit-ios, test-ui-ios, test-unit-prkit, lint-prkit, lint-worker, test-unit-worker, test-integration-worker]
+    needs: [lint-ios, test-unit-ios, test-integration-ios, test-ui-ios, test-unit-prkit, test-integration-prkit, test-ui-prkit, lint-prkit, lint-worker, test-unit-worker, test-integration-worker]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -69,7 +78,7 @@ jobs:
           version=${version%-*}
           case $component in
             ios) tag="ios-v$version"; prefix=ios-v; paths=(app PRKit Package.swift Package.resolved DESIGN.md .swiftlint.yml .swiftformat Makefile .github/workflows .gitleaks.toml cliff.toml) ;;
-            worker) tag="worker-v$version"; prefix=worker-v; paths=(worker agent deploy/hosted docs/fixtures scripts/ask-trace.sh Makefile .github/workflows .gitleaks.toml cliff.toml) ;;
+            worker) tag="worker-v$version"; prefix=worker-v; paths=(worker agent deploy/hosted PRKit/Tests/PRContractFixtures/Fixtures scripts/ask-trace.sh Makefile .github/workflows .gitleaks.toml cliff.toml) ;;
             prkit) tag="v$version"; prefix=v; paths=(PRKit Package.swift Package.resolved .swiftlint.yml .swiftformat Makefile .github/workflows .gitleaks.toml cliff.toml) ;;
           esac
           include=()

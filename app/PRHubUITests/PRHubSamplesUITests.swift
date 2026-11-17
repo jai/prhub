@@ -6,7 +6,7 @@ import XCTest
 final class PRHubSamplesUITests: XCTestCase {
     private let app = XCUIApplication()
 
-    override func setUp() {
+    @MainActor override func setUp() async throws {
         continueAfterFailure = false
         XCUIDevice.shared.appearance = .light
     }

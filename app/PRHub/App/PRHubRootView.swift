@@ -1,4 +1,5 @@
 import FeatureKit
+import PRHubCore
 import SwiftUI
 
 /// PRHub's window: onboarding until the phone is signed in with GitHub or paired with a pr-worker, then the PRs and

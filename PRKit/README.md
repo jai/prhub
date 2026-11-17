@@ -34,7 +34,7 @@ Tab("PRs", systemImage: "arrow.triangle.pull", value: PRHubTab.prs) {
 }
 ```
 
-PRHub's host is `app/PRHub/App/PRHubHost.swift`.
+PRHub's host is `app/PRHubCore/App/PRHubHost.swift`.
 
 ### Feedback in a host that already has coding-thread chats
 
@@ -98,4 +98,6 @@ good revision until a pull.
 
 ## Tests
 
-`make test-unit-prkit` (`swift test --filter PRKitTests` at the repo root) runs `PRKitTests` on macOS. `FixtureContractTests` and `PRPushTests` decode the Worker's golden fixtures in `docs/fixtures/`.
+`make test-unit-prkit` runs code-only `PRKitUnitTests` on macOS. `make test-integration-prkit` runs `PRKitIntegrationTests` with local storage and bundled contract fixtures. The Worker checks those same payloads in `PRKit/Tests/PRContractFixtures/Fixtures/`; missing resources fail the tests.
+
+`make test-ui-prkit` runs `PRKitRenderingTests` natively on macOS through SwiftPM, without an app host. The iOS UI plan compiles the same rendering sources alongside UIKit-only checks in its app-hosted target, on iPhone and iPad. UI and rendering checks run on release candidates; unit and integration checks also run on pushes.

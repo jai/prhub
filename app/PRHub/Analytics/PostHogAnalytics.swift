@@ -1,5 +1,6 @@
 import Foundation
 import PostHog
+import PRHubCore
 
 /// PRHub's events to PostHog: anonymous, with every automatic capture off. Only the events `AnalyticsEvent` names, and
 /// the app's opens and closes, are sent. No person profile, no location from the IP address, no session replay,

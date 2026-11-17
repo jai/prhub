@@ -164,8 +164,8 @@ Auth: a paired secret or `APP_TOKEN`. `Cache-Control: no-store`. The app reads i
 | `app_latest` | the newest PRHub build each TestFlight group can install, `{internal?, public?}`, each `{version, build}`; absent when it could not be read ([App updates](#app-updates)) | Update available, when its group's build is newer than the running one |
 | `metrickit` | `true` when `METRICKIT=on`, or on the hosted Worker the person's login is in `METRICKIT_LOGINS`; absent otherwise ([MetricKit reports](#metrickit-reports)) | Sends each MetricKit payload to `POST /device/metrics` |
 
-The example leaves out `limits`; [`device-config.json`](fixtures/device-config.json) and
-[`device-config-hosted.json`](fixtures/device-config-hosted.json) show it for each mode. In the example, `rewrite`
+The example leaves out `limits`; [`device-config.json`](../PRKit/Tests/PRContractFixtures/Fixtures/device-config.json) and
+[`device-config-hosted.json`](../PRKit/Tests/PRContractFixtures/Fixtures/device-config-hosted.json) show it for each mode. In the example, `rewrite`
 and `ask` are shortened: each lists the same `allowed` entries as `key_lines`. A key the app
 does not know is ignored; a feature the Worker does not send is off. Routes for a feature that is off
 answer `404 {"error": "<feature> is not set up on this Worker."}`. Answers: `200` · `401`.
@@ -257,10 +257,10 @@ and the routes above stay as the fallback. FeedbackKit's live chat draws a sent 
 ## Rows and details
 
 `GET /prs` rows and `GET /prs/{owner}/{repo}/{n}/detail` speak the words in `worker/src/vocab.ts`, the same sets
-the Pager Worker uses for threads. Examples, written by `worker/test/contract.test.ts` from the real builders and
-checked on every run: [`row.json`](fixtures/row.json), [`merged-row.json`](fixtures/merged-row.json),
-[`detail.json`](fixtures/detail.json), [`device-config.json`](fixtures/device-config.json),
-[`alert.json`](fixtures/alert.json) (an alert's payload).
+the Pager Worker uses for threads. Examples, written by `worker/test/integration/node/contract.test.ts` from the real builders and
+checked on every run: [`row.json`](../PRKit/Tests/PRContractFixtures/Fixtures/row.json), [`merged-row.json`](../PRKit/Tests/PRContractFixtures/Fixtures/merged-row.json),
+[`detail.json`](../PRKit/Tests/PRContractFixtures/Fixtures/detail.json), [`device-config.json`](../PRKit/Tests/PRContractFixtures/Fixtures/device-config.json),
+[`alert.json`](../PRKit/Tests/PRContractFixtures/Fixtures/alert.json) (an alert's payload).
 
 - A row's `status.list` is `review`, `reviewed` or `mine` on `GET /prs`, and `merged` on `GET /prs/merged`.
   `requestedAt` (when review was last asked of the user himself, null for a team's request) and `reviewDueAt` are on
@@ -749,7 +749,7 @@ under APNs' 4096 bytes):
 - Titles: `Review requested: <repo>#<n>`, `Approved: <repo>#<n>`, `Changes requested: <repo>#<n>`, at most 120
   characters. `body` is the PR's title, at most 240. Either is cut with `…`.
 - `thread-id` groups a PR's alerts in Notification Center (at most 64 characters).
-- `row` is the PR's row exactly as `GET /prs` lists it when the alert goes ([docs/fixtures/alert.json](fixtures/alert.json)).
+- `row` is the PR's row exactly as `GET /prs` lists it when the alert goes ([PRKit/Tests/PRContractFixtures/Fixtures/alert.json](../PRKit/Tests/PRContractFixtures/Fixtures/alert.json)).
   It is left out when it would take the payload past 4000 bytes.
 - `mutable-content: 1`: PRHub's Notification Service Extension fetches the row's stored detail and diff (`?version=`,
   `?revision=`) into the app's mirror before the alert shows, so a tap opens the PR from the phone. It gives up within

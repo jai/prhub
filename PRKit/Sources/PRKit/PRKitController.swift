@@ -12,10 +12,10 @@ public final class PRKitController {
     let navigation = PRNavigation()
     @ObservationIgnored let launchOptions: PRKitLaunchOptions
 
-    public init(host: some PRKitHost) {
+    public init(host: some PRKitHost, defaults: UserDefaults = .standard) {
         let client = PRViewerClient(access: host.access, transport: host.transport)
             .reporting { area, failure in Task { @MainActor in host.receive(.requestFailed(area, failure)) } }
-        model = PRsModel(client: client, samples: host.samples, directory: host.mirrorDirectory)
+        model = PRsModel(client: client, samples: host.samples, directory: host.mirrorDirectory, defaults: defaults)
         launchOptions = host.launchOptions
         model.outboxSource = { host.outbox }
         model.apnsEnvironment = host.apnsEnvironment

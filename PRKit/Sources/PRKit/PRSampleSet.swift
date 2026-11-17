@@ -73,8 +73,8 @@ public struct PRSampleSet: Sendable {
     }
 
     /// Writes every sample's files into `directory` and starts the list with no saved settings.
-    public func seed(in directory: URL) -> [PullRequestRow] {
-        Self.resetListSettings()
+    public func seed(in directory: URL, defaults: UserDefaults = .standard) -> [PullRequestRow] {
+        Self.resetListSettings(defaults)
         for sample in samples {
             try? Data(sample.detail.utf8).write(to: directory.appending(path: sample.row.detailFileName))
             try? Data(sample.diff.utf8).write(to: directory.appending(path: sample.row.diffFileName))

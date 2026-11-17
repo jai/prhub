@@ -5,11 +5,14 @@
 #   make lint-prkit               SwiftFormat, SwiftLint with the DESIGN.md token rules, gitleaks
 #   make lint-worker              oxlint, oxfmt, tsc, shellcheck, gitleaks
 #   make lint-workflows           actionlint
-#   make test-unit-ios            swift test on the app packages (PRHubTests)
-#   make test-unit-prkit          swift test on PRKit (PRKitTests)
+#   make test-unit-ios            swift test on PRHubUnitTests
+#   make test-unit-prkit          swift test on PRKitUnitTests
 #   make test-ui-ios              the UI test plan (SIM_NAME picks the Simulator: iPhone 17 by default)
 #   make test-unit-worker         the Worker unit tests
-#   make test-integration-worker  the agent/ tests
+#   make test-integration-ios     app persistence and Keychain tests
+#   make test-integration-prkit   PRKit persistence and contract tests
+#   make test-ui-prkit            native Mac rendering tests
+#   make test-integration-worker  Worker storage/runtime tests and agent/ tests
 #   make lint                     all lint targets
 #   make all-tests                all test targets
 #
@@ -17,7 +20,7 @@
 
 SHELL := /bin/bash
 .PHONY: lint-ios lint-prkit lint-worker lint-workflows test-unit-ios test-unit-prkit test-ui-ios test-unit-worker \
-	test-integration-worker lint all-tests
+	test-integration-worker test-integration-ios test-integration-prkit test-ui-prkit lint all-tests
 
 X := mise exec
 ACTIONLINT  := $(X) actionlint@1.7.12 -- actionlint
@@ -33,15 +36,15 @@ SIM_NAME ?= iPhone 17
 
 lint-ios:
 	$(SWIFTFORMAT) app --lint
-	$(SWIFTLINT) app/PRHub app/PRHubTests app/PRHubUITests
+	$(SWIFTLINT) app/PRHub app/PRHubCore app/PRHubTests app/PRHubUITests app/PRHubRenderingTests app/PRHubE2ETests
 	$(MAKE) -C app design-check
 	$(SHELLCHECK) app/ci_scripts/ci_post_clone.sh
 	$(GITLEAKS) app
 	$(GITLEAKS) DESIGN.md
 
 lint-prkit:
-	$(SWIFTFORMAT) PRKit Package.swift --lint
-	$(SWIFTLINT) PRKit
+	$(SWIFTFORMAT) PRKit Package.swift app/PRHubRenderingTests --lint
+	$(SWIFTLINT) PRKit app/PRHubRenderingTests
 	$(GITLEAKS) PRKit
 
 lint-worker:
@@ -50,6 +53,7 @@ lint-worker:
 	$(OXFMT) --check worker agent
 	cd worker && $(OXLINT) --deny-warnings
 	cd worker && $(OXLINT) --type-aware --type-check --deny-warnings src
+	npm --prefix worker run typecheck:test
 	cd agent && npx --yes oxlint@1.93.0 --deny-warnings
 	$(SHELLCHECK) scripts/ask-trace.sh
 	$(GITLEAKS) worker
@@ -60,10 +64,20 @@ lint-workflows:
 	$(ACTIONLINT)
 
 test-unit-ios:
-	swift test --filter PRHubTests
+	swift test --filter PRHubUnitTests
 
 test-unit-prkit:
-	swift test --filter PRKitTests
+	swift test --filter PRKitUnitTests
+
+test-integration-ios:
+	swift test --filter PRHubIntegrationTests
+
+test-integration-prkit:
+	swift test --filter PRKitIntegrationTests
+
+# Native Mac rendering checks keep AppKit/font coverage out of the unit suites.
+test-ui-prkit:
+	swift test --filter PRKitRenderingTests
 
 # The samples flow and a picture of every screen, in app/build/screenshots.
 test-ui-ios:
@@ -74,12 +88,14 @@ test-ui-ios:
 
 test-unit-worker:
 	npm --prefix worker ci --no-audit --no-fund
-	npm --prefix worker test
+	npm --prefix worker run test:unit
 
 test-integration-worker:
+	npm --prefix worker ci --no-audit --no-fund
+	npm --prefix worker run test:integration
 	npm --prefix agent ci --no-audit --no-fund
 	npm --prefix agent test
 
 lint: lint-ios lint-prkit lint-worker lint-workflows
 
-all-tests: test-unit-ios test-unit-prkit test-ui-ios test-unit-worker test-integration-worker
+all-tests: test-unit-ios test-integration-ios test-unit-prkit test-integration-prkit test-ui-ios test-ui-prkit test-unit-worker test-integration-worker

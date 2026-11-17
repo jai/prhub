@@ -5,14 +5,16 @@ repos:
       # for what no tool can fix (docs/workflow.md, Part 2).
       - id: fix-swift
         name: fix Swift (swiftformat, swiftlint --fix)
-        entry: bash -c 'mise exec swiftformat@0.64.7 -- swiftformat --quiet "$@" && mise exec swiftlint@0.65.1 -- swiftlint --fix --quiet "$@"; git add -- "$@"' --
+        entry: bash -c 'mise exec swiftformat@0.64.7 -- swiftformat --quiet "$@" && mise exec swiftlint@0.65.1 -- swiftlint --fix --quiet "$@" && git add -- "$@"' --
         language: system
+        require_serial: true
         files: '\.swift$'
         stages: [pre-commit]
       - id: fix-js
         name: fix TypeScript and JavaScript (oxfmt, oxlint --fix)
-        entry: bash -c 'npx --yes oxfmt@0.78.0 "$@" && npx --yes oxlint@1.93.0 --fix "$@"; git add -- "$@"' --
+        entry: bash -c 'npx --yes oxfmt@0.78.0 "$@" && npx --yes oxlint@1.93.0 --fix "$@" && git add -- "$@"' --
         language: system
+        require_serial: true
         files: '^(worker|agent)/.*\.(ts|tsx|mts|js|mjs|cjs)$'
         stages: [pre-commit]
       - id: fix-design-tokens
@@ -71,7 +73,7 @@ repos:
         entry: make test-unit-worker
         language: system
         pass_filenames: false
-        files: '^(worker/|docs/fixtures/)'
+        files: '^(worker/|PRKit/Tests/PRContractFixtures/Fixtures/)'
         stages: [pre-push]
       # The two work domains are split by quotes, so gitleaks (.gitleaks.toml), which keeps them out of this public
       # repo, passes this file.

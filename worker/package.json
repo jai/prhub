@@ -3,10 +3,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test test/*.test.ts",
+    "test": "npm run test:unit && npm run test:integration",
     "pair": "node scripts/pair.mjs",
     "ask-agent": "node --experimental-strip-types scripts/ask-agent.mts",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "typecheck:test": "tsc -p tsconfig.test.json",
+    "test:unit": "node --test test/unit/*.test.ts",
+    "test:integration": "npm run test:integration:node && npm run test:integration:runtime",
+    "test:integration:node": "node --test test/integration/node/*.test.ts",
+    "test:integration:runtime": "vitest run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
@@ -15,10 +20,15 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.8.4",
     "@cloudflare/workers-types": "^5.20261029.1",
+    "@msw/cloudflare": "^0.2.0",
+    "@types/node": "^24.19.2",
+    "msw": "^3.0.6",
     "oxlint": "^1.93.0",
     "oxlint-tsgolint": "^7.0.2007",
     "typescript": "^7.0.2",
+    "vitest": "^4.1.12",
     "wrangler": "^4.156.0"
   }
 }

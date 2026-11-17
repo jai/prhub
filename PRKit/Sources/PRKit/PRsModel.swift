@@ -16,181 +16,6 @@ public enum PRSyncOutcome: Sendable {
     case changed, unchanged, failed
 }
 
-/// The two lists the PRs tab holds.
-enum PRListPage: String, CaseIterable, Identifiable {
-    case review, mine
-
-    var id: Self {
-        self
-    }
-
-    func holds(_ row: PullRequestRow) -> Bool {
-        (row.isReviewRequest || row.isAnswered) == (self == .review)
-    }
-
-    /// A line of the list. On the review list, what Jai still has to review, then what he has approved, sent back or
-    /// commented on.
-    enum Entry: Identifiable {
-        case header(String)
-        case row(PullRequestRow)
-
-        var id: String {
-            switch self {
-            case let .header(title): "header:\(title)"
-            case let .row(row): row.id
-            }
-        }
-    }
-
-    /// `grouping` puts a header over each repo's or author's rows, in the order their first row comes. On the review
-    /// list the groups hold what Jai still has to review, and Recently Reviewed stays one section under them.
-    func entries(_ rows: [PullRequestRow], grouping: PRListGrouping = .none) -> [Entry] {
-        let section = { (title: String, rows: [PullRequestRow]) -> [Entry] in
-            rows.isEmpty ? [] : [.header(title)] + rows.map(Entry.row)
-        }
-        let grouped = { (rows: [PullRequestRow]) -> [Entry] in
-            guard let key = grouping.key else {
-                return rows.map(Entry.row)
-            }
-            var names: [String] = []
-            var groups: [String: [PullRequestRow]] = [:]
-            for row in rows {
-                let name = key(row)
-                if groups[name] == nil {
-                    names.append(name)
-                }
-                groups[name, default: []].append(row)
-            }
-            return names.flatMap { section($0, groups[$0] ?? []) }
-        }
-        guard self == .review, !rows.contains(where: \.isMerged) else {
-            return grouped(rows)
-        }
-        let pending = rows.filter { !$0.isAnswered }
-        return (grouping == .none ? section("Review Pending", pending) : grouped(pending))
-            + section("Recently Reviewed", rows.filter(\.isAnswered))
-    }
-
-    /// `.sla`: past the review SLA first, the longest overdue on top; then the rows waiting on Jai's own change
-    /// request; then the rest, the longest waiting first. `.oldest` and `.newest` go by when review was asked alone.
-    /// Rows with no request time (My PRs, Recently Reviewed) keep the order they came in, after the rest.
-    static func ordered(_ rows: [PullRequestRow], by order: PRListOrder = .sla, now: Date = .now) -> [PullRequestRow] {
-        switch order {
-        case .sla:
-            let late = rows.filter { $0.isPastSLA(now: now) }.sorted { ($0.reviewDue ?? now) < ($1.reviewDue ?? now) }
-            let rest = byAge(rows.filter { !$0.isPastSLA(now: now) }, newestFirst: false)
-            return late + rest.filter(\.isWaitingOnJaisChangeRequest) + rest.filter { !$0.isWaitingOnJaisChangeRequest }
-        case .oldest:
-            return byAge(rows, newestFirst: false)
-        case .newest:
-            return byAge(rows, newestFirst: true)
-        }
-    }
-
-    private static func byAge(_ rows: [PullRequestRow], newestFirst: Bool) -> [PullRequestRow] {
-        rows.enumerated().sorted { first, second in
-            switch (first.element.reviewRequestedAt, second.element.reviewRequestedAt) {
-            case let (one?, two?) where one != two: newestFirst ? one > two : one < two
-            case (.some, nil): true
-            case (nil, .some): false
-            default: first.offset < second.offset
-            }
-        }.map(\.element)
-    }
-}
-
-/// How a page of the PRs tab is ordered, saved on the phone.
-enum PRListOrder: String, CaseIterable, Identifiable {
-    case sla, oldest, newest
-
-    var id: Self {
-        self
-    }
-
-    var title: String {
-        switch self {
-        case .sla: "Past SLA, then oldest"
-        case .oldest: "Oldest request first"
-        case .newest: "Newest request first"
-        }
-    }
-}
-
-/// What a page of the PRs tab is grouped under, saved on the phone.
-enum PRListGrouping: String, CaseIterable, Identifiable {
-    case none, repo, author
-
-    var id: Self {
-        self
-    }
-
-    var title: String {
-        switch self {
-        case .none: "No groups"
-        case .repo: "Repo"
-        case .author: "Author"
-        }
-    }
-
-    var key: ((PullRequestRow) -> String)? {
-        switch self {
-        case .none: nil
-        case .repo: { $0.repo }
-        case .author: { $0.status?.author ?? "Unknown author" }
-        }
-    }
-}
-
-/// The orgs and repos the PRs tab shows, saved on the phone. Every org's PRs are mirrored either way, so a change is
-/// instant and nothing has to load.
-struct PROrgFilter: RawRepresentable, Equatable {
-    private(set) var selected: Set<String>
-    /// Empty means every repo of the chosen orgs.
-    private(set) var repos: Set<String> = []
-
-    init(selected: Set<String>) {
-        self.selected = selected
-    }
-
-    /// `orgs|repos`, each comma separated. A value saved before repos existed has no `|`.
-    init?(rawValue: String) {
-        let parts = rawValue.split(separator: "|", omittingEmptySubsequences: false)
-        selected = Set(parts[0].split(separator: ",").map(String.init))
-        repos = parts.count > 1 ? Set(parts[1].split(separator: ",").map(String.init)) : []
-    }
-
-    var rawValue: String {
-        "\(selected.sorted().joined(separator: ","))|\(repos.sorted().joined(separator: ","))"
-    }
-
-    func showsOrg(of row: PullRequestRow) -> Bool {
-        selected.contains(row.org)
-    }
-
-    func shows(_ row: PullRequestRow) -> Bool {
-        showsOrg(of: row) && (repos.isEmpty || repos.contains(row.repo))
-    }
-
-    /// An org going takes its repos with it, so a hidden choice can't empty the list.
-    mutating func toggle(_ org: String) {
-        if selected.remove(org) == nil {
-            selected.insert(org)
-        } else {
-            repos = repos.filter { !$0.hasPrefix("\(org)/") }
-        }
-    }
-
-    mutating func toggleRepo(_ repo: String) {
-        if repos.remove(repo) == nil {
-            repos.insert(repo)
-        }
-    }
-
-    mutating func showAllRepos() {
-        repos = []
-    }
-}
-
 /// The list on screen and the mirror behind it, in Caches: never backed up, and iOS may clear it, which only costs a
 /// download. Rows are on screen from the file before the Worker answers. A push carries no data, so a lost one costs
 /// nothing but time.
@@ -214,8 +39,8 @@ final class PRsModel {
     /// Rows Jai swiped away. They stay hidden until the Worker's list drops them, so one can't flicker back.
     private(set) var removedRequests: Set<String> = []
     /// By row id. Saved, so a row stays read through a restart until the Worker's list catches up.
-    private(set) var localAnswers: [String: PRLocalAnswer] = UserDefaults.standard.data(forKey: PRsModel.answersKey)
-        .flatMap { try? JSONDecoder().decode([String: PRLocalAnswer].self, from: $0) } ?? [:]
+    private(set) var localAnswers: [String: PRLocalAnswer]
+    let defaults: UserDefaults
     let client: PRViewerClient
     /// PRs with no Worker (`PRSampleSet`): Jai's Debug `-UXFixtures`, or PRHub's "Try with sample PRs". Nothing then
     /// leaves the phone.
@@ -297,13 +122,19 @@ final class PRsModel {
     }
 
     /// `directory`: where the mirror's files go, the app's caches unless a test gives its own.
-    init(client: PRViewerClient, samples: PRSampleSet? = nil, directory: URL? = nil) {
+    init(
+        client: PRViewerClient, samples: PRSampleSet? = nil, directory: URL? = nil,
+        defaults: UserDefaults = .standard
+    ) {
+        self.defaults = defaults
+        localAnswers = defaults.data(forKey: Self.answersKey)
+            .flatMap { try? JSONDecoder().decode([String: PRLocalAnswer].self, from: $0) } ?? [:]
         self.client = client
         self.samples = samples
         let name = samples == nil ? "pr-viewer" : PRSampleSet.directoryName
         let directory = directory ?? URL.cachesDirectory.appending(path: name, directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let saved = samples.map { $0.seed(in: directory) } ?? PRMirror.savedRows(in: directory)
+        let saved = samples.map { $0.seed(in: directory, defaults: defaults) } ?? PRMirror.savedRows(in: directory)
         rows = saved
         if let samples {
             localAnswers = [:]
@@ -430,7 +261,7 @@ final class PRsModel {
         notUpdated = []
         lateRefusal = nil
         saveAnswers([:])
-        UserDefaults.standard.removeObject(forKey: "prOrgFilter")
+        defaults.removeObject(forKey: "prOrgFilter")
         // Nothing of a sync still running may show, and nothing it downloads may stay.
         generation += 1
         running = nil
@@ -606,7 +437,7 @@ final class PRsModel {
         guard samples == nil else {
             return
         }
-        UserDefaults.standard.set(try? JSONEncoder().encode(answers), forKey: Self.answersKey)
+        defaults.set(try? JSONEncoder().encode(answers), forKey: Self.answersKey)
     }
 
     /// Takes Jai off this PR's review on GitHub.
