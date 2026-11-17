@@ -5,10 +5,6 @@ import XCTest
 /// the largest. Pictures go to `SCREENSHOTS_DIR` when set.
 @MainActor
 final class PRHubDiffSidewaysUITests: XCTestCase {
-    private static let textSizes = [
-        ("default", nil), ("largest", "UICTContentSizeCategoryAccessibilityXXXL"),
-    ]
-
     private let app = XCUIApplication()
 
     /// Review alerts already declined: the offer came up over the PR on an iPad and took the tap meant for Review
@@ -19,58 +15,84 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    private static let largest = "UICTContentSizeCategoryAccessibilityXXXL"
+
+    // One launch a test: each text size is its own test, so a slow or failed size fails alone and the next starts
+    // from a fresh app.
+
     /// Where everything is once the finger lifts. XCUITest can't look while the finger is down, where a bounce shows:
     /// that is `DiffTableEdgeTests`' and the recording's.
     func testASwipeRightAtTheLeftEdgeMovesNothing() throws {
-        for (name, textSize) in Self.textSizes {
-            try openKeyLineNote(textSize: textSize)
-            let before = Positions(app)
-            try picture("diff-sideways-\(name)-1-open")
+        try swipeRightAtTheLeftEdge("default", textSize: nil)
+    }
 
-            drag(from: 0.3, by: 200, holding: 0.5)
-            try picture("diff-sideways-\(name)-2-swiped-right")
-            let after = Positions(app)
-            XCTAssertEqual(after.line, before.line, "\(name): the code's first line stays at the left edge")
-            XCTAssertEqual(after.header, before.header, "\(name): the header's path stays where it was")
-            XCTAssertEqual(after.viewed, before.viewed, "\(name): the header's viewed mark stays where it was")
-            XCTAssertTrue(after.isNoteInside, "\(name): the note is inside the screen, \(after.note)")
-        }
+    func testASwipeRightAtTheLeftEdgeMovesNothingInTheLargestText() throws {
+        try swipeRightAtTheLeftEdge("largest", textSize: Self.largest)
     }
 
     /// Read halfway along a long line: the code has moved, the header and the note have not.
     func testTheHeaderAndTheNoteStayWhileTheCodeScrolls() throws {
-        for (name, textSize) in Self.textSizes {
-            try openKeyLineNote(textSize: textSize)
-            let before = drag(from: 0.6, by: -150, holding: 0.3, bringingUpCode: true)
-            try picture("diff-sideways-\(name)-3-scrolled-left")
-            let after = Positions(app)
-            if isWide, after.line.minX == before.line.minX {
-                XCTContext.runActivity(named: "\(name): the code fits this width; nothing to scroll") { _ in }
-                continue
-            }
-            XCTAssertLessThan(after.line.minX, before.line.minX, "\(name): the code scrolled sideways")
-            XCTAssertEqual(after.header, before.header, "\(name): the header's path did not move")
-            XCTAssertEqual(after.viewed, before.viewed, "\(name): the header's viewed mark did not move")
-            XCTAssertTrue(after.isNoteInside, "\(name): the note is inside the screen, \(after.note)")
-        }
+        try headerAndNoteStay("default", textSize: nil)
+    }
+
+    func testTheHeaderAndTheNoteStayWhileTheCodeScrollsInTheLargestText() throws {
+        try headerAndNoteStay("largest", textSize: Self.largest)
     }
 
     /// A long path at Jai's text size and the largest: pictures of how much of it the header shows. Whether the whole
     /// file name fits is `DiffFileHeaderTests`'s: the label's text is the whole path either way.
-    func testALongPathAtBigTextSizes() throws {
-        for (name, textSize) in [("xxxl", "UICTContentSizeCategoryXXXL")] + Self.textSizes {
-            app.launch(
-                ["-PRHubPaired", "-PRHubLongDiff"] + Self.noAlertsOffer
-                    + (textSize.map { ["-UIPreferredContentSizeCategoryName", $0] } ?? []),
-                appearance: .light
-            )
-            openPR("Give the deploy team access to staging")
-            let diff = app.buttons["pr-files-changed"]
-            XCTAssertTrue(app.reveal(diff), "Files changed, under the PR's summary")
-            diff.tap()
-            XCTAssertTrue(app.buttons["file-header-0"].waitForExistence(timeout: 5))
-            try picture("diff-sideways-long-path-\(name)")
+    func testALongPathAtTheDefaultTextSize() throws {
+        try longPath("default", textSize: nil)
+    }
+
+    func testALongPathAtXXXLText() throws {
+        try longPath("xxxl", textSize: "UICTContentSizeCategoryXXXL")
+    }
+
+    func testALongPathInTheLargestText() throws {
+        try longPath("largest", textSize: Self.largest)
+    }
+
+    private func swipeRightAtTheLeftEdge(_ name: String, textSize: String?) throws {
+        try openKeyLineNote(textSize: textSize)
+        let before = Positions(app)
+        try picture("diff-sideways-\(name)-1-open")
+
+        drag(from: 0.3, by: 200, holding: 0.5)
+        try picture("diff-sideways-\(name)-2-swiped-right")
+        let after = Positions(app)
+        XCTAssertEqual(after.line, before.line, "\(name): the code's first line stays at the left edge")
+        XCTAssertEqual(after.header, before.header, "\(name): the header's path stays where it was")
+        XCTAssertEqual(after.viewed, before.viewed, "\(name): the header's viewed mark stays where it was")
+        XCTAssertTrue(after.isNoteInside, "\(name): the note is inside the screen, \(after.note)")
+    }
+
+    private func headerAndNoteStay(_ name: String, textSize: String?) throws {
+        try openKeyLineNote(textSize: textSize)
+        let before = drag(from: 0.6, by: -150, holding: 0.3, bringingUpCode: true)
+        try picture("diff-sideways-\(name)-3-scrolled-left")
+        let after = Positions(app)
+        if isWide, after.line.minX == before.line.minX {
+            throw XCTSkip("\(name): the code fits this width; nothing to scroll")
         }
+        XCTAssertLessThan(after.line.minX, before.line.minX, "\(name): the code scrolled sideways")
+        XCTAssertEqual(after.header, before.header, "\(name): the header's path did not move")
+        XCTAssertEqual(after.viewed, before.viewed, "\(name): the header's viewed mark did not move")
+        XCTAssertTrue(after.isNoteInside, "\(name): the note is inside the screen, \(after.note)")
+    }
+
+    private func longPath(_ name: String, textSize: String?) throws {
+        app.launch(
+            ["-PRHubPaired", "-PRHubLongDiff"] + Self.noAlertsOffer
+                + (textSize.map { ["-UIPreferredContentSizeCategoryName", $0] } ?? []),
+            appearance: .light
+        )
+        openPR("Give the deploy team access to staging")
+        let diff = app.buttons["pr-files-changed"]
+        XCTAssertTrue(app.reveal(diff), "Files changed, under the PR's summary")
+        diff.tap()
+        XCTAssertTrue(app.buttons["file-header-0"].waitForExistence(timeout: 5))
+        try picture("diff-sideways-long-path-\(name)")
     }
 
     /// An iPad's regular width: the list beside the PR, and the code maybe narrow enough to fit.

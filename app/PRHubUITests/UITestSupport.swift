@@ -95,8 +95,8 @@ extension XCUIApplication {
             if notNow.exists {
                 notNow.tap()
             }
-            let top = navigationBars.firstMatch.exists ? navigationBars.firstMatch.frame.maxY : 0
-            if element.exists, element.frame.maxY > 0, element.frame.midY < top {
+            let top = bars.top
+            if element.exists, case let place = element.frame, place.maxY > 0, place.midY < top {
                 swipeDown(velocity: .slow)
             } else {
                 swipeUp(velocity: .slow)
@@ -123,9 +123,8 @@ extension XCUIApplication {
         guard element.exists, element.isHittable else {
             return false
         }
-        let top = navigationBars.firstMatch.exists ? navigationBars.firstMatch.frame.maxY : 0
-        let bottom = tabBars.firstMatch.exists ? tabBars.firstMatch.frame.minY : frame.maxY
-        return element.frame.midY > top && element.frame.midY < bottom
+        let bars = bars, place = element.frame
+        return place.midY > bars.top && place.midY < bars.bottom
     }
 
     /// On screen and out from under the nav bar and the tab bar, which take a tap meant for what scrolls under them.
@@ -133,8 +132,21 @@ extension XCUIApplication {
         guard element.exists, element.isHittable else {
             return false
         }
-        let top = navigationBars.firstMatch.exists ? navigationBars.firstMatch.frame.maxY : 0
-        let bottom = tabBars.firstMatch.exists ? tabBars.firstMatch.frame.minY : frame.maxY
-        return element.frame.minY >= top && element.frame.maxY <= bottom
+        let bars = bars, place = element.frame
+        return place.minY >= bars.top && place.maxY <= bars.bottom
+    }
+
+    /// The band between the nav bar's foot and the tab bar's top, each bar looked up once. A regular width shows its
+    /// tabs at the top, outside any tab bar (`PRHubPlace`), so it has no tab bar to look for: looking for one that is
+    /// not there reads the whole screen, and in the largest text over a long diff each look took up to a minute until
+    /// XCTest gave up (CI's iPad, 2026-11-17).
+    private var bars: (top: CGFloat, bottom: CGFloat) {
+        let navigationBar = navigationBars.firstMatch
+        let top = navigationBar.exists ? navigationBar.frame.maxY : 0
+        guard windows.firstMatch.horizontalSizeClass != .regular else {
+            return (top, frame.maxY)
+        }
+        let tabBar = tabBars.firstMatch
+        return (top, tabBar.exists ? tabBar.frame.minY : frame.maxY)
     }
 }

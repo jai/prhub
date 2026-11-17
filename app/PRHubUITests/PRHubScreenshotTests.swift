@@ -17,45 +17,163 @@ final class PRHubScreenshotTests: XCTestCase {
         continueAfterFailure = false
     }
 
-    /// A look a test: together they are the suite's longest walk (10 minutes on CI's iPhone, 19 on its iPad), so
-    /// it is three tests.
-    func testEveryScreenInLight() throws {
-        try pictures(.light)
+    // One launch a test: each screen in each look is its own test. One walk of every screen a look took 19 minutes
+    // on CI's iPad, and one slow screen failed the whole look.
+
+    func testOnboardingInLight() throws {
+        try onboarding(.light)
     }
 
-    func testEveryScreenInDark() throws {
-        try pictures(.dark)
+    func testOnboardingInDark() throws {
+        try onboarding(.dark)
     }
 
-    func testEveryScreenInLargeText() throws {
-        try pictures(.largeText)
+    func testOnboardingInLargeText() throws {
+        try onboarding(.largeText)
     }
 
-    func testWideListSeparationInEveryLook() throws {
-        defer { XCUIDevice.shared.orientation = .portrait }
-        XCUIDevice.shared.orientation = .landscapeLeft
-        for look in Look.allCases {
-            launch(look, ["-PRHubPaired"])
-            let checkout = app.staticTexts["Show a retry button when checkout fails"]
-            XCTAssertTrue(checkout.waitForExistence(timeout: 10))
-            try picture("2-list-wide", look)
-            checkout.tap()
-            XCTAssertTrue(app.buttons["pr-review-changes"].waitForExistence(timeout: 5))
-            try picture("3-pr-wide", look)
-        }
+    func testTheSamplesWalkInLight() throws {
+        try samplesWalk(.light)
     }
 
-    /// The list under its "Not up to date" line. Jai saw the pull-to-refresh spinner and the line's words on top of
-    /// each other (2026-11-14); no synthesized pull refreshes the list in a UI test (three kinds tried, on both
-    /// devices), so that state is not pictured here.
-    func testListUnderItsNotUpToDateLineInEveryLook() throws {
-        for look in Look.allCases {
-            launch(look, ["-PRHubPaired", "-PRHubNotUpToDate"])
-            XCTAssertTrue(app.staticTexts["Show a retry button when checkout fails"].waitForExistence(timeout: 10))
-            let line = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Not up to date'")).firstMatch
-            XCTAssertTrue(line.waitForExistence(timeout: 5))
-            try picture("2-list-banner", look)
-        }
+    func testTheSamplesWalkInDark() throws {
+        try samplesWalk(.dark)
+    }
+
+    func testTheSamplesWalkInLargeText() throws {
+        try samplesWalk(.largeText)
+    }
+
+    func testSettingsInLight() throws {
+        try settings(.light)
+    }
+
+    func testSettingsInDark() throws {
+        try settings(.dark)
+    }
+
+    func testSettingsInLargeText() throws {
+        try settings(.largeText)
+    }
+
+    func testOnboardingEveryWayInInLight() throws {
+        try onboardingEveryWayIn(.light)
+    }
+
+    func testOnboardingEveryWayInInDark() throws {
+        try onboardingEveryWayIn(.dark)
+    }
+
+    func testOnboardingEveryWayInInLargeText() throws {
+        try onboardingEveryWayIn(.largeText)
+    }
+
+    func testARefusedSignInInLight() throws {
+        try signInRefused(.light)
+    }
+
+    func testARefusedSignInInDark() throws {
+        try signInRefused(.dark)
+    }
+
+    func testARefusedSignInInLargeText() throws {
+        try signInRefused(.largeText)
+    }
+
+    func testAnAccountWithAKeyInLight() throws {
+        try accountKeySet(.light)
+    }
+
+    func testAnAccountWithAKeyInDark() throws {
+        try accountKeySet(.dark)
+    }
+
+    func testAnAccountWithAKeyInLargeText() throws {
+        try accountKeySet(.largeText)
+    }
+
+    func testAnAccountWithNoKeyAndDeleteAccountInLight() throws {
+        try accountNoKey(.light)
+    }
+
+    func testAnAccountWithNoKeyAndDeleteAccountInDark() throws {
+        try accountNoKey(.dark)
+    }
+
+    func testAnAccountWithNoKeyAndDeleteAccountInLargeText() throws {
+        try accountNoKey(.largeText)
+    }
+
+    func testSignInAgainInLight() throws {
+        try signInAgain(.light)
+    }
+
+    func testSignInAgainInDark() throws {
+        try signInAgain(.dark)
+    }
+
+    func testSignInAgainInLargeText() throws {
+        try signInAgain(.largeText)
+    }
+
+    func testTheEmptyListInLight() throws {
+        try emptyList(.light)
+    }
+
+    func testTheEmptyListInDark() throws {
+        try emptyList(.dark)
+    }
+
+    func testTheEmptyListInLargeText() throws {
+        try emptyList(.largeText)
+    }
+
+    func testGitHubAccessInLight() throws {
+        try githubAccess(.light)
+    }
+
+    func testGitHubAccessInDark() throws {
+        try githubAccess(.dark)
+    }
+
+    func testGitHubAccessInLargeText() throws {
+        try githubAccess(.largeText)
+    }
+
+    func testTheEmptyListOnNoAccountInLight() throws {
+        try emptyListNotInstalled(.light)
+    }
+
+    func testTheEmptyListOnNoAccountInDark() throws {
+        try emptyListNotInstalled(.dark)
+    }
+
+    func testTheEmptyListOnNoAccountInLargeText() throws {
+        try emptyListNotInstalled(.largeText)
+    }
+
+    func testTheWideListInLight() throws {
+        try wideList(.light)
+    }
+
+    func testTheWideListInDark() throws {
+        try wideList(.dark)
+    }
+
+    func testTheWideListInLargeText() throws {
+        try wideList(.largeText)
+    }
+
+    func testTheListUnderItsNotUpToDateLineInLight() throws {
+        try listBanner(.light)
+    }
+
+    func testTheListUnderItsNotUpToDateLineInDark() throws {
+        try listBanner(.dark)
+    }
+
+    func testTheListUnderItsNotUpToDateLineInLargeText() throws {
+        try listBanner(.largeText)
     }
 
     private func launch(_ look: Look, _ arguments: [String]) {
@@ -66,11 +184,14 @@ final class PRHubScreenshotTests: XCTestCase {
         )
     }
 
-    private func pictures(_ look: Look) throws {
+    private func onboarding(_ look: Look) throws {
         launch(look, ["-PRHubFirstRun"])
         XCTAssertTrue(app.buttons["onboardingSignIn"].waitForExistence(timeout: 10))
         try picture("1-onboarding", look)
+    }
 
+    /// The list, a PR and its grouped checks, its diff with the panel open, and on a key line under the review bar.
+    private func samplesWalk(_ look: Look) throws {
         launch(look, ["-PRHubPaired"])
         let checkout = app.staticTexts["Show a retry button when checkout fails"]
         XCTAssertTrue(checkout.waitForExistence(timeout: 10))
@@ -101,33 +222,39 @@ final class PRHubScreenshotTests: XCTestCase {
         // In the largest text the note ran down to the stepper (Xcode Cloud's picture, 2026-11-14): 2 pt apart.
         let stepper = app.buttons["key-line-next"]
         XCTAssertLessThanOrEqual(note.frame.maxY + 8, stepper.frame.minY, "the note is clear of the stepper")
+    }
 
+    private func settings(_ look: Look) throws {
         launch(look, ["-PRHubPaired", "-PRHubSettings"])
         XCTAssertTrue(app.staticTexts["prhub-worker-host"].waitForExistence(timeout: 10)
             || app.descendants(matching: .any)["prhub-worker-host"].waitForExistence(timeout: 5))
         try picture("5-settings", look)
-
-        try hostedPictures(look)
     }
 
-    private func hostedPictures(_ look: Look) throws {
+    private func onboardingEveryWayIn(_ look: Look) throws {
         launch(look, ["-PRHubFirstRun", "-PRHubSelfHosted", "YES"])
         let ownWorker = app.buttons["onboardingOwnWorker"]
         XCTAssertTrue(ownWorker.waitForExistence(timeout: 10))
         ownWorker.tap()
         XCTAssertTrue(app.buttons["onboardingScan"].waitForExistence(timeout: 5))
         try picture("6-onboarding-every-way-in", look)
+    }
 
+    private func signInRefused(_ look: Look) throws {
         launch(look, ["-PRHubFirstRun", "-PRHubSignInDenied"])
         app.buttons["onboardingSignIn"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["onboardingStatus"].waitForExistence(timeout: 5))
         try picture("7-sign-in-refused", look)
+    }
 
+    private func accountKeySet(_ look: Look) throws {
         launch(look, ["-PRHubHosted", "-PRHubSettings", "-PRHubAnthropicKey"])
         XCTAssertTrue(app.descendants(matching: .any)["prhub-account-login"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.scrollSettings(to: app.descendants(matching: .any)["prhub-anthropic-key-set"]))
         try picture("8-account-key-set", look)
+    }
 
+    private func accountNoKey(_ look: Look) throws {
         launch(look, ["-PRHubHosted", "-PRHubSettings"])
         XCTAssertTrue(app.descendants(matching: .any)["prhub-account-login"].waitForExistence(timeout: 10))
         // In the largest text a swipe can step past the field to the foot of Settings: back down to it, then.
@@ -143,32 +270,66 @@ final class PRHubScreenshotTests: XCTestCase {
         delete.tap()
         XCTAssertTrue(app.buttons["prhub-delete-account-confirm"].waitForExistence(timeout: 5))
         try picture("11-delete-account", look)
+    }
 
+    private func signInAgain(_ look: Look) throws {
         launch(look, ["-PRHubHosted", "-PRHubSignedOut"])
         XCTAssertTrue(app.descendants(matching: .any)["signedOutReason"].waitForExistence(timeout: 10))
         try picture("12-sign-in-again", look)
+    }
 
-        launch(look, ["-PRHubHosted", "-PRHubHostedEmpty"])
-        // The offer of review alerts comes first: the fake Worker pushes.
+    /// The offer of review alerts comes first over the hosted list: the fake Worker pushes.
+    private func declineAlertsOffer() {
         let notNow = app.buttons["Not now"]
         if notNow.waitForExistence(timeout: 5) {
             notNow.tap()
         }
+    }
+
+    private func emptyList(_ look: Look) throws {
+        launch(look, ["-PRHubHosted", "-PRHubHostedEmpty"])
+        declineAlertsOffer()
         XCTAssertTrue(app.descendants(matching: .any)["pr-empty-hint-link"].waitForExistence(timeout: 10))
         try picture("13-empty-list", look)
+    }
 
+    private func githubAccess(_ look: Look) throws {
         launch(look, ["-PRHubHosted", "-PRHubSettings"])
         let access = app.descendants(matching: .any)["github-access-add-account"]
         XCTAssertTrue(access.waitForExistence(timeout: 10))
         XCTAssertTrue(app.scrollSettings(to: access))
         try picture("14-github-access", look)
+    }
 
+    private func emptyListNotInstalled(_ look: Look) throws {
         launch(look, ["-PRHubHosted", "-PRHubHostedEmpty", "-PRHubInstallations", "none"])
-        if notNow.waitForExistence(timeout: 5) {
-            notNow.tap()
-        }
+        declineAlertsOffer()
         XCTAssertTrue(app.descendants(matching: .any)["pr-empty-hint-link"].waitForExistence(timeout: 10))
         try picture("15-empty-list-not-installed", look)
+    }
+
+    /// The list and a PR in landscape, where the list's rows stand apart.
+    private func wideList(_ look: Look) throws {
+        defer { XCUIDevice.shared.orientation = .portrait }
+        XCUIDevice.shared.orientation = .landscapeLeft
+        launch(look, ["-PRHubPaired"])
+        let checkout = app.staticTexts["Show a retry button when checkout fails"]
+        XCTAssertTrue(checkout.waitForExistence(timeout: 10))
+        try picture("2-list-wide", look)
+        checkout.tap()
+        XCTAssertTrue(app.buttons["pr-review-changes"].waitForExistence(timeout: 5))
+        try picture("3-pr-wide", look)
+    }
+
+    /// The list under its "Not up to date" line. Jai saw the pull-to-refresh spinner and the line's words on top of
+    /// each other (2026-11-14); no synthesized pull refreshes the list in a UI test (three kinds tried, on both
+    /// devices), so that state is not pictured here.
+    private func listBanner(_ look: Look) throws {
+        launch(look, ["-PRHubPaired", "-PRHubNotUpToDate"])
+        XCTAssertTrue(app.staticTexts["Show a retry button when checkout fails"].waitForExistence(timeout: 10))
+        let line = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Not up to date'")).firstMatch
+        XCTAssertTrue(line.waitForExistence(timeout: 5))
+        try picture("2-list-banner", look)
     }
 
     private func picture(_ step: String, _ look: Look) throws {

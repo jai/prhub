@@ -6,35 +6,94 @@ import XCTest
 /// `SCREENSHOTS_DIR` when set.
 @MainActor
 final class PRHubDiffFontUITests: XCTestCase {
-    private static let fonts = [
-        "system:9", "system:12", "system:20", "sourceCodePro:12", "jetBrainsMono:16", "firaCode:9",
-        "ibmPlexMono:20", "menlo:12", "courierNew:14",
-    ]
-
     private let app = XCUIApplication()
 
     override func setUp() {
         continueAfterFailure = false
     }
 
-    /// One test per appearance: together they launch the app 18 times, which took up to 8 minutes, and on a slow CI Mac
-    /// the one test that did both was killed at 8 minutes (issue #56). A slice is no shorter than its longest test.
-    func testTheDiffInEveryFontAndSizeLight() throws {
-        try diffInEveryFontAndSize(.light)
+    // One launch a test: each font in each appearance is its own test. Two tests of nine launches each took up to
+    // 8 minutes, and a slow CI Mac killed one (issue #56).
+
+    func testTheDiffInSystem9Light() throws {
+        try diff(in: "system:9", .light)
     }
 
-    func testTheDiffInEveryFontAndSizeDark() throws {
-        try diffInEveryFontAndSize(.dark)
+    func testTheDiffInSystem12Light() throws {
+        try diff(in: "system:12", .light)
     }
 
-    private func diffInEveryFontAndSize(_ appearance: XCUIDevice.Appearance) throws {
-        for font in Self.fonts {
-            openDiff(font: font, appearance: appearance)
-            let viewed = app.buttons["file-viewed-0"]
-            XCTAssertGreaterThanOrEqual(viewed.frame.width, 44, "\(font): the viewed mark's target")
-            XCTAssertGreaterThanOrEqual(viewed.frame.height, 44, "\(font): the viewed mark's target")
-            try picture("diff-font-\(font.replacingOccurrences(of: ":", with: "-"))-\(name(appearance))")
-        }
+    func testTheDiffInSystem20Light() throws {
+        try diff(in: "system:20", .light)
+    }
+
+    func testTheDiffInSourceCodePro12Light() throws {
+        try diff(in: "sourceCodePro:12", .light)
+    }
+
+    func testTheDiffInJetBrainsMono16Light() throws {
+        try diff(in: "jetBrainsMono:16", .light)
+    }
+
+    func testTheDiffInFiraCode9Light() throws {
+        try diff(in: "firaCode:9", .light)
+    }
+
+    func testTheDiffInIbmPlexMono20Light() throws {
+        try diff(in: "ibmPlexMono:20", .light)
+    }
+
+    func testTheDiffInMenlo12Light() throws {
+        try diff(in: "menlo:12", .light)
+    }
+
+    func testTheDiffInCourierNew14Light() throws {
+        try diff(in: "courierNew:14", .light)
+    }
+
+    func testTheDiffInSystem9Dark() throws {
+        try diff(in: "system:9", .dark)
+    }
+
+    func testTheDiffInSystem12Dark() throws {
+        try diff(in: "system:12", .dark)
+    }
+
+    func testTheDiffInSystem20Dark() throws {
+        try diff(in: "system:20", .dark)
+    }
+
+    func testTheDiffInSourceCodePro12Dark() throws {
+        try diff(in: "sourceCodePro:12", .dark)
+    }
+
+    func testTheDiffInJetBrainsMono16Dark() throws {
+        try diff(in: "jetBrainsMono:16", .dark)
+    }
+
+    func testTheDiffInFiraCode9Dark() throws {
+        try diff(in: "firaCode:9", .dark)
+    }
+
+    func testTheDiffInIbmPlexMono20Dark() throws {
+        try diff(in: "ibmPlexMono:20", .dark)
+    }
+
+    func testTheDiffInMenlo12Dark() throws {
+        try diff(in: "menlo:12", .dark)
+    }
+
+    func testTheDiffInCourierNew14Dark() throws {
+        try diff(in: "courierNew:14", .dark)
+    }
+
+    /// The diff in `font`: the viewed mark is a 44 pt target, and a picture.
+    private func diff(in font: String, _ appearance: XCUIDevice.Appearance) throws {
+        openDiff(font: font, appearance: appearance)
+        let viewed = app.buttons["file-viewed-0"]
+        XCTAssertGreaterThanOrEqual(viewed.frame.width, 44, "\(font): the viewed mark's target")
+        XCTAssertGreaterThanOrEqual(viewed.frame.height, 44, "\(font): the viewed mark's target")
+        try picture("diff-font-\(font.replacingOccurrences(of: ":", with: "-"))-\(name(appearance))")
     }
 
     /// The mark takes its own tap: the file doesn't fold under it, and nothing in the header moves. (Over these
