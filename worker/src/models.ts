@@ -409,9 +409,9 @@ export interface AiJob {
  * ever. The built-in default keeps the name from before the choice existed, so answers made then are still found.
  */
 export function aiKey({ kind, repo, number, head, context, choice }: AiJob): string {
-  // v3: key lines with the PR's summary and its ticket's requirements; answers kept before it are made again when next
-  // asked for.
-  const name = kind === "key_lines" ? `key-lines-v3-${context}` : "rewrite";
+  // v4: key lines with the PR's summary, its ticket's requirements and whether its description reads as AI slop; answers
+  // kept before it are made again when next asked for.
+  const name = kind === "key_lines" ? `key-lines-v4-${context}` : "rewrite";
   const model =
     choice && !sameChoice(choice, BUILT_IN_DEFAULTS[kind])
       ? `-${choice.model}-${choice.effort}`

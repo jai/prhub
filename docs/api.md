@@ -397,8 +397,13 @@ so answers made then are still served. An answer made before then has no `model`
 
 A key lines answer also has `summary`: `risk` (`low`, `medium`, `high`), `riskWhy` (one sentence), `points` (3 to 5
 bullets: what the PR does), `bugs` (`{path, line, side, why}`, each at a line the diff shows; empty when none was
-found) and `requirements`. Answers are kept under `key-lines-v3-<context>`: one made before `requirements` is made
+found), `requirements` and `slop`. Answers are kept under `key-lines-v4-<context>`: one made before `slop` is made
 again when next asked for.
+
+**AI slop.** `slop` is `{isSlop, tells}`: whether the PR's title and description read as unedited AI writing (hype
+words, "This PR ..." openers, file-by-file boilerplate, emoji headings, em-dash chains). `tells` is 1 to 4 short
+bullets naming what the model saw when `isSlop` is true, and empty when it is false. The same model call makes it, so
+it costs no extra request. The app shows a red "AI trash" chip on the PR's page when `isSlop` is true.
 
 **Requirements.** `requirements` is `{state, tickets, gaps}`: whether the PR does what its Linear ticket asks. The
 Worker reads the keys its title, branch and description name (as for `tickets`) and asks Linear, with the person's

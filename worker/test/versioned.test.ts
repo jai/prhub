@@ -192,6 +192,7 @@ const SUMMARY = {
   riskWhy: "Small and tested.",
   points: ["One", "Two", "Three", "Four", "Five", "Six"],
   bugs: [{ path: "x", line: 99, side: "RIGHT", why: "Off by one." }],
+  slop: { isSlop: false, tells: ["ignored"] },
 };
 
 test("on the subscription, key lines come from the Agent SDK container, never the API", async () => {
@@ -241,11 +242,14 @@ test("on the subscription, key lines come from the Agent SDK container, never th
   assert.deepEqual(stored.items, []);
   assert.equal(stored.costCents, 1.23);
   const summary = (
-    stored as unknown as { summary: { points: string[]; bugs: unknown[]; risk: string } }
+    stored as unknown as {
+      summary: { points: string[]; bugs: unknown[]; risk: string; slop: unknown };
+    }
   ).summary;
   assert.equal(summary.risk, "low");
   assert.equal(summary.points.length, 5, "five points at most");
   assert.deepEqual(summary.bugs, [], "a bug at a line the diff doesn't show is dropped");
+  assert.deepEqual(summary.slop, { isSlop: false, tells: [] }, "no tells when it isn't slop");
   assert.deepEqual(others, [], "the API was never asked");
 });
 

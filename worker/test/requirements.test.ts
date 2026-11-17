@@ -7,7 +7,13 @@ import type { Sha } from "../src/ids.ts";
 import type { AiJob } from "../src/models.ts";
 
 const HEAD = "c".repeat(40) as Sha;
-const SUMMARY = { risk: "low" as const, riskWhy: "Small.", points: ["One"], bugs: [] };
+const SUMMARY = {
+  risk: "low" as const,
+  riskWhy: "Small.",
+  points: ["One"],
+  bugs: [],
+  slop: { isSlop: false, tells: [] },
+};
 
 test("one ticket: fits is a tick with no gaps, a mismatch keeps up to four gaps", () => {
   const one = { keys: ["CORE-12"], text: "CORE-12: Sync holidays" };
@@ -32,6 +38,19 @@ test("more than one ticket says so and is not checked; none, or no answer, says 
   });
   assert.equal(summaryOf(SUMMARY, [], { keys: [], text: null }).requirements, undefined);
   assert.equal(summaryOf(SUMMARY, [], { keys: ["CORE-12"], text: "t" }).requirements, undefined);
+});
+
+test("AI slop keeps up to four tells; a description that isn't slop has none", () => {
+  const none = { keys: [], text: null };
+  const tells = [" Hype: 'seamless' ", "", "B", "C", "D", "E"];
+  assert.deepEqual(summaryOf({ ...SUMMARY, slop: { isSlop: true, tells } }, [], none).slop, {
+    isSlop: true,
+    tells: ["Hype: 'seamless'", "B", "C", "D"],
+  });
+  assert.deepEqual(summaryOf({ ...SUMMARY, slop: { isSlop: false, tells } }, [], none).slop, {
+    isSlop: false,
+    tells: [],
+  });
 });
 
 const realFetch = globalThis.fetch;
