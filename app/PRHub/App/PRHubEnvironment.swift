@@ -2,6 +2,7 @@ import DurableNetworking
 import FeatureKit
 import Foundation
 import Observation
+import PRKit
 
 /// PRHub's composition root: the PR screens, the Worker they talk to, and the way in between. Every request goes to the
 /// URL the setup link or Sign in with GitHub gave, with this phone's device secret or session secret as the bearer
@@ -351,5 +352,19 @@ extension WorkerConnection.Hosted {
             setLinearKey: { try await account.setLinearKey($0) },
             removeLinearKey: { try await account.removeLinearKey() }
         )
+    }
+}
+
+extension PRHubEnvironment {
+    /// The sample environment owns its own navigation and PR sessions; a PR link never ends the samples.
+    @discardableResult
+    func openPullRequestLink(_ url: URL) -> Bool {
+        guard let destination = PRHubOpenLink(url) else {
+            return false
+        }
+        let active = sample ?? self
+        active.prs.open(destination.link)
+        active.navigation.selectedTab = .prs
+        return true
     }
 }

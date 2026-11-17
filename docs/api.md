@@ -41,6 +41,10 @@ its overview. PRHub selects its PRs tab. The current samples stay open when the 
 Malformed handoffs, non-PR URLs, extra query items and duplicate `url` items do nothing. Settings and setup links keep
 their separate routes. A caller should try this custom URL first and, if the system cannot open PRHub, try the original
 GitHub URL as an app-only universal link, then open that URL normally in the browser.
+PRHub is also in the iPhone and iPad share sheet for a link (the `PRHubShare` extension). Sharing a GitHub PR link to
+it, from the GitHub app or Safari, opens PRHub with the same `prhub-pr://open` handoff; any other link shows a short
+note and changes nothing.
+
 The dedicated `prhub-pr` scheme is registered by this receiving app version. Older PRHub versions register only
 `prhub`, so the caller falls back instead of opening an older app that would ignore the PR route.
 

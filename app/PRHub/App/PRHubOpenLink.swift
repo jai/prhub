@@ -1,5 +1,5 @@
 import Foundation
-import PRKit
+import PRKitCore
 
 /// A PR handed to PRHub by another app. Keep the original GitHub URL as well as the page PRKit opens.
 struct PRHubOpenLink: Equatable, Sendable {
@@ -24,18 +24,19 @@ struct PRHubOpenLink: Equatable, Sendable {
         self.url = url
         self.link = link
     }
-}
 
-extension PRHubEnvironment {
-    /// The sample environment owns its own navigation and PR sessions; a PR link never ends the samples.
-    @discardableResult
-    func openPullRequestLink(_ url: URL) -> Bool {
-        guard let destination = PRHubOpenLink(url) else {
-            return false
+    /// Characters a query value keeps as they are: the URL's own `&`, `=`, `?` and `#` are encoded, so it stays one item.
+    private static let unreserved = CharacterSet(charactersIn:
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+
+    /// The `prhub-pr://open` handoff for a GitHub PR URL, as the share extension sends it. Nil when PRHub would not
+    /// open it: the same rules as an incoming handoff.
+    static func handoff(for target: URL) -> URL? {
+        guard let value = target.absoluteString.addingPercentEncoding(withAllowedCharacters: unreserved),
+              let url = URL(string: "prhub-pr://open?url=\(value)"), PRHubOpenLink(url) != nil
+        else {
+            return nil
         }
-        let active = sample ?? self
-        active.prs.open(destination.link)
-        active.navigation.selectedTab = .prs
-        return true
+        return url
     }
 }

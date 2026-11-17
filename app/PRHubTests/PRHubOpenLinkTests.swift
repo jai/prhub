@@ -53,6 +53,27 @@ struct PRHubOpenLinkTests {
         #expect(try PRHubOpenLink(#require(URL(string: text))) == nil)
     }
 
+    @Test(arguments: [
+        "https://github.com/acme/web/pull/412",
+        "https://github.com/acme/web/pull/412/files?w=1&diff=split#diff-abcR12",
+    ])
+    func aSharedPullRequestLinkBecomesTheHandoffForTheSameURL(_ target: String) throws {
+        let shared = try #require(URL(string: target))
+        let handoff = try #require(PRHubOpenLink.handoff(for: shared))
+        #expect(handoff.scheme == "prhub-pr")
+        #expect(try #require(PRHubOpenLink(handoff)).url.absoluteString == target)
+    }
+
+    @Test(arguments: [
+        "https://github.com/acme/web/issues/412",
+        "https://example.com/acme/web/pull/412",
+        "http://github.com/acme/web/pull/412",
+    ])
+    func aSharedLinkThatIsNotAPullRequestHasNoHandoff(_ target: String) throws {
+        let shared = try #require(URL(string: target))
+        #expect(PRHubOpenLink.handoff(for: shared) == nil)
+    }
+
     @MainActor @Test func aHandoffSelectsThePRsTabAndOpensItsDiff() throws {
         let environment = PRHubEnvironment.sample()
         environment.navigation.selectedTab = .settings

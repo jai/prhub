@@ -130,6 +130,8 @@ targets:
         product: PostHog
       - target: PRHubNotifications
         destinationFilters: [iOS]
+      - target: PRHubShare
+        destinationFilters: [iOS]
     scheme:
       # The UI tests come only from this plan (docs/workflow.md). The unit tests are `swift test` (Package.swift).
       testPlans:
@@ -180,6 +182,40 @@ targets:
       - package: PRKit
         product: PRKitCore
       - package: DurableNetworking
+
+  # The Share Extension: PRHub in the share sheet for a link. A GitHub PR link opens in the app through its
+  # `prhub-pr://open` handoff (docs/api.md, "Opening a pull request in PRHub").
+  PRHubShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: PRHubShare
+        excludes:
+          - "Info.plist"
+      # The handoff's rules, the same as the app's.
+      - path: PRHub/App/PRHubOpenLink.swift
+    info:
+      path: PRHubShare/Info.plist
+      properties:
+        CFBundleDisplayName: PRHub
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jaigovindani.prreview.share
+        PRODUCT_NAME: PRHubShare
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+        APPLICATION_EXTENSION_API_ONLY: YES
+    dependencies:
+      - package: PRKit
+        product: PRKitCore
 
   # The app in sample mode: onboarding, the lists, a PR, its diff and key lines, Settings. No Worker, no secrets.
   PRHubUITests:
