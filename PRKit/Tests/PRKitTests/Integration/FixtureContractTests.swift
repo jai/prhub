@@ -23,6 +23,7 @@ struct FixtureContractTests {
         #expect(row.listPullRequest.author == "alex")
         #expect(row.ticket?.key == "ENG-7" && row.ticket?.found == true)
         #expect(row.ticket?.stateText == "In Progress" && row.ticket?.stateColor == "#f2c94c")
+        #expect(row.ticket?.assignee == "Alex Doe" && row.tickets?.first?.assignee == "Alex Doe")
     }
 
     @Test func aMergedRowDecodes() throws {

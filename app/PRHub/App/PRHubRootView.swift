@@ -129,7 +129,16 @@ private struct PRHubTabs: View {
             .alertsOffer(environment.alertPermission)
             .updateOffer(environment.update)
             .environment(\.loadsAuthorAvatars, !environment.isSample)
+            .environment(\.connectLinear, connectLinear)
             .recordsScreen(environment.navigation.selectedTab.analyticsScreen, environment.usage)
+    }
+
+    /// A hosted account without Linear: a PR's ticket says to connect it, and opens Settings at Linear.
+    private var connectLinear: ConnectLinear? {
+        guard environment.connection.config?.offersLinearConnection == true else {
+            return nil
+        }
+        return ConnectLinear { [navigation = environment.navigation] in navigation.showLinearSettings() }
     }
 
     /// The phone's tab bar; the Mac's window is the PRs, with Settings a window of its own (`PRHubMacSettings`).

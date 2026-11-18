@@ -2,39 +2,72 @@ import PRKitCore
 import PRKitDesign
 import SwiftUI
 
-/// A ticket on one line: Linear's mark, the key, the title in what room is left, and where it stands, always at the right
-/// edge. It is how a ticket looks wherever it supports something else.
+/// A ticket on one line: Linear's mark, the key, the title in what room is left, then who owns it and where it stands,
+/// always at the right edge. It is how a ticket looks wherever it supports something else.
 public struct TicketLine: View {
     public let ticket: PRListTicket
     /// Whether a ticket Linear hasn't answered for is still being looked up (a list's hub resolves it) and says so. A
     /// PR's page has the Worker's last word: there, unanswered means no Linear to ask, and the line is the key alone.
     public var awaitsLinear = true
+    /// Whether an unanswered ticket says why and what to do: the person hasn't connected Linear (`connectLinear`).
+    public var asksToConnectLinear = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    public init(ticket: PRListTicket, awaitsLinear: Bool = true) {
+    public init(ticket: PRListTicket, awaitsLinear: Bool = true, asksToConnectLinear: Bool = false) {
         self.ticket = ticket
         self.awaitsLinear = awaitsLinear
+        self.asksToConnectLinear = asksToConnectLinear
     }
+
+    public static let connectLinearWords = "Connect Linear to see this ticket"
 
     public var body: some View {
         HStack(spacing: Space.sm) {
             LinearMark()
             Text(ticket.key)
                 .fixedSize()
-            if let title = ticket.title, dynamicTypeSize < .xxLarge {
-                Text(title)
+            if asksToConnectLinear, ticket.found == nil {
+                Text(Self.connectLinearWords)
                     .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            if awaitsLinear || ticket.found != nil {
-                Text(ticket.stateText)
-                    .fixedSize()
-                LinearStateCircle(ticket: ticket)
+                Spacer(minLength: 0)
+            } else {
+                if let title = ticket.title, dynamicTypeSize < .xxLarge {
+                    Text(title)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                // The owner by first name, so the title keeps its room; it gives way after the title, and goes with it
+                // at xxLarge and up.
+                if let assignee = ticket.assignee, ticket.found == true, dynamicTypeSize < .xxLarge {
+                    Text(ticket.ownerShortName ?? assignee)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                        .accessibilityLabel("Assigned to \(assignee)")
+                }
+                if awaitsLinear || ticket.found != nil {
+                    Text(ticket.stateText)
+                        .fixedSize()
+                    LinearStateCircle(ticket: ticket)
+                }
             }
         }
         .font(.appCaption)
         .foregroundStyle(Color.secondary)
     }
+}
+
+/// What a ticket Linear wasn't asked about opens instead of Linear: where the person connects Linear. Set by an app
+/// whose person can connect Linear and hasn't (PRHub's hosted account); nil everywhere else, and the line is the key.
+public struct ConnectLinear: Sendable {
+    public let open: @MainActor @Sendable () -> Void
+
+    public init(open: @escaping @MainActor @Sendable () -> Void) {
+        self.open = open
+    }
+}
+
+public extension EnvironmentValues {
+    @Entry var connectLinear: ConnectLinear?
 }
 
 /// A PR or ticket that something else names, and the page it opens: what a thread's row folds in under it and what a
@@ -68,23 +101,49 @@ public struct ObjectReference: Equatable, Sendable {
 public struct ObjectReferenceLine: View {
     public let reference: ObjectReference
     public var awaitsLinear = true
+    @Environment(\.connectLinear) private var connectLinear
 
     public init(reference: ObjectReference, awaitsLinear: Bool = true) {
         self.reference = reference
         self.awaitsLinear = awaitsLinear
     }
 
-    public var body: some View {
-        PrListLink(url: reference.url) {
-            Group {
-                switch reference.object {
-                case let .pullRequest(pullRequest): PullRequestLine(pullRequest: pullRequest)
-                case let .ticket(ticket): TicketLine(ticket: ticket, awaitsLinear: awaitsLinear)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(.rect)
+    /// A ticket the Worker had no Linear to ask about, where the person can connect Linear: the line says so and opens
+    /// that setting.
+    private var asksToConnectLinear: Bool {
+        guard connectLinear != nil, !awaitsLinear, case let .ticket(ticket) = reference.object else {
+            return false
         }
+        return ticket.found == nil
+    }
+
+    public var body: some View {
+        if asksToConnectLinear, let connectLinear {
+            Button {
+                connectLinear.open()
+            } label: {
+                line
+            }
+            .buttonStyle(.borderless)
+            .accessibilityHint("Opens Linear in Settings")
+            .accessibilityIdentifier("pr-ticket-connect-linear")
+        } else {
+            PrListLink(url: reference.url) {
+                line
+            }
+        }
+    }
+
+    private var line: some View {
+        Group {
+            switch reference.object {
+            case let .pullRequest(pullRequest): PullRequestLine(pullRequest: pullRequest)
+            case let .ticket(ticket):
+                TicketLine(ticket: ticket, awaitsLinear: awaitsLinear, asksToConnectLinear: asksToConnectLinear)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(.rect)
     }
 }
 

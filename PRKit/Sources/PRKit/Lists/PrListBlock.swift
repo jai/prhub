@@ -232,7 +232,8 @@ public struct PrListBlock: View {
                         }
                     }
                     if let ticket = item.ticket {
-                        Text("\(ticket.key) · \(ticket.stateText)")
+                        Text(([ticket.key] + (ticket.found == true ? [ticket.ownerShortName] : []).compactMap(\.self)
+                                + [ticket.stateText]).joined(separator: " · "))
                             .font(.appCaption)
                             .foregroundStyle(Color.secondary)
                             .lineLimit(1)

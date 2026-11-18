@@ -282,10 +282,14 @@ checked on every run: [`row.json`](../PRKit/Tests/PRContractFixtures/Fixtures/ro
 - A detail's `tickets` are the Linear issues its title names in brackets (`[ENG-1686] [CORE-12]`, `[ENG-1, CORE-2]`),
   then those its branch name names (`eng-1686-retry`, `alex/core-12`), then those its description links as Linear
   does (a magic word such as `Fixes`, `Closes` or `Part of` before keys or issue URLs, or a `linear.app/…/issue/KEY`
-  URL), each once, in a list ticket's shape: `key`, `url`, `title`, `state`, `state_type`, `state_color`, `found`. With
+  URL), each once, in a list ticket's shape: `key`, `url`, `title`, `state`, `state_type`, `state_color`, `assignee`
+  (the name of the person Linear assigns it to, null for no one), `found`. With
   `LINEAR_API_KEY` the Worker asks Linear when it reads the PR: a title's key Linear has no issue for is
   `found: false`, and a key only the branch or description names shows only once Linear has it. Without the key, or
   when Linear does not answer, `found` is null and only the title's keys show.
+  On the hosted Worker the key is the account's own (`account.linear_key` in `/device/config`): until it connects
+  Linear, the app draws such a key as "Connect Linear to see this ticket", which opens Settings. A ticket stored
+  before `assignee` was sent reads as `assignee: null` until Linear is asked again within the hour.
 - A `GET /prs` row's `tickets` are every ticket its title names that Linear has (`found: true`), in the title's order;
   with none from the title, the first its branch or description names that Linear has; in the same shape. Its
   `ticket` is the first of them, for an app older than `tickets`. Empty and null without a Linear connection or while Linear does not answer. Hosted accounts use their own key only. The index

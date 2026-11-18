@@ -45,6 +45,18 @@ struct PRListDecodeTests {
         #expect(none.ticket == nil)
     }
 
+    @Test func aTicketsOwnerDecodesAndAnOlderWorkersTicketHasNone() throws {
+        let owned = #"{"key": "ENG-7", "url": null, "title": "Retry", "state": "Todo", "state_type": "unstarted", "#
+            + #""state_color": null, "assignee": "Alex Doe", "found": true}"#
+        let ticket = try JSONDecoder().decode(PRListTicket.self, from: Data(owned.utf8))
+        #expect(ticket.assignee == "Alex Doe" && ticket.ownerShortName == "Alex")
+        #expect(try JSONDecoder().decode(PRListTicket.self, from: JSONEncoder().encode(ticket)) == ticket)
+        let older = #"{"key": "ENG-7", "url": null, "title": "Retry", "state": "Todo", "found": true}"#
+        #expect(try JSONDecoder().decode(PRListTicket.self, from: Data(older.utf8)).assignee == nil)
+        let nobody = #"{"key": "ENG-7", "assignee": null, "found": true}"#
+        #expect(try JSONDecoder().decode(PRListTicket.self, from: Data(nobody.utf8)).ownerShortName == nil)
+    }
+
     static func ticket(_ key: String) -> PRListTicket {
         PRListTicket(key: key, title: key, state: "Todo", stateType: "unstarted", found: true)
     }

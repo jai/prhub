@@ -5,7 +5,7 @@
   "head": "504754b2bc3ce5db892dde980e4bc83b60ff7a68",
   "revision": "504754b2bc3ce5db892dde980e4bc83b60ff7a68-main",
   "diff": "ready",
-  "detail": "2026-11-06T09:30:00Z.SUCCESS.b4b73ec354cb1fc7",
+  "detail": "2026-11-06T09:30:00Z.SUCCESS.6b47c69f78c90c25",
   "status": {
     "list": "review",
     "author": "alex",
@@ -26,6 +26,7 @@
     "state": "In Progress",
     "state_type": "started",
     "state_color": "#f2c94c",
+    "assignee": "Alex Doe",
     "found": true
   },
   "tickets": [
@@ -36,6 +37,7 @@
       "state": "In Progress",
       "state_type": "started",
       "state_color": "#f2c94c",
+      "assignee": "Alex Doe",
       "found": true
     }
   ]

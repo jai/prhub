@@ -409,6 +409,7 @@ parts:
   mark:   { column: text + 16, holds: LinearMark, size: 16 }
   key:    { after: mark, font: appCaption, never truncates }
   title:  { after: key, font: appCaption, lines: 1, gives way first, gone at xxLarge and up }
+  owner:  { before: word, holds: "the first name of the person Linear assigns it to", font: appCaption, lines: 1, gives way after the title, gone at xxLarge and up, optional: true }
   word:   { before: circle, holds: Linear's state word, font: appCaption, never truncates }
   circle: { column: state, holds: LinearStateCircle }
 rules:
@@ -433,6 +434,8 @@ rules:
     the person it was opened for when the Worker found one: "Mona Lisa via hubot (bot)". The face is that person's.
   - Tickets are the title's (in brackets), then the branch's, then the description's, as the Worker sends them, with
     Linear's state where it could ask. Without Linear a ticket is its key alone: no "Resolving…" that never resolves.
+  - Without Linear on a hosted account that hasn't connected it, the key is followed by "Connect Linear to see this
+    ticket", and the line opens Settings at Linear. On a self-hosted Worker, the key alone.
   - AI trash shows only from key lines already on the phone, as the summary card does: the page never asks for them.
 antiPatterns:
   - A ticket key both in the title and on a ticket line.

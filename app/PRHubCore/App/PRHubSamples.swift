@@ -97,13 +97,14 @@ extension PRSampleSet {
     private static let checkoutTickets = """
     [{"key": "WEB-31", "url": "https://linear.app/acme/issue/WEB-31",
       "title": "Let shoppers retry a failed payment", "state": "In Review", "state_type": "started",
-      "state_color": "#0f783c", "found": true}]
+      "state_color": "#0f783c", "assignee": "Alex Doe", "found": true}]
     """
 
-    /// The two tickets the rate limit's title names, as the Worker has them from Linear.
+    /// The two tickets the rate limit's title names, as the Worker has them from Linear: one assigned, one not yet.
     private static let rateLimitTickets = """
     [{"key": "API-88", "url": "https://linear.app/acme/issue/API-88", "title": "Throttle password reset emails",
-      "state": "In Progress", "state_type": "started", "state_color": "#f2c94c", "found": true},
+      "state": "In Progress", "state_type": "started", "state_color": "#f2c94c", "assignee": "Mona Lisa",
+      "found": true},
      {"key": "SEC-12", "url": "https://linear.app/acme/issue/SEC-12", "title": "Stop reset email floods",
       "state": "Todo", "state_type": "unstarted", "state_color": "#e2e2e2", "found": true}]
     """

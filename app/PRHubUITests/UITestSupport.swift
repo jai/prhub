@@ -106,7 +106,7 @@ extension XCUIApplication {
         return isTappable(element)
     }
 
-    private func waitForStill(_ element: XCUIElement) {
+    func waitForStill(_ element: XCUIElement) {
         var frame = element.frame
         for _ in 0 ..< 10 {
             RunLoop.current.run(until: Date.now.addingTimeInterval(0.2))
@@ -128,7 +128,7 @@ extension XCUIApplication {
     }
 
     /// On screen and out from under the nav bar and the tab bar, which take a tap meant for what scrolls under them.
-    private func isClearOfBars(_ element: XCUIElement) -> Bool {
+    func isClearOfBars(_ element: XCUIElement) -> Bool {
         guard element.exists, element.isHittable else {
             return false
         }

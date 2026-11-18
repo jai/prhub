@@ -33,6 +33,35 @@ final class PRHubHostedUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 5))
     }
 
+    /// Without Linear connected, the hosted Worker sends a PR's ticket as its key alone: the page says to connect Linear,
+    /// and the line opens Settings at Linear.
+    func testATicketWithoutLinearAsksToConnectItAndOpensLinearInSettings() {
+        app.launchArguments = ["-PRHubHosted", "-PRHubNoLinear"]
+        app.launch()
+        // The offer of review alerts comes first: the fake Worker pushes.
+        let notNow = app.buttons["Not now"]
+        if notNow.waitForExistence(timeout: 5) {
+            notNow.tap()
+        }
+        let row = app.staticTexts["Rate-limit the password reset endpoint [API-88] [SEC-12]"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        // No ticket line under the row, so its title keeps the brackets.
+        try? picture("hosted-no-linear-list")
+        row.tap()
+        let connect = app.buttons["pr-ticket-connect-linear"].firstMatch
+        XCTAssertTrue(connect.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["API-88"].exists && app.staticTexts["SEC-12"].exists)
+        XCTAssertTrue(app.staticTexts["Connect Linear to see this ticket"].exists)
+        XCTAssertFalse(app.staticTexts["Throttle password reset emails"].exists, "the Worker had no Linear to ask")
+        try? picture("hosted-no-linear-pr")
+        connect.tap()
+        let field = app.secureTextFields["prhub-linear-key-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        app.waitForStill(field)
+        XCTAssertTrue(app.isClearOfBars(field), "Settings opens at Linear")
+        try? picture("hosted-no-linear-settings")
+    }
+
     func testSignInSetAKeyThenDeleteTheAccount() {
         app.launchArguments = ["-PRHubFirstRun"]
         app.launch()
@@ -222,6 +251,20 @@ final class PRHubHostedUITests: XCTestCase {
             notNow.tap()
         }
         XCTAssertTrue(app.descendants(matching: .any)["pr-empty-hint-link"].waitForExistence(timeout: 10))
+    }
+
+    /// A picture for the test's result, and in `SCREENSHOTS_DIR` when it is set.
+    private func picture(_ name: String) throws {
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        guard let folder = ProcessInfo.processInfo.environment["SCREENSHOTS_DIR"], !folder.isEmpty else {
+            return
+        }
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        try screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "\(folder)/\(name).png"))
     }
 
     private func waitFor(timeout: TimeInterval = 5, _ condition: () -> Bool) -> Bool {

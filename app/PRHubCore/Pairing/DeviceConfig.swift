@@ -76,6 +76,13 @@ public struct DeviceConfig: Codable, Equatable, Sendable {
         }
     }
 
+    /// Whether the person could see their PRs' Linear tickets by connecting Linear in Settings, and hasn't: a hosted
+    /// Worker asks Linear only with the account's own key (docs/api.md, "Personal Linear connection"). A self-hosted
+    /// Worker's Linear is its operator's `LINEAR_API_KEY`, which the app can't set.
+    public var offersLinearConnection: Bool {
+        hosted && account?.state == .signedIn && account?.linearKey == false
+    }
+
     /// `account` of `GET /device/config` on the hosted Worker.
     public struct Account: Codable, Equatable, Sendable {
         public enum State: String, Codable, Sendable {

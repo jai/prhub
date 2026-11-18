@@ -82,6 +82,7 @@ test("Linear's answer fills each ticket; a key it has no issue for is Not found,
           title: "Retry uploads",
           url: "https://linear.app/acme/issue/ENG-1",
           state: { name: "In Review", type: "started", color: "#f2c94c" },
+          assignee: { name: "Alex Doe" },
         },
         t1: null,
         t2: null,
@@ -95,6 +96,7 @@ test("Linear's answer fills each ticket; a key it has no issue for is Not found,
   const keys = ticketKeysOf("Retry [ENG-1] [ENG-404]", "fix-12-retry");
   const issues = await lookUpTickets(allKeys(keys), { LINEAR_API_KEY: "key" } as Env);
   assert.match(asked, /issue\(id: \\"ENG-1\\"\)/);
+  assert.match(asked, /assignee \{ name \}/, "Linear is asked who owns each ticket");
   assert.deepEqual(resolvedTickets(keys, issues), [
     {
       key: "ENG-1",
@@ -103,6 +105,7 @@ test("Linear's answer fills each ticket; a key it has no issue for is Not found,
       state: "In Review",
       state_type: "started",
       state_color: "#f2c94c",
+      assignee: "Alex Doe",
       found: true,
     },
     { ...unresolved("ENG-404"), found: false },

@@ -226,6 +226,8 @@ const TicketSchema = z.object({
   state: NULLABLE_TEXT,
   state_type: NULLABLE_TEXT,
   state_color: NULLABLE_TEXT,
+  // Stored before Linear's assignee was asked for: no one, until the key is checked again within the hour.
+  assignee: NULLABLE_TEXT.default(null),
   found: z.boolean().nullable(),
 });
 

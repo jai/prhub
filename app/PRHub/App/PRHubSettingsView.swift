@@ -32,6 +32,27 @@ struct PRHubSettingsView: View {
     }
 
     private var page: some View {
+        ScrollViewReader { scroller in
+            settingsScroll
+                .onChange(of: environment.navigation.settingsSection, initial: true) { _, section in
+                    guard let section else {
+                        return
+                    }
+                    withAnimation(AppMotion.fold) { scroller.scrollTo(section, anchor: .top) }
+                    environment.navigation.settingsSection = nil
+                }
+        }
+        .background(Color.groundPage)
+        .readableContentWidth()
+        .navigationTitle("Settings")
+        .sheet(isPresented: $confirmsDelete) {
+            DeleteAccountSheet(login: connection.config?.account?.login) {
+                try await environment.deleteAccount()
+            }
+        }
+    }
+
+    private var settingsScroll: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Space.sm) {
                 if let endSample {
@@ -54,14 +75,6 @@ struct PRHubSettingsView: View {
             .animation(AppMotion.fold, value: environment.alertPermission.status)
         }
         .accessibilityIdentifier("prhub-settings")
-        .background(Color.groundPage)
-        .readableContentWidth()
-        .navigationTitle("Settings")
-        .sheet(isPresented: $confirmsDelete) {
-            DeleteAccountSheet(login: connection.config?.account?.login) {
-                try await environment.deleteAccount()
-            }
-        }
     }
 
     private func samplesBlock(_ endSample: @escaping () -> Void) -> some View {
@@ -132,6 +145,7 @@ struct PRHubSettingsView: View {
         }
         AccountKeySection(provider: .anthropic, connection: connection)
         AccountKeySection(provider: .linear, connection: connection)
+            .id(PRHubSettingsSection.linear)
         PRPageBlock(
             "Account",
             note: "Sign out forgets your PRs on this \(AppIdentity.deviceName). Delete account also deletes everything "

@@ -22,7 +22,7 @@ through the PRHub GitHub App. The service stores these items:
 - **Your installations.** The service records which PRHub App installations you belong to and which of their repos
   you can see. It uses this record to send each GitHub notification only to the people who can see that repo.
 - **Your Anthropic API key, if you give one.** It is encrypted as the tokens are, and never sent back to your phone.
-- **Your Linear API key and ticket details, if you connect Linear.** The key is encrypted and never returned to your phone. Ticket titles, links and statuses are cached for your PRs.
+- **Your Linear API key and ticket details, if you connect Linear.** The key is encrypted and never returned to your phone. Ticket titles, links, statuses and assignees' names are cached for your PRs.
 - **AI answers.** Key lines, rewrites and the record of your Ask conversations, when you use them.
 - **Your feedback.** What you send from the Feedback tab, and the link to the issue it opened, so that you can
   follow the chat in the app.
@@ -109,7 +109,7 @@ For questions about this policy, open an issue on [jai/prhub](https://github.com
 ### Optional Linear connection
 
 When you connect Linear in Settings, PRHub validates and stores your personal API key encrypted, separately for
-your GitHub account. It uses the key to read ticket titles, links and statuses for your PRs and ticket text for
+your GitHub account. It uses the key to read ticket titles, links, statuses and assignees' names for your PRs and ticket text for
 rewrites. PRHub writes to Linear only when you post a comment Ask AI proposed: you see the comment, and who it
 mentions, on a card, and nothing posts until you tap Post to Linear (or say "go"). It posts as you, with your key, and
 PRHub then reads the agent session the comment started, if it mentions an agent. To check whether the key may write,

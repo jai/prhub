@@ -168,7 +168,7 @@ final class PRHubPRPageUITests: XCTestCase {
         try? picture("nav-review-bar-xxl")
     }
 
-    /// The tickets the title names, each with Linear's state, and the title without their brackets; a bot's PR names
+    /// The tickets the title names, each with Linear's state and who owns it, and the title without their brackets; a bot's PR names
     /// the person it was opened for, and says it is a bot's.
     func testThePageShowsItsTicketsAndWhoItIsFrom() {
         launch()
@@ -180,9 +180,10 @@ final class PRHubPRPageUITests: XCTestCase {
         XCTAssertTrue(author.label.contains("Mona Lisa via hubot (bot) wants hubot/sample-88 in main"), author.label)
         let tickets = app.descendants(matching: .any)["pr-tickets"].firstMatch
         XCTAssertTrue(tickets.exists)
-        for words in ["API-88", "Throttle password reset emails", "In Progress", "SEC-12", "Todo"] {
+        for words in ["API-88", "Throttle password reset emails", "Assigned to Mona Lisa", "In Progress", "SEC-12", "Todo"] {
             XCTAssertTrue(tickets.staticTexts[words].exists, words)
         }
+        XCTAssertFalse(app.buttons["pr-ticket-connect-linear"].exists, "a self-hosted Worker's Linear is its own")
         try? picture("nav-tickets-author")
     }
 

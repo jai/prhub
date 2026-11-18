@@ -44,12 +44,14 @@ public struct PRListTicket: Codable, Hashable, Sendable {
     public var stateType: String?
     /// The state's colour in Linear, `#5e6ad2`; `nil` from a hub that has not sent it.
     public var stateColor: String?
+    /// Who the ticket is assigned to in Linear, by name: its owner. `nil` for no one, and from a hub that has not sent it.
+    public var assignee: String?
     public var found: Bool?
     public var resolvedAt: Date?
 
     public init(
         key: String, url: String? = nil, title: String? = nil, state: String? = nil, stateType: String? = nil,
-        stateColor: String? = nil, found: Bool? = nil, resolvedAt: Date? = nil
+        stateColor: String? = nil, assignee: String? = nil, found: Bool? = nil, resolvedAt: Date? = nil
     ) {
         self.key = key
         self.url = url
@@ -57,12 +59,13 @@ public struct PRListTicket: Codable, Hashable, Sendable {
         self.state = state
         self.stateType = stateType
         self.stateColor = stateColor
+        self.assignee = assignee
         self.found = found
         self.resolvedAt = resolvedAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case key, url, title, state, found
+        case key, url, title, state, assignee, found
         case stateType = "state_type"
         case stateColor = "state_color"
         case resolvedAt = "resolved_at"
@@ -218,6 +221,11 @@ public extension PRListItem {
 }
 
 public extension PRListTicket {
+    /// The owner's first name, as a ticket line shows it: "Mona" for "Mona Lisa"; nil for no owner.
+    var ownerShortName: String? {
+        assignee?.split(separator: " ").first.map(String.init)
+    }
+
     /// Linear's word for its state, `Resolving…` until the hub has looked the issue up, `Not found` when Linear has no
     /// such issue for the hub.
     var stateText: String {

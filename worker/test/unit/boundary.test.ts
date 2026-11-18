@@ -7,6 +7,7 @@ import {
   parseDeviceEvent,
   parseDeviceRegistration,
   parseRowStatus,
+  parseStoredTicket,
   parseWrite,
 } from "../../src/boundary.ts";
 import { type DeviceIndex, eventRoute, registerRoute, unpairRoute } from "../../src/devices.ts";
@@ -162,4 +163,21 @@ test("a registration names the APNs host as one of the two", () => {
     token: TOKEN,
     host: "production",
   });
+});
+
+test("a ticket stored before Linear's assignee was asked for still reads, with no one assigned", () => {
+  const stored = {
+    key: "ENG-7",
+    url: "https://linear.app/acme/issue/ENG-7",
+    title: "Retry failed uploads",
+    state: "In Progress",
+    state_type: "started",
+    state_color: "#f2c94c",
+    found: true,
+  };
+  assert.deepEqual(parseStoredTicket(JSON.stringify(stored)), { ...stored, assignee: null });
+  assert.equal(
+    parseStoredTicket(JSON.stringify({ ...stored, assignee: "Alex Doe" }))?.assignee,
+    "Alex Doe",
+  );
 });

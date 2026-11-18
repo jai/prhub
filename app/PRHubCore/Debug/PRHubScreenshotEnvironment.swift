@@ -13,7 +13,8 @@
     ///   one.
     /// - `-PRHubHosted`: signed in on that fake hosted Worker. With `-PRHubSignedOut` GitHub signed the person out; with
     ///   `-PRHubHostedEmpty` the list is empty; with `-PRHubAnthropicKey` a key is set; with `-PRHubSettings` it opens on
-    ///   Settings. The App is installed on `octocat`, on two of acme's repos and, suspended, on initech; with
+    ///   Settings; with `-PRHubNoLinear` the PRs come as the Worker sends them before Linear is connected, so a PR's
+    ///   ticket asks to connect it. The App is installed on `octocat`, on two of acme's repos and, suspended, on initech; with
     ///   `-PRHubInstallations none` on no account, and with `-PRHubInstallations onReturn` on `octocat` alone until the
     ///   app leaves the foreground (as for GitHub), and on acme too when it comes back.
     /// - `-PRHubPaired`: the PRs and Settings over the sample PRs as if paired, every AI feature on. With `-PRHubAskWorking`
@@ -195,8 +196,11 @@
                 ),
                 fetchConfig: { _ in state.config }, forgetSecret: {}, defaults: defaults, build: build, hosted: hosted
             )
-            let samples: PRSampleSet = arguments.contains("-PRHubHostedEmpty")
+            var samples: PRSampleSet = arguments.contains("-PRHubHostedEmpty")
                 ? PRSampleSet(samples: [], mergedReviewed: [], mergedMine: [], answersOnPhone: true) : .prHub
+            if arguments.contains("-PRHubNoLinear") {
+                samples = samples.withoutLinear
+            }
             return PRHubEnvironment(connection: connection, samples: samples, usage: usage())
         }
     }
@@ -289,6 +293,35 @@
     }
 
     extension PRSampleSet {
+        /// As the hosted Worker answers an account without Linear (docs/api.md, "Rows and details"): a PR's page has
+        /// the keys its title names, each the key alone, and no row has a ticket.
+        var withoutLinear: PRSampleSet {
+            PRSampleSet(
+                samples: samples.map { sample in
+                    var row = sample.row
+                    row.ticket = nil
+                    row.tickets = []
+                    return Sample(
+                        row: row, detail: Self.unresolved(sample.detail, title: row.title), diff: sample.diff,
+                        keyLines: sample.keyLines
+                    )
+                },
+                mergedReviewed: mergedReviewed, mergedMine: mergedMine, answersOnPhone: answersOnPhone
+            )
+        }
+
+        private static func unresolved(_ detail: String, title: String) -> String {
+            guard var object = (try? JSONSerialization.jsonObject(with: Data(detail.utf8))) as? [String: Any],
+                  let tickets = object["tickets"] as? [[String: Any]]
+            else {
+                return detail
+            }
+            object["tickets"] = tickets.compactMap { $0["key"] as? String }.filter { title.contains("[\($0)]") }
+                .map { ["key": $0, "found": NSNull()] }
+            return (try? JSONSerialization.data(withJSONObject: object)).flatMap { String(data: $0, encoding: .utf8) }
+                ?? detail
+        }
+
         /// The samples, with two more PRs first on For review: one file longer than any phone's screen, and three such files.
         static let prHubLongDiff = PRSampleSet(
             samples: [longDiff, longFiles] + prHub.samples, mergedReviewed: [], mergedMine: [], answersOnPhone: true

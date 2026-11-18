@@ -24,6 +24,18 @@ struct HostedConfigDecodeTests {
         #expect(try JSONDecoder().decode(DeviceConfig.self, from: Data(old.utf8)).account?.linearKey == false)
     }
 
+    @Test func onlyASignedInHostedAccountWithoutLinearIsOfferedTheConnection() throws {
+        func config(_ body: String) throws -> DeviceConfig {
+            try JSONDecoder().decode(DeviceConfig.self, from: Data(body.utf8))
+        }
+        #expect(try config(#"{"features":{},"hosted":true,"account":{"state":"signed_in"}}"#).offersLinearConnection)
+        let connected = #"{"features":{},"hosted":true,"account":{"state":"signed_in","linear_key":true}}"#
+        #expect(try !config(connected).offersLinearConnection)
+        let signedOut = #"{"features":{},"hosted":true,"account":{"state":"signed_out","reason":"revoked"}}"#
+        #expect(try !config(signedOut).offersLinearConnection, "Sign in again comes first")
+        #expect(try !config(#"{"features":{},"login":"octocat"}"#).offersLinearConnection, "self-hosted: the operator's key")
+    }
+
     @Test func aLinearKeyThatCanOnlyReadSaysSoAndAnOlderWorkerSaysNothing() throws {
         let readOnly = #"{"features":{},"hosted":true,"account":{"state":"signed_in","linear_key":true,"linear_can_comment":false}}"#
         let config = try JSONDecoder().decode(DeviceConfig.self, from: Data(readOnly.utf8))
