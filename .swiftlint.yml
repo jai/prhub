@@ -10,6 +10,7 @@ included:
   - app/PRHubE2ETests
   - app/PRHubTests
   - app/PRHubUITests
+  - app/PRHubPerformanceTests
   - app/PRHubRenderingTests
 
 excluded:

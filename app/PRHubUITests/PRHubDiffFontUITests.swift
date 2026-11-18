@@ -1,17 +1,12 @@
 import XCTest
 
-/// The diff's font: pictures of the diff at small, default and large sizes in several faces, light and dark; the
-/// viewed mark is a 44 pt target at every size; and a change in Settings redraws a diff that is already open. Over the
+/// The diff's controls across font settings: screenshots at small, default and large sizes in several faces, light
+/// and dark; a 44 pt viewed target; and a Settings change that resizes an open diff. These checks do not compare
+/// glyph rendering; the rendering target verifies font resolution. Over the
 /// sample PRs, with the font set the way Settings stores it (`-prkit.diffFont face:size`). Pictures go to
 /// `SCREENSHOTS_DIR` when set.
 @MainActor
-final class PRHubDiffFontUITests: XCTestCase {
-    private let app = XCUIApplication()
-
-    override func setUp() {
-        continueAfterFailure = false
-    }
-
+final class PRHubDiffFontUITests: PRHubUITestCase {
     // One launch a test: each font in each appearance is its own test. Two tests of nine launches each took up to
     // 8 minutes, and a slow CI Mac killed one (issue #56).
 
@@ -93,7 +88,7 @@ final class PRHubDiffFontUITests: XCTestCase {
         let viewed = app.buttons["file-viewed-0"]
         XCTAssertGreaterThanOrEqual(viewed.frame.width, 44, "\(font): the viewed mark's target")
         XCTAssertGreaterThanOrEqual(viewed.frame.height, 44, "\(font): the viewed mark's target")
-        try picture("diff-font-\(font.replacingOccurrences(of: ":", with: "-"))-\(name(appearance))")
+        try recordScreenshot("diff-font-\(font.replacingOccurrences(of: ":", with: "-"))-\(name(appearance))")
     }
 
     /// The mark takes its own tap: the file doesn't fold under it, and nothing in the header moves. (Over these
@@ -104,7 +99,7 @@ final class PRHubDiffFontUITests: XCTestCase {
         let viewed = app.buttons["file-viewed-0"]
         let before = (header.frame, viewed.frame)
         viewed.tap()
-        RunLoop.current.run(until: Date.now.addingTimeInterval(1))
+        app.waitForStill(header)
         XCTAssertEqual(header.value as? String, "open", "the tap was the mark's, not the header's")
         XCTAssertEqual(header.frame, before.0)
         XCTAssertEqual(viewed.frame, before.1)
@@ -120,7 +115,7 @@ final class PRHubDiffFontUITests: XCTestCase {
         app.go(to: .settings)
         let preview = app.descendants(matching: .any)["diff-font-preview"]
         XCTAssertTrue(app.scrollSettings(to: preview))
-        try picture("diff-font-settings-before")
+        try recordScreenshot("diff-font-settings-before")
         let bigger = app.descendants(matching: .any)["diff-font-size"].buttons["Bigger"]
         for _ in 0 ..< 4 {
             bigger.tap()
@@ -129,11 +124,11 @@ final class PRHubDiffFontUITests: XCTestCase {
         XCTAssertTrue(app.scrollSettings(to: face))
         face.tap()
         XCTAssertTrue(app.scrollSettings(to: preview, up: false))
-        try picture("diff-font-settings-after")
+        try recordScreenshot("diff-font-settings-after")
 
         app.go(to: .prs)
         XCTAssertTrue(waitFor { line.exists && line.frame.height > before }, "the open diff redrew at 16 pt")
-        try picture("diff-font-live-update")
+        try recordScreenshot("diff-font-live-update")
     }
 
     private func openDiff(font: String?, appearance: XCUIDevice.Appearance) {
@@ -150,29 +145,5 @@ final class PRHubDiffFontUITests: XCTestCase {
 
     private func name(_ appearance: XCUIDevice.Appearance) -> String {
         appearance == .dark ? "dark" : "light"
-    }
-
-    private func waitFor(timeout: TimeInterval = 5, _ condition: () -> Bool) -> Bool {
-        let end = Date.now.addingTimeInterval(timeout)
-        while Date.now < end {
-            if condition() {
-                return true
-            }
-            RunLoop.current.run(until: Date.now.addingTimeInterval(0.1))
-        }
-        return condition()
-    }
-
-    private func picture(_ name: String) throws {
-        let screenshot = XCUIScreen.main.screenshot()
-        let attachment = XCTAttachment(screenshot: screenshot)
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
-        guard let folder = ProcessInfo.processInfo.environment["SCREENSHOTS_DIR"], !folder.isEmpty else {
-            return
-        }
-        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
-        try screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "\(folder)/\(name).png"))
     }
 }

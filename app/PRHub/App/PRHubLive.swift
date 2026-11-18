@@ -6,7 +6,7 @@ extension PRHubEnvironment {
 }
 
 extension UsageAnalytics {
-    static func live() -> UsageAnalytics {
+    static func live(defaults: UserDefaults = .standard) -> UsageAnalytics {
         #if DEBUG
             let isDebugBuild = true
         #else
@@ -14,7 +14,7 @@ extension UsageAnalytics {
         #endif
         return make(
             project: AnalyticsProject(info: Bundle.main.infoDictionary ?? [:]), isDebugBuild: isDebugBuild,
-            isRunningTests: AppIdentity.isRunningTests, defaults: .standard,
+            isRunningTests: AppIdentity.isRunningTests, defaults: defaults,
             vendor: { PostHogAnalytics(project: $0, isSharing: $1) }
         )
     }

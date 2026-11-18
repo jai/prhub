@@ -1,5 +1,58 @@
 import XCTest
 
+/// A PRHub UI test. Each fixture launch starts on empty storage of its own; `relaunch()` keeps it.
+@MainActor
+class PRHubUITestCase: XCTestCase {
+    let app = XCUIApplication()
+
+    private let originalAppearance = XCUIDevice.shared.appearance
+    private let originalOrientation = XCUIDevice.shared.orientation
+
+    override func setUp() async throws {
+        continueAfterFailure = false
+    }
+
+    override func tearDown() async throws {
+        XCUIDevice.shared.appearance = originalAppearance
+        XCUIDevice.shared.orientation = originalOrientation
+        app.terminate()
+        try await super.tearDown()
+    }
+
+    /// Quits and opens the app again on what the last launch left, with `arguments` in place of its own.
+    func relaunch(_ arguments: [String]) {
+        app.terminate()
+        app.launchArguments = arguments + ["-PRHubKeepState"]
+        app.launch()
+    }
+
+    /// Polls `condition` every 0.1 seconds until it holds or `timeout` passes.
+    func waitFor(timeout: TimeInterval = 5, _ condition: () -> Bool) -> Bool {
+        let deadline = Date.now.addingTimeInterval(timeout)
+        while !condition() {
+            guard Date.now < deadline else {
+                return false
+            }
+            RunLoop.current.run(until: Date.now.addingTimeInterval(0.1))
+        }
+        return true
+    }
+
+    func recordScreenshot(_ name: String) throws {
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        guard let folder = ProcessInfo.processInfo.environment["SCREENSHOTS_DIR"], !folder.isEmpty else {
+            return
+        }
+        let directory = URL(fileURLWithPath: folder, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try screenshot.pngRepresentation.write(to: directory.appendingPathComponent(name + ".png"))
+    }
+}
+
 /// The app's places: its tabs, found by their accessibility identifiers (PRHubRootView). A phone shows them in the tab
 /// bar at the bottom; an iPad's regular width shows them at the top, outside any tab bar. Tests reach a place with
 /// `go(to:)` and never through `tabBars`.

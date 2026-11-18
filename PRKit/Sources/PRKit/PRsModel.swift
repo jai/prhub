@@ -68,6 +68,9 @@ final class PRsModel {
     var sampleReviewRefused = false
     /// Outbox answers by item id, until the screen that is waiting on one takes it.
     var outcomes: [String: Result<Data, PRWorkerError>] = [:]
+    /// Unknown IDs can belong to an enqueue that has not returned its ID yet.
+    @ObservationIgnored var enqueuesInFlight = 0
+    @ObservationIgnored var earlyOutboxDeliveries: [PROutboxDelivery] = []
     /// Ids a screen is waiting on. Answers to the rest arrive after Jai has moved on.
     var waiting: Set<String> = []
     /// Each job still on the phone, so a refusal that comes after the screen has gone can say what it was.

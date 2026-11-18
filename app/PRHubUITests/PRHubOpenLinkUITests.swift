@@ -2,13 +2,7 @@ import XCTest
 
 /// Another app hands off a PR, including its diff, to the current PRHub environment.
 @MainActor
-final class PRHubOpenLinkUITests: XCTestCase {
-    private let app = XCUIApplication()
-
-    override func setUp() {
-        continueAfterFailure = false
-    }
-
+final class PRHubOpenLinkUITests: PRHubUITestCase {
     func testAHandoffFromSettingsOpensTheRequestedPR() throws {
         app.launchArguments = ["-PRHubPaired"]
         app.launch()
@@ -17,7 +11,7 @@ final class PRHubOpenLinkUITests: XCTestCase {
 
         XCTAssertTrue(app.buttons["pr-review-changes"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.navigationBars["acme/web#412"].exists, "the requested PR's detail, not its list row")
-        keep("handoff-requested-pr")
+        try recordScreenshot("handoff-requested-pr")
     }
 
     func testADiffHandoffKeepsTheSamplesOpen() throws {
@@ -32,14 +26,7 @@ final class PRHubOpenLinkUITests: XCTestCase {
 
         XCTAssertFalse(app.buttons["onboardingSignIn"].exists, "the handoff keeps the current samples")
         XCTAssertTrue(app.buttons["file-header-0"].waitForExistence(timeout: 10), "the requested PR's diff")
-        keep("handoff-sample-diff")
-    }
-
-    private func keep(_ name: String) {
-        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
+        try recordScreenshot("handoff-sample-diff")
     }
 
     private func handoff(_ target: String) throws -> URL {

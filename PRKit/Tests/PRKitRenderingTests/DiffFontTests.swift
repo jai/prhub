@@ -25,10 +25,10 @@ struct DiffFontTests {
 
     /// Code lines up only if every character is as wide as every other: `i` as `W`, `.` as `m`.
     @Test(arguments: DiffFontFace.allCases)
-    func everyFaceIsMonospaced(face: DiffFontFace) {
+    func everyFaceIsMonospaced(face: DiffFontFace) throws {
         let font = DiffFont(face: face, size: 12)
         for isBold in [false, true] {
-            let advances = advances(of: "iIl1.,:;mMW0 _-+{}", in: font.platformFont(points: 12, isBold: isBold))
+            let advances = try advances(of: "iIl1.,:;mMW0 _-+{}", in: font.platformFont(points: 12, isBold: isBold))
             #expect(Set(advances).count == 1, "\(face.name) bold: \(isBold) has advances \(Set(advances))")
         }
     }
@@ -60,13 +60,15 @@ struct DiffFontTests {
         CTFontCopyPostScriptName(font as CTFont) as String
     }
 
-    private func advances(of text: String, in font: PlatformFont) -> [CGFloat] {
+    private func advances(of text: String, in font: PlatformFont) throws -> [CGFloat] {
         let ctFont = font as CTFont
         let characters = Array(text.utf16)
         var glyphs = [CGGlyph](repeating: 0, count: characters.count)
-        CTFontGetGlyphsForCharacters(ctFont, characters, &glyphs, characters.count)
+        try #require(CTFontGetGlyphsForCharacters(ctFont, characters, &glyphs, characters.count),
+                     "Every character in the monospacing sample must have a glyph")
         var sizes = [CGSize](repeating: .zero, count: glyphs.count)
         CTFontGetAdvancesForGlyphs(ctFont, .horizontal, glyphs, &sizes, glyphs.count)
+        try #require(sizes.allSatisfy { $0.width > 0 }, "Every sample glyph must have a positive advance")
         return sizes.map { ($0.width * 1000).rounded() / 1000 }
     }
 }

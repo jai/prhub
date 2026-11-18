@@ -95,6 +95,7 @@ struct PRsList: View {
     /// The PR open beside the list on a wide screen, marked in it.
     let selected: PullRequestRef?
     @Environment(\.pullRequestOpener) private var opener
+    @Environment(\.openURL) private var openURL
     @State private var folds = FoldSet()
     /// `nil` until a filter is picked: then the model's default, which can follow the Worker.
     @AppStorage("prOrgFilter") private var savedOrgFilter: PROrgFilter?
@@ -398,7 +399,8 @@ struct PRsList: View {
                     .buttonStyle(PRButtonStyle(.primary))
                     .environment(\.openURL, OpenURLAction { [model] url in
                         model.onEmptyHintLink(url)
-                        return .systemAction
+                        openURL(url)
+                        return .handled
                     })
                     .accessibilityIdentifier("pr-empty-hint-link")
             }
@@ -440,7 +442,8 @@ struct PRsList: View {
         .selected(selected == ref)
         .environment(\.openURL, OpenURLAction { url in
             guard let link = PRLink(url: url), let opener else {
-                return .systemAction
+                openURL(url)
+                return .handled
             }
             opener.open(link, source: .list)
             return .handled

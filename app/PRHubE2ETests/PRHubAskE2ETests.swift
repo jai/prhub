@@ -1,49 +1,54 @@
 import XCTest
 
-/// Ask against a real Worker, on an app paired with it (`PRHubPushOpenE2ETests.testPairing`): open the PR whose row
-/// shows `TEST_RUNNER_PRHUB_E2E_ASK_ROW`, ask a question, and watch the sheet go Sending… → Thinking → the answer with
-/// nothing red on the way. CI runs none of it.
+/// A new question through the dedicated deployed Worker. Pairing is verified before any question is sent.
 @MainActor
-final class PRHubAskE2ETests: XCTestCase {
-    private let app = XCUIApplication()
-
-    func testAskGoesSendingThinkingAnsweredWithNoError() throws {
-        let row = ProcessInfo.processInfo.environment["PRHUB_E2E_ASK_ROW"]
-        try XCTSkipUnless(row != nil, "an end-to-end run only")
-        app.launchArguments = ["-PRHubSelfHosted", "YES"]
-        app.launch()
-        app.go(to: .prs)
-        let pullRequest = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@", row ?? "")).firstMatch
-        XCTAssertTrue(pullRequest.waitForExistence(timeout: 60), "the PR's row")
-        pullRequest.tap()
+final class PRHubAskE2ETests: E2ETestCase {
+    func testAFreshQuestionReceivesItsCorrelatedAnswer() async throws {
+        let target = try E2ETarget.load()
+        launch()
+        try verifyPairing(target)
+        try await openPR(target)
         let ask = app.buttons["pr-ask"]
-        XCTAssertTrue(ask.waitForExistence(timeout: 30), "Ask on the PR")
+        try require(ask.waitForExistence(timeout: 30), "Ask must be enabled for the dedicated test PR.")
         ask.tap()
-        let field = app.textViews["sessionReplyField"].exists ? app.textViews["sessionReplyField"]
-            : app.textFields["sessionReplyField"]
-        XCTAssertTrue(field.waitForExistence(timeout: 10), "Ask's field")
+        let field = app.descendants(matching: .any)["sessionReplyField"].firstMatch
+        try require(field.waitForExistence(timeout: 10), "Ask's input field must appear.")
+        let messages = app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier BEGINSWITH %@", "chat-message-agent-"
+        ))
+        let earlier = Set(messages.allElementsBoundByIndex.map(\.identifier))
+        let nonce = UUID().uuidString
+        let expected = "PRHUB-\(nonce)-FIVE"
         field.tap()
-        field.typeText("What is two plus three? Answer with the number as one word in capitals, nothing else.")
+        if let draft = field.value as? String, !draft.isEmpty {
+            // An old draft is not this run's question. A dedicated test account may safely replace it.
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: draft.count))
+        }
+        field.typeText("What is two plus three? Reply with exactly \(expected) and nothing else.")
         app.buttons["sessionReplySend"].tap()
 
-        let sending = app.descendants(matching: .any)["pr-ask-sending"]
-        let thinking = app.descendants(matching: .any)["pr-ask-working"]
         let failed = app.descendants(matching: .any)["pr-ask-failed"]
         let saved = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'back online'")).firstMatch
-        let answer = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'FIVE'")).firstMatch
-        var seen: [String] = []
-        let started = Date.now
-        while Date.now.timeIntervalSince(started) < 180, !answer.exists {
-            XCTAssertFalse(failed.exists, "a failed send")
-            XCTAssertFalse(saved.exists, "the outbox's Saved words")
-            for (name, mark) in [("sending", sending), ("thinking", thinking)] where mark.exists && seen.last != name {
-                seen.append(name)
+        let deadline = ContinuousClock.now + .seconds(180)
+        var seen: Set<String> = []
+        var answered = false
+        while !answered {
+            try require(!failed.exists, "The new question failed to send.")
+            try require(!saved.exists, "The new question remained queued for network delivery.")
+            for state in ["sending", "working"] where app.descendants(matching: .any)["pr-ask-\(state)"].exists {
+                seen.insert(state)
+            }
+            answered = messages.allElementsBoundByIndex.contains { message in
+                !earlier.contains(message.identifier)
+                    && message.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", expected)).firstMatch.exists
+            }
+            if !answered {
+                try require(ContinuousClock.now < deadline, "No new assistant message answered this run's unique question.")
+                try await Task.sleep(for: .milliseconds(250))
             }
         }
-        print("PRHUB-E2E-ASK-STATES=\(seen.joined(separator: ",")) answered=\(answer.exists)")
-        XCTAssertTrue(answer.exists, "the agent's answer")
-        XCTAssertTrue(seen.contains("thinking"), "Thinking while the agent works")
+        print("PRHUB-E2E-ASK run=\(nonce) pr=\(target.reference) observed=\(seen.sorted().joined(separator: ",")) answered=true")
+        // Fast answers may legitimately bypass a sampled transient state; controlled UI tests cover those states.
         XCTAssertFalse(failed.exists)
     }
 }

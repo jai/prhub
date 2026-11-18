@@ -6,32 +6,33 @@
     /// Debug builds only. `-PRHubStubWorker`: a paired PRHub whose Worker is a stand-in in the app, answering from the
     /// sample PRs, with the real mirror and kept reads behind it, so a UI test can load everything online and then open it
     /// again with no network (issue #52). With `-PRHubOffline` every request fails as with no network and the device counts
-    /// as offline; with `-PRHubStubWorkerFresh` the mirror, the kept reads and the list's settings start empty.
+    /// as offline. The mirror, the kept reads and the list's settings start empty unless `-PRHubKeepState` keeps them.
     enum PRHubStubWorker {
         static let worker = URL(string: "https://stub-worker.invalid")!
 
-        @MainActor static func environment(_ arguments: [String]) -> PRHubEnvironment {
+        @MainActor static func environment(_ arguments: [String], resources: PRHubUITestResources) -> PRHubEnvironment {
             let offline = arguments.contains("-PRHubOffline")
-            let mirror = PRHubPRHost.mirrorDirectory()
-            if arguments.contains("-PRHubStubWorkerFresh") {
-                try? FileManager.default.removeItem(at: mirror)
-                PRSampleSet.resetListSettings()
-            }
-            let staging = URL.temporaryDirectory.appending(path: "prhub-stub-worker", directoryHint: .isDirectory)
+            let defaults = resources.defaults
+            let staging = resources.directory.appending(path: "staging")
             try? FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
             let samples = PRSampleSet.prHub
             // Into the stand-in's own folder, keeping the list's settings: seeding resets them.
-            let settings = PRSampleSet.listSettingKeys.map { ($0, UserDefaults.standard.object(forKey: $0)) }
-            _ = samples.seed(in: staging)
+            let settings = PRSampleSet.listSettingKeys.map { ($0, defaults.object(forKey: $0)) }
+            _ = samples.seed(in: staging, defaults: defaults)
             for (key, value) in settings {
-                UserDefaults.standard.set(value, forKey: key)
+                defaults.set(value, forKey: key)
             }
             let transport = Transport(samples: samples, staging: staging, isOffline: offline)
             let access = PRViewerAccess(baseURL: { worker }, bearer: { "stub" }, discard: {})
             let environment = PRHubEnvironment.offline(
                 config: DeviceConfig(features: [.askAI, .keyLines], login: PRSampleSet.prHubLogin), access: access,
-                worker: worker, defaultsSuite: "stub-worker", isSample: false, transport: transport
+                worker: worker, defaultsSuite: "stub-worker", isSample: false,
+                usage: UsageAnalytics(hasProject: false, sink: nil, defaults: defaults), transport: transport,
+                listDefaults: defaults, configurationDefaults: resources.configurationDefaults,
+                storageDirectory: resources.directory, network: PRNetwork(isOnline: !offline),
+                alertPermission: resources.alertPermission()
             )
+            resources.isolateAlerts(in: environment)
             if offline {
                 environment.prs.network.holdOffline()
             }

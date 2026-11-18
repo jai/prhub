@@ -6,15 +6,9 @@ import XCTest
 /// Sign in again, the empty list, GitHub access and the empty list with the App on no account. Each is an attachment,
 /// and a PNG in `SCREENSHOTS_DIR` when the run sets it (`TEST_RUNNER_SCREENSHOTS_DIR` on xcodebuild's command line).
 @MainActor
-final class PRHubScreenshotTests: XCTestCase {
+final class PRHubScreenshotTests: PRHubUITestCase {
     private enum Look: String, CaseIterable {
         case light, dark, largeText = "large-text"
-    }
-
-    private let app = XCUIApplication()
-
-    override func setUp() {
-        continueAfterFailure = false
     }
 
     // One launch a test: each screen in each look is its own test. One walk of every screen a look took 19 minutes
@@ -242,8 +236,12 @@ final class PRHubScreenshotTests: XCTestCase {
 
     private func signInRefused(_ look: Look) throws {
         launch(look, ["-PRHubFirstRun", "-PRHubSignInDenied"])
-        app.buttons["onboardingSignIn"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["onboardingStatus"].waitForExistence(timeout: 5))
+        let signIn = app.buttons["onboardingSignIn"]
+        XCTAssertTrue(signIn.waitForExistence(timeout: 10))
+        signIn.tap()
+        let refusal = app.descendants(matching: .any).matching(identifier: "onboardingStatus")
+            .matching(NSPredicate(format: "label CONTAINS %@", "didn't authorize")).firstMatch
+        XCTAssertTrue(refusal.waitForExistence(timeout: 5), "the refusal, not the in-progress sign-in message")
         try picture("7-sign-in-refused", look)
     }
 
@@ -308,7 +306,8 @@ final class PRHubScreenshotTests: XCTestCase {
         try picture("15-empty-list-not-installed", look)
     }
 
-    /// The list and a PR in landscape, where the list's rows stand apart.
+    /// The list and a PR in landscape on both device types. The screenshot records their layout; the navigation
+    /// suite separately asserts the iPad's side-by-side columns.
     private func wideList(_ look: Look) throws {
         defer { XCUIDevice.shared.orientation = .portrait }
         XCUIDevice.shared.orientation = .landscapeLeft
@@ -333,15 +332,6 @@ final class PRHubScreenshotTests: XCTestCase {
     }
 
     private func picture(_ step: String, _ look: Look) throws {
-        let screenshot = XCUIScreen.main.screenshot()
-        let attachment = XCTAttachment(screenshot: screenshot)
-        attachment.name = "\(step)-\(look.rawValue)"
-        attachment.lifetime = .keepAlways
-        add(attachment)
-        guard let folder = ProcessInfo.processInfo.environment["SCREENSHOTS_DIR"], !folder.isEmpty else {
-            return
-        }
-        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
-        try screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "\(folder)/\(step)-\(look.rawValue).png"))
+        try recordScreenshot("\(step)-\(look.rawValue)")
     }
 }

@@ -35,6 +35,10 @@ public final class PRHubEnvironment {
     @ObservationIgnored private let sampleDefaults: UserDefaults?
     @ObservationIgnored private let storageDirectory: URL?
     @ObservationIgnored private let network: PRNetwork?
+    @ObservationIgnored var readDeliveredAlerts: @Sendable () async -> [PullRequestRow] = {
+        await PRHubNotificationDelegate.deliveredRows()
+    }
+
     /// Runs on the bundled samples (`PRHubEnvironment.sample()`), with no Worker.
     public let isSample: Bool
     /// "Try with sample PRs", while it is on: shown in place of onboarding until Connect your own Worker.
@@ -193,6 +197,7 @@ public final class PRHubEnvironment {
             usage: usage, defaults: defaults, configurationDefaults: sampleDefaults,
             storageDirectory: storageDirectory?.appending(path: "samples"), network: network
         )
+        sample?.readDeliveredAlerts = readDeliveredAlerts
     }
 
     /// Settings' "Connect your own Worker", or a setup link opened during the samples: back to onboarding, with no
@@ -354,11 +359,12 @@ extension PRHubEnvironment {
     /// The PRs of the alerts still in Notification Center, fetched if the Notification Service Extension missed them and
     /// kept while the alerts stay: at each foreground and each silent wake.
     public func keepAlerts() async {
-        await prs.keepAlerts(PRHubNotificationDelegate.deliveredRows())
+        await prs.keepAlerts(readDeliveredAlerts())
     }
 
     func sendPrefetchReports() {
-        for entry in PRPushPrefetchLog(directory: PRHubPRHost.mirrorDirectory()).drain() {
+        let directory = storageDirectory?.appending(path: "mirror") ?? PRHubPRHost.mirrorDirectory()
+        for entry in PRPushPrefetchLog(directory: directory).drain() {
             usage.record(.pushPrefetch(entry.outcome, milliseconds: entry.milliseconds))
         }
     }

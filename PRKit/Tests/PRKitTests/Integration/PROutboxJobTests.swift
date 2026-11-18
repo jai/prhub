@@ -10,10 +10,19 @@ struct PROutboxJobTests {
     @MainActor
     final class Outbox: PRKitOutbox {
         private(set) var jobs: [(id: String, job: PROutboxJob)] = []
+        var onEnqueue: ((String) -> Void)?
+        var beforeReturn: ((String) async throws -> Void)?
 
         func enqueue(_ job: PROutboxJob) async throws -> String {
             let id = "job-\(jobs.count + 1)"
             jobs.append((id, job))
+            onEnqueue?(id)
+            do {
+                try await beforeReturn?(id)
+            } catch {
+                jobs.removeAll { $0.id == id }
+                throw error
+            }
             return id
         }
 
@@ -80,6 +89,189 @@ struct PROutboxJobTests {
             return
         }
     }
+
+    @Test func anAnswerDeliveredBeforeEnqueueReturnsCompletesTheWrite() async throws {
+        let (kit, host) = kit(wait: .zero)
+        host.held.onEnqueue = { [weak kit] id in kit?.outboxAnswered(id: id, data: Self.detail) }
+        let outcome = try await kit.model.write(.comment(body: "Ship it."), to: ref)
+        #expect(outcome.posted?.mergeState == "CLEAN")
+        #expect(host.events == [.wrote(.comment, .done)])
+        #expect(kit.model.queued.isEmpty && kit.model.waiting.isEmpty && kit.model.outcomes.isEmpty)
+    }
+
+    @Test func aRefusalDeliveredBeforeEnqueueReturnsFailsTheWrite() async {
+        let (kit, host) = kit(wait: .zero)
+        host.held.onEnqueue = { [weak kit] id in
+            kit?.outboxRefused(id: id, kind: .write, reason: "Pull request is locked")
+        }
+        await #expect(throws: PRWorkerError.refused("Pull request is locked")) {
+            try await kit.model.write(.comment(body: "Ship it."), to: ref)
+        }
+        #expect(kit.model.lateRefusal == nil)
+        #expect(host.events == [.wrote(.comment, .failed(.refused))])
+        #expect(kit.model.queued.isEmpty && kit.model.waiting.isEmpty && kit.model.outcomes.isEmpty)
+    }
+
+    @Test func anAnswerDeliveredBeforeEnqueueReturnsCompletesTheQuestion() async throws {
+        let (kit, host) = kit(wait: .zero)
+        let data = Data(#"{"messages":[{"id":"answer","role":"agent","text":"It is tested."}],"isWorking":false}"#.utf8)
+        let chat = try JSONDecoder().decode(PRAskChat.self, from: data)
+        host.held.onEnqueue = { [weak kit] id in kit?.outboxAnswered(id: id, data: data) }
+        let question = PRAskQuestion(question: "Is it tested?", head: "head", anchor: nil)
+        #expect(try await kit.model.ask(question, about: ref) == .answered(chat))
+        #expect(kit.model.queued.isEmpty && kit.model.waiting.isEmpty && kit.model.outcomes.isEmpty)
+    }
+
+    @Test func aRefusalDeliveredBeforeEnqueueReturnsFailsTheQuestion() async {
+        let (kit, host) = kit(wait: .zero)
+        host.held.onEnqueue = { [weak kit] id in
+            kit?.outboxRefused(id: id, kind: .question, reason: "Spending limit reached")
+        }
+        let question = PRAskQuestion(question: "Is it tested?", head: "head", anchor: nil)
+        await #expect(throws: PRWorkerError.refused("Spending limit reached")) {
+            try await kit.model.ask(question, about: ref)
+        }
+        #expect(kit.model.lateRefusal == nil)
+        #expect(host.events.isEmpty)
+        #expect(kit.model.queued.isEmpty && kit.model.waiting.isEmpty && kit.model.outcomes.isEmpty)
+    }
+
+    @Test func restoredCallbacksDuringEnqueueKeepTheirNormalLateHandling() async throws {
+        let (kit, host) = kit(wait: .zero)
+        host.held.onEnqueue = { [weak kit] id in
+            kit?.outboxAnswered(id: "restored-answer", data: Self.detail)
+            kit?.outboxRefused(id: "restored-first", kind: .question, reason: "First restored refusal")
+            kit?.outboxRefused(id: "restored-refusal", kind: .question, reason: "Restored refusal")
+            kit?.outboxAnswered(id: id, data: Self.detail)
+        }
+        #expect(try await kit.model.write(.comment(body: "New comment"), to: ref).posted != nil)
+        let words = "A question to a PR's AI couldn't be sent: Restored refusal"
+        #expect(kit.model.lateRefusal == words)
+        #expect(host.events == [
+            .questionRefused("A question to a PR's AI couldn't be sent: First restored refusal"),
+            .questionRefused(words), .wrote(.comment, .done),
+        ])
+        #expect(kit.model.enqueuesInFlight == 0 && kit.model.earlyOutboxDeliveries.isEmpty)
+        #expect(kit.model.queued.isEmpty && kit.model.waiting.isEmpty && kit.model.outcomes.isEmpty)
+    }
+
+    @Test(.timeLimit(.minutes(1))) func overlappingEnqueuesClaimOnlyTheirOwnEarlyAnswers() async throws {
+        let (kit, host) = kit(wait: .zero)
+        let entered = AsyncStream<Void>.makeStream()
+        let release = AsyncStream<Void>.makeStream()
+        host.held.onEnqueue = { [weak kit] id in kit?.outboxAnswered(id: id, data: Self.detail) }
+        host.held.beforeReturn = { id in
+            if id == "job-1" {
+                entered.continuation.yield(())
+                for await _ in release.stream {
+                    break
+                }
+            }
+        }
+        let first = Task { try await kit.model.write(.comment(body: "First"), to: ref) }
+        defer {
+            first.cancel()
+            entered.continuation.finish()
+            release.continuation.finish()
+        }
+        for await _ in entered.stream {
+            break
+        }
+        #expect(try await kit.model.write(.comment(body: "Second"), to: ref).posted != nil)
+        #expect(kit.model.enqueuesInFlight == 1)
+        #expect(kit.model.earlyOutboxDeliveries.map(\.id) == ["job-1"])
+        release.continuation.yield(())
+        #expect(try await first.value.posted != nil)
+        #expect(host.events == [.wrote(.comment, .done), .wrote(.comment, .done)])
+        #expect(kit.model.enqueuesInFlight == 0 && kit.model.earlyOutboxDeliveries.isEmpty)
+        #expect(kit.model.queued.isEmpty && kit.model.waiting.isEmpty && kit.model.outcomes.isEmpty)
+    }
+
+    @Test(.timeLimit(.minutes(1))) func aKnownLateRefusalIsNotDelayedByAnotherEnqueue() async throws {
+        let (kit, host) = kit(wait: .zero)
+        _ = try await kit.model.write(.comment(body: "Earlier comment"), to: ref)
+        let entered = AsyncStream<Void>.makeStream()
+        let release = AsyncStream<Void>.makeStream()
+        host.held.onEnqueue = { [weak kit] id in
+            kit?.outboxRefused(id: "job-1", kind: .write, reason: "Locked")
+            kit?.outboxAnswered(id: id, data: Self.detail)
+        }
+        host.held.beforeReturn = { _ in
+            entered.continuation.yield(())
+            for await _ in release.stream {
+                break
+            }
+        }
+        let sent = Task { try await kit.model.write(.comment(body: "New comment"), to: ref) }
+        defer {
+            sent.cancel()
+            entered.continuation.finish()
+            release.continuation.finish()
+        }
+        for await _ in entered.stream {
+            break
+        }
+        let words = "GitHub refused your comment “Earlier comment” on acme/api#7: Locked"
+        #expect(kit.model.enqueuesInFlight == 1)
+        #expect(kit.model.lateRefusal == words && host.events.last == .writeRefused(words))
+        release.continuation.yield(())
+        #expect(try await sent.value.posted != nil)
+        #expect(kit.model.enqueuesInFlight == 0 && kit.model.earlyOutboxDeliveries.isEmpty)
+        #expect(kit.model.queued.isEmpty && kit.model.waiting.isEmpty && kit.model.outcomes.isEmpty)
+    }
+
+    @Test func failedEnqueueFlushesRestoredCallbacksAndKeepsNoRegistration() async {
+        let (kit, host) = kit(wait: .zero)
+        host.held.onEnqueue = { [weak kit] _ in
+            kit?.outboxAnswered(id: "restored-answer", data: Self.detail)
+            kit?.outboxRefused(id: "restored-refusal", kind: .question, reason: "Restored refusal")
+        }
+        host.held.beforeReturn = { _ in throw EnqueueFailure.stopped }
+        await #expect(throws: EnqueueFailure.stopped) {
+            try await kit.model.write(.comment(body: "Not saved"), to: ref)
+        }
+        #expect(kit.model.lateRefusal == "A question to a PR's AI couldn't be sent: Restored refusal")
+        let refusals = host.events.filter {
+            if case .questionRefused = $0 {
+                true
+            } else {
+                false
+            }
+        }
+        #expect(refusals == [.questionRefused("A question to a PR's AI couldn't be sent: Restored refusal")])
+        #expect(host.held.jobs.isEmpty)
+        #expect(kit.model.enqueuesInFlight == 0 && kit.model.earlyOutboxDeliveries.isEmpty)
+        #expect(kit.model.queued.isEmpty && kit.model.waiting.isEmpty && kit.model.outcomes.isEmpty)
+    }
+
+    @Test(.timeLimit(.minutes(1))) func cancellationDuringEnqueueKeepsTheSavedJobAndClearsRegistration() async throws {
+        let (kit, host) = kit(wait: .zero)
+        let entered = AsyncStream<Void>.makeStream()
+        let release = AsyncStream<Void>.makeStream()
+        host.held.beforeReturn = { _ in
+            entered.continuation.yield(())
+            for await _ in release.stream {
+                break
+            }
+        }
+        let sent = Task { try await kit.model.write(.comment(body: "Still saved"), to: ref) }
+        defer {
+            sent.cancel()
+            entered.continuation.finish()
+            release.continuation.finish()
+        }
+        for await _ in entered.stream {
+            break
+        }
+        sent.cancel()
+        await #expect(throws: CancellationError.self) { try await sent.value }
+        #expect(host.held.jobs.count == 1 && kit.model.queued["job-1"]?.kind == .write)
+        #expect(kit.model.enqueuesInFlight == 0 && kit.model.earlyOutboxDeliveries.isEmpty)
+        #expect(kit.model.waiting.isEmpty && kit.model.outcomes.isEmpty)
+        #expect(host.events.isEmpty)
+    }
+
+    private enum EnqueueFailure: Error, Equatable { case stopped }
 
     @Test func eachWriteTellsTheHostWhatItDidAndHowItWent() async throws {
         let (kit, host) = kit(wait: .seconds(5))

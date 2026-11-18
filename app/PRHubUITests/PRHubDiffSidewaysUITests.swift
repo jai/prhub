@@ -4,16 +4,10 @@ import XCTest
 /// and a key line's note stay whole and in view wherever the code is. On the sample PRs, at the default text size and
 /// the largest. Pictures go to `SCREENSHOTS_DIR` when set.
 @MainActor
-final class PRHubDiffSidewaysUITests: XCTestCase {
-    private let app = XCUIApplication()
-
+final class PRHubDiffSidewaysUITests: PRHubUITestCase {
     /// Review alerts already declined: the offer came up over the PR on an iPad and took the tap meant for Review
     /// changes (CI's recording, 2026-11-14).
     private static let noAlertsOffer = ["-prhubAlertsDeclined", "YES"]
-
-    override func setUp() {
-        continueAfterFailure = false
-    }
 
     private static let largest = "UICTContentSizeCategoryAccessibilityXXXL"
 
@@ -30,12 +24,12 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
         try swipeRightAtTheLeftEdge("largest", textSize: Self.largest)
     }
 
-    /// Read halfway along a long line: the code has moved, the header and the note have not.
-    func testTheHeaderAndTheNoteStayWhileTheCodeScrolls() throws {
+    /// A horizontal drag moves an overflowing code canvas, or leaves a fitting canvas still; the header and note stay.
+    func testTheHeaderAndTheNoteStayDuringAHorizontalDrag() throws {
         try headerAndNoteStay("default", textSize: nil)
     }
 
-    func testTheHeaderAndTheNoteStayWhileTheCodeScrollsInTheLargestText() throws {
+    func testTheHeaderAndTheNoteStayDuringAHorizontalDragInTheLargestText() throws {
         try headerAndNoteStay("largest", textSize: Self.largest)
     }
 
@@ -56,10 +50,10 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
     private func swipeRightAtTheLeftEdge(_ name: String, textSize: String?) throws {
         try openKeyLineNote(textSize: textSize)
         let before = Positions(app)
-        try picture("diff-sideways-\(name)-1-open")
+        try recordScreenshot("diff-sideways-\(name)-1-open")
 
         drag(from: 0.3, by: 200, holding: 0.5)
-        try picture("diff-sideways-\(name)-2-swiped-right")
+        try recordScreenshot("diff-sideways-\(name)-2-swiped-right")
         let after = Positions(app)
         XCTAssertEqual(after.line, before.line, "\(name): the code's first line stays at the left edge")
         XCTAssertEqual(after.header, before.header, "\(name): the header's path stays where it was")
@@ -70,12 +64,17 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
     private func headerAndNoteStay(_ name: String, textSize: String?) throws {
         try openKeyLineNote(textSize: textSize)
         let before = drag(from: 0.6, by: -150, holding: 0.3, bringingUpCode: true)
-        try picture("diff-sideways-\(name)-3-scrolled-left")
+        try recordScreenshot("diff-sideways-\(name)-3-scrolled-left")
         let after = Positions(app)
-        if isWide, after.line.minX == before.line.minX {
-            throw XCTSkip("\(name): the code fits this width; nothing to scroll")
+        // DiffTableContainer gives each code cell the full canvas width. DiffFileHeader pins the viewed button's
+        // trailing edge to the viewport. Classify the geometry before the gesture, never from whether it moved.
+        XCTAssertGreaterThan(before.line.width, 0, "the code canvas is present")
+        XCTAssertGreaterThan(before.viewed.width, 0, "the viewport's trailing control is present")
+        if before.line.maxX > before.viewed.maxX + 1 {
+            XCTAssertLessThan(after.line.minX, before.line.minX, "\(name): overflowing code must scroll sideways")
+        } else {
+            XCTAssertEqual(after.line, before.line, "\(name): code that fits must stay in place")
         }
-        XCTAssertLessThan(after.line.minX, before.line.minX, "\(name): the code scrolled sideways")
         XCTAssertEqual(after.header, before.header, "\(name): the header's path did not move")
         XCTAssertEqual(after.viewed, before.viewed, "\(name): the header's viewed mark did not move")
         XCTAssertTrue(after.isNoteInside, "\(name): the note is inside the screen, \(after.note)")
@@ -92,7 +91,7 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
         XCTAssertTrue(app.reveal(diff), "Files changed, under the PR's summary")
         diff.tap()
         XCTAssertTrue(app.buttons["file-header-0"].waitForExistence(timeout: 5))
-        try picture("diff-sideways-long-path-\(name)")
+        try recordScreenshot("diff-sideways-long-path-\(name)")
     }
 
     /// An iPad's regular width: the list beside the PR, and the code maybe narrow enough to fit.
@@ -127,14 +126,7 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
         )
         // Until the code stops: a snapshot taken mid-scroll can catch the header a frame behind it.
         let first = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH 'diff-line-'")).firstMatch
-        var frame = first.frame
-        for _ in 0 ..< 20 {
-            RunLoop.current.run(until: Date.now.addingTimeInterval(0.15))
-            if first.frame == frame {
-                break
-            }
-            frame = first.frame
-        }
+        app.waitForStill(first)
         return positions
     }
 
@@ -173,21 +165,9 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
         let next = app.buttons["key-line-next"]
         XCTAssertTrue(next.waitForExistence(timeout: 5))
         next.tap()
-        XCTAssertTrue(app.descendants(matching: .any)["key-line-note"].waitForExistence(timeout: 5))
-        RunLoop.current.run(until: Date.now.addingTimeInterval(1))
-    }
-
-    private func picture(_ name: String) throws {
-        let screenshot = XCUIScreen.main.screenshot()
-        let attachment = XCTAttachment(screenshot: screenshot)
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
-        guard let folder = ProcessInfo.processInfo.environment["SCREENSHOTS_DIR"], !folder.isEmpty else {
-            return
-        }
-        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
-        try screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "\(folder)/\(name).png"))
+        let note = app.descendants(matching: .any)["key-line-note"]
+        XCTAssertTrue(note.waitForExistence(timeout: 5))
+        app.waitForStill(note)
     }
 }
 
@@ -214,6 +194,6 @@ private struct Positions {
     }
 
     var isNoteInside: Bool {
-        note.minX >= screen.minX && note.maxX <= screen.maxX
+        !note.isEmpty && note.minX >= screen.minX && note.maxX <= screen.maxX
     }
 }

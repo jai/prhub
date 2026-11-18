@@ -113,6 +113,7 @@ extension EnvironmentValues {
 /// them then pushes the PR on this stack, so Back returns to where the link was.
 struct PullRequestLinks: ViewModifier {
     @Environment(PRsModel.self) private var model
+    @Environment(\.openURL) private var openURL
     let stack: PRStack
 
     func body(content: Content) -> some View {
@@ -120,7 +121,8 @@ struct PullRequestLinks: ViewModifier {
         content
             .environment(\.openURL, OpenURLAction { url in
                 guard let link = PRLink(url: url) else {
-                    return .systemAction
+                    openURL(url)
+                    return .handled
                 }
                 opener.open(link)
                 return .handled

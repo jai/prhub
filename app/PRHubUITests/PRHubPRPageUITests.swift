@@ -1,17 +1,16 @@
 import XCTest
 
 /// A PR's page over the sample PRs: its checks, with a job's matrix legs under one line and a shared name told apart by
-/// its workflow; the review bar's icons when its words don't fit; and a description in GitHub's Markdown. Pictures go to
+/// its workflow; the review bar's accessibility labels at larger text; and a description in GitHub's Markdown. Pictures go to
 /// `SCREENSHOTS_DIR` when it is set.
 @MainActor
-final class PRHubPRPageUITests: XCTestCase {
-    private let app = XCUIApplication()
+final class PRHubPRPageUITests: PRHubUITestCase {
     private let checkout = "Show a retry button when checkout fails"
     /// The rate limit's row: its title without `[API-88] [SEC-12]`, which show as its ticket lines.
     private let rateLimit = "Rate-limit the password reset endpoint"
 
     @MainActor override func setUp() async throws {
-        continueAfterFailure = false
+        try await super.setUp()
         XCUIDevice.shared.appearance = .light
         XCUIDevice.shared.orientation = .portrait
     }
@@ -31,7 +30,7 @@ final class PRHubPRPageUITests: XCTestCase {
     }
 
     /// The bug bash's keyboard bug (2026-11-10): six lines in the review's box with the keyboard up, and the button
-    /// that sends it still shows above the keys. Skipped where the Simulator shows no keyboard.
+    /// that sends it still shows above the keys. This check requires the software keyboard.
     func testAReviewsSendButtonStaysAboveTheKeyboard() throws {
         launch([])
         openCheckout()
@@ -45,14 +44,12 @@ final class PRHubPRPageUITests: XCTestCase {
         field.tap()
         field.typeText("line one\nline two\nline three\nline four\nline five\nline six")
         let keyboard = app.keyboards.firstMatch
-        let hasKeyboard = keyboard.waitForExistence(timeout: 3)
-        // The box moves after the keys do.
-        RunLoop.current.run(until: Date.now.addingTimeInterval(1))
-        try picture("review-box-keyboard-up")
-        try XCTSkipUnless(hasKeyboard, "this Simulator shows no software keyboard")
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5), "the software keyboard must be visible for this layout check")
         let send = app.buttons["inline-composer-send"]
-        XCTAssertTrue(send.exists, "the box has its send button")
-        XCTAssertLessThanOrEqual(send.frame.maxY, keyboard.frame.minY, "the send button is under the keyboard")
+        XCTAssertTrue(waitFor { send.exists && send.isHittable && send.frame.maxY <= keyboard.frame.minY },
+                      "the send button remains above the software keyboard")
+        try picture("review-box-keyboard-up")
+        XCTAssertLessThanOrEqual(send.frame.maxY, keyboard.frame.minY, "the send button overlaps the keyboard")
     }
 
     /// A long press on Open in GitHub offers the PR's link, to copy or to share.
@@ -112,7 +109,7 @@ final class PRHubPRPageUITests: XCTestCase {
     }
 
     /// One job name in two workflows says its workflow; a job's matrix legs are one line that opens to them.
-    func testTheChecksGroupMatrixLegsAndNameTheirWorkflow() {
+    func testTheChecksGroupMatrixLegsAndNameTheirWorkflow() throws {
         launch()
         openCheckout()
         let header = app.buttons["checks-header"]
@@ -126,12 +123,12 @@ final class PRHubPRPageUITests: XCTestCase {
         XCTAssertFalse(app.buttons["web 1/4"].exists, "the legs wait under their job")
         group.tap()
         XCTAssertTrue(app.buttons["web 1/4"].waitForExistence(timeout: 3), "and open under it")
-        try? picture("nav-checks-grouped")
+        try picture("nav-checks-grouped")
     }
 
     /// A description in GitHub's Markdown: its table one grid that scrolls sideways, not a line per cell, and a
     /// `<details>` fold that opens in place.
-    func testADescriptionDrawsGitHubsMarkdown() {
+    func testADescriptionDrawsGitHubsMarkdown() throws {
         launch()
         openRateLimit()
         let table = app.scrollViews["markdown-table"]
@@ -144,17 +141,17 @@ final class PRHubPRPageUITests: XCTestCase {
             app.swipeUp(velocity: .slow)
         }
         XCTAssertEqual(fold.value as? String, "closed")
-        try? picture("nav-markdown")
+        try picture("nav-markdown")
         fold.tap()
         XCTAssertTrue(waitFor { fold.value as? String == "open" }, "the fold opens in place")
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Each request adds a row'"))
             .firstMatch.waitForExistence(timeout: 3))
-        try? picture("nav-markdown-open")
+        try picture("nav-markdown-open")
     }
 
-    /// At a text size where "Request changes" no longer fits its third, all three buttons show icons, and keep their
-    /// words for VoiceOver.
-    func testTheReviewBarShowsIconsWhenItsWordsDontFit() {
+    /// The review actions keep their accessible names at a larger text size. The screenshot records their appearance;
+    /// these label assertions do not establish whether the visual layout chose symbols or words.
+    func testTheReviewBarKeepsItsAccessibleActionNamesAtLargerText() throws {
         launch(["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryXXL"])
         openCheckout()
         let approve = app.buttons["pr-review-approve"]
@@ -165,12 +162,12 @@ final class PRHubPRPageUITests: XCTestCase {
         XCTAssertEqual(approve.label, "Approve")
         XCTAssertEqual(app.buttons["pr-review-request-changes"].label, "Request changes")
         XCTAssertEqual(app.buttons["pr-review-comment"].label, "Comment")
-        try? picture("nav-review-bar-xxl")
+        try picture("nav-review-bar-xxl")
     }
 
     /// The tickets the title names, each with Linear's state and who owns it, and the title without their brackets; a bot's PR names
     /// the person it was opened for, and says it is a bot's.
-    func testThePageShowsItsTicketsAndWhoItIsFrom() {
+    func testThePageShowsItsTicketsAndWhoItIsFrom() throws {
         launch()
         openRateLimit()
         XCTAssertTrue(app.staticTexts["Rate-limit the password reset endpoint"].waitForExistence(timeout: 5),
@@ -184,12 +181,12 @@ final class PRHubPRPageUITests: XCTestCase {
             XCTAssertTrue(tickets.staticTexts[words].exists, words)
         }
         XCTAssertFalse(app.buttons["pr-ticket-connect-linear"].exists, "a self-hosted Worker's Linear is its own")
-        try? picture("nav-tickets-author")
+        try picture("nav-tickets-author")
     }
 
     /// Approve closes its box at once; the toast says Submitting review…, then Approved, then goes. A refused review
     /// stays on the toast with the reason, and Retry sends it.
-    func testAReviewGoesInTheBackgroundWithAToast() {
+    func testAReviewGoesInTheBackgroundWithAToast() throws {
         launch(["-PRHubRefuseFirstReview"])
         openCheckout()
         let approve = app.buttons["pr-review-approve"]
@@ -200,25 +197,25 @@ final class PRHubPRPageUITests: XCTestCase {
         let send = app.buttons["inline-composer-send"]
         XCTAssertTrue(send.waitForExistence(timeout: 5))
         XCTAssertLessThan(send.frame.maxX, app.buttons["Cancel"].frame.minX)
-        try? picture("nav-page-approve-open")
+        try picture("nav-page-approve-open")
         send.tap()
         XCTAssertTrue(waitFor(timeout: 1) { !send.exists }, "the box closes at once")
         let words = app.staticTexts["pr-review-toast-words"]
         XCTAssertTrue(words.waitForExistence(timeout: 2))
         XCTAssertEqual(words.label, "Submitting review…", "while the review goes, before any answer")
-        try? picture("nav-toast-submitting")
+        try picture("nav-toast-submitting")
         let retry = app.buttons["pr-review-toast-retry"]
         XCTAssertTrue(retry.waitForExistence(timeout: 5), "a refusal stays, with Retry")
         XCTAssertEqual(words.label, "Review not sent. GitHub didn't answer in time.")
-        try? picture("nav-toast-failed")
+        try picture("nav-toast-failed")
         retry.tap()
         XCTAssertTrue(waitFor { words.label == "Submitting review…" }, words.label)
         XCTAssertTrue(waitFor(timeout: 8) { words.label == "Approved" }, words.label)
-        try? picture("nav-toast-approved")
+        try picture("nav-toast-approved")
         XCTAssertTrue(waitFor(timeout: 6) { !words.exists }, "it fades once GitHub has it")
     }
 
-    func testALinesCommentNowClosesItsBoxAndTheToastFollowsIt() {
+    func testALinesCommentNowClosesItsBoxAndTheToastFollowsIt() throws {
         launch()
         openCheckout()
         let diff = app.buttons["pr-files-changed"]
@@ -243,7 +240,7 @@ final class PRHubPRPageUITests: XCTestCase {
         XCTAssertFalse(now.exists, "the box closed at once")
         // The samples answer at once, so it may already have landed.
         XCTAssertTrue(["Posting comment…", "Comment posted"].contains(words.label), words.label)
-        try? picture("diff-toast-comment")
+        try picture("diff-toast-comment")
         XCTAssertTrue(waitFor(timeout: 8) { words.label == "Comment posted" }, words.label)
         XCTAssertTrue(waitFor(timeout: 6) { !words.exists }, "it goes once GitHub has it")
     }
@@ -269,27 +266,7 @@ final class PRHubPRPageUITests: XCTestCase {
         XCTAssertTrue(app.buttons["pr-review-changes"].waitForExistence(timeout: 5))
     }
 
-    private func waitFor(timeout: TimeInterval = 5, _ condition: () -> Bool) -> Bool {
-        let end = Date.now.addingTimeInterval(timeout)
-        while Date.now < end {
-            if condition() {
-                return true
-            }
-            RunLoop.current.run(until: Date.now.addingTimeInterval(0.1))
-        }
-        return condition()
-    }
-
     private func picture(_ name: String) throws {
-        let screenshot = XCUIScreen.main.screenshot()
-        let attachment = XCTAttachment(screenshot: screenshot)
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
-        guard let folder = ProcessInfo.processInfo.environment["SCREENSHOTS_DIR"], !folder.isEmpty else {
-            return
-        }
-        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
-        try screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "\(folder)/\(name)-light.png"))
+        try recordScreenshot("\(name)-light")
     }
 }

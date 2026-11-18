@@ -76,6 +76,15 @@
             }
         }
 
+        isolated deinit {
+            for observer in keyboardObservers {
+                NotificationCenter.default.removeObserver(observer)
+            }
+            if let keyboardObserver {
+                NotificationCenter.default.removeObserver(keyboardObserver)
+            }
+        }
+
         @available(*, unavailable)
         required init?(coder _: NSCoder) {
             fatalError("not used from a storyboard")
@@ -384,6 +393,7 @@
 
         /// The line ends up just above the box and the keyboard, which only land once the field has focus.
         private func followKeyboard() {
+            keyboardObserver.map(NotificationCenter.default.removeObserver)
             keyboardObserver = NotificationCenter.default.addObserver(
                 forName: UIResponder.keyboardDidShowNotification, object: nil, queue: .main
             ) { [weak self] _ in

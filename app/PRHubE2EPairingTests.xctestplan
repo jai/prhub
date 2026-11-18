@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "id": "2E3B9C86-6430-4298-B305-6CFC26F25577",
+      "name": "Fresh unpaired test install (manual)",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {},
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:PRHub.xcodeproj",
+        "identifier": "PRHubE2ETests",
+        "name": "PRHubE2ETests"
+      },
+      "parallelizable": false,
+      "selectedTests": [
+        "PRHubPushOpenE2ETests/testFreshPairingConnectsTheExpectedWorkerAndOffersAlerts()"
+      ]
+    }
+  ],
+  "version": 1
+}

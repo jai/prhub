@@ -25,61 +25,52 @@
     ///   with `-PRHubRefuseFirstReview` the first review sent is refused, so its toast shows Retry, and each review takes
     ///   3 seconds to answer. With `-PRHubOffline` the device counts as offline, under the offline banner. With
     ///   `-PRHubNewerBuild <n>` it checks for updates, and the config's `app_latest` names this
-    ///   build's version with a build number `n` higher (0: this build); `-PRHubForgetLater` forgets an earlier Later.
+    ///   build's version with a build number `n` higher (0: this build).
     ///
-    /// Every one starts at the default diff font, whatever an earlier run chose in Settings; `-prkit.diffFont face:size`
+    /// Each launch starts on empty storage of its own (`PRHubUITestResources`); `-PRHubKeepState` keeps the last
+    /// launch's. `-prkit.diffFont face:size`
     /// sets one for the run. `-PRHubAppearance dark` (or `light`) sets the run's appearance whatever the Simulator's is: on
     /// CI's Simulator `XCUIDevice.shared.appearance` left everything light, so every "dark" picture came out light.
     public enum PRHubScreenshotEnvironment {
         @MainActor public static func environment(
-            usage: @MainActor () -> UsageAnalytics, testFlightGroup: TestFlightGroup
+            usage: @MainActor (UserDefaults) -> UsageAnalytics, testFlightGroup: TestFlightGroup
         ) -> PRHubEnvironment? {
             let arguments = ProcessInfo.processInfo.arguments
-            if arguments.contains(where: { $0.hasPrefix("-PRHub") }) {
-                UserDefaults.standard.removeObject(forKey: DiffFont.storageKey)
-                UserDefaults.standard.removeObject(forKey: UsageAnalytics.sharingKey)
+            guard let resources = PRHubUITestResources.current else {
+                return nil
             }
             if arguments.contains("-PRHubFirstRun") {
-                return firstRun(usage: usage)
+                return fakeHosted(signedIn: false, arguments: arguments, usage: usage, resources: resources)
             }
             if arguments.contains("-PRHubStubWorker") {
-                return PRHubStubWorker.environment(arguments)
+                return PRHubStubWorker.environment(arguments, resources: resources)
             }
-            if let index = arguments.firstIndex(of: "-PRHubOutboxCheck"), arguments.indices.contains(index + 1),
-               let worker = URL(string: arguments[index + 1])
-            {
-                return PRHubOutboxCheck.environment(worker: worker)
+            if arguments.contains("-PRHubOutboxCheck") {
+                return PRHubOutboxCheck.environment(resources)
             }
             if arguments.contains("-PRHubHosted") {
-                let environment = hosted(arguments, usage: usage)
+                let environment = fakeHosted(signedIn: true, arguments: arguments, usage: usage, resources: resources)
                 if arguments.contains("-PRHubSettings") {
                     environment.navigation.selectedTab = .settings
                 }
                 return environment
             }
-            guard arguments.contains("-PRHubPaired") else {
-                return nil
-            }
+            // `-PRHubPaired`, the one fixture mode left.
             let features: Set<DeviceFeature> = arguments.contains("-PRHubNoAI")
                 ? [.push] : [.askAI, .keyLines, .rewrite, .push]
-            var samples: PRSampleSet = arguments.contains("-PRHubLongDiff") ? .prHubLongDiff : .prHub
-            samples.askChat = askChat(arguments)
-            if arguments.contains("-PRHubRefuseFirstReview") {
-                samples.refusesFirstReview = "GitHub didn't answer in time."
-                // Long enough for a loaded test Mac, and a recording, to see each step.
-                samples.reviewDelay = .seconds(3)
-            }
-            // The list under its "Not up to date" line.
-            if arguments.contains("-PRHubNotUpToDate") {
-                samples.notUpToDate = "1 of 125 PRs could not be downloaded and show their last copy. Refresh to try again."
-            }
-            let newer = newerBuild(arguments)
+            let samples = pairedSamples(arguments)
+            let newer = UserDefaults.standard.string(forKey: "PRHubNewerBuild").flatMap { Int($0) }
             let environment = PRHubEnvironment.offline(
                 config: DeviceConfig(features: features, login: PRSampleSet.prHubLogin, appLatest: Self.appLatest(newer)),
                 samples: samples,
                 worker: URL(string: "https://pr-review.octocat.workers.dev")!, defaultsSuite: "screenshots-paired",
-                isSample: false, usage: usage(), checksUpdates: newer != nil, testFlightGroup: testFlightGroup
+                isSample: false, usage: usage(resources.defaults), checksUpdates: newer != nil,
+                testFlightGroup: testFlightGroup,
+                listDefaults: resources.defaults, configurationDefaults: resources.configurationDefaults,
+                storageDirectory: resources.directory, network: PRNetwork(isOnline: true),
+                alertPermission: resources.alertPermission()
             )
+            resources.isolateAlerts(in: environment)
             if arguments.contains("-PRHubSettings") {
                 environment.navigation.selectedTab = .settings
             }
@@ -94,6 +85,21 @@
                 environment.prs.network.holdOffline()
             }
             return environment
+        }
+
+        private static func pairedSamples(_ arguments: [String]) -> PRSampleSet {
+            var samples: PRSampleSet = arguments.contains("-PRHubLongDiff") ? .prHubLongDiff : .prHub
+            samples.askChat = askChat(arguments)
+            if arguments.contains("-PRHubRefuseFirstReview") {
+                samples.refusesFirstReview = "GitHub didn't answer in time."
+                // Long enough for a loaded test Mac, and a recording, to see each step.
+                samples.reviewDelay = .seconds(3)
+            }
+            // The list under its "Not up to date" line.
+            if arguments.contains("-PRHubNotUpToDate") {
+                samples.notUpToDate = "1 of 125 PRs could not be downloaded and show their last copy. Refresh to try again."
+            }
+            return samples
         }
 
         /// `-PRHubAskWorking`: a question the agent is on. `-PRHubAskAnswered`: its long answer, in Markdown with code.
@@ -120,14 +126,6 @@
             return PRAskChat(messages: [question, answer], isWorking: false, activity: nil, problem: nil, costCents: nil)
         }
 
-        /// `-PRHubNewerBuild <n>`'s `n`, nil without it; `-PRHubForgetLater` forgets an earlier Later first.
-        private static func newerBuild(_ arguments: [String]) -> Int? {
-            if arguments.contains("-PRHubForgetLater") {
-                UserDefaults(suiteName: "screenshots-paired")?.removeObject(forKey: PRHubUpdate.laterKey)
-            }
-            return UserDefaults.standard.string(forKey: "PRHubNewerBuild").flatMap { Int($0) }
-        }
-
         /// `-PRHubNewerBuild <n>`'s: this build's version, its build number plus `n`, for both groups.
         private static func appLatest(_ newer: Int?) -> DeviceConfig.AppLatest? {
             guard let newer else {
@@ -138,27 +136,19 @@
             return DeviceConfig.AppLatest(internal: build, public: build)
         }
 
-        @MainActor private static func firstRun(usage: @MainActor () -> UsageAnalytics) -> PRHubEnvironment {
-            fakeHosted(signedIn: false, arguments: ProcessInfo.processInfo.arguments, usage: usage)
-        }
-
-        @MainActor private static func hosted(_ arguments: [String], usage: @MainActor () -> UsageAnalytics) -> PRHubEnvironment {
-            fakeHosted(signedIn: true, arguments: arguments, usage: usage)
-        }
-
         /// The hosted Worker's stand-in: sign-in, sign-out, Delete Account and the Anthropic key answer at once, and the
         /// config says what they did.
-        @MainActor private static func fakeHosted(signedIn: Bool, arguments: [String], usage: @MainActor () -> UsageAnalytics) -> PRHubEnvironment {
+        @MainActor private static func fakeHosted(
+            signedIn: Bool, arguments: [String], usage: @MainActor (UserDefaults) -> UsageAnalytics,
+            resources: PRHubUITestResources
+        ) -> PRHubEnvironment {
             let build = PRHubBuild.current
             let worker = build.hostedURL ?? URL(string: "https://prhub.example.workers.dev")!
-            let store = WorkerURLStore(service: AppIdentity.bundleID + ".screenshots-first-run", account: "url")
-            let endpoint = WorkerEndpoint(store: store)
-            try? endpoint.clear()
-            if signedIn {
+            let endpoint = WorkerEndpoint(store: resources.endpointStore)
+            if signedIn, resources.isFresh {
                 try? endpoint.save(worker)
             }
-            let defaults = UserDefaults(suiteName: "screenshots-first-run") ?? .standard
-            defaults.removePersistentDomain(forName: "screenshots-first-run")
+            let defaults = resources.configurationDefaults
             let state = FakeAccount(arguments: arguments)
             if signedIn {
                 defaults.set(try? JSONEncoder().encode(state.config), forKey: WorkerConnection.configKey)
@@ -194,14 +184,21 @@
                     pair: { _, _ in throw PairingClient.Failure.server("pairing_code_invalid", 401) },
                     save: { _ in }
                 ),
-                fetchConfig: { _ in state.config }, forgetSecret: {}, defaults: defaults, build: build, hosted: hosted
+                fetchConfig: { _ in state.config }, forgetSecret: {}, defaults: defaults, build: build,
+                usage: UsageAnalytics(hasProject: false, sink: nil, defaults: defaults), hosted: hosted
             )
             var samples: PRSampleSet = arguments.contains("-PRHubHostedEmpty")
                 ? PRSampleSet(samples: [], mergedReviewed: [], mergedMine: [], answersOnPhone: true) : .prHub
             if arguments.contains("-PRHubNoLinear") {
                 samples = samples.withoutLinear
             }
-            return PRHubEnvironment(connection: connection, samples: samples, usage: usage())
+            let environment = PRHubEnvironment(
+                connection: connection, samples: samples, alertPermission: resources.alertPermission(),
+                usage: usage(resources.defaults), defaults: resources.defaults, sampleDefaults: resources.sampleDefaults,
+                storageDirectory: resources.directory, network: PRNetwork(isOnline: true)
+            )
+            resources.isolateAlerts(in: environment)
+            return environment
         }
     }
 

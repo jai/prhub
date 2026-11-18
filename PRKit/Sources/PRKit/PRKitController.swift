@@ -41,6 +41,12 @@ public final class PRKitController {
         launchOptions = .none
     }
 
+    /// How long a screen waits for GitHub's answer before a write carries on without it (15 seconds).
+    public var answerWait: Duration {
+        get { model.answerWait }
+        set { model.answerWait = newValue }
+    }
+
     /// Whether the device has a network now: what `prKitOfflineBanner` shows.
     public var network: PRNetwork {
         model.network

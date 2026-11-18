@@ -31,7 +31,7 @@ struct PRHubApp: App {
     #if os(macOS) && DEBUG
         init() {
             PRHubMacSnapshot.openWindowIfNoneOpened {
-                PRHubRootView(environment: Self.screenshotEnvironment ?? .shared)
+                Self.windowContent { PRHubRootView(environment: $0) }
                     .symbolVariant(DesignTokens.iconVariant)
                     .task { await PRHubMacSnapshot.runIfAsked() }
             }
@@ -40,7 +40,7 @@ struct PRHubApp: App {
 
     var body: some Scene {
         WindowGroup {
-            root
+            Self.windowContent { PRHubRootView(environment: $0) }
                 // DESIGN.md's icon style, for every symbol in the app.
                 .symbolVariant(DesignTokens.iconVariant)
                 .preferredColorScheme(Self.screenshotColorScheme)
@@ -54,29 +54,52 @@ struct PRHubApp: App {
         #endif
         #if os(macOS)
             Window("Feedback", id: PRHubMacFeedback.windowID) {
-                PRHubMacFeedback(environment: Self.screenshotEnvironment ?? .shared)
-                    .prKitOfflineBanner((Self.screenshotEnvironment ?? .shared).prs)
-                    .symbolVariant(DesignTokens.iconVariant)
-                    .preferredColorScheme(Self.screenshotColorScheme)
+                Self.windowContent { environment in
+                    PRHubMacFeedback(environment: environment)
+                        .prKitOfflineBanner(environment.prs)
+                }
+                .symbolVariant(DesignTokens.iconVariant)
+                .preferredColorScheme(Self.screenshotColorScheme)
             }
             .defaultSize(width: 560, height: 720)
             .keyboardShortcut("f", modifiers: [.command, .shift])
             Settings {
-                PRHubMacSettings(environment: Self.screenshotEnvironment ?? .shared)
+                Self.windowContent { PRHubMacSettings(environment: $0) }
                     .symbolVariant(DesignTokens.iconVariant)
                     .preferredColorScheme(Self.screenshotColorScheme)
             }
         #endif
     }
 
-    @ViewBuilder private var root: some View {
+    /// Every window's content: on a fixture launch the fixture's environment and storage, and links out of the app
+    /// stay in it; the app's own links still come back through `onOpenURL`.
+    @MainActor @ViewBuilder private static func windowContent<Content: View>(
+        @ViewBuilder _ content: (PRHubEnvironment) -> Content
+    ) -> some View {
         if AppIdentity.isRunningTests {
             // The unit tests are hosted in this app; they get an empty window instead of the live UI.
             EmptyView()
-        } else if let environment = Self.screenshotEnvironment {
-            PRHubRootView(environment: environment)
         } else {
-            PRHubRootView(environment: .shared)
+            #if DEBUG
+                if let environment = screenshotEnvironment {
+                    content(environment)
+                        .defaultAppStorage(PRHubUITestResources.current?.defaults ?? .standard)
+                        .environment(\.openURL, OpenURLAction { url in
+                            url.scheme == PRHubBuild.settingsURL.scheme ? .systemAction : .handled
+                        })
+                        .overlay(alignment: .bottomTrailing) {
+                            if ProcessInfo.processInfo.arguments.contains("-PRHubOutboxCheck") {
+                                Text(PRHubOutboxCheck.control.status)
+                                    .accessibilityIdentifier("prhub-ui-fixture-status")
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                } else {
+                    content(.shared)
+                }
+            #else
+                content(.shared)
+            #endif
         }
     }
 }

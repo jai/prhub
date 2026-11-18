@@ -16,7 +16,11 @@
         }
 
         @MainActor static func environment() -> PRHubEnvironment? {
-            PRHubScreenshotEnvironment.environment(usage: UsageAnalytics.live, testFlightGroup: .current)
+            PRHubScreenshotEnvironment.environment(usage: { UsageAnalytics.live(defaults: $0) }, testFlightGroup: .current)
+        }
+
+        static var isFixtureLaunch: Bool {
+            PRHubUITestResources.isFixtureLaunch
         }
 
         static var forcesCompactWidth: Bool {

@@ -1,8 +1,9 @@
-# PRHub e2e
+# PRHub UI exploration
 
-Agentic end-to-end tests and bug bashes for the PRHub iPhone app, with [e2e](https://github.com/tester-army/e2e).
-The app runs on iOS Simulators in its Debug launch modes (`app/PRHub/Debug/PRHubScreenshots.swift`), so no Worker
-and no GitHub are involved.
+AI-driven exploratory testing and bug bashes for the PRHub iPhone app, with [e2e](https://github.com/tester-army/e2e).
+The app runs on iOS Simulators in its Debug fixture modes (`app/PRHubCore/Debug/PRHubScreenshotEnvironment.swift`), so
+no Worker and no GitHub are involved: this is not end-to-end testing, and it is not part of CI. Each launch starts on
+empty fixture storage. The checks against a deployed Worker are `app/PRHubE2ETests`.
 
 ## Set up (once per app change)
 
@@ -40,13 +41,5 @@ OPENAI_API_KEY=… ./bugbash.sh some.txt   # other charters
 PRHUB_E2E_SIMS=<simulator udid> npx e2e run --config e2e.bugbash.config.ts --tag bugbash --target paired-1
 ```
 
-Each repro launches its own mode (`tests/prhub.ts`), so one target runs them all. The repro tests fail until their
-bug is fixed. Then remove the test's `bugbash` tag and keep it as a regression test. `npm run test:e2e` leaves the tagged tests out.
-
-## State of the repro tests
-
-The first bug bash (2026-11-10) confirmed 16 repros. 15 have a fix on `main` (2026-11-14), each with a unit or UI
-test of its own in `PRKit/Tests` or `app/`. The repro tests keep their `bugbash` tag until someone runs them against
-that build on a Simulator and sees them pass. One has no fix yet:
-
-- `composer.e2e.ts`, "the Request changes button stays reachable with the keyboard up".
+Each repro launches its own mode (`tests/prhub.ts`), so one target runs them all. A model's verdict is not a
+deterministic assertion: a confirmed bug gets a Swift unit or UI test with its fix.

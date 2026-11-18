@@ -36,7 +36,7 @@ SIM_NAME ?= iPhone 17
 
 lint-ios:
 	$(SWIFTFORMAT) app --lint
-	$(SWIFTLINT) app/PRHub app/PRHubCore app/PRHubTests app/PRHubUITests app/PRHubRenderingTests app/PRHubE2ETests
+	$(SWIFTLINT) app/PRHub app/PRHubCore app/PRHubTests app/PRHubUITests app/PRHubRenderingTests app/PRHubE2ETests app/PRHubPerformanceTests
 	$(MAKE) -C app design-check
 	$(SHELLCHECK) app/ci_scripts/ci_post_clone.sh
 	$(GITLEAKS) app

@@ -1,61 +1,50 @@
 import XCTest
 
-/// The end-to-end check of a tapped alert against a real Worker: pair with it, kill the app, wait for an alert sent to
-/// the Simulator (`xcrun simctl push`), tap it and time the tap to the PR's content. Skipped unless the runner is given
-/// `TEST_RUNNER_PRHUB_E2E_SETUP` (a `prhub://setup` link) for `testPairing`, or `TEST_RUNNER_PRHUB_E2E` for
-/// `testTapToContent`, which prints `PRHUB-E2E-READY` once the app is killed and `PRHUB-E2E-TAP-TO-CONTENT-MS=`. CI
-/// runs neither.
+/// Self-hosted pairing and locally injected notification navigation. Injection does not prove APNs delivery.
 @MainActor
-final class PRHubPushOpenE2ETests: XCTestCase {
-    private let app = XCUIApplication()
+final class PRHubPushOpenE2ETests: E2ETestCase {
     private let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
 
-    func testPairing() throws {
-        let setup = ProcessInfo.processInfo.environment["PRHUB_E2E_SETUP"]
-        try XCTSkipUnless(setup != nil, "an end-to-end run only")
-        let cancel = springboard.buttons["Cancel"]
-        if cancel.waitForExistence(timeout: 2) {
-            cancel.tap()
-        }
-        app.launchArguments = ["-PRHubSelfHosted", "YES"]
-        app.launch()
-        // `paired`: the app is paired already, and only alerts are left to turn on.
-        if let link = setup.flatMap(URL.init(string:)), setup != "paired" {
-            app.open(link)
-            let open = springboard.buttons["Open"]
-            if open.waitForExistence(timeout: 3) {
-                open.tap()
-            }
+    func testFreshPairingConnectsTheExpectedWorkerAndOffersAlerts() throws {
+        let target = try E2ETarget.load()
+        let setup = try target.setupLink()
+        launch()
+        try require(app.buttons["onboardingOwnWorker"].waitForExistence(timeout: 15),
+                    "Pairing requires an unpaired dedicated install; an existing pairing is not accepted.")
+        app.open(setup)
+        let open = springboard.buttons["Open"]
+        if open.waitForExistence(timeout: 3) {
+            open.tap()
         }
         let turnOn = app.buttons["Turn on"]
-        XCTAssertTrue(turnOn.waitForExistence(timeout: 60), "the offer to turn on alerts")
+        try require(turnOn.waitForExistence(timeout: 60), "The dedicated Worker must offer review alerts after pairing.")
         turnOn.tap()
         let allow = springboard.alerts.buttons["Allow"]
-        XCTAssertTrue(allow.waitForExistence(timeout: 10), "the system's question")
+        try require(allow.waitForExistence(timeout: 10), "Use a dedicated install with notification permission not yet requested.")
         allow.tap()
-        XCTAssertTrue(app.tab(.prs).waitForExistence(timeout: 10))
+        try verifyPairing(target)
     }
 
-    func testTapToContent() throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["PRHUB_E2E"] != nil, "an end-to-end run only")
+    /// The runner injects one payload after READY, containing the new notification UUID and exact PR reference.
+    func testInjectedNotificationOpensTheExpectedPR() async throws {
+        let target = try E2ETarget.load()
+        let marker = UUID().uuidString
+        launch()
+        try verifyPairing(target)
+        let banner = springboard.descendants(matching: .any).matching(NSPredicate(
+            format: "label CONTAINS %@ AND label CONTAINS %@", "Review requested: \(target.reference)", marker
+        )).firstMatch
         app.terminate()
         XCUIDevice.shared.press(.home)
-        print("PRHUB-E2E-READY")
-        let banner = springboard.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS 'Review requested'")).firstMatch
-        XCTAssertTrue(banner.waitForExistence(timeout: 180), "the alert's banner")
-        let tapped = Date.now
+        print("PRHUB-INJECTED-NOTIFICATION-READY id=\(marker) pr=\(target.reference)")
+        try require(banner.waitForExistence(timeout: 180), "The runner must inject the matching notification after READY.")
+        let tapped = ContinuousClock.now
         banner.tap()
-        let content = app.buttons["pr-review-changes"]
-        var shown: Date?
-        while Date.now.timeIntervalSince(tapped) < 30 {
-            if content.exists {
-                shown = .now
-                break
-            }
+        try await waitUntil("The notification must open the exact PR and loaded content within 30 seconds.", timeout: .seconds(30)) {
+            self.showsPR(target)
         }
-        let milliseconds = shown.map { Int($0.timeIntervalSince(tapped) * 1000) }
-        print("PRHUB-E2E-TAP-TO-CONTENT-MS=\(milliseconds.map(String.init) ?? "none")")
-        XCTAssertNotNil(shown, "the PR's content within 30 s of the tap")
+        let elapsed = tapped.duration(to: ContinuousClock.now).components
+        let milliseconds = Double(elapsed.seconds) * 1000 + Double(elapsed.attoseconds) / 1e15
+        print("PRHUB-INJECTED-TAP-TO-CONTENT-MS=\(Int(milliseconds)) id=\(marker) pr=\(target.reference)")
     }
 }

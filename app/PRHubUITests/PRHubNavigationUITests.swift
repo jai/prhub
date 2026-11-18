@@ -6,27 +6,27 @@ import XCTest
 /// sits beside the PR and a diff takes the whole width, with its panel as a column; a narrow Split View keeps the phone's
 /// layout. Pictures go to `SCREENSHOTS_DIR` when it is set.
 @MainActor
-final class PRHubNavigationUITests: XCTestCase {
-    private let app = XCUIApplication()
+final class PRHubNavigationUITests: PRHubUITestCase {
     private let checkout = "Show a retry button when checkout fails"
     private let checkoutRef = "acme/web#412"
 
     @MainActor override func setUp() async throws {
-        continueAfterFailure = false
+        try await super.setUp()
         XCUIDevice.shared.appearance = .light
         XCUIDevice.shared.orientation = .portrait
     }
 
     @MainActor override func tearDown() async throws {
         XCUIDevice.shared.orientation = .portrait
+        try await super.tearDown()
     }
 
-    func testReviewChangesPushesTheDiffWithKeyLinesOpenAndBackReturnsToThePR() {
+    func testReviewChangesPushesTheDiffWithKeyLinesOpenAndBackReturnsToThePR() throws {
         launch()
         openCheckout()
         app.buttons["pr-review-changes"].tap()
         assertOnDiffWithKeyLinesOpen()
-        try? picture("nav-review-changes-panel")
+        try picture("nav-review-changes-panel")
         backToThePRThenTheList()
     }
 
@@ -51,7 +51,7 @@ final class PRHubNavigationUITests: XCTestCase {
         let widths = ["pr-review-approve", "pr-review-request-changes", "pr-review-comment"]
             .map { app.buttons[$0].frame.width }
         XCTAssertEqual(try XCTUnwrap(widths.max()) - XCTUnwrap(widths.min()), 0, accuracy: 1, "one bar of equal buttons")
-        try? picture("nav-diff-review-bar")
+        try picture("nav-diff-review-bar")
         let approve = app.buttons["pr-review-approve"]
         let approveLeft = approve.frame.minX
         approve.tap()
@@ -59,7 +59,7 @@ final class PRHubNavigationUITests: XCTestCase {
         XCTAssertTrue(send.waitForExistence(timeout: 5))
         XCTAssertEqual(send.frame.minX, approveLeft, accuracy: 1, "Approve stays on the left when its box opens")
         XCTAssertLessThan(send.frame.maxX, app.buttons["Cancel"].frame.minX)
-        try? picture("nav-diff-approve-open")
+        try picture("nav-diff-approve-open")
         XCTAssertFalse(app.buttons["pr-review-approve"].exists, "the box takes the bar's place")
         send.tap()
         XCTAssertTrue(app.descendants(matching: .any)["pr-notice"].waitForExistence(timeout: 5), "the review went")
@@ -67,7 +67,7 @@ final class PRHubNavigationUITests: XCTestCase {
         XCTAssertTrue(waitFor { approve.exists && approve.label == "Approved" }, "the bar shows your review")
         XCTAssertTrue(approve.isSelected)
         XCTAssertFalse(app.buttons["pr-review-request-changes"].isSelected)
-        try? picture("nav-diff-review-bar-approved")
+        try picture("nav-diff-review-bar-approved")
     }
 
     func testTheRowsReviewButtonLandsOnTheDiffWithKeyLinesOpenAndBackGoesToThePR() {
@@ -79,20 +79,20 @@ final class PRHubNavigationUITests: XCTestCase {
         backToThePRThenTheList()
     }
 
-    func testSwipingARowRightOffersReviewChanges() {
+    func testSwipingARowRightOffersReviewChanges() throws {
         launch()
         let row = app.staticTexts[checkout]
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.swipeRight()
         let review = app.buttons["pr-swipe-review"].firstMatch
         XCTAssertTrue(review.waitForExistence(timeout: 3))
-        try? picture("nav-swipe-review")
+        try picture("nav-swipe-review")
         review.tap()
         assertOnDiffWithKeyLinesOpen()
         backToThePRThenTheList()
     }
 
-    func testARowsMenuOpensReviewsAndLinks() {
+    func testARowsMenuOpensReviewsAndLinks() throws {
         launch()
         let row = app.staticTexts[checkout]
         XCTAssertTrue(row.waitForExistence(timeout: 10))
@@ -100,7 +100,7 @@ final class PRHubNavigationUITests: XCTestCase {
         for item in ["pr-menu-open", "pr-menu-review", "pr-menu-github", "pr-menu-copy"] {
             XCTAssertTrue(app.buttons[item].waitForExistence(timeout: 3), item)
         }
-        try? picture("nav-row-menu")
+        try picture("nav-row-menu")
         app.buttons["pr-menu-review"].tap()
         assertOnDiffWithKeyLinesOpen()
     }
@@ -151,12 +151,12 @@ final class PRHubNavigationUITests: XCTestCase {
             XCTAssertTrue(waitForHittable(app.buttons["pr-review-changes"]))
             try picture("nav-wide-pr-\(name)")
             let listRow = app.buttons["pr-row-review-\(checkoutRef)"]
-            XCTAssertTrue(isBeside(listRow), "the list stays beside the PR")
+            XCTAssertTrue(waitFor { [self] in isBeside(listRow) }, "the list stays beside the PR")
             XCTAssertFalse(app.navigationBars.buttons["BackButton"].exists, "not pushed over it")
 
             app.buttons["pr-review-changes"].tap()
             XCTAssertTrue(app.buttons["diff-files"].waitForExistence(timeout: 5))
-            XCTAssertTrue(waitFor { !isBeside(listRow) }, "the diff takes the list's room")
+            XCTAssertTrue(waitFor { [self] in !isBeside(listRow) }, "the diff takes the list's room")
             XCTAssertTrue(app.buttons["key-lines-context-100"].waitForExistence(timeout: 3), "the panel is a column")
             try picture("nav-wide-diff-\(name)")
             let window = app.windows.firstMatch
@@ -164,14 +164,14 @@ final class PRHubNavigationUITests: XCTestCase {
             window.typeKey(XCUIKeyboardKey.shift, modifierFlags: [])
 
             window.typeKey("0", modifierFlags: [.command, .option])
-            XCTAssertTrue(waitFor { !app.buttons["key-lines-context-100"].exists }, "⌥⌘0 puts the panel away")
+            XCTAssertTrue(waitFor { [self] in !app.buttons["key-lines-context-100"].exists }, "⌥⌘0 puts the panel away")
             window.typeKey("0", modifierFlags: [.command, .option])
             XCTAssertTrue(app.buttons["key-lines-context-100"].waitForExistence(timeout: 3), "and brings it back")
             window.typeKey(.downArrow, modifierFlags: [.command, .option])
 
             app.back()
             XCTAssertTrue(waitForHittable(app.buttons["pr-review-changes"]), "Back is the PR")
-            XCTAssertTrue(waitFor { isBeside(listRow) }, "with the list beside it again")
+            XCTAssertTrue(waitFor { [self] in isBeside(listRow) }, "with the list beside it again")
         }
     }
 
@@ -237,44 +237,22 @@ final class PRHubNavigationUITests: XCTestCase {
     }
 
     /// On screen, in the window's left half: the list's column.
-    /// Read from one snapshot, retried for up to 5 s: the list draws its rows again as the PR opens, and a row read
-    /// with `exists` then `frame` can go between the two, which fails the test outright (Xcode Cloud's iPad, 2026-11-14).
+    /// Read from one snapshot: the list can replace its rows while the PR opens. The caller's predicate retries
+    /// a stale snapshot instead of nesting another waiter or querying exists and frame from different snapshots.
     private func isBeside(_ row: XCUIElement) -> Bool {
         let window = app.windows.firstMatch.frame
-        return waitFor {
-            guard let frame = try? row.snapshot().frame else {
-                return false
-            }
-            return frame.minX >= window.minX && frame.maxX < window.midX
+        guard let frame = try? row.snapshot().frame else {
+            return false
         }
+        return frame.minX >= window.minX && frame.maxX < window.midX
     }
 
     private func waitForHittable(_ element: XCUIElement) -> Bool {
         waitFor { element.exists && element.isHittable }
     }
 
-    private func waitFor(timeout: TimeInterval = 5, _ condition: () -> Bool) -> Bool {
-        let end = Date.now.addingTimeInterval(timeout)
-        while Date.now < end {
-            if condition() {
-                return true
-            }
-            RunLoop.current.run(until: Date.now.addingTimeInterval(0.1))
-        }
-        return condition()
-    }
-
     private func picture(_ name: String) throws {
         let look = XCUIDevice.shared.appearance == .dark ? "dark" : "light"
-        let screenshot = XCUIScreen.main.screenshot()
-        let attachment = XCTAttachment(screenshot: screenshot)
-        attachment.name = "\(name)-\(look)"
-        attachment.lifetime = .keepAlways
-        add(attachment)
-        guard let folder = ProcessInfo.processInfo.environment["SCREENSHOTS_DIR"], !folder.isEmpty else {
-            return
-        }
-        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
-        try screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "\(folder)/\(name)-\(look).png"))
+        try recordScreenshot("\(name)-\(look)")
     }
 }

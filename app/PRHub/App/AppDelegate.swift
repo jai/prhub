@@ -12,7 +12,7 @@
             _ application: UIApplication,
             didFinishLaunchingWithOptions _: [UIApplication.LaunchOptionsKey: Any]? = nil
         ) -> Bool {
-            guard !AppIdentity.isRunningTests else {
+            guard !Self.isFixtureLaunch, !AppIdentity.isRunningTests else {
                 return true
             }
             UNUserNotificationCenter.current().delegate = PRHubEnvironment.shared.notificationDelegate
@@ -41,6 +41,10 @@
             didReceiveRemoteNotification userInfo: [AnyHashable: Any],
             fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
         ) {
+            guard !Self.isFixtureLaunch else {
+                completionHandler(.noData)
+                return
+            }
             if PRHubNotificationDelegate.isSignedOut(userInfo) {
                 Task {
                     await PRHubEnvironment.shared.signedOutByGitHub()
@@ -63,6 +67,14 @@
     }
 
     extension AppDelegate {
+        private static var isFixtureLaunch: Bool {
+            #if DEBUG
+                PRHubScreenshots.isFixtureLaunch
+            #else
+                false
+            #endif
+        }
+
         private static func backgroundResult(_ outcome: PRSyncOutcome) -> UIBackgroundFetchResult {
             switch outcome {
             case .changed: .newData

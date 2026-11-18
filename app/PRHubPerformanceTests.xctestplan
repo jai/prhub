@@ -1,0 +1,21 @@
+{
+  "configurations": [
+    {
+      "id": "A7757D8A-76E9-4A77-A2AE-E0E76E84BB79",
+      "name": "Physical device",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {},
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:PRHub.xcodeproj",
+        "identifier": "PRHubPerformanceTests",
+        "name": "PRHubPerformanceTests"
+      },
+      "parallelizable": false
+    }
+  ],
+  "version": 1
+}

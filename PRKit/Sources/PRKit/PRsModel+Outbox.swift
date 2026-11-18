@@ -10,8 +10,7 @@ extension PRsModel {
             return try .answered(await client.ask(question, about: ref))
         }
         let job = PROutboxJob.question(question, ref: ref)
-        let id = try await outbox.enqueue(job)
-        queued[id] = job
+        let id = try await enqueue(job, using: outbox)
         switch try await answer(to: id) {
         case let .answered(data): return try .answered(JSONDecoder().decode(PRAskChat.self, from: data))
         case .stillGoing: return .queued
@@ -89,8 +88,7 @@ extension PRsModel {
             return try .posted(PullRequestDetail.decode(await client.write(write, to: ref)))
         }
         let job = PROutboxJob.write(write, ref: ref)
-        let id = try await outbox.enqueue(job)
-        queued[id] = job
+        let id = try await enqueue(job, using: outbox)
         saved(id)
         switch try await answer(to: id) {
         case let .answered(data): return try .posted(PullRequestDetail.decode(data))
@@ -98,10 +96,47 @@ extension PRsModel {
         }
     }
 
+    private func enqueue(_ job: PROutboxJob, using outbox: any PRKitOutbox) async throws -> String {
+        enqueuesInFlight += 1
+        defer {
+            enqueuesInFlight -= 1
+            if enqueuesInFlight == 0 {
+                let unmatched = earlyOutboxDeliveries
+                earlyOutboxDeliveries.removeAll()
+                for delivery in unmatched {
+                    deliver(delivery)
+                }
+            }
+        }
+        let id = try await outbox.enqueue(job)
+        queued[id] = job
+        waiting.insert(id)
+        let arrived = earlyOutboxDeliveries.filter { $0.id == id }
+        earlyOutboxDeliveries.removeAll { $0.id == id }
+        for delivery in arrived {
+            deliver(delivery)
+        }
+        return id
+    }
+
+    private func keepEarly(_ delivery: PROutboxDelivery) -> Bool {
+        guard enqueuesInFlight > 0, !waiting.contains(delivery.id), queued[delivery.id] == nil else {
+            return false
+        }
+        earlyOutboxDeliveries.append(delivery)
+        return true
+    }
+
+    private func deliver(_ delivery: PROutboxDelivery) {
+        switch delivery {
+        case let .answered(id, data): outboxAnswered(id: id, data: data)
+        case let .refused(id, kind, reason): outboxRefused(id: id, kind: kind, reason: reason)
+        }
+    }
+
     /// The outbox's answer if it comes within `answerWait`; else the job goes on without the screen. A refusal in time
     /// is thrown.
     private func answer(to id: String) async throws -> PROutboxAnswer {
-        waiting.insert(id)
         defer { waiting.remove(id) }
         let clock = ContinuousClock()
         let end = clock.now + answerWait
@@ -125,6 +160,9 @@ extension PRsModel {
 
     /// The Worker's answer to an outbox item, for the screen waiting on it.
     func outboxAnswered(id: String, data: Data) {
+        if keepEarly(.answered(id: id, data: data)) {
+            return
+        }
         guard waiting.contains(id) else {
             queued[id] = nil
             _ = reviewLanded(job: id, data: data)
@@ -136,6 +174,9 @@ extension PRsModel {
     /// A refusal in time is the screen's to show. A later one would otherwise be lost: it says what the job was, in
     /// its kind's words.
     func outboxRefused(id: String, kind: PROutboxJob.Kind, reason why: String) {
+        if keepEarly(.refused(id: id, kind: kind, reason: why)) {
+            return
+        }
         if waiting.contains(id) {
             outcomes[id] = .failure(.refused(why))
             return
@@ -160,6 +201,18 @@ extension PRsModel {
 
     func dismissLateRefusal() {
         lateRefusal = nil
+    }
+}
+
+/// Held only while enqueue calls can still return an unknown ID; unmatched restored jobs are replayed afterward.
+enum PROutboxDelivery {
+    case answered(id: String, data: Data)
+    case refused(id: String, kind: PROutboxJob.Kind, reason: String)
+
+    var id: String {
+        switch self {
+        case let .answered(id, _), let .refused(id, _, _): id
+        }
     }
 }
 

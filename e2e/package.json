@@ -3,7 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:e2e": "e2e run --exclude-tag bugbash",
     "typecheck": "tsc -p ."
   },
   "devDependencies": {

@@ -14,6 +14,7 @@ struct PRHubSettingsView: View {
     var endSample: (() -> Void)?
     /// Over the samples, the connection that "Sign in with GitHub" signs in.
     var signIn: WorkerConnection?
+    @Environment(\.openURL) private var openURL
     @State private var confirmsDisconnect = false
     @State private var confirmsDelete = false
     @State private var signingOut = false
@@ -107,9 +108,10 @@ struct PRHubSettingsView: View {
 
     /// GitHub's install and installation pages open in the browser as usual; coming back reads the config fresh.
     private var leavingForGitHub: OpenURLAction {
-        OpenURLAction { [connection] url in
+        OpenURLAction { [connection, openURL] url in
             connection.leavesForGitHub(url)
-            return .systemAction
+            openURL(url)
+            return .handled
         }
     }
 

@@ -25,7 +25,7 @@ extension PRHubEnvironment {
         defaultsSuite: String, isSample: Bool, usage: UsageAnalytics = .disabled(), outbox: (any PRKitOutbox)? = nil,
         checksUpdates: Bool = false, testFlightGroup: TestFlightGroup = .public, transport: (any HTTPTransport)? = nil,
         listDefaults: UserDefaults = .standard, configurationDefaults: UserDefaults? = nil,
-        storageDirectory: URL? = nil, network: PRNetwork? = nil
+        storageDirectory: URL? = nil, network: PRNetwork? = nil, alertPermission: PRHubAlertPermission? = nil
     ) -> PRHubEnvironment {
         let defaults = configurationDefaults ?? UserDefaults(suiteName: defaultsSuite) ?? .standard
         defaults.set(try? JSONEncoder().encode(config), forKey: WorkerConnection.configKey)
@@ -36,7 +36,8 @@ extension PRHubEnvironment {
             usage: UsageAnalytics(hasProject: false, sink: nil, defaults: defaults)
         )
         return PRHubEnvironment(
-            connection: connection, access: access, samples: samples, isSample: isSample, usage: usage, outbox: outbox,
+            connection: connection, access: access, samples: samples, isSample: isSample,
+            alertPermission: alertPermission, usage: usage, outbox: outbox,
             update: PRHubUpdate(group: testFlightGroup, defaults: defaults, isEnabled: checksUpdates, usage: usage),
             transport: transport, defaults: listDefaults, sampleDefaults: configurationDefaults,
             storageDirectory: storageDirectory, network: network

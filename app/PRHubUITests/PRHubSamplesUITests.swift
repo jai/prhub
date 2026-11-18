@@ -3,11 +3,9 @@ import XCTest
 /// "Try with sample PRs" as App Review meets it, with no Worker: onboarding, both lists, a PR's description and diff
 /// with its key lines, an approval that stays on the phone, and Settings' way back to onboarding.
 @MainActor
-final class PRHubSamplesUITests: XCTestCase {
-    private let app = XCUIApplication()
-
+final class PRHubSamplesUITests: PRHubUITestCase {
     @MainActor override func setUp() async throws {
-        continueAfterFailure = false
+        try await super.setUp()
         XCUIDevice.shared.appearance = .light
     }
 
@@ -65,6 +63,16 @@ final class PRHubSamplesUITests: XCTestCase {
         let trySamples = app.buttons["onboardingTrySamples"]
         XCTAssertTrue(trySamples.waitForExistence(timeout: 10))
         trySamples.tap()
+        let checkout = app.staticTexts["Show a retry button when checkout fails"]
+        XCTAssertTrue(checkout.waitForExistence(timeout: 5))
+        checkout.tap()
+        let approve = app.buttons["pr-review-approve"]
+        XCTAssertTrue(app.reveal(approve))
+        approve.tap()
+        let send = app.buttons["inline-composer-send"]
+        XCTAssertTrue(send.waitForExistence(timeout: 5))
+        send.tap()
+        XCTAssertTrue(waitFor { approve.isSelected }, "the sample review changed before sign-in")
         app.go(to: .settings)
         let connect = app.buttons["prhub-connect-own-worker"]
         XCTAssertTrue(connect.waitForExistence(timeout: 5))
@@ -74,6 +82,9 @@ final class PRHubSamplesUITests: XCTestCase {
         XCTAssertTrue(connect.exists, "still in the samples' Settings")
         XCTAssertTrue(app.staticTexts["prhub-samples-explained"].exists)
         XCTAssertFalse(app.buttons["onboardingSignIn"].exists)
+        app.go(to: .prs)
+        XCTAssertTrue(approve.waitForExistence(timeout: 5))
+        XCTAssertTrue(approve.isSelected, "the refused sign-in preserves the sample review")
     }
 
     /// Settings' switch for anonymous usage data: on until turned off, in a build that names an analytics project.
@@ -87,6 +98,14 @@ final class PRHubSamplesUITests: XCTestCase {
         let share = app.switches["prhub-share-usage"]
         XCTAssertTrue(app.scrollSettings(to: share))
         XCTAssertEqual(share.value as? String, "1")
+        share.tap()
+        XCTAssertTrue(waitFor { share.value as? String == "0" })
+        relaunch(["-PRHubFirstRun"])
+        XCTAssertTrue(trySamples.waitForExistence(timeout: 10))
+        trySamples.tap()
+        app.go(to: .settings)
+        XCTAssertTrue(app.scrollSettings(to: share))
+        XCTAssertEqual(share.value as? String, "0", "the choice survives a relaunch")
     }
 
     /// In a build that pairs with self-hosted Workers (`PRHUB_SELF_HOSTED`), which this build is not.
@@ -101,16 +120,5 @@ final class PRHubSamplesUITests: XCTestCase {
         let status = app.descendants(matching: .any)["onboardingStatus"]
         XCTAssertTrue(status.waitForExistence(timeout: 5))
         XCTAssertTrue(status.label.contains("expired"), status.label)
-    }
-
-    private func waitFor(timeout: TimeInterval = 5, _ condition: () -> Bool) -> Bool {
-        let end = Date.now.addingTimeInterval(timeout)
-        while Date.now < end {
-            if condition() {
-                return true
-            }
-            RunLoop.current.run(until: Date.now.addingTimeInterval(0.1))
-        }
-        return condition()
     }
 }

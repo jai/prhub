@@ -4,24 +4,18 @@ import XCTest
 /// folding the file brings them back, so does the status bar, and the edge swipe goes back to the PR while they are gone. On
 /// `-PRHubLongDiff`, whose first PR has one file longer than the screen. Pictures go to `SCREENSHOTS_DIR` when set.
 @MainActor
-final class PRHubDiffBarsUITests: XCTestCase {
-    private let app = XCUIApplication()
-
-    override func setUp() {
-        continueAfterFailure = false
-    }
-
+final class PRHubDiffBarsUITests: PRHubUITestCase {
     func testFoldingTheOnlyFileBringsTheBarsBack() throws {
         for appearance in [XCUIDevice.Appearance.light, .dark] {
             let look = appearance == .dark ? "dark" : "light"
             openLongDiff(appearance)
             hideBars()
-            try picture("diffbars-1-hidden-\(look)")
+            try recordScreenshot("diffbars-1-hidden-\(look)")
 
             app.buttons["file-header-0"].tap()
             XCTAssertEqual(app.buttons["file-header-0"].value as? String, "collapsed")
             waitForBars(shown: true, "folding the only file leaves nothing to scroll")
-            try picture("diffbars-2-folded-\(look)")
+            try recordScreenshot("diffbars-2-folded-\(look)")
 
             app.buttons["file-header-0"].tap()
             waitForBars(shown: true, "opening it again keeps them")
@@ -67,29 +61,5 @@ final class PRHubDiffBarsUITests: XCTestCase {
     private func waitForBars(shown: Bool, _ message: String) {
         let settings = app.tab(.settings)
         XCTAssertTrue(waitFor { (settings.exists && settings.isHittable) == shown }, message)
-    }
-
-    private func waitFor(timeout: TimeInterval = 5, _ condition: () -> Bool) -> Bool {
-        let end = Date.now.addingTimeInterval(timeout)
-        while Date.now < end {
-            if condition() {
-                return true
-            }
-            RunLoop.current.run(until: Date.now.addingTimeInterval(0.1))
-        }
-        return condition()
-    }
-
-    private func picture(_ name: String) throws {
-        let screenshot = XCUIScreen.main.screenshot()
-        let attachment = XCTAttachment(screenshot: screenshot)
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
-        guard let folder = ProcessInfo.processInfo.environment["SCREENSHOTS_DIR"], !folder.isEmpty else {
-            return
-        }
-        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
-        try screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "\(folder)/\(name).png"))
     }
 }
