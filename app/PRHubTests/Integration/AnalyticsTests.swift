@@ -137,6 +137,19 @@ struct AnalyticsTests {
         #expect(sink.events == [.workerPaired])
     }
 
+    @Test func aScanThatCannotOpenTheCameraSaysWhy() throws {
+        let sink = RecordingAnalytics()
+        let connection = try WorkerConnection(
+            endpoint: WorkerEndpoint(fixed: #require(URL(string: "https://worker.example"))),
+            pairing: DevicePairing(pair: { _, _ in throw URLError(.badURL) }, save: { _ in }),
+            fetchConfig: { _ in throw URLError(.badURL) }, forgetSecret: {}, defaults: Self.defaults(),
+            usage: Self.usage(sink)
+        )
+        connection.scanUnavailable(.cameraOff)
+        connection.scanUnavailable(.unsupported)
+        #expect(sink.events == [.setupScanUnavailable(.cameraOff), .setupScanUnavailable(.unsupported)])
+    }
+
     // MARK: - Samples
 
     @Test func tryingAndLeavingTheSamplesIsRecorded() {

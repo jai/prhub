@@ -138,6 +138,11 @@ public final class WorkerConnection {
         host = endpoint.url?.host()
     }
 
+    /// Onboarding's Scan could not open the camera: `setup_scan_unavailable`, with why.
+    public func scanUnavailable(_ reason: ScanUnavailableReason) {
+        usage.record(.setupScanUnavailable(reason))
+    }
+
     /// A scanned, pasted or typed link.
     public func connect(text: String) async {
         do {

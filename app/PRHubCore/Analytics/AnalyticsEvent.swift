@@ -11,6 +11,8 @@ public enum AnalyticsEvent: Equatable, Sendable {
     case signInFailed(SignInFailureCode)
     case workerPaired
     case workerPairingFailed(PairingFailureCode)
+    /// Onboarding's Scan could not open the camera, and why.
+    case setupScanUnavailable(ScanUnavailableReason)
     /// Settings' way back from the samples.
     case samplesLeft
     case anthropicKeySet
@@ -87,6 +89,7 @@ public enum AnalyticsEvent: Equatable, Sendable {
         case .signInFailed: "sign_in_failed"
         case .workerPaired: "worker_paired"
         case .workerPairingFailed: "worker_pairing_failed"
+        case .setupScanUnavailable: "setup_scan_unavailable"
         case .samplesLeft: "samples_left"
         case .anthropicKeySet: "anthropic_key_set"
         case .anthropicKeyRemoved: "anthropic_key_removed"
@@ -132,6 +135,7 @@ public enum AnalyticsEvent: Equatable, Sendable {
         case let .signInStarted(context): ["context": .word(context.rawValue)]
         case let .signInFailed(code): ["code": .word(code.rawValue)]
         case let .workerPairingFailed(code): ["code": .word(code.rawValue)]
+        case let .setupScanUnavailable(reason): ["reason": .word(reason.rawValue)]
         case let .diffFontChanged(face, size): ["face": .word(face.rawValue), "size": .number(size)]
         case let .pullRequestsSynced(trigger, outcome):
             ["trigger": .word(trigger.rawValue), "outcome": .word(outcome.analyticsWord)]
@@ -217,6 +221,14 @@ public enum AnalyticsValue: Equatable, Sendable {
 /// Update available's buttons.
 public enum UpdateAnswer: String, CaseIterable, Sendable {
     case update, later
+}
+
+/// Why onboarding's Scan could not open the camera.
+public enum ScanUnavailableReason: String, CaseIterable, Sendable {
+    /// The device has no camera that scans codes.
+    case unsupported
+    /// Camera access is off for PRHub.
+    case cameraOff = "camera_off"
 }
 
 /// What a `prhub-pr://open` handoff came to.

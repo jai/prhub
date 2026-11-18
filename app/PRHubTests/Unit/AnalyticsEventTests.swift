@@ -28,6 +28,7 @@ struct AnalyticsEventTests {
         .askLinearPosted(.failed(.refused)), .linearConnected, .linearDisconnected,
         .accountActionFailed(.deleteAccount, .server(status: 502)), .alertsAnswered(.notNow), .updateOpenFailed,
         .pullRequestLinkOpened(.notAPullRequest), .alertIgnored(.samples), .sessionEnded(.githubSignedOut),
+        .setupScanUnavailable(.cameraOff),
     ]
 
     // swiftlint:disable:next cyclomatic_complexity - one arm per case, by design
@@ -75,13 +76,14 @@ struct AnalyticsEventTests {
         case .pullRequestLinkOpened: 39
         case .alertIgnored: 40
         case .sessionEnded: 41
+        case .setupScanUnavailable: 42
         }
     }
 
     // MARK: - What an event can carry
 
     @Test func everyCaseIsListed() {
-        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0 ... 41))
+        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0 ... 42))
     }
 
     @Test func eachEventHasItsOwnSnakeCaseName() {
@@ -122,6 +124,7 @@ struct AnalyticsEventTests {
                 + AccountAction.allCases.map(\.rawValue) + AccountFailureCode.allCases.map(\.rawValue)
                 + AlertsAnswer.allCases.map(\.rawValue) + PRLinkOutcome.allCases.map(\.rawValue)
                 + AlertIgnoredReason.allCases.map(\.rawValue) + SessionEndReason.allCases.map(\.rawValue)
+                + ScanUnavailableReason.allCases.map(\.rawValue)
                 + ["push", "other_push", "foreground", "pull", "changed", "unchanged", "failed"]
         )
         for (key, value) in event.properties {

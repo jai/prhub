@@ -33,7 +33,7 @@ PostHog, an analytics service that processes it for Jai in its EU region (Frankf
 - **What is sent.** Which screen shows, such as the PR list or Settings, and what you do and how it went. Each event
   carries only values from a fixed list:
   - Signing in, pairing a Worker, a sync, and a change to the diff font. Failures send only a short error code, such as
-    `code_refused`.
+    `code_refused`. That Scan could not open the camera, and why.
   - Opening a PR: how it was opened (an alert, the list or a link), whether the phone already had it, and how many
     milliseconds it took. An alert sends whether the phone fetched its PR before you tapped it, and how long that took.
   - A request to the Worker that fails: what it was for (such as the PR list, your settings or Feedback) and its HTTP

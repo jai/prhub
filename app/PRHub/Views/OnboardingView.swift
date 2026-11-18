@@ -174,8 +174,11 @@ struct OnboardingView: View {
             Task {
                 switch await SetupCodeScanner.availability() {
                 case .available: scanner = .open
-                case .unsupported: scanner = .unavailable("This device can't scan codes. Paste the link instead.")
+                case .unsupported:
+                    connection.scanUnavailable(.unsupported)
+                    scanner = .unavailable("This device can't scan codes. Paste the link instead.")
                 case .denied:
+                    connection.scanUnavailable(.cameraOff)
                     scanner = .unavailable("Camera access is off for PRHub. Turn it on in Settings, or paste the "
                         + "link instead.")
                 }
