@@ -40,7 +40,10 @@ struct PRAskSendTests {
 
         let transport: any HTTPTransport = URLSessionTransport.background
         func log(_: String) {}
-        func receive(_: PRKitEvent) {}
+        private(set) var events: [PRKitEvent] = []
+        func receive(_ event: PRKitEvent) {
+            events.append(event)
+        }
     }
 
     private let ref = PullRequestRef(repo: "acme/api", number: 7)
@@ -127,6 +130,51 @@ struct PRAskSendTests {
         #expect(PRSession.askPollWait(afterFailures: 3) == .seconds(16))
         #expect(PRSession.askPollWait(afterFailures: 4) == .seconds(30))
         #expect(PRSession.askPollWait(afterFailures: 400) == .seconds(30))
+    }
+
+    /// A PR on screen, so a question can name its head.
+    private func loadedSession(_ kit: PRKitController) throws -> PRSession {
+        let detail = try PullRequestDetail.decode(Data("""
+        {"url":"u","head":"h","base":"main","headBranch":"b","author":null,"isAuthor":false,"body":"","additions":0,
+        "deletions":0,"changedFiles":0,"reviewDecision":null,"mergeState":"CLEAN","labels":[],"checks":[],
+        "comments":{"nodes":[]},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]},"title":null}
+        """.utf8))
+        return PRSession(
+            ref: ref, title: nil, content: PRContent(detail: detail, document: nil), tappedAt: 0, model: kit.model
+        )
+    }
+
+    @Test func eachQuestionTellsTheHostWhatAskedItAndHowItWent() async throws {
+        let (kit, host) = kit()
+        let session = try loadedSession(kit)
+        session.explainPR()
+        while host.events.isEmpty {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        session.askDraft = "Is it tested?"
+        await session.sendAsk()
+        session.askAnchor = PRAskQuestion.Anchor(path: "a.swift", line: 3, side: "RIGHT", code: nil)
+        session.askDraft = "Why this line?"
+        await session.sendAsk()
+        #expect(host.events == [
+            .askSent(.explainPR, .queued), .askSent(.typed, .queued), .askSent(.typedLine, .queued),
+        ])
+    }
+
+    @Test func aQuestionThatGotNoAnswerIsToldOnceHoweverOftenItIsRead() throws {
+        let (kit, host) = kit()
+        let session = try loadedSession(kit)
+        let failed = { (id: String) in
+            PRAskChat(
+                messages: [.init(id: id, role: "you", text: "Is it tested?", anchor: nil)],
+                isWorking: false, activity: nil, problem: "The AI couldn't be reached. Try again.", costCents: nil
+            )
+        }
+        session.reportAnswerFailure(in: chat)
+        session.reportAnswerFailure(in: failed("m1"))
+        session.reportAnswerFailure(in: failed("m1"))
+        session.reportAnswerFailure(in: failed("m2"))
+        #expect(host.events == [.askAnswerFailed, .askAnswerFailed])
     }
 
     @Test func aQuestionTheWorkerCouldNotHandOverCanBeSentAgain() {

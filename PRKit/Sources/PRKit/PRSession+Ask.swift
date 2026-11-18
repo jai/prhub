@@ -13,13 +13,13 @@ extension PRSession {
         min(askPollInterval * (1 << min(failures, 5)), askPollLongest)
     }
 
-    /// The chat, about a line when there is one. Words already written go at once.
-    func openAsk(about anchor: PRAskQuestion.Anchor? = nil, words: String = "") {
+    /// The chat, about a line when there is one. Words already written go at once, as asked from `origin`.
+    func openAsk(about anchor: PRAskQuestion.Anchor? = nil, words: String = "", origin: PRAskOrigin? = nil) {
         askAnchor = anchor ?? askAnchor
         isShowingAsk = true
         if !words.isEmpty {
             askDraft = words
-            Task { await sendAsk() }
+            Task { await sendAsk(origin: origin) }
         }
     }
 
@@ -32,7 +32,9 @@ extension PRSession {
         }
         let code = line.map { String(document.text(of: $0).dropFirst().prefix(500)) }
         let anchor = PRAskQuestion.Anchor(path: item.path, line: item.line, side: item.side, code: code)
-        openAsk(about: anchor, words: "Explain this line. It was picked as a key line: \(item.why)")
+        openAsk(
+            about: anchor, words: "Explain this line. It was picked as a key line: \(item.why)", origin: .explainLine
+        )
     }
 
     /// The chat about the whole PR, asked to sum it up and explain it: the description's ? button.
@@ -40,7 +42,8 @@ extension PRSession {
         askAnchor = nil
         openAsk(
             words: "Summarize this PR and explain it in plain words: what it changes, why, and how it works. "
-                + "Then say what a reviewer should look at closely."
+                + "Then say what a reviewer should look at closely.",
+            origin: .explainPR
         )
     }
 
@@ -74,8 +77,8 @@ extension PRSession {
     }
 
     /// The words leave the box at once, as a sent message. The anchor goes with one question: the next is about the PR
-    /// unless he picks a line.
-    func sendAsk() async {
+    /// unless he picks a line. `origin` is what asked it; nil is words he typed.
+    func sendAsk(origin: PRAskOrigin? = nil) async {
         let words = askDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let head = content?.detail.head, !words.isEmpty, !isSendingAsk else {
             return
@@ -95,16 +98,17 @@ extension PRSession {
         }
         askDraft = ""
         let question = PRAskQuestion(question: words, head: head, anchor: askAnchor)
+        let origin = origin ?? (askAnchor == nil ? .typed : .typedLine)
         askAnchor = nil
-        await send(question)
+        await send(question, origin: origin)
     }
 
     /// A question that could not go, sent again: from the phone, or one the Worker could not hand to the agent.
     func retryAsk() async {
         if case let .failed(question, _) = askSend {
-            await send(question)
+            await send(question, origin: .retry)
         } else if let failed = askChat?.unsentQuestion, let head = content?.detail.head {
-            await send(PRAskQuestion(question: failed.text, head: head, anchor: failed.askedAbout))
+            await send(PRAskQuestion(question: failed.text, head: head, anchor: failed.askedAbout), origin: .retry)
         }
     }
 
@@ -116,7 +120,8 @@ extension PRSession {
         redraft(failed.text, about: failed.askedAbout)
     }
 
-    private func send(_ question: PRAskQuestion) async {
+    /// How it went goes to the host (`PRKitEvent.askSent`).
+    private func send(_ question: PRAskQuestion, origin: PRAskOrigin) async {
         guard !isSendingAsk else {
             return
         }
@@ -136,6 +141,27 @@ extension PRSession {
             }
             askSend = .after(outcome, of: question, isOnline: model.isOnline())
         }
+        let told: PRActionOutcome? = switch outcome {
+        case .success(.answered): .done
+        case .success(.queued): .queued
+        case let .failure(error): PRActionOutcome(error: error)
+        }
+        if let told {
+            model.onEvent(.askSent(origin, told))
+        }
+        if case let .success(.answered(chat)) = outcome {
+            reportAnswerFailure(in: chat)
+        }
+    }
+
+    /// A question the Worker could not hand to the agent, or whose turn failed (`PRAskChat.unsentQuestion`): told once
+    /// for each such question, however often the chat is read.
+    func reportAnswerFailure(in chat: PRAskChat) {
+        guard let failed = chat.unsentQuestion, failed.id != reportedAskFailure else {
+            return
+        }
+        reportedAskFailure = failed.id
+        model.onEvent(.askAnswerFailed)
     }
 
     /// While the sheet shows: the conversation, every 2 seconds while the agent works or a question is on its way, and
@@ -154,6 +180,7 @@ extension PRSession {
                     askChat = chat
                     askError = nil
                 }
+                reportAnswerFailure(in: chat)
             } catch {
                 withAnimation(AppMotion.swap) { askError = PRAskReadProblem(error) }
             }
@@ -207,6 +234,7 @@ extension PRSession {
         openText(for: .review(event)).wrappedValue = draft.body
         markUsed(message)
         isShowingAsk = false
+        model.onEvent(.askReviewUsed(.addedToDrafts))
     }
 
     /// Posted as Jai's review, from his account, with its line comments and any of his own drafts: the review's way
@@ -217,6 +245,7 @@ extension PRSession {
         }
         addDrafts(draft.draftComments)
         markUsed(message)
+        model.onEvent(.askReviewUsed(.posted))
         do {
             try submitReview(draft.body, to: .review(event))
         } catch {
@@ -262,8 +291,14 @@ extension PRSession {
         do {
             let chat = try await model.postAskLinear(message: message.id, index: index, about: ref)
             withAnimation(AppMotion.swap) { askChat = chat }
+            // Linear's refusal comes back on the card, in Linear's words.
+            let card = chat.messages.first { $0.id == message.id }?.linear.flatMap { $0.indices.contains(index) ? $0[index] : nil }
+            model.onEvent(.askLinearPosted(card?.state == .failed ? .failed(.refused) : .done))
         } catch {
             withAnimation(AppMotion.swap) { askLinearProblems[key] = error.localizedDescription }
+            if let outcome = PRActionOutcome(error: error) {
+                model.onEvent(.askLinearPosted(outcome))
+            }
         }
     }
 }

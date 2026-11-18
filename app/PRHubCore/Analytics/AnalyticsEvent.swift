@@ -51,6 +51,15 @@ public enum AnalyticsEvent: Equatable, Sendable {
     /// From PRKit (`PRKitEvent.aiAnswered`): key lines or a rewrite from the Worker's model, how it went and how long it
     /// took; for key lines whether the AI trash chip shows.
     case aiAnswered(PRAIKind, PRActionOutcome, milliseconds: Int, slop: Bool?)
+    /// From PRKit (`PRKitEvent.askSent`): a question to the PR's AI, what asked it and how it went. Never its words.
+    case askSent(PRAskOrigin, PRActionOutcome)
+    /// The Worker had a question but its agent gave no answer. Once for each question, and once a minute at most.
+    case askAnswerFailed
+    /// A question saved on the phone that the Worker refused after its sheet had gone. Not its words.
+    case askRefused
+    case askReviewUsed(PRAskReviewUse)
+    /// A Linear comment the AI proposed, posted on the user's yes, or why not.
+    case askLinearPosted(PRActionOutcome)
 
     /// The event's name in the vendor's project: one literal each.
     public var name: String {
@@ -84,6 +93,11 @@ public enum AnalyticsEvent: Equatable, Sendable {
         case .feedbackSendFailed: "feedback_send_failed"
         case .pullRequestWrote: "pr_write"
         case .aiAnswered: "ai_answer"
+        case .askSent: "ask_sent"
+        case .askAnswerFailed: "ask_answer_failed"
+        case .askRefused: "ask_refused"
+        case .askReviewUsed: "ask_review_used"
+        case .askLinearPosted: "ask_linear_posted"
         }
     }
 
@@ -133,8 +147,12 @@ public enum AnalyticsEvent: Equatable, Sendable {
             ["kind": .word(kind.rawValue), "ms": .number(milliseconds)]
                 .merging(outcome.properties) { first, _ in first }
                 .merging(slop.map { ["slop": .number($0 ? 1 : 0)] } ?? [:]) { first, _ in first }
+        case let .askSent(origin, outcome):
+            ["origin": .word(origin.rawValue)].merging(outcome.properties) { first, _ in first }
+        case let .askReviewUsed(use): ["use": .word(use.rawValue)]
+        case let .askLinearPosted(outcome): outcome.properties
         case .signInSucceeded, .workerPaired, .samplesLeft, .anthropicKeySet, .anthropicKeyRemoved, .signedOut,
-             .accountDeleted, .workerDisconnected, .pullRequestWriteRefused:
+             .accountDeleted, .workerDisconnected, .pullRequestWriteRefused, .askAnswerFailed, .askRefused:
             [:]
         }
     }
@@ -147,6 +165,9 @@ extension AnalyticsEvent {
         switch self {
         case let .pullRequestWrote(kind, .failed(failure)): "\(name) \(kind.rawValue) \(failure.rawValue)"
         case let .aiAnswered(kind, .failed(failure), _, _): "\(name) \(kind.rawValue) \(failure.rawValue)"
+        case let .askSent(origin, .failed(failure)): "\(name) \(origin.rawValue) \(failure.rawValue)"
+        case let .askLinearPosted(.failed(failure)): "\(name) \(failure.rawValue)"
+        case .askAnswerFailed, .askRefused: name
         default: nil
         }
     }
@@ -238,9 +259,13 @@ public enum PairingFailureCode: String, CaseIterable, Sendable {
 extension AnalyticsEvent {
     /// What PRKit tells the app, as an event; nil for what is not reported. A badge count changes too often to be
     /// worth one, and a push's sync is reported only when it fails, so a busy repo does not flood the project. A
-    /// refused write's words can quote GitHub about the PR, so only that it happened is sent. A PR is reported once its
-    /// content shows, with its timings, and not when its screen is made.
+    /// refused write's or question's words can quote GitHub or the user about the PR, so only that it happened is sent.
+    /// A PR is reported once its content shows, with its timings, and not when its screen is made.
     init?(_ event: PRKitEvent) {
+        if let action = Self.action(event) {
+            self = action
+            return
+        }
         switch event {
         case .opened:
             return nil
@@ -260,7 +285,7 @@ extension AnalyticsEvent {
         case .writeRefused:
             self = .pullRequestWriteRefused
         case .questionRefused:
-            return nil
+            self = .askRefused
         case let .requestFailed(area, failure):
             self = .requestFailed(area, failure)
         case let .listRefreshStarted(rows):
@@ -271,10 +296,22 @@ extension AnalyticsEvent {
             self = .listRefreshStuck(stuck)
         case let .listRefreshBackgrounded(milliseconds):
             self = .listRefreshBackgrounded(milliseconds: milliseconds)
-        case let .wrote(kind, outcome):
-            self = .pullRequestWrote(kind, outcome)
+        case .wrote, .aiAnswered, .askSent, .askAnswerFailed, .askReviewUsed, .askLinearPosted:
+            return nil
+        }
+    }
+
+    /// The user's actions on a PR and its AI, each as it came.
+    private static func action(_ event: PRKitEvent) -> AnalyticsEvent? {
+        switch event {
+        case let .wrote(kind, outcome): .pullRequestWrote(kind, outcome)
         case let .aiAnswered(kind, outcome, milliseconds, slop):
-            self = .aiAnswered(kind, outcome, milliseconds: milliseconds, slop: slop)
+            .aiAnswered(kind, outcome, milliseconds: milliseconds, slop: slop)
+        case let .askSent(origin, outcome): .askSent(origin, outcome)
+        case .askAnswerFailed: .askAnswerFailed
+        case let .askReviewUsed(use): .askReviewUsed(use)
+        case let .askLinearPosted(outcome): .askLinearPosted(outcome)
+        default: nil
         }
     }
 }

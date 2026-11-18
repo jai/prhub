@@ -195,6 +195,16 @@ public enum PRKitEvent: Equatable, Sendable {
     /// The Worker's model answered, or failed to: which answer, how it went and how long it took from the ask. For
     /// key lines, whether the PR's description reads as AI slop (the AI trash chip); nil when the answer doesn't say.
     case aiAnswered(PRAIKind, PRActionOutcome, milliseconds: Int, slop: Bool?)
+    /// A question to the PR's AI: what asked it (typed, Explain, the description's Explain this PR, Retry) and whether
+    /// the Worker has it, the phone saved it to send later, or why it failed. Never its words.
+    case askSent(PRAskOrigin, PRActionOutcome)
+    /// The Worker had a question but its agent gave no answer: it could not be handed on, or the turn failed. Once for
+    /// each such question.
+    case askAnswerFailed
+    /// A review the AI drafted, used: added to the user's drafts, or posted with "go" or its Post button.
+    case askReviewUsed(PRAskReviewUse)
+    /// A Linear comment the AI proposed, posted on the user's yes, or why not (`refused`: Linear's own refusal).
+    case askLinearPosted(PRActionOutcome)
 }
 
 /// One PR opened, from the tap to its content on screen (`PRKitEvent.contentShown`).

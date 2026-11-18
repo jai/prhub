@@ -24,6 +24,8 @@ struct AnalyticsEventTests {
         .feedbackSendFailed(FeedbackSend(kind: .reply, images: 0, kilobytes: 1, milliseconds: 15000), .timeout),
         .pullRequestWrote(.merge, .failed(.refused)),
         .aiAnswered(.keyLines, .done, milliseconds: 8200, slop: true),
+        .askSent(.explainPR, .failed(.offline)), .askAnswerFailed, .askRefused, .askReviewUsed(.posted),
+        .askLinearPosted(.failed(.refused)),
     ]
 
     // swiftlint:disable:next cyclomatic_complexity - one arm per case, by design
@@ -58,13 +60,18 @@ struct AnalyticsEventTests {
         case .feedbackSendFailed: 26
         case .pullRequestWrote: 27
         case .aiAnswered: 28
+        case .askSent: 29
+        case .askAnswerFailed: 30
+        case .askRefused: 31
+        case .askReviewUsed: 32
+        case .askLinearPosted: 33
         }
     }
 
     // MARK: - What an event can carry
 
     @Test func everyCaseIsListed() {
-        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0 ... 28))
+        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0 ... 33))
     }
 
     @Test func eachEventHasItsOwnSnakeCaseName() {
@@ -101,6 +108,7 @@ struct AnalyticsEventTests {
                 + PRListSceneState.allCases.map(\.rawValue) + FeedbackSend.Kind.allCases.map(\.rawValue)
                 + PRWriteKind.allCases.map(\.rawValue) + PRActionFailure.allCases.map(\.rawValue)
                 + ActionOutcomeWord.allCases.map(\.rawValue) + PRAIKind.allCases.map(\.rawValue)
+                + PRAskOrigin.allCases.map(\.rawValue) + PRAskReviewUse.allCases.map(\.rawValue)
                 + ["push", "other_push", "foreground", "pull", "changed", "unchanged", "failed"]
         )
         for (key, value) in event.properties {
@@ -133,6 +141,7 @@ struct AnalyticsEventTests {
         ])
         #expect(AnalyticsEvent(.writeRefused("Branch acme/secret is protected")) == .pullRequestWriteRefused)
         #expect(AnalyticsEvent(.reviewRequests(3)) == nil)
+        #expect(AnalyticsEvent(.questionRefused("Is acme/secret tested?")) == .askRefused)
         #expect(AnalyticsEvent(.synced(.pull, .changed)) == .pullRequestsSynced(.pull, .changed))
         #expect(AnalyticsEvent(.synced(.foreground, .unchanged)) == .pullRequestsSynced(.foreground, .unchanged))
     }
@@ -169,6 +178,20 @@ struct AnalyticsEventTests {
         ])
         #expect(AnalyticsEvent.aiAnswered(.rewrite, .failed(.refused), milliseconds: 900, slop: nil).limitKey
             == AnalyticsEvent.aiAnswered(.rewrite, .failed(.refused), milliseconds: 4000, slop: nil).limitKey)
+    }
+
+    @Test func aQuestionSendsWhatAskedItAndHowItWent() {
+        #expect(AnalyticsEvent(.askSent(.explainLine, .queued)) == .askSent(.explainLine, .queued))
+        #expect(AnalyticsEvent.askSent(.explainPR, .done).properties == [
+            "origin": .word("explain_pr"), "outcome": .word("done"),
+        ])
+        #expect(AnalyticsEvent(.askAnswerFailed) == .askAnswerFailed)
+        #expect(AnalyticsEvent(.askReviewUsed(.addedToDrafts))?.properties == ["use": .word("added_to_drafts")])
+        #expect(AnalyticsEvent(.askLinearPosted(.failed(.refused)))?.properties == [
+            "outcome": .word("failed"), "failure": .word("refused"),
+        ])
+        #expect(AnalyticsEvent.askAnswerFailed.limitKey == "ask_answer_failed")
+        #expect(AnalyticsEvent.askSent(.typed, .done).limitKey == nil)
     }
 
     /// Only a failure is held back when it repeats: what failed and why, not when or how long it took.

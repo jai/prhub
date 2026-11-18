@@ -143,3 +143,23 @@ public enum PRAIKind: String, CaseIterable, Sendable {
         }
     }
 }
+
+/// What asked a question of the PR's AI (`PRKitEvent.askSent`).
+public enum PRAskOrigin: String, CaseIterable, Sendable {
+    /// Words typed in the Ask sheet, about the whole PR.
+    case typed
+    /// Words typed about one line.
+    case typedLine = "typed_line"
+    /// A key line's Explain.
+    case explainLine = "explain_line"
+    /// The description's Explain this PR (its ? button).
+    case explainPR = "explain_pr"
+    /// Retry on a question that could not go, or got no answer.
+    case retry
+}
+
+/// What was done with a review the AI drafted (`PRKitEvent.askReviewUsed`).
+public enum PRAskReviewUse: String, CaseIterable, Sendable {
+    case addedToDrafts = "added_to_drafts"
+    case posted
+}

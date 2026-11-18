@@ -30,22 +30,29 @@ on your phone.
 The app tells Jai which screens and features people use, so that he can make PRHub better. It sends this data to
 PostHog, an analytics service that processes it for Jai in its EU region (Frankfurt).
 
-- **What is sent.** Which screen shows, such as the PR list or Settings, and actions such as signing in, pairing a
-  Worker, opening a PR, a sync, and a change to the diff font. Opening a PR also sends how it was opened (an alert, the
-  list or a link), whether the phone already had it, and how many milliseconds it took; an alert sends whether the
-  phone fetched its PR before you tapped it, and how long that took. Failures send only a short error code, such as
-  `code_refused`; a request to the Worker that fails sends what it was for (such as the PR list or Feedback) and its
-  HTTP status, or that the phone was offline. Sending feedback sends whether it went through, whether it
-  started a new chat, how many screenshots it had, its size and how long it took, or why it failed; never its words or
-  its screenshots. An action on a PR, such as a review, a comment, a merge or a description edit, sends which kind of
-  action it was and whether GitHub took it, the phone saved it to send later, or why it failed (such as `offline` or
-  `refused`); never its words. Key lines and a rewritten description from the AI send whether they arrived, how long
-  they took and whether the description reads as AI slop, or why they failed; never what they say. A failure that
-  repeats is sent at most once a minute. Each event also carries the app version, the iOS version, the device model,
-  the screen size, and the phone's language and time zone.
+- **What is sent.** Which screen shows, such as the PR list or Settings, and what you do and how it went. Each event
+  carries only values from a fixed list:
+  - Signing in, pairing a Worker, a sync, and a change to the diff font. Failures send only a short error code, such as
+    `code_refused`.
+  - Opening a PR: how it was opened (an alert, the list or a link), whether the phone already had it, and how many
+    milliseconds it took. An alert sends whether the phone fetched its PR before you tapped it, and how long that took.
+  - A request to the Worker that fails: what it was for (such as the PR list or Feedback) and its HTTP status, or that
+    the phone was offline.
+  - Sending feedback: whether it went through, whether it started a new chat, how many screenshots it had, its size
+    and how long it took, or why it failed.
+  - An action on a PR, such as a review, a comment, a merge or a description edit: which kind of action it was, and
+    whether GitHub took it, the phone saved it to send later, or why it failed (such as `offline` or `refused`).
+  - Key lines and a rewritten description from the AI: whether they arrived, how long they took, and whether the
+    description reads as AI slop, or why they failed.
+  - A question to Ask AI: what asked it (typed, Explain, Explain this PR or Retry), whether it went through or why it
+    failed, and that the AI gave no answer when it did not. A review or a Linear comment that the AI drafted: that it
+    was used or posted, or why not.
+
+  A failure that repeats is sent at most once a minute. Each event also carries the app version, the iOS version, the
+  device model, the screen size, and the phone's language and time zone.
 - **What is never sent.** Your GitHub username or email, repo and organization names, PR titles, file paths, code,
-  comments, your Worker's address, your push token, and anything that you type. The app cannot attach these: each
-  event can carry only values from a fixed list.
+  comments, your Worker's address, your push token, anything that you type, the screenshots that you attach to
+  feedback, and what the AI answers. The app cannot attach these: each event can carry only values from a fixed list.
 - **It is anonymous.** The app makes a random ID on your phone. It is not linked to your GitHub account, your Worker
   or your Apple account. PostHog makes no profile of you and does not find your location from your IP address. The app
   records no screen content, no taps and no session replays. It does not use the advertising identifier (IDFA) and

@@ -145,6 +145,8 @@ final class PRSession: Hashable {
     var askLinearPosting: Set<String> = []
     /// Why a Linear comment could not reach the Worker, by card; Linear's own refusals come back on the card.
     var askLinearProblems: [String: String] = [:]
+    /// The unanswered question last told to the host (`PRKitEvent.askAnswerFailed`), so each is told once.
+    var reportedAskFailure: String?
     var isKeyboardUp = false
     /// The line under the PR's actions: a write saved for later, a refusal, or a sample's note.
     var notice: PRNotice?
