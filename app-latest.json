@@ -1,7 +1,7 @@
 {
   "internal": {
-    "version": "0.28.0",
-    "build": "303"
+    "version": "0.30.0",
+    "build": "305"
   },
   "public": {
     "version": "0.28.0",
