@@ -55,6 +55,7 @@ struct PRScreen: View {
                 session: session, detail: content.detail,
                 showDiff: { opener?.showDiff(of: session) }, reviewChanges: { opener?.reviewChanges(of: session) }
             )
+            .heldRefreshable { [session] in await session.pullToRefresh() }
         }
         .id(ObjectIdentifier(session))
         .navigationTitle(session.label)

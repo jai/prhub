@@ -65,22 +65,14 @@ struct PRListRefreshWatchTests {
     }
 
     @Test func aQuickRefreshSpinsUntilTheShortestSpin() {
-        let watch = watch()
-        _ = watch.began(rows: 3)
-        let start = ContinuousClock.now
-        #expect(!watch.mayEnd(at: start + .milliseconds(127)))
-        #expect(watch.mayEnd(at: start + PRListRefreshWatch.shortestSpin + .milliseconds(1)))
+        #expect(!PullHold.mayEnd(after: .milliseconds(127), isInteracting: false))
+        #expect(PullHold.mayEnd(after: PullHold.shortestSpin, isInteracting: false))
     }
 
     @Test func aRefreshUnderTheFingerWaitsForItToLetGo() {
-        let watch = watch()
-        _ = watch.began(rows: 3)
-        watch.isInteracting = true
-        let start = ContinuousClock.now
-        #expect(!watch.mayEnd(at: start + .seconds(2)))
-        #expect(watch.mayEnd(at: start + PRListRefreshWatch.longestHold + .milliseconds(1)))
-        watch.isInteracting = false
-        #expect(watch.mayEnd(at: start + .seconds(2)))
+        #expect(!PullHold.mayEnd(after: .seconds(2), isInteracting: true))
+        #expect(PullHold.mayEnd(after: .seconds(2), isInteracting: false))
+        #expect(PullHold.mayEnd(after: PullHold.longestHold, isInteracting: true))
     }
 
     @Test func goingToTheBackgroundIsReportedOnlyMidRefresh() {

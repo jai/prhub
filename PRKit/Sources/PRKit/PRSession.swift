@@ -268,8 +268,41 @@ final class PRSession: Hashable {
         guard let fetched = try? await model.fetch(ref, row: newer), case .ready = state else {
             return
         }
-        let content = fetched.content
-            .replacing(drafts: drafts, changedLinesOnly: changedLinesOnly, note: selectedKeyLine)
+        swapIn(fetched.content)
+    }
+
+    /// A pull on the PR's page: the PR as GitHub has it now, over the copy on screen. At a new commit the older one's
+    /// key lines go, and the diff asks for the new ones when it next shows. A failure leaves the copy up and says why,
+    /// unless offline, where the app's banner already does.
+    func pullToRefresh() async {
+        guard let shown = content else {
+            return
+        }
+        do {
+            let fetched = try await model.fetch(ref, row: nil)
+            guard case .ready = state else {
+                return
+            }
+            if fetched.content.detail.head != shown.detail.head {
+                keyLinesByContext = [:]
+                keyLines = .working
+            }
+            swapIn(fetched.content)
+        } catch is CancellationError {
+            return
+        } catch let error as URLError where error.code == .cancelled {
+            return
+        } catch {
+            guard model.network.isOnline else {
+                return
+            }
+            withAnimation(AppMotion.fold) { notice = .failed("Didn't refresh. \(error.localizedDescription)") }
+        }
+    }
+
+    /// A newer copy on screen, with this session's drafts, changed-lines choice and open key line.
+    private func swapIn(_ fetched: PRContent) {
+        let content = fetched.replacing(drafts: drafts, changedLinesOnly: changedLinesOnly, note: selectedKeyLine)
         viewedFiles = Set(content.detail.viewedFiles ?? [])
         withAnimation(AppMotion.swap) { state = .ready(content) }
     }
@@ -555,11 +588,8 @@ extension PRSession {
         guard let fetched = try? await model.fetch(ref, row: nil), case .ready = state else {
             return false
         }
-        let content = fetched.content
-            .replacing(drafts: drafts, changedLinesOnly: changedLinesOnly, note: selectedKeyLine)
-        viewedFiles = Set(content.detail.viewedFiles ?? [])
         keyLinesByContext = [:]
-        withAnimation(AppMotion.swap) { state = .ready(content) }
+        swapIn(fetched.content)
         return true
     }
 

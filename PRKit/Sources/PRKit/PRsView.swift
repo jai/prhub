@@ -282,6 +282,7 @@ struct PRsList: View {
     /// A pull to refresh, watched (issue #55): when it starts and ends and how, and two seconds later whether the list
     /// is back at rest.
     private func pullToRefresh() async {
+        let start = ContinuousClock.now
         let rowsBefore = model.rows.count
         model.onEvent(refreshWatch.began(rows: rowsBefore))
         let synced = await model.refresh(.pull)
@@ -295,7 +296,7 @@ struct PRsList: View {
         } else {
             .ok
         }
-        await holdSpinner()
+        await PullHold.wait(since: start) { [refreshWatch] in refreshWatch.isInteracting }
         model.onEvent(refreshWatch.ended(outcome, rowsBefore: rowsBefore, rowsAfter: model.rows.count))
         Task { @MainActor [refreshWatch, model] in
             try? await Task.sleep(for: PRListRefreshWatch.settle)
@@ -304,16 +305,6 @@ struct PRsList: View {
                 withAnimation(AppMotion.fold) { scrollPosition.scrollTo(edge: .top) }
             }
         }
-    }
-
-    /// Keeps the spinner until the refresh may end (`PRListRefreshWatch.mayEnd`). In a task of its own, as SwiftUI can
-    /// cancel the pull's task when the rows change, and a cancelled sleep would end the spinner at once.
-    private func holdSpinner() async {
-        await Task { @MainActor [refreshWatch] in
-            while !refreshWatch.mayEnd() {
-                try? await Task.sleep(for: .milliseconds(50))
-            }
-        }.value
     }
 
     /// In the list, not the bar: it scrolls away with the first rows, so it costs no room while reading.
