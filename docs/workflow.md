@@ -111,7 +111,7 @@ These workflows do not follow the `lint-`, `test-` and `deploy-` names in the Wo
 - [ ] `prkit` is the exception to `<component>-v<version>`. Swift Package Manager reads only `v<version>` tags, and Agent Pager pins PRKit by version.
 - [ ] `prkit` is the whole package in `Package.swift`: PRKitCore, PRKitDesign, PRKit and FeatureKit. Swift Package Manager gives one version to a package.
 - [ ] The app contains PRKit. So a change to PRKit also makes an `ios` RC, and the `ios` release also runs `test-unit-prkit`.
-- [ ] `PRHubCore` in `Package.swift` is not a component. It currently compiles the app's logic files (`app/PRHub` without its views) for the Swift package test targets.
+- [ ] `PRHubCore` in `Package.swift` is not a component. It owns the app's shared logic in `app/PRHubCore`; both the app and the Swift package test targets import it.
 
 ## Release candidate
 

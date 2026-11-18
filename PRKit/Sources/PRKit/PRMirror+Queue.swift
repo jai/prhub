@@ -10,6 +10,10 @@ extension PRMirror {
     func file(
         _ name: String, check: @escaping @Sendable (Data) -> Bool, read: @escaping @Sendable () async throws -> Data?
     ) async -> Outcome {
+        // Another caller can finish between download's existence check and this actor hop.
+        if fileExists(name) {
+            return .landed
+        }
         if failedFiles.contains(name) {
             return .failed
         }

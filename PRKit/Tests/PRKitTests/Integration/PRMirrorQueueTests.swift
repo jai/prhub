@@ -172,6 +172,24 @@ struct PRMirrorQueueTests {
         #expect(await worker.count("/detail") == 3)
     }
 
+    @Test func aFileThatLandsBeforeAQueuedRequestIsNotDownloadedAgain() async {
+        let item = row(1)
+        let mirror = mirror()
+        let client = client
+        #expect(!mirror.fileExists(item.diffFileName))
+        let first = await mirror.file(item.diffFileName, check: { !$0.isEmpty }, read: {
+            try await client.diff(item)
+        })
+        #expect(first == .landed)
+        // A second caller can pass its existence check before the first download lands, then enter the actor later.
+        let second = await mirror.file(item.diffFileName, check: { !$0.isEmpty }, read: {
+            try await client.diff(item)
+        })
+        #expect(second == .landed)
+        let downloads = await worker.count("/diff")
+        #expect(downloads == 1)
+    }
+
     @Test func anOlderListThatFinishesLastDoesNotReplaceTheNewerOne() async {
         let old = [row(1), row(2)]
         let new = [row(1)]
