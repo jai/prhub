@@ -20,6 +20,8 @@ struct AnalyticsEventTests {
             isInteracting: false, scene: .active
         )),
         .listRefreshBackgrounded(milliseconds: 1200),
+        .feedbackSent(FeedbackSend(kind: .new, images: 1, kilobytes: 412, milliseconds: 1840)),
+        .feedbackSendFailed(FeedbackSend(kind: .reply, images: 0, kilobytes: 1, milliseconds: 15000), .timeout),
     ]
 
     // swiftlint:disable:next cyclomatic_complexity - one arm per case, by design
@@ -50,13 +52,15 @@ struct AnalyticsEventTests {
         case .listRefreshFinished: 22
         case .listRefreshStuck: 23
         case .listRefreshBackgrounded: 24
+        case .feedbackSent: 25
+        case .feedbackSendFailed: 26
         }
     }
 
     // MARK: - What an event can carry
 
     @Test func everyCaseIsListed() {
-        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0 ... 24))
+        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0 ... 26))
     }
 
     @Test func eachEventHasItsOwnSnakeCaseName() {
@@ -90,7 +94,7 @@ struct AnalyticsEventTests {
                 + PRRequestArea.allCases.map(\.rawValue) + RequestFailureKind.allCases.map(\.rawValue)
                 + TestFlightGroup.allCases.map(\.rawValue) + UpdateAnswer.allCases.map(\.rawValue)
                 + PRListRefreshOutcome.allCases.map(\.rawValue) + PRListRefreshSource.allCases.map(\.rawValue)
-                + PRListSceneState.allCases.map(\.rawValue)
+                + PRListSceneState.allCases.map(\.rawValue) + FeedbackSend.Kind.allCases.map(\.rawValue)
                 + ["push", "other_push", "foreground", "pull", "changed", "unchanged", "failed"]
         )
         for (key, value) in event.properties {

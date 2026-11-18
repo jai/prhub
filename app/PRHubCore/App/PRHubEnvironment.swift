@@ -88,7 +88,9 @@ public final class PRHubEnvironment {
         feedbackTokens = tokens
         let root = connection.config?.feedbackDirect?.url
         feedbackRoot = root
-        feedback = FeatureRequestsModel(client: Self.feedbackClient(prs: prs, root: root, tokens: tokens))
+        feedback = FeatureRequestsModel(
+            client: Self.feedbackClient(prs: prs, root: root, tokens: tokens, usage: usage)
+        )
         isSample = false
         let connection = connection
         host.config = { connection.config }
@@ -191,11 +193,17 @@ public final class PRHubEnvironment {
 
     /// FeedbackKit's direct path when the Worker names its root (`feedback_direct`), with tokens from the Worker; else
     /// the Worker's `/feedback` routes, whose chats are kept on the device for offline.
-    static func feedbackClient(prs: PRKitController, root: URL?, tokens: PRHubFeedbackTokens) -> FeatureClient {
+    /// Its requests go through `PRHubFeedbackTransport`, so each send's outcome is recorded.
+    static func feedbackClient(
+        prs: PRKitController, root: URL?, tokens: PRHubFeedbackTokens, usage: UsageAnalytics
+    ) -> FeatureClient {
         guard let root else {
             return FeatureClient(viewer: prs.client, keptIn: prs.keptFolder)
         }
-        let direct = FeedbackDirect(baseURL: root, token: { renew in try await tokens.token(renew: renew) })
+        let transport = PRHubFeedbackTransport { event in Task { @MainActor in usage.record(event) } }
+        let direct = FeedbackDirect(
+            baseURL: root, token: { renew in try await tokens.token(renew: renew) }, http: transport
+        )
         return FeatureClient(direct: direct)
     }
 
@@ -210,7 +218,9 @@ public final class PRHubEnvironment {
             return
         }
         feedbackRoot = root
-        feedback = FeatureRequestsModel(client: Self.feedbackClient(prs: prs, root: root, tokens: tokens))
+        feedback = FeatureRequestsModel(
+            client: Self.feedbackClient(prs: prs, root: root, tokens: tokens, usage: usage)
+        )
     }
 
     /// Settings' Disconnect: the Worker forgets this phone, the phone forgets the Worker and every PR it mirrored, so

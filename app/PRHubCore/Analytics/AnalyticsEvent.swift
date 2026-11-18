@@ -40,6 +40,11 @@ public enum AnalyticsEvent: Equatable, Sendable {
     /// the vendor's own `$app_build`.
     case updateOffered(TestFlightGroup, build: Int)
     case updateAnswered(UpdateAnswer)
+    /// A Feedback message FeedbackKit's server took (`PRHubFeedbackTransport`): new chat or reply, how many
+    /// screenshots, its size and how long it took. Never its words or its screenshots.
+    case feedbackSent(FeedbackSend)
+    /// A Feedback send that failed, and why: the screen says only "Could not send feedback".
+    case feedbackSendFailed(FeedbackSend, PRRequestFailure)
 
     /// The event's name in the vendor's project: one literal each.
     public var name: String {
@@ -69,6 +74,8 @@ public enum AnalyticsEvent: Equatable, Sendable {
         case .requestFailed: "request_failed"
         case .updateOffered: "update_offered"
         case .updateAnswered: "update_answered"
+        case .feedbackSent: "feedback_sent"
+        case .feedbackSendFailed: "feedback_send_failed"
         }
     }
 
@@ -106,10 +113,12 @@ public enum AnalyticsEvent: Equatable, Sendable {
         case let .pushPrefetch(outcome, milliseconds):
             ["outcome": .word(outcome.rawValue), "ms": .number(milliseconds)]
         case let .requestFailed(area, failure):
-            ["area": .word(area.rawValue), "failure": .word(RequestFailureKind(failure).rawValue)]
-                .merging(failure.status.map { ["status": .number($0)] } ?? [:]) { first, _ in first }
+            ["area": .word(area.rawValue)].merging(failure.properties) { first, _ in first }
         case let .updateOffered(group, build): ["group": .word(group.rawValue), "build": .number(build)]
         case let .updateAnswered(answer): ["answer": .word(answer.rawValue)]
+        case let .feedbackSent(send): send.properties
+        case let .feedbackSendFailed(send, failure):
+            send.properties.merging(failure.properties) { first, _ in first }
         case .signInSucceeded, .workerPaired, .samplesLeft, .anthropicKeySet, .anthropicKeyRemoved, .signedOut,
              .accountDeleted, .workerDisconnected, .pullRequestWriteRefused:
             [:]
@@ -251,7 +260,7 @@ private extension PRSyncOutcome {
 }
 
 /// How a request failed, as `request_failed`'s `failure`: a status (sent in `status`) or why there was none.
-enum RequestFailureKind: String, CaseIterable, Sendable {
+enum RequestFailureKind: String, CaseIterable {
     case status, offline, timeout, network, unreadable
 
     init(_ failure: PRRequestFailure) {
@@ -265,7 +274,22 @@ enum RequestFailureKind: String, CaseIterable, Sendable {
     }
 }
 
+private extension FeedbackSend {
+    var properties: [String: AnalyticsValue] {
+        [
+            "kind": .word(kind.rawValue), "images": .number(images), "kb": .number(kilobytes),
+            "ms": .number(milliseconds),
+        ]
+    }
+}
+
 private extension PRRequestFailure {
+    /// `failure`, and `status` when there was one.
+    var properties: [String: AnalyticsValue] {
+        ["failure": .word(RequestFailureKind(self).rawValue)]
+            .merging(status.map { ["status": .number($0)] } ?? [:]) { first, _ in first }
+    }
+
     /// The HTTP status, when there was one.
     var status: Int? {
         if case let .status(code) = self {
