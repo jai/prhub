@@ -49,6 +49,12 @@ struct PRActionOutcomeTests {
         #expect(PRWriteKind(.merge(method: "squash", commit: "c")) == .merge)
     }
 
+    @Test func anAIAnswerIsItsKindByItsRoute() {
+        #expect(PRAIKind(route: "key-lines") == .keyLines)
+        #expect(PRAIKind(route: "rewrite") == .rewrite)
+        #expect(PRAIKind(route: "summary") == nil, "a route the host isn't told of")
+    }
+
     @Test func aDecodingFailureIsUnreadable() {
         #expect(PRActionFailure(DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "x"))) == .unreadable)
     }

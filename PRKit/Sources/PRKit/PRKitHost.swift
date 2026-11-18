@@ -192,6 +192,9 @@ public enum PRKitEvent: Equatable, Sendable {
     /// A write of the user's (a review, a comment, a merge, an edit…): what it does, and whether GitHub took it, it
     /// is saved on the phone and still going, or why it failed. A refusal after its screen has gone is `writeRefused`.
     case wrote(PRWriteKind, PRActionOutcome)
+    /// The Worker's model answered, or failed to: which answer, how it went and how long it took from the ask. For
+    /// key lines, whether the PR's description reads as AI slop (the AI trash chip); nil when the answer doesn't say.
+    case aiAnswered(PRAIKind, PRActionOutcome, milliseconds: Int, slop: Bool?)
 }
 
 /// One PR opened, from the tap to its content on screen (`PRKitEvent.contentShown`).

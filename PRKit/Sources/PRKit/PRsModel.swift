@@ -347,48 +347,6 @@ final class PRsModel {
             .flatMap { try? JSONDecoder().decode(PRKeyLines.self, from: $0) }
     }
 
-    /// Asks every few seconds until the Worker's job lands. An answer can be a failure, in the job's own words.
-    func aiAnswer<Answer: Decodable>(
-        _ kind: String, ref: PullRequestRef, head: String, context: Int = PRKeyLines.defaultContext, retry: Bool,
-        keep key: InboxKey? = nil
-    ) async throws -> Answer {
-        if let samples {
-            guard kind == "key-lines", let data = samples.keyLines(for: ref) else {
-                throw PRLocalRefusal.sampleAI
-            }
-            return try JSONDecoder().decode(Answer.self, from: data)
-        }
-        let path = "prs/\(ref.repo)/\(ref.number)/\(kind)"
-        var isFirst = true
-        while !Task.isCancelled {
-            let data: Data?
-            // `retry` goes with the first request only: again, it would drop an answer the Worker has just made.
-            let asksAgain = retry && isFirst
-            isFirst = false
-            do {
-                data = try await client.aiAnswer(path: path, head: head, context: context, retry: asksAgain)
-            } catch where error.isPassingAIFailure {
-                try await Task.sleep(for: .seconds(5))
-                continue
-            }
-            if let data {
-                if let failure = try? JSONDecoder().decode(PRAIFailure.self, from: data) {
-                    if failure.moved == true {
-                        throw PRAIHeadMoved()
-                    }
-                    throw PRWorkerError.refused(failure.error)
-                }
-                let answer = try client.decode(Answer.self, from: data, path: path)
-                if let key {
-                    keep(data, as: key)
-                }
-                return answer
-            }
-            try await Task.sleep(for: .seconds(3))
-        }
-        throw CancellationError()
-    }
-
     /// Nil if iOS cleared the cache under a row: the session then reads the PR live.
     private func localContent(_ row: PullRequestRow) -> PRContent? {
         let read = { (name: String) in
@@ -524,6 +482,80 @@ final class PRsModel {
             content: content, networkMilliseconds: (arrived - started).milliseconds,
             decodeMilliseconds: (ContinuousClock.now - arrived).milliseconds
         )
+    }
+}
+
+// MARK: - The Worker's model
+
+extension PRsModel {
+    /// Asks every few seconds until the Worker's job lands. An answer can be a failure, in the job's own words. How it
+    /// went goes to the host (`PRKitEvent.aiAnswered`): how long it took, and for key lines whether the description
+    /// reads as AI slop (the AI trash chip).
+    func aiAnswer<Answer: Decodable>(
+        _ kind: String, ref: PullRequestRef, head: String, context: Int = PRKeyLines.defaultContext, retry: Bool,
+        keep key: InboxKey? = nil
+    ) async throws -> Answer {
+        let started = ContinuousClock.now
+        let report = { (outcome: PRActionOutcome, slop: Bool?) in
+            guard let kind = PRAIKind(route: kind) else {
+                return
+            }
+            self.onEvent(.aiAnswered(
+                kind, outcome, milliseconds: (ContinuousClock.now - started).milliseconds, slop: slop
+            ))
+        }
+        do {
+            let answer: Answer = try await readAIAnswer(
+                kind, ref: ref, head: head, context: context, retry: retry, keep: key
+            )
+            report(.done, (answer as? PRKeyLines)?.summary?.isSlop)
+            return answer
+        } catch {
+            if let outcome = PRActionOutcome(error: error) {
+                report(outcome, nil)
+            }
+            throw error
+        }
+    }
+
+    private func readAIAnswer<Answer: Decodable>(
+        _ kind: String, ref: PullRequestRef, head: String, context: Int, retry: Bool, keep key: InboxKey?
+    ) async throws -> Answer {
+        if let samples {
+            guard kind == "key-lines", let data = samples.keyLines(for: ref) else {
+                throw PRLocalRefusal.sampleAI
+            }
+            return try JSONDecoder().decode(Answer.self, from: data)
+        }
+        let path = "prs/\(ref.repo)/\(ref.number)/\(kind)"
+        var isFirst = true
+        while !Task.isCancelled {
+            let data: Data?
+            // `retry` goes with the first request only: again, it would drop an answer the Worker has just made.
+            let asksAgain = retry && isFirst
+            isFirst = false
+            do {
+                data = try await client.aiAnswer(path: path, head: head, context: context, retry: asksAgain)
+            } catch where error.isPassingAIFailure {
+                try await Task.sleep(for: .seconds(5))
+                continue
+            }
+            if let data {
+                if let failure = try? JSONDecoder().decode(PRAIFailure.self, from: data) {
+                    if failure.moved == true {
+                        throw PRAIHeadMoved()
+                    }
+                    throw PRWorkerError.refused(failure.error)
+                }
+                let answer = try client.decode(Answer.self, from: data, path: path)
+                if let key {
+                    keep(data, as: key)
+                }
+                return answer
+            }
+            try await Task.sleep(for: .seconds(3))
+        }
+        throw CancellationError()
     }
 }
 

@@ -48,6 +48,9 @@ public enum AnalyticsEvent: Equatable, Sendable {
     /// From PRKit (`PRKitEvent.wrote`): a review, comment, merge, edit or other write, and how it went. A failure of
     /// the same kind and why at most once a minute (`limitKey`).
     case pullRequestWrote(PRWriteKind, PRActionOutcome)
+    /// From PRKit (`PRKitEvent.aiAnswered`): key lines or a rewrite from the Worker's model, how it went and how long it
+    /// took; for key lines whether the AI trash chip shows.
+    case aiAnswered(PRAIKind, PRActionOutcome, milliseconds: Int, slop: Bool?)
 
     /// The event's name in the vendor's project: one literal each.
     public var name: String {
@@ -80,6 +83,7 @@ public enum AnalyticsEvent: Equatable, Sendable {
         case .feedbackSent: "feedback_sent"
         case .feedbackSendFailed: "feedback_send_failed"
         case .pullRequestWrote: "pr_write"
+        case .aiAnswered: "ai_answer"
         }
     }
 
@@ -125,6 +129,10 @@ public enum AnalyticsEvent: Equatable, Sendable {
             send.properties.merging(failure.properties) { first, _ in first }
         case let .pullRequestWrote(kind, outcome):
             ["kind": .word(kind.rawValue)].merging(outcome.properties) { first, _ in first }
+        case let .aiAnswered(kind, outcome, milliseconds, slop):
+            ["kind": .word(kind.rawValue), "ms": .number(milliseconds)]
+                .merging(outcome.properties) { first, _ in first }
+                .merging(slop.map { ["slop": .number($0 ? 1 : 0)] } ?? [:]) { first, _ in first }
         case .signInSucceeded, .workerPaired, .samplesLeft, .anthropicKeySet, .anthropicKeyRemoved, .signedOut,
              .accountDeleted, .workerDisconnected, .pullRequestWriteRefused:
             [:]
@@ -138,6 +146,7 @@ extension AnalyticsEvent {
     var limitKey: String? {
         switch self {
         case let .pullRequestWrote(kind, .failed(failure)): "\(name) \(kind.rawValue) \(failure.rawValue)"
+        case let .aiAnswered(kind, .failed(failure), _, _): "\(name) \(kind.rawValue) \(failure.rawValue)"
         default: nil
         }
     }
@@ -264,6 +273,8 @@ extension AnalyticsEvent {
             self = .listRefreshBackgrounded(milliseconds: milliseconds)
         case let .wrote(kind, outcome):
             self = .pullRequestWrote(kind, outcome)
+        case let .aiAnswered(kind, outcome, milliseconds, slop):
+            self = .aiAnswered(kind, outcome, milliseconds: milliseconds, slop: slop)
         }
     }
 }

@@ -127,3 +127,19 @@ public enum PRWriteKind: String, CaseIterable, Sendable {
         }
     }
 }
+
+/// An answer of the Worker's model (`PRKitEvent.aiAnswered`), by its route.
+public enum PRAIKind: String, CaseIterable, Sendable {
+    /// Key lines, with the PR's summary and its AI slop check.
+    case keyLines = "key_lines"
+    /// The description, rewritten.
+    case rewrite
+
+    init?(route: String) {
+        switch route {
+        case "key-lines": self = .keyLines
+        case "rewrite": self = .rewrite
+        default: return nil
+        }
+    }
+}

@@ -70,6 +70,8 @@ struct PRHubSamplesTests {
 
     @Test func keyLinesAnswerOnThePhoneAtAnyContext() async throws {
         let model = Self.model()
+        var events: [PRKitEvent] = []
+        model.onEvent = { events.append($0) }
         let lines: PRKeyLines = try await model.aiAnswer(
             "key-lines", ref: Self.checkout, head: "sample-412", context: 10, retry: false
         )
@@ -77,6 +79,17 @@ struct PRHubSamplesTests {
         await #expect(throws: PRLocalRefusal.sampleAI) {
             let _: PRRewrite = try await model.aiAnswer("rewrite", ref: Self.checkout, head: "sample-412", retry: true)
         }
+        // How long each took varies; what it was and how it went do not.
+        let told = events.map { event in
+            guard case let .aiAnswered(kind, outcome, _, slop) = event else {
+                return event
+            }
+            return .aiAnswered(kind, outcome, milliseconds: 0, slop: slop)
+        }
+        #expect(told == [
+            .aiAnswered(.keyLines, .done, milliseconds: 0, slop: true),
+            .aiAnswered(.rewrite, .failed(.local), milliseconds: 0, slop: nil),
+        ], "the checkout sample's description reads as AI slop")
     }
 
     @Test func aReviewStaysOnThePhoneAndSaysSo() async throws {

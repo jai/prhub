@@ -23,6 +23,7 @@ struct AnalyticsEventTests {
         .feedbackSent(FeedbackSend(kind: .new, images: 1, kilobytes: 412, milliseconds: 1840)),
         .feedbackSendFailed(FeedbackSend(kind: .reply, images: 0, kilobytes: 1, milliseconds: 15000), .timeout),
         .pullRequestWrote(.merge, .failed(.refused)),
+        .aiAnswered(.keyLines, .done, milliseconds: 8200, slop: true),
     ]
 
     // swiftlint:disable:next cyclomatic_complexity - one arm per case, by design
@@ -56,13 +57,14 @@ struct AnalyticsEventTests {
         case .feedbackSent: 25
         case .feedbackSendFailed: 26
         case .pullRequestWrote: 27
+        case .aiAnswered: 28
         }
     }
 
     // MARK: - What an event can carry
 
     @Test func everyCaseIsListed() {
-        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0 ... 27))
+        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0 ... 28))
     }
 
     @Test func eachEventHasItsOwnSnakeCaseName() {
@@ -98,7 +100,7 @@ struct AnalyticsEventTests {
                 + PRListRefreshOutcome.allCases.map(\.rawValue) + PRListRefreshSource.allCases.map(\.rawValue)
                 + PRListSceneState.allCases.map(\.rawValue) + FeedbackSend.Kind.allCases.map(\.rawValue)
                 + PRWriteKind.allCases.map(\.rawValue) + PRActionFailure.allCases.map(\.rawValue)
-                + ActionOutcomeWord.allCases.map(\.rawValue)
+                + ActionOutcomeWord.allCases.map(\.rawValue) + PRAIKind.allCases.map(\.rawValue)
                 + ["push", "other_push", "foreground", "pull", "changed", "unchanged", "failed"]
         )
         for (key, value) in event.properties {
@@ -154,6 +156,19 @@ struct AnalyticsEventTests {
         #expect(AnalyticsEvent.pullRequestWrote(.merge, .failed(.offline)).properties == [
             "kind": .word("merge"), "outcome": .word("failed"), "failure": .word("offline"),
         ])
+    }
+
+    @Test func anAIAnswerSaysHowItWentAndWhetherTheTrashChipShows() {
+        #expect(AnalyticsEvent(.aiAnswered(.keyLines, .done, milliseconds: 8200, slop: true))
+            == .aiAnswered(.keyLines, .done, milliseconds: 8200, slop: true))
+        #expect(AnalyticsEvent.aiAnswered(.keyLines, .done, milliseconds: 8200, slop: true).properties == [
+            "kind": .word("key_lines"), "outcome": .word("done"), "ms": .number(8200), "slop": .number(1),
+        ])
+        #expect(AnalyticsEvent.aiAnswered(.rewrite, .failed(.refused), milliseconds: 900, slop: nil).properties == [
+            "kind": .word("rewrite"), "outcome": .word("failed"), "failure": .word("refused"), "ms": .number(900),
+        ])
+        #expect(AnalyticsEvent.aiAnswered(.rewrite, .failed(.refused), milliseconds: 900, slop: nil).limitKey
+            == AnalyticsEvent.aiAnswered(.rewrite, .failed(.refused), milliseconds: 4000, slop: nil).limitKey)
     }
 
     /// Only a failure is held back when it repeats: what failed and why, not when or how long it took.
