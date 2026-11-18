@@ -15,7 +15,7 @@ struct DeviceConfigDecodeTests {
         #expect(config.features == [.askAI, .keyLines, .push])
         #expect(config.login == "alex")
         #expect(config.orgs == ["acme"])
-        // Kept across launches: the cache reads back the same.
+        // The encoded value decodes unchanged.
         let saved = try JSONDecoder().decode(DeviceConfig.self, from: JSONEncoder().encode(config))
         #expect(saved == config)
     }
@@ -29,5 +29,14 @@ struct DeviceConfigDecodeTests {
     @Test func settingsSaysWhichAIFeaturesTheWorkerHas() {
         #expect(DeviceConfig(features: [.askAI, .rewrite]).aiWords == "Ask AI, Rewrite")
         #expect(DeviceConfig(features: [.push]).aiWords == "Off: no Anthropic key on the Worker")
+    }
+
+    @Test func theConfigSaysWhetherToSend() throws {
+        let on = try JSONDecoder().decode(DeviceConfig.self, from: Data(#"{"features":{},"metrickit":true}"#.utf8))
+        let off = try JSONDecoder().decode(DeviceConfig.self, from: Data(#"{"features":{}}"#.utf8))
+        #expect(on.metricKit)
+        #expect(!off.metricKit)
+        let again = try JSONDecoder().decode(DeviceConfig.self, from: JSONEncoder().encode(on))
+        #expect(again.metricKit, "preserved by encoding and decoding")
     }
 }

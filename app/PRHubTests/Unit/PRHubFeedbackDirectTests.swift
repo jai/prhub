@@ -6,6 +6,7 @@ import Testing
 
 /// Feedback's direct path (issue #53): the config names FeedbackKit's root, and tokens come from the Worker.
 struct PRHubFeedbackDirectTests {
+    private static let start = Date(timeIntervalSince1970: 1_800_000_000)
     private func config(_ json: String) throws -> DeviceConfig {
         try JSONDecoder().decode(DeviceConfig.self, from: Data(json.utf8))
     }
@@ -31,30 +32,37 @@ struct PRHubFeedbackDirectTests {
     }
 
     @Test func aTokenIsKeptUntilAMinuteBeforeItEndsAndRenewAsksAgain() async throws {
+        let now = Shared(Self.start)
         // As the Worker's toISOString() writes it: milliseconds and Z.
         let later = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
-            .format(Date.now.addingTimeInterval(15 * 60))
+            .format(Self.start.addingTimeInterval(15 * 60))
         let worker = StubWorker([
             .reply(status: 200, body: answer("one", later)), .reply(status: 200, body: answer("two", later)),
         ])
         let access = PRViewerAccess(baseURL: { URL(string: "https://worker.test")! }, bearer: { "t" }, discard: {})
-        let tokens = PRHubFeedbackTokens(client: PRViewerClient(access: access) { try await worker.exchange($0) })
+        let tokens = PRHubFeedbackTokens(
+            client: PRViewerClient(access: access) { try await worker.exchange($0) }, now: { now.with { $0 } }
+        )
 
         #expect(try await tokens.token(renew: false) == "one")
-        #expect(try await tokens.token(renew: false) == "one", "kept, not asked again")
+        now.with { $0 = Self.start.addingTimeInterval(15 * 60 - 61) }
+        #expect(try await tokens.token(renew: false) == "one", "kept with 61 seconds remaining")
         #expect(try await tokens.token(renew: true) == "two", "FeedbackKit refused it: a new one")
         let sent = worker.requests.with { $0 }
         #expect(sent.count == 2)
         #expect(sent.allSatisfy { $0.httpMethod == "POST" && $0.url?.path() == "/feedback/token" })
     }
 
-    @Test func aTokenAboutToEndIsNotKept() async throws {
-        let soon = Date.now.addingTimeInterval(30).ISO8601Format()
+    @Test(arguments: [60.0, 30.0, 0.0, -1.0])
+    func aTokenAboutToEndIsNotKept(_ secondsRemaining: TimeInterval) async throws {
+        let soon = Self.start.addingTimeInterval(secondsRemaining).ISO8601Format()
         let worker = StubWorker([
             .reply(status: 200, body: answer("one", soon)), .reply(status: 200, body: answer("two", soon)),
         ])
         let access = PRViewerAccess(baseURL: { URL(string: "https://worker.test")! }, bearer: { "t" }, discard: {})
-        let tokens = PRHubFeedbackTokens(client: PRViewerClient(access: access) { try await worker.exchange($0) })
+        let tokens = PRHubFeedbackTokens(
+            client: PRViewerClient(access: access) { try await worker.exchange($0) }, now: { Self.start }
+        )
         #expect(try await tokens.token(renew: false) == "one")
         #expect(try await tokens.token(renew: false) == "two")
     }

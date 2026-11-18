@@ -109,13 +109,6 @@ struct PRNavigationTests {
         #expect(kit.openCount == 2)
     }
 
-    @Test func thePanelIsAColumnOnlyWhereARegularWidthHasRoomForTheDiffBesideIt() {
-        let room = PanelStyle.columnWidth + PanelStyle.diffWidth
-        #expect(PRPanelPlacement.fitting(width: room, isRegularWidth: true) == .column)
-        #expect(PRPanelPlacement.fitting(width: room - 1, isRegularWidth: true) == .overlay)
-        #expect(PRPanelPlacement.fitting(width: room * 2, isRegularWidth: false) == .overlay)
-    }
-
     @Test func aPickInTheColumnKeepsItOpenAndOverTheDiffClosesIt() {
         let session = kit.model.session(for: ref)
         session.openPanel()

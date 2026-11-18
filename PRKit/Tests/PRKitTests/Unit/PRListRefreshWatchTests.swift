@@ -1,3 +1,4 @@
+import os
 @testable import PRKit
 import SwiftUI
 import Testing
@@ -5,21 +6,27 @@ import Testing
 /// The pull to refresh's watch (issue #55): a refresh's start and end, and whether the list came back to rest.
 @MainActor
 struct PRListRefreshWatchTests {
-    private func watch(resting inset: CGFloat = 62) -> PRListRefreshWatch {
-        let watch = PRListRefreshWatch()
+    private func watch(
+        resting inset: CGFloat = 62, now: (() -> ContinuousClock.Instant)? = nil
+    ) -> PRListRefreshWatch {
+        let origin = ContinuousClock.now
+        let watch = PRListRefreshWatch(now: now ?? { origin }, logger: Logger(.disabled))
         watch.geometry = PRListScrollRest(offsetY: -inset, insetTop: inset)
         return watch
     }
 
     @Test func aRefreshReportsItsStartAndHowItEnded() {
-        let watch = watch()
+        var instant = ContinuousClock.now
+        let watch = watch(now: { instant })
         #expect(watch.began(rows: 5) == .listRefreshStarted(rows: 5))
         #expect(watch.isRefreshing)
+        instant += .milliseconds(250)
         guard case let .listRefreshFinished(finish) = watch.ended(.offline, rowsBefore: 5, rowsAfter: 5) else {
             Issue.record("not a finish")
             return
         }
         #expect(finish.outcome == .offline && finish.source == .cached && finish.rowsAfter == 5)
+        #expect(finish.milliseconds == 250)
         #expect(!watch.isRefreshing)
     }
 

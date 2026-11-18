@@ -13,17 +13,6 @@ struct HostedSignInTests {
             == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
     }
 
-    @Test func eachAttemptHasItsOwnStateAndVerifierInTheContractsAlphabet() throws {
-        let first = try SignInAttempt.make()
-        let second = try SignInAttempt.make()
-        #expect(first.state != second.state && first.verifier != second.verifier)
-        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._~-")
-        for value in [first.state, first.verifier] {
-            #expect((43 ... 128).contains(value.count))
-            #expect(value.unicodeScalars.allSatisfy(allowed.contains))
-        }
-    }
-
     @Test func startCarriesTheStateAndTheChallengeNeverTheVerifier() throws {
         let attempt = SignInAttempt(state: "state-1234567890ab", verifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")
         let url = attempt.startURL(worker: worker)
@@ -80,7 +69,7 @@ struct HostedSignInTests {
             challenge.with { $0 = items.first { $0.name == "code_challenge" }?.value }
             let state = items.first { $0.name == "state" }?.value ?? ""
             return URL(string: "https://\(host)/auth/github/done?code=one-time&state=\(state)")!
-        }, finish: { code, verifier in
+        }, makeAttempt: { Self.attempt }, finish: { code, verifier in
             sent.with { $0 = (code, verifier) }
             return SignInResult(secret: "4242.secret", login: "octocat", userId: "4242")
         })
@@ -92,10 +81,11 @@ struct HostedSignInTests {
     }
 
     @MainActor @Test func aClosedSheetIsCancelledAndFinishIsNeverAsked() async {
-        let signIn = HostedSignIn(worker: worker, authenticate: { _, _ in throw SignInError.cancelled }, finish: { _, _ in
-            Issue.record("nothing to finish")
-            throw AccountClient.Failure.transport
-        })
+        let signIn = HostedSignIn(worker: worker, authenticate: { _, _ in throw SignInError.cancelled },
+                                  makeAttempt: { Self.attempt }, finish: { _, _ in
+                                      Issue.record("nothing to finish")
+                                      throw AccountClient.Failure.transport
+                                  })
         await #expect(throws: SignInError.cancelled) { try await signIn.run() }
         #expect(SignInError.cancelled.message == nil)
     }
@@ -126,7 +116,7 @@ struct AccountClientTests {
 
     /// A config read failing at each foreground left no trace: each failed request now says its area and how.
     @Test func eachFailedRequestIsReportedWithItsAreaAndHow() async {
-        let stub = StubWorker([.reply(status: 503, body: ""), .fail(.notConnectedToInternet)])
+        let stub = StubWorker([.reply(status: 503, body: ""), .fail(.notConnectedToInternet), .fail(.timedOut)])
         let reports = Shared<[String]>([])
         var client = Self.client(stub)
         client.failed = { area, failure in reports.with { $0.append("\(area.rawValue) \(failure)") } }

@@ -88,7 +88,8 @@ final class PRListRefreshWatch {
     /// How long after a refresh ends the list must be back at rest.
     static let settle: Duration = .seconds(2)
 
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "PRKit", category: "refresh")
+    private let logger: Logger
+    private let now: () -> ContinuousClock.Instant
     var geometry: PRListScrollRest?
     var isInteracting = false
     /// The scene's state now (`onChange(of: scenePhase)`).
@@ -96,12 +97,20 @@ final class PRListRefreshWatch {
     private(set) var startedAt: ContinuousClock.Instant?
     private var restingInsetTop: CGFloat?
 
+    init(
+        now: @escaping () -> ContinuousClock.Instant = { .now },
+        logger: Logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "PRKit", category: "refresh")
+    ) {
+        self.now = now
+        self.logger = logger
+    }
+
     var isRefreshing: Bool {
         startedAt != nil
     }
 
     func began(rows: Int) -> PRKitEvent {
-        startedAt = .now
+        startedAt = now()
         restingInsetTop = geometry?.insetTop
         logger.info("refresh started rows=\(rows, privacy: .public)")
         return .listRefreshStarted(rows: rows)
@@ -161,7 +170,7 @@ final class PRListRefreshWatch {
         guard let startedAt else {
             return 0
         }
-        let elapsed = ContinuousClock.now - startedAt
+        let elapsed = now() - startedAt
         return Int(elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000)
     }
 }

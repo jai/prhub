@@ -65,4 +65,18 @@ struct HostedConfigDecodeTests {
         #expect(PRHubNotificationDelegate.isSignedOut(["reason": "signed_out"]))
         #expect(!PRHubNotificationDelegate.isSignedOut(["reason": "pr_sync"]))
     }
+
+    @Test func theBuildFlagsDecodeProvidedInfoValues() throws {
+        let build = PRHubBuild(info: [
+            "PRHubHostedHost": "prhub.example.workers.dev", "PRHubSignInWithGitHub": "YES",
+            "PRHubSelfHosted": "NO", "PRHubSamples": "YES",
+        ])
+        #expect(try build == PRHubBuild(
+            hostedURL: #require(URL(string: "https://prhub.example.workers.dev")),
+            signInWithGitHub: true, selfHosted: false, samples: true
+        ))
+        // No host, no sign-in; a missing flag is off.
+        let bare = PRHubBuild(info: ["PRHubSignInWithGitHub": "YES"])
+        #expect(!bare.signInWithGitHub && !bare.selfHosted && !bare.samples && bare.hostedURL == nil)
+    }
 }

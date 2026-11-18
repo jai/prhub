@@ -15,18 +15,23 @@ final class PRHubFeedbackTransport: HTTPTransport {
 
     private let inner: any HTTPTransport
     private let record: Record
+    private let now: @Sendable () -> ContinuousClock.Instant
     private let lastReadFailure = Mutex<ContinuousClock.Instant?>(nil)
 
-    init(inner: any HTTPTransport = URLSessionTransport(policy: .quick), record: @escaping Record) {
+    init(
+        inner: any HTTPTransport = URLSessionTransport(policy: .quick),
+        now: @escaping @Sendable () -> ContinuousClock.Instant = { .now }, record: @escaping Record
+    ) {
         self.inner = inner
         self.record = record
+        self.now = now
     }
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let sending = FeedbackSend(request)
-        let started = ContinuousClock.now
+        let started = now()
         func elapsed() -> Int {
-            let time = ContinuousClock.now - started
+            let time = now() - started
             return Int(time.components.seconds * 1000 + time.components.attoseconds / 1_000_000_000_000_000)
         }
         do {
@@ -55,7 +60,7 @@ final class PRHubFeedbackTransport: HTTPTransport {
     }
 
     private func readFailed(_ failure: PRRequestFailure) {
-        let now = ContinuousClock.now
+        let now = now()
         let isDue = lastReadFailure.withLock { last in
             guard last.map({ now - $0 >= Self.readFailureWindow }) ?? true else {
                 return false

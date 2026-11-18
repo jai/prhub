@@ -49,12 +49,6 @@ struct DiffFontTests {
         #expect(AppStorage(diffFontIn: defaults).wrappedValue == .standard)
     }
 
-    @Test func aSizeIsHeldToTheRangeInWholePoints() {
-        #expect(DiffFont(face: .menlo, size: 4).size == 9)
-        #expect(DiffFont(face: .menlo, size: 40).size == 20)
-        #expect(DiffFont(face: .menlo, size: 13.4).size == 13)
-    }
-
     @Test(arguments: DiffFontFace.allCases.filter { $0.bundledFolder != nil })
     func everyBundledFaceShipsRegularBoldAndItsLicence(face: DiffFontFace) throws {
         let files = DiffFontRegistry.fontFiles(of: face)

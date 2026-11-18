@@ -147,10 +147,11 @@ public struct PRViewerClient: Sendable {
     /// request is one try: a caller that tries again reports again, but each area's kind of failure at most once a
     /// minute (`PRFailureReporter`). Not sent: a phone that isn't paired, a cancelled request, a 2xx.
     public func reporting(
+        now: @escaping @Sendable () -> Date = { .now },
         _ report: @escaping @Sendable (PRRequestArea, PRRequestFailure) -> Void
     ) -> PRViewerClient {
         var client = self
-        client.reporter = PRFailureReporter(report: report)
+        client.reporter = PRFailureReporter(now: now, report: report)
         return client
     }
 

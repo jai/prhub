@@ -72,7 +72,7 @@ struct PRMirrorTests {
             row(4, "review", "approved"), row(5, "review", "changes_requested"),
         ]
 
-        #expect(PRListPage.ordered(rows).map(\.number) == [3, 5, 1, 2, 4])
+        #expect(PRListPage.ordered(rows, now: Date(timeIntervalSince1970: 0)).map(\.number) == [3, 5, 1, 2, 4])
     }
 
     @Test func aMergedRowReadsAsMergedWithNothingStillToDo() {
@@ -241,7 +241,7 @@ struct PRMirrorTests {
         #expect(read.isAnswered)
         #expect(!read.isReviewRequest)
         #expect(read.listPullRequest.jaiReview == .commented)
-        #expect(read.listPullRequest.isDecidedByJai(since: .now))
+        #expect(read.listPullRequest.isDecidedByJai(since: Date(timeIntervalSince1970: 0)))
         #expect(!row("mine").answered(answer).isAnswered, "Jai's own PR isn't a review he was asked for")
         #expect(answer.isNeeded(by: row("review")), "a plain comment never changes the Worker's list")
         #expect(!answer.isNeeded(by: row("reviewed")))

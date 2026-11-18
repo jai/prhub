@@ -43,7 +43,9 @@ final class PRHubPRHost: PRKitHost {
     /// owner), its login, and on the hosted Worker the empty list's pointer to where the GitHub App is missing (or
     /// Checking GitHub while the installations are read again) and, with no Anthropic key, the Key lines page's pointer
     /// to Settings.
-    static func configuration(_ config: DeviceConfig?, isCheckingInstallations: Bool = false) -> PRKitConfiguration {
+    static func configuration(
+        _ config: DeviceConfig?, isCheckingInstallations: Bool = false, locale: Locale = .current
+    ) -> PRKitConfiguration {
         let all: [PRKitConfiguration.Feature: DeviceFeature] = [
             .askAI: .askAI, .keyLines: .keyLines, .rewrite: .rewrite, .push: .push,
         ]
@@ -55,7 +57,7 @@ final class PRHubPRHost: PRKitHost {
                 guard config.hosted else {
                     return nil
                 }
-                return isCheckingInstallations ? checkingHint : installHint(config)
+                return isCheckingInstallations ? checkingHint : installHint(config, locale: locale)
             },
             keyLinesHint: config.flatMap { $0.hosted && !$0.isOn(.keyLines) ? anthropicKeyHint : nil }
         )
@@ -81,7 +83,7 @@ final class PRHubPRHost: PRKitHost {
 
     /// The hosted Worker sees only repos where the PRHub App is installed, so an empty list says where it is and
     /// where it is missing: on no account, suspended, or not on the person's own.
-    static func installHint(_ config: DeviceConfig) -> PREmptyHint {
+    static func installHint(_ config: DeviceConfig, locale: Locale = .current) -> PREmptyHint {
         guard let installations = config.installations else {
             return genericInstallHint
         }
@@ -100,7 +102,7 @@ final class PRHubPRHost: PRKitHost {
         if active.isEmpty, let first = suspended.first {
             return PREmptyHint(
                 title: "PRHub is suspended",
-                message: "The PRHub App is suspended on \(names(suspended)), so PRHub sees no pull requests there. An "
+                message: "The PRHub App is suspended on \(names(suspended, locale: locale)), so PRHub sees no pull requests there. An "
                     + "owner can unsuspend it in the installation's settings on GitHub.",
                 linkTitle: "Open \(first.account) on GitHub",
                 link: first.settingsURL
@@ -113,9 +115,9 @@ final class PRHubPRHost: PRKitHost {
         }
         let missing = [
             ownMissing.map { "It isn't installed on your own account, \($0)." },
-            suspended.isEmpty ? nil : "It's suspended on \(names(suspended)).",
+            suspended.isEmpty ? nil : "It's suspended on \(names(suspended, locale: locale)).",
         ].compactMap(\.self)
-        let installed = "None of your pull requests or review requests are open in \(names(active)), where PRHub is "
+        let installed = "None of your pull requests or review requests are open in \(names(active, locale: locale)), where PRHub is "
             + "installed."
         return PREmptyHint(
             title: "No PRs yet",
@@ -126,8 +128,8 @@ final class PRHubPRHost: PRKitHost {
     }
 
     /// "acme", "acme and globex", "acme, globex, and initech".
-    private static func names(_ installations: [GitHubInstallation]) -> String {
-        installations.map(\.account).formatted(.list(type: .and))
+    private static func names(_ installations: [GitHubInstallation], locale: Locale) -> String {
+        installations.map(\.account).formatted(.list(type: .and).locale(locale))
     }
 
     /// Before the Worker has read where the App is installed.

@@ -138,6 +138,7 @@ typealias Authenticate = @MainActor @Sendable (_ start: URL, _ callbackHost: Str
 struct HostedSignIn: Sendable {
     var worker: URL
     var authenticate: Authenticate
+    var makeAttempt: @Sendable () throws -> SignInAttempt = { try .make() }
     var finish: @Sendable (_ code: String, _ verifier: String) async throws -> SignInResult
 
     @MainActor
@@ -147,7 +148,7 @@ struct HostedSignIn: Sendable {
         }
         let attempt: SignInAttempt
         do {
-            attempt = try .make()
+            attempt = try makeAttempt()
         } catch {
             throw .keychain
         }

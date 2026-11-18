@@ -21,15 +21,7 @@ struct HostedConfigTests {
         #expect(try store.load() == nil)
     }
 
-    @Test func theBuildsFlagsComeFromInfoPlist() throws {
-        let build = PRHubBuild(info: [
-            "PRHubHostedHost": "prhub.example.workers.dev", "PRHubSignInWithGitHub": "YES",
-            "PRHubSelfHosted": "NO", "PRHubSamples": "YES",
-        ])
-        #expect(build == PRHubBuild(hostedURL: worker, signInWithGitHub: true, selfHosted: false, samples: true))
-        // No host, no sign-in; a missing flag is off.
-        let bare = PRHubBuild(info: ["PRHubSignInWithGitHub": "YES"])
-        #expect(!bare.signInWithGitHub && !bare.selfHosted && !bare.samples && bare.hostedURL == nil)
+    @Test func debugOverridesTakePrecedenceOverBuildFlags() throws {
         let suite = "prhub-build-\(UUID().uuidString)"
         let overrides = try #require(UserDefaults(suiteName: suite))
         defer { overrides.removePersistentDomain(forName: suite) }
@@ -344,22 +336,5 @@ struct HostedConnectionTests {
         #expect(!connection.isHosted && !connection.needsSignInAgain)
         #expect(connection.config?.login == "alex")
         try endpoint.clear()
-    }
-
-    @Test func theHostedListPointsAtTheAppsInstallPage() {
-        let hosted = PRHubPRHost.configuration(DeviceConfig(features: [], hosted: true))
-        #expect(hosted.emptyHint == PRHubPRHost.genericInstallHint)
-        #expect(hosted.emptyHint?.link == PRHubBuild.appInstallURL)
-        #expect(PRHubPRHost.configuration(DeviceConfig(features: [])).emptyHint == nil)
-    }
-
-    /// Signed in with no Anthropic key, the Key lines page says to add one, and opens Settings to do it.
-    @Test func theHostedWorkerWithNoKeyPointsKeyLinesAtSettings() {
-        let noKey = PRHubPRHost.configuration(DeviceConfig(features: [.push], hosted: true))
-        #expect(!noKey.isOn(.keyLines))
-        #expect(noKey.keyLinesHint == PRHubPRHost.anthropicKeyHint)
-        #expect(noKey.keyLinesHint?.link == PRHubBuild.settingsURL)
-        #expect(PRHubPRHost.configuration(DeviceConfig(features: [.keyLines], hosted: true)).keyLinesHint == nil)
-        #expect(PRHubPRHost.configuration(DeviceConfig(features: [.push])).keyLinesHint == nil)
     }
 }

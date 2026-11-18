@@ -240,7 +240,7 @@ struct AnalyticsEventTests {
         "PRHubAnalyticsKey": "phc_example", "PRHubAnalyticsHost": "eu.i.posthog.com",
     ])
 
-    @Test func theProjectComesFromInfoPlist() throws {
+    @Test func theProjectDecodesProvidedInfoValues() throws {
         let project = try #require(Self.project)
         #expect(project.apiKey == "phc_example")
         #expect(project.host == URL(string: "https://eu.i.posthog.com"))

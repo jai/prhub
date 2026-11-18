@@ -77,13 +77,4 @@ struct PRHubMetricKitTests {
         }
         #expect(reports.waiting().count == PRHubMetricReports.waitingMax)
     }
-
-    @Test func theConfigSaysWhetherToSend() throws {
-        let on = try JSONDecoder().decode(DeviceConfig.self, from: Data(#"{"features":{},"metrickit":true}"#.utf8))
-        let off = try JSONDecoder().decode(DeviceConfig.self, from: Data(#"{"features":{}}"#.utf8))
-        #expect(on.metricKit)
-        #expect(!off.metricKit)
-        let again = try JSONDecoder().decode(DeviceConfig.self, from: JSONEncoder().encode(on))
-        #expect(again.metricKit, "kept across launches")
-    }
 }

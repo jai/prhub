@@ -13,21 +13,23 @@ actor PRHubFeedbackTokens {
     private struct NoBody: Encodable, Sendable {}
 
     private let client: PRViewerClient
+    private let now: @Sendable () -> Date
     private var kept: (token: String, until: Date)?
 
-    init(client: PRViewerClient) {
+    init(client: PRViewerClient, now: @escaping @Sendable () -> Date = { .now }) {
         self.client = client
+        self.now = now
     }
 
     func token(renew: Bool) async throws -> String {
-        if !renew, let kept, kept.until.timeIntervalSinceNow > 60 {
+        if !renew, let kept, kept.until.timeIntervalSince(now()) > 60 {
             return kept.token
         }
         let answer = try await client.send("feedback/token", NoBody(), as: Answer.self)
         // The Worker's `toISOString()` has milliseconds; an end it can't read is asked again next time.
         let until = (try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse(answer.expires_at))
             ?? (try? Date.ISO8601FormatStyle().parse(answer.expires_at))
-            ?? .now
+            ?? now()
         kept = (answer.token, until)
         return answer.token
     }

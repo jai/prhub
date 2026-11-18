@@ -52,7 +52,8 @@ struct PRRequestFailureTests {
         let access = PRViewerAccess(
             baseURL: { URL(string: "https://worker.example.com")! }, bearer: { "t" }, discard: {}
         )
-        return PRViewerClient(access: access, exchange: { try answer($0) }).reporting { reports.add($0, $1) }
+        return PRViewerClient(access: access, exchange: { try answer($0) })
+            .reporting(now: { Date(timeIntervalSince1970: 0) }, { reports.add($0, $1) })
     }
 
     private static func status(_ code: Int, _ body: String = "", for request: URLRequest) -> (Data, URLResponse) {

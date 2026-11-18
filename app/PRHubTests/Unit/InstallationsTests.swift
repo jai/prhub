@@ -6,6 +6,7 @@ import Testing
 /// empty list says is missing.
 @MainActor
 struct InstallationsTests {
+    private static let locale = Locale(identifier: "en_US")
     private static let own = GitHubInstallation(
         account: "octocat", accountType: .user, installationID: 1, repositorySelection: .all
     )
@@ -51,30 +52,30 @@ struct InstallationsTests {
     }
 
     @Test func anEmptyListSaysTheAppIsOnNoAccount() {
-        let hint = PRHubPRHost.installHint(Self.hosted([]))
+        let hint = PRHubPRHost.installHint(Self.hosted([]), locale: Self.locale)
         #expect(hint.title == "PRHub isn't installed yet")
         #expect(hint.link == PRHubBuild.appInstallURL)
     }
 
     @Test func anEmptyListNamesWhereItIsInstalledAndWhatIsMissing() {
-        let hint = PRHubPRHost.installHint(Self.hosted([Self.acme, Self.initech]))
+        let hint = PRHubPRHost.installHint(Self.hosted([Self.acme, Self.initech]), locale: Self.locale)
         #expect(hint.message.contains("in acme, where PRHub is installed"))
         #expect(hint.message.contains("It isn't installed on your own account, octocat."))
         #expect(hint.message.contains("It's suspended on initech."))
         #expect(hint.linkTitle == "Add another account" && hint.link == PRHubBuild.appInstallURL)
 
-        let everywhere = PRHubPRHost.installHint(Self.hosted([Self.own, Self.acme]))
+        let everywhere = PRHubPRHost.installHint(Self.hosted([Self.own, Self.acme]), locale: Self.locale)
         #expect(everywhere.message.contains("in octocat and acme, where PRHub is installed."))
         #expect(!everywhere.message.contains("own account") && !everywhere.message.contains("suspended"))
     }
 
     @Test func backFromGitHubTheEmptyListSaysItIsCheckingAndOffersNoLink() {
-        let checking = PRHubPRHost.configuration(Self.hosted([]), isCheckingInstallations: true).emptyHint
+        let checking = PRHubPRHost.configuration(Self.hosted([]), isCheckingInstallations: true, locale: Self.locale).emptyHint
         #expect(checking == PRHubPRHost.checkingHint && checking?.isChecking == true)
-        let checked = PRHubPRHost.configuration(Self.hosted([Self.acme])).emptyHint
+        let checked = PRHubPRHost.configuration(Self.hosted([Self.acme]), locale: Self.locale).emptyHint
         #expect(checked?.isChecking == false && checked?.title == "No PRs yet")
         let selfHosted = DeviceConfig(features: [], login: "octocat")
-        #expect(PRHubPRHost.configuration(selfHosted, isCheckingInstallations: true).emptyHint == nil)
+        #expect(PRHubPRHost.configuration(selfHosted, isCheckingInstallations: true, locale: Self.locale).emptyHint == nil)
     }
 
     @Test func theInstallPagesAreTheAppsInstallAndEachInstallationsSettings() throws {
@@ -86,8 +87,25 @@ struct InstallationsTests {
     }
 
     @Test func anEmptyListWhereEveryInstallationIsSuspendedOpensItsSettings() {
-        let hint = PRHubPRHost.installHint(Self.hosted([Self.initech]))
+        let hint = PRHubPRHost.installHint(Self.hosted([Self.initech]), locale: Self.locale)
         #expect(hint.title == "PRHub is suspended")
         #expect(hint.link == Self.initech.settingsURL)
+    }
+
+    @Test func theHostedListPointsAtTheAppsInstallPage() {
+        let hosted = PRHubPRHost.configuration(DeviceConfig(features: [], hosted: true), locale: Self.locale)
+        #expect(hosted.emptyHint == PRHubPRHost.genericInstallHint)
+        #expect(hosted.emptyHint?.link == PRHubBuild.appInstallURL)
+        #expect(PRHubPRHost.configuration(DeviceConfig(features: []), locale: Self.locale).emptyHint == nil)
+    }
+
+    /// Signed in with no Anthropic key, the Key lines page says to add one, and opens Settings to do it.
+    @Test func theHostedWorkerWithNoKeyPointsKeyLinesAtSettings() {
+        let noKey = PRHubPRHost.configuration(DeviceConfig(features: [.push], hosted: true), locale: Self.locale)
+        #expect(!noKey.isOn(.keyLines))
+        #expect(noKey.keyLinesHint == PRHubPRHost.anthropicKeyHint)
+        #expect(noKey.keyLinesHint?.link == PRHubBuild.settingsURL)
+        #expect(PRHubPRHost.configuration(DeviceConfig(features: [.keyLines], hosted: true), locale: Self.locale).keyLinesHint == nil)
+        #expect(PRHubPRHost.configuration(DeviceConfig(features: [.push]), locale: Self.locale).keyLinesHint == nil)
     }
 }

@@ -1,0 +1,491 @@
+// Ask turns through the agent adapter, persisted chat and transcript, and follow-up actions.
+import assert from "node:assert/strict";
+import test from "node:test";
+import { repoOf, type RepoFullName, type Sha } from "../../../src/ids.ts";
+import type { AskInput } from "../../../src/ask-chat.ts";
+import { AskFailure } from "../../../src/ask-trace.ts";
+import {
+  askOnSubscription,
+  subscriptionChat,
+  type SubscriptionRecord,
+  TURN_LOST_MS,
+} from "../../../src/ask-subscription.ts";
+import type { Env } from "../../../src/env.ts";
+
+function memoryR2() {
+  const objects = new Map<string, string>();
+  return {
+    objects,
+    get: async (key: string) =>
+      objects.has(key)
+        ? { json: async () => JSON.parse(objects.get(key)!), text: async () => objects.get(key)! }
+        : null,
+    put: async (key: string, value: string) => void objects.set(key, value),
+  };
+}
+
+const HEAD = "a".repeat(40) as Sha;
+const REPO = "acme/api" as RepoFullName;
+const input = (question: string): AskInput => ({ question, head: HEAD, anchor: null });
+
+function world(answers: Record<string, unknown>[]) {
+  const sent: Record<string, unknown>[] = [];
+  const instances: string[] = [];
+  const agent = {
+    idFromName: (name: string) => {
+      instances.push(name);
+      return name;
+    },
+    get: () => ({
+      fetch: async (url: string, init: RequestInit) => {
+        assert.equal(url, "http://agent/ask");
+        sent.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+        return Response.json(answers.shift());
+      },
+    }),
+  };
+  const r2 = memoryR2();
+  const env = { DIFFS: r2, AGENT: agent, CLAUDE_CODE_OAUTH_TOKEN: "oat" } as unknown as Env;
+  const services = {
+    system: async () => "sys",
+    grant: async () => ({
+      token: "read-token",
+      repos: [repoOf("acme/api"), repoOf("acme/actions")],
+    }),
+    diff: async () => "diff --git a/x b/x",
+    budgetUsd: 5,
+    readOnly: true,
+    now: () => 1_000,
+  };
+  const record = () => JSON.parse(r2.objects.get(`ask/${REPO}/7.json`)!) as SubscriptionRecord;
+  return { sent, instances, r2, env, services, record };
+}
+/** Shaped like an installation token, built in pieces so no real-looking token sits in the source. */
+const FAKE_GITHUB_TOKEN = ["gh", "s_", "ABCDEFGHIJKLMNOPQRSTUVWX"].join("");
+
+test("a question's answer joins the chat, and the next question resumes the same session with its transcript", async () => {
+  const w = world([
+    {
+      subtype: "success",
+      text: "It retries twice.",
+      session: "s1",
+      entries: [{ type: "user" }, { type: "assistant" }],
+      model: "claude-haiku-5-5",
+      costUsd: 0.01,
+    },
+    {
+      subtype: "success",
+      text: "Yes.",
+      session: "s1",
+      entries: [{ type: "user" }],
+      model: "claude-haiku-5-5",
+      costUsd: 0.02,
+    },
+  ]);
+  const choice = { model: "claude-haiku-5-5" as const, effort: "high" as const };
+  await askOnSubscription(REPO, 7, input("How often does it retry?"), choice, w.env, w.services);
+  assert.deepEqual(
+    w.record().messages.map(({ role, text }) => [role, text]),
+    [
+      ["you", "How often does it retry?"],
+      ["agent", "It retries twice."],
+    ],
+  );
+  assert.equal(w.sent[0].session, null);
+  assert.equal(w.sent[0].token, "read-token");
+  assert.equal(w.sent[0].readOnly, true, "the container hears whether the token is read only");
+  assert.deepEqual(
+    w.sent[0].reachable,
+    ["acme/api", "acme/actions"],
+    "and which repos its clones may be",
+  );
+  assert.equal(w.sent[0].system, "sys");
+  assert.equal(w.sent[0].diff, "diff --git a/x b/x", "the PR's diff goes with the question");
+  assert.match(String(w.sent[0].prompt), /\.prhub-pr\.diff/, "and each question says where it is");
+  assert.equal(w.sent[0].scope, "self", "a self-hosted Worker's checkouts are its own");
+  assert.deepEqual(
+    w.instances,
+    ["ask:self"],
+    "and run in a container of their own, not the shared one",
+  );
+  await askOnSubscription(REPO, 7, input("Is that enough?"), choice, w.env, w.services);
+  assert.equal(w.sent[1].session, "s1");
+  assert.deepEqual(
+    w.sent[1].entries,
+    [{ type: "user" }, { type: "assistant" }],
+    "the stored transcript goes back",
+  );
+  const chat = subscriptionChat(w.record(), 2_000);
+  assert.equal(chat.messages.length, 4);
+  assert.equal(chat.isWorking, false);
+  assert.equal(chat.costCents, null, "the subscription shows no cost");
+  assert.equal(
+    w.record().costCents,
+    3,
+    "though the record keeps what it would have cost on the API",
+  );
+});
+
+test("a failed turn ends working with a problem, and a turn running too long reads as lost", async () => {
+  const w = world([{ error: "boom" }, { error: "boom" }, { error: "boom" }]);
+  await askOnSubscription(
+    REPO,
+    7,
+    input("Why?"),
+    { model: "claude-haiku-5-5", effort: "high" },
+    w.env,
+    w.services,
+  ).catch(() => {});
+  const chat = subscriptionChat(w.record(), 2_000);
+  assert.equal(chat.isWorking, false);
+  assert.match(
+    chat.problem ?? "",
+    /^AI container: boom · turn [\w-]{8}$/,
+    "which side failed, its words and the turn",
+  );
+  const running = { ...w.record(), workingSince: 0, problem: null };
+  assert.equal(subscriptionChat(running, TURN_LOST_MS - 1).isWorking, true);
+  assert.match(subscriptionChat(running, TURN_LOST_MS).problem ?? "", /stopped/);
+});
+
+test("each turn's ai_run line says whether the container was told the token is read only, and the tools it began with", async () => {
+  const w = world([
+    {
+      subtype: "success",
+      text: "ok",
+      session: "s1",
+      entries: [],
+      model: "claude-sonnet-5-5",
+      costUsd: 0,
+      tools: ["Read", "mcp__prhub__git", "mcp__prhub__github_api"],
+    },
+  ]);
+  const logged: unknown[] = [];
+  const log = console.log;
+  console.log = (...args: unknown[]) => void logged.push(args);
+  try {
+    await askOnSubscription(
+      REPO,
+      7,
+      input("Which PRs touch this?"),
+      { model: "claude-sonnet-5-5", effort: "high" },
+      w.env,
+      w.services,
+    );
+  } finally {
+    console.log = log;
+  }
+  const line = logged
+    .map((args) => args as [string, Record<string, unknown>])
+    .find(([name]) => name === "ai_run")?.[1];
+  assert.equal(line?.read_only, true);
+  assert.equal(line?.reachable, 2);
+  assert.deepEqual(line?.tools, ["Read", "mcp__prhub__git", "mcp__prhub__github_api"]);
+});
+
+test("a GitHub refusal says so with its status, and a turn re-run after a deploy doesn't repeat the question", async () => {
+  const w = world([
+    {
+      subtype: "success",
+      text: "ok",
+      session: "s1",
+      entries: [],
+      model: "claude-sonnet-5-5",
+      costUsd: 0,
+    },
+  ]);
+  const refused = {
+    ...w.services,
+    turn: "turn-0001-abcd",
+    grant: async () => {
+      throw new AskFailure(
+        "github",
+        "GitHub's rate limit for your account is used up, resets 02:59 UTC",
+        403,
+      );
+    },
+  };
+  await askOnSubscription(
+    REPO,
+    7,
+    input("Why?"),
+    { model: "claude-sonnet-5-5", effort: "high" },
+    w.env,
+    refused,
+  );
+  assert.equal(
+    w.record().problem,
+    "GitHub 403: GitHub's rate limit for your account is used up, resets 02:59 UTC · turn turn-000",
+  );
+  assert.equal(w.sent.length, 0, "the container is never asked without a token");
+  await askOnSubscription(
+    REPO,
+    7,
+    input("Why?"),
+    { model: "claude-sonnet-5-5", effort: "high" },
+    w.env,
+    { ...w.services, turn: "turn-0001-abcd" },
+  );
+  assert.deepEqual(
+    w.record().messages.map(({ role }) => role),
+    ["you", "agent"],
+    "the question once, then the answer",
+  );
+  assert.equal(w.record().problem, null);
+});
+
+test("a blip while minting GitHub's token gets one more try", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const w = world([
+    {
+      subtype: "success",
+      text: "ok",
+      session: "s1",
+      entries: [],
+      model: "claude-sonnet-5-5",
+      costUsd: 0,
+    },
+  ]);
+  let tries = 0;
+  const flaky = {
+    ...w.services,
+    grant: async () => {
+      tries++;
+      if (tries === 1) {
+        throw new TypeError("Network connection lost.");
+      }
+      return { token: "read-token", repos: null };
+    },
+  };
+  const pending = askOnSubscription(
+    REPO,
+    7,
+    input("Why?"),
+    { model: "claude-sonnet-5-5", effort: "high" },
+    w.env,
+    flaky,
+  );
+  await new Promise(setImmediate);
+  assert.equal(tries, 1);
+  t.mock.timers.tick(1_999);
+  assert.equal(tries, 1);
+  t.mock.timers.tick(1);
+  await pending;
+  assert.equal(tries, 2);
+  assert.equal(w.record().problem, null);
+});
+
+test("a replay of a turn already answered asks nothing, and no token reaches the chat or the log", async () => {
+  const w = world([
+    {
+      subtype: "success",
+      text: "ok",
+      session: "s1",
+      entries: [],
+      model: "claude-sonnet-5-5",
+      costUsd: 0,
+    },
+    { error: `git fetch failed: auth ${FAKE_GITHUB_TOKEN} and read-token` },
+  ]);
+  const once = { ...w.services, turn: "turn-0002-abcd" };
+  await askOnSubscription(
+    REPO,
+    7,
+    input("Why?"),
+    { model: "claude-sonnet-5-5", effort: "high" },
+    w.env,
+    once,
+  );
+  await askOnSubscription(
+    REPO,
+    7,
+    input("Why?"),
+    { model: "claude-sonnet-5-5", effort: "high" },
+    w.env,
+    once,
+  );
+  assert.equal(w.sent.length, 1, "the model is asked once");
+  assert.deepEqual(
+    w.record().messages.map(({ role }) => role),
+    ["you", "agent"],
+  );
+  const logged: string[] = [];
+  const [log, error] = [console.log, console.error];
+  console.log = (...args: unknown[]) => void logged.push(JSON.stringify(args));
+  console.error = (...args: unknown[]) => void logged.push(JSON.stringify(args));
+  try {
+    await askOnSubscription(
+      REPO,
+      7,
+      input("And now?"),
+      { model: "claude-sonnet-5-5", effort: "high" },
+      w.env,
+      { ...w.services, turn: "turn-0003-abcd" },
+    );
+  } finally {
+    [console.log, console.error] = [log, error];
+  }
+  const problem = w.record().problem ?? "";
+  assert.match(
+    problem,
+    /^AI container: git fetch failed: auth \[redacted\] and \[redacted\] · turn turn-000$/,
+  );
+  assert.equal(
+    logged.some((line) => line.includes(FAKE_GITHUB_TOKEN) || line.includes("read-token")),
+    false,
+  );
+});
+
+test("a question after a failed one takes its place: Retry, or the words edited, leave one bubble", async () => {
+  const w = world([
+    { error: "boom" },
+    { subtype: "success", text: "ok", session: "s1", entries: [], model: "m", costUsd: 0 },
+  ]);
+  const choice = { model: "claude-sonnet-5-5" as const, effort: "high" as const };
+  await askOnSubscription(REPO, 7, input("Why?"), choice, w.env, { ...w.services, turn: "turn-a" });
+  assert.match(w.record().problem ?? "", /AI container: boom/);
+  await askOnSubscription(REPO, 7, input("Why, exactly?"), choice, w.env, {
+    ...w.services,
+    turn: "turn-b",
+  });
+  assert.deepEqual(
+    w.record().messages.map(({ role, text }) => [role, text]),
+    [
+      ["you", "Why, exactly?"],
+      ["agent", "ok"],
+    ],
+  );
+});
+
+test("Retry after a turn that was lost replaces it too, and a question keeps its line's side", async () => {
+  const w = world([
+    { subtype: "success", text: "ok", session: "s1", entries: [], model: "m", costUsd: 0 },
+  ]);
+  const choice = { model: "claude-sonnet-5-5" as const, effort: "high" as const };
+  const lost: SubscriptionRecord = {
+    kind: "subscription",
+    session: null,
+    head: HEAD,
+    choice,
+    problem: null,
+    costCents: null,
+    model: null,
+    messages: [{ id: "turn-lost", role: "you", text: "Why?", anchor: null }],
+    workingSince: 1_000 - TURN_LOST_MS,
+  };
+  await w.r2.put(`ask/${REPO}/7.json`, JSON.stringify(lost));
+  const old = {
+    question: "Why removed?",
+    head: HEAD,
+    anchor: { path: "a.ts", line: 3, side: "LEFT" as const },
+  };
+  await askOnSubscription(REPO, 7, old, choice, w.env, { ...w.services, turn: "turn-new" });
+  assert.deepEqual(
+    w.record().messages.map(({ role, text }) => [role, text]),
+    [
+      ["you", "Why removed?"],
+      ["agent", "ok"],
+    ],
+  );
+  assert.equal(w.record().messages[0].side, "LEFT");
+});
+
+test("a grant that may write tells the container so: the agent's tools get no GitHub with it", async () => {
+  const w = world([
+    { subtype: "success", text: "ok", session: "s1", entries: [], model: "m", costUsd: 0 },
+  ]);
+  await askOnSubscription(
+    REPO,
+    7,
+    input("Why?"),
+    { model: "claude-sonnet-5-5", effort: "high" },
+    w.env,
+    { ...w.services, grant: async () => ({ token: "worker-token", repos: null, readOnly: false }) },
+  );
+  assert.equal(w.sent[0].readOnly, false);
+});
+
+test("a drafted review rides under its answer, checked: a bad comment is dropped, and a draft with no words still shows", async () => {
+  const draft = {
+    event: "REQUEST_CHANGES",
+    body: "The retry loses the error.",
+    comments: [
+      { path: "src/a.ts", line: 12, side: "RIGHT", body: "Keep the cause." },
+      { path: "", line: 0, side: "UP", body: "" },
+    ],
+  };
+  const w = world([
+    {
+      subtype: "success",
+      text: "Drafted: request changes.",
+      draft,
+      session: "s1",
+      entries: [],
+      model: "m",
+      costUsd: 0,
+    },
+    {
+      subtype: "success",
+      text: "",
+      draft: { event: "APPROVE", body: "Looks good.", comments: [] },
+      session: "s1",
+      entries: [],
+      model: "m",
+      costUsd: 0,
+    },
+    {
+      subtype: "success",
+      text: "No.",
+      draft: { event: "MERGE", body: "x", comments: [] },
+      session: "s1",
+      entries: [],
+      model: "m",
+      costUsd: 0,
+    },
+  ]);
+  const choice = { model: "claude-haiku-5-5" as const, effort: "high" as const };
+  await askOnSubscription(REPO, 7, input("Write the review"), choice, w.env, w.services);
+  await askOnSubscription(REPO, 7, input("Approve it"), choice, w.env, w.services);
+  await askOnSubscription(REPO, 7, input("Merge it"), choice, w.env, w.services);
+  const answers = w.record().messages.filter((message) => message.role === "agent");
+  assert.deepEqual(answers[0].draft, { ...draft, comments: [draft.comments[0]] });
+  assert.equal(answers[1].text, "I drafted a review.");
+  assert.equal(answers[1].draft?.event, "APPROVE");
+  assert.equal(answers[2].draft, undefined, "an event GitHub has no review for is no draft");
+});
+
+test("what the reviewer asked done on GitHub is done as them after the turn, and the answer says what GitHub took", async () => {
+  const w = world([
+    {
+      subtype: "success",
+      text: "Approving and commenting.",
+      session: "s1",
+      entries: [],
+      model: "m",
+      costUsd: 0,
+      actions: [
+        { kind: "review", event: "APPROVE", body: "", commit: HEAD, comments: [] },
+        { kind: "merge", method: "squash", commit: HEAD },
+      ],
+    },
+  ]);
+  const done: unknown[] = [];
+  const act = async (action: unknown) => {
+    done.push(action);
+    return (action as { kind: string }).kind === "merge"
+      ? "Required checks have not passed."
+      : null;
+  };
+  await askOnSubscription(
+    REPO,
+    7,
+    input("Approve and merge"),
+    { model: "claude-haiku-5-5", effort: "high" },
+    w.env,
+    { ...w.services, act },
+  );
+  assert.equal(done.length, 2);
+  const answer = w.record().messages.at(-1)!.text;
+  assert.match(answer, /✅ Approved/);
+  assert.match(answer, /❌ Merged \(squash\): GitHub refused\. Required checks have not passed\./);
+});
