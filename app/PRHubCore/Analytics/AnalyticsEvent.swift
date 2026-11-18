@@ -47,6 +47,15 @@ public enum AnalyticsEvent: Equatable, Sendable {
     /// the vendor's own `$app_build`.
     case updateOffered(TestFlightGroup, build: Int)
     case updateAnswered(UpdateAnswer)
+    /// Update's TestFlight link did not open: TestFlight isn't on the phone.
+    case updateOpenFailed
+    /// A `prhub-pr://open` handoff, as the share sheet sends one: opened, or not a PR PRHub opens.
+    case pullRequestLinkOpened(PRLinkOutcome)
+    /// A tapped review alert that opened nothing, and why.
+    case alertIgnored(AlertIgnoredReason)
+    /// The hosted Worker ended this phone's session: GitHub signed the person out (Sign in again shows), or the
+    /// Worker no longer knows the session (signed out elsewhere, or the account deleted).
+    case sessionEnded(SessionEndReason)
     /// A Feedback message FeedbackKit's server took (`PRHubFeedbackTransport`): new chat or reply, how many
     /// screenshots, its size and how long it took. Never its words or its screenshots.
     case feedbackSent(FeedbackSend)
@@ -100,6 +109,10 @@ public enum AnalyticsEvent: Equatable, Sendable {
         case .requestFailed: "request_failed"
         case .updateOffered: "update_offered"
         case .updateAnswered: "update_answered"
+        case .updateOpenFailed: "update_open_failed"
+        case .pullRequestLinkOpened: "pr_link_opened"
+        case .alertIgnored: "alert_ignored"
+        case .sessionEnded: "session_ended"
         case .feedbackSent: "feedback_sent"
         case .feedbackSendFailed: "feedback_send_failed"
         case .pullRequestWrote: "pr_write"
@@ -149,6 +162,9 @@ public enum AnalyticsEvent: Equatable, Sendable {
             ["area": .word(area.rawValue)].merging(failure.properties) { first, _ in first }
         case let .updateOffered(group, build): ["group": .word(group.rawValue), "build": .number(build)]
         case let .updateAnswered(answer): ["answer": .word(answer.rawValue)]
+        case let .pullRequestLinkOpened(outcome): ["outcome": .word(outcome.rawValue)]
+        case let .alertIgnored(reason): ["reason": .word(reason.rawValue)]
+        case let .sessionEnded(reason): ["reason": .word(reason.rawValue)]
         case let .feedbackSent(send): send.properties
         case let .feedbackSendFailed(send, failure):
             send.properties.merging(failure.properties) { first, _ in first }
@@ -168,7 +184,7 @@ public enum AnalyticsEvent: Equatable, Sendable {
                 .merging(error.status.map { ["status": .number($0)] } ?? [:]) { first, _ in first }
         case .signInSucceeded, .workerPaired, .samplesLeft, .anthropicKeySet, .anthropicKeyRemoved, .signedOut,
              .accountDeleted, .workerDisconnected, .pullRequestWriteRefused, .askAnswerFailed, .askRefused,
-             .linearConnected, .linearDisconnected:
+             .linearConnected, .linearDisconnected, .updateOpenFailed:
             [:]
         }
     }
@@ -183,7 +199,8 @@ extension AnalyticsEvent {
         case let .aiAnswered(kind, .failed(failure), _, _): "\(name) \(kind.rawValue) \(failure.rawValue)"
         case let .askSent(origin, .failed(failure)): "\(name) \(origin.rawValue) \(failure.rawValue)"
         case let .askLinearPosted(.failed(failure)): "\(name) \(failure.rawValue)"
-        case .askAnswerFailed, .askRefused: name
+        case .askAnswerFailed, .askRefused, .updateOpenFailed: name
+        case let .sessionEnded(reason): "\(name) \(reason.rawValue)"
         case let .accountActionFailed(action, error): "\(name) \(action.rawValue) \(AccountFailureCode(error).rawValue)"
         default: nil
         }
@@ -200,6 +217,26 @@ public enum AnalyticsValue: Equatable, Sendable {
 /// Update available's buttons.
 public enum UpdateAnswer: String, CaseIterable, Sendable {
     case update, later
+}
+
+/// What a `prhub-pr://open` handoff came to.
+public enum PRLinkOutcome: String, CaseIterable, Sendable {
+    case opened
+    case notAPullRequest = "not_a_pr"
+}
+
+/// Why a tapped review alert opened nothing.
+public enum AlertIgnoredReason: String, CaseIterable, Sendable {
+    case notPaired = "not_paired"
+    case samples
+}
+
+/// Why the hosted Worker ended this phone's session.
+public enum SessionEndReason: String, CaseIterable, Sendable {
+    /// GitHub no longer honours the person's tokens: the `signed_out` push or a `401 signed_out`.
+    case githubSignedOut = "github_signed_out"
+    /// Any other `401`: the Worker no longer knows this session.
+    case workerForgot = "worker_forgot"
 }
 
 /// What became of the offer to turn on review alerts.

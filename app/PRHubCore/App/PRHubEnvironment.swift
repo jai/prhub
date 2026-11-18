@@ -278,9 +278,10 @@ public final class PRHubEnvironment {
     }
 
     /// A tapped review alert: its PR on the PRs tab, from the row it carried. Nothing while no Worker is paired, as
-    /// during the samples.
+    /// during the samples: `alert_ignored` says so, as the tap opened nothing.
     func openAlert(_ ref: PullRequestRef, row: PullRequestRow? = nil) {
         guard connection.isPaired, sample == nil else {
+            usage.record(.alertIgnored(isSample || sample != nil ? .samples : .notPaired))
             return
         }
         navigation.showAlert(ref, row: row)
@@ -380,12 +381,17 @@ extension WorkerConnection.Hosted {
 }
 
 public extension PRHubEnvironment {
-    /// The sample environment owns its own navigation and PR sessions; a PR link never ends the samples.
+    /// The sample environment owns its own navigation and PR sessions; a PR link never ends the samples. A
+    /// `prhub-pr://open` handoff, as the share sheet sends, is `pr_link_opened`: opened, or not a PR PRHub opens.
     @discardableResult
     func openPullRequestLink(_ url: URL) -> Bool {
         guard let destination = PRHubOpenLink(url) else {
+            if url.scheme?.lowercased() == PRHubOpenLink.scheme {
+                usage.record(.pullRequestLinkOpened(.notAPullRequest))
+            }
             return false
         }
+        usage.record(.pullRequestLinkOpened(.opened))
         let active = sample ?? self
         active.prs.open(destination.link)
         active.navigation.selectedTab = .prs

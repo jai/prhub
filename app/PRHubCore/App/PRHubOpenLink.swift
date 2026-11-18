@@ -3,12 +3,13 @@ import PRKitCore
 
 /// A PR handed to PRHub by another app. Keep the original GitHub URL as well as the page PRKit opens.
 struct PRHubOpenLink: Equatable, Sendable {
+    static let scheme = "prhub-pr"
     let url: URL
     let link: PRLink
 
     init?(_ incoming: URL) {
         guard let parts = URLComponents(url: incoming, resolvingAgainstBaseURL: false),
-              parts.scheme?.lowercased() == "prhub-pr", parts.host?.lowercased() == "open",
+              parts.scheme?.lowercased() == Self.scheme, parts.host?.lowercased() == "open",
               parts.user == nil, parts.password == nil, parts.port == nil, parts.path.isEmpty,
               parts.fragment == nil, let query = parts.queryItems, query.count == 1,
               query[0].name == "url", let value = query[0].value,

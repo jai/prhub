@@ -61,7 +61,9 @@ struct PRHubUpdateTests {
         )
         update.check(Self.config(public: "201"))
         update.later()
-        #expect(sink.events == [.updateOffered(.public, build: 201), .updateAnswered(.later)])
+        update.opened(accepted: true)
+        update.opened(accepted: false)
+        #expect(sink.events == [.updateOffered(.public, build: 201), .updateAnswered(.later), .updateOpenFailed])
     }
 
     @Test func checkedAtMostHourly() {

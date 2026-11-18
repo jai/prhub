@@ -50,6 +50,9 @@ PostHog, an analytics service that processes it for Jai in its EU region (Frankf
   - Settings: setting or removing your Anthropic key, connecting or disconnecting Linear, signing out and deleting
     your account, and when one of these fails, a short code for why (such as `key_refused` or `unreachable`). Your
     answer to the offer to turn on review alerts.
+  - A PR link from the share sheet: whether PRHub opened it. An alert you tapped that opened nothing, and why (no
+    Worker yet, or the sample PRs). That the hosted Worker ended your session, and why. That Update could not open
+    TestFlight.
 
   A failure that repeats is sent at most once a minute. Each event also carries the app version, the iOS version, the
   device model, the screen size, and the phone's language and time zone.

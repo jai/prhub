@@ -265,21 +265,25 @@ struct HostedConnectionTests {
 
     @Test func a401SignedOutShowsSignInAgain() async throws {
         let fake = Fake()
-        let connection = try Self.connection(fake, paired: true)
+        let sink = AnalyticsTests.RecordingAnalytics()
+        let connection = try Self.connection(fake, paired: true, usage: AnalyticsTests.usage(sink))
         await connection.refreshConfig()
         fake.configError.with { $0 = .server("signed_out", 401) }
         await connection.checkSession()
         #expect(connection.needsSignInAgain && connection.isPaired)
+        #expect(sink.events == [.sessionEnded(.githubSignedOut)])
     }
 
     @Test func aSessionTheWorkerForgotIsForgottenHere() async throws {
         let fake = Fake()
-        let connection = try Self.connection(fake, paired: true)
+        let sink = AnalyticsTests.RecordingAnalytics()
+        let connection = try Self.connection(fake, paired: true, usage: AnalyticsTests.usage(sink))
         await connection.refreshConfig()
         fake.configError.with { $0 = .server("unauthorized", 401) }
         await connection.checkSession()
         #expect(connection.showsOnboarding && fake.secret.with { $0 } == nil)
         #expect(connection.phase == .signInFailed(.sessionEnded))
+        #expect(sink.events == [.sessionEnded(.workerForgot)])
     }
 
     @Test func signOutEndsTheSessionAndForgetsIt() async throws {

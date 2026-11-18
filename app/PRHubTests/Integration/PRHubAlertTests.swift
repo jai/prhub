@@ -16,6 +16,16 @@ struct PRHubAlertTests {
         #expect(environment.navigation.selectedTab == .prs)
     }
 
+    @Test func anAlertThatOpensNothingSaysWhy() {
+        let sink = AnalyticsTests.RecordingAnalytics()
+        let environment = PRHubEnvironment(
+            connection: PRHubEnvironment.sample().connection, usage: AnalyticsTests.usage(sink)
+        )
+        environment.startSample()
+        environment.openAlert(Self.ref)
+        #expect(sink.events == [.onboardingPathChosen(.samples), .alertIgnored(.samples)])
+    }
+
     // MARK: - The offer to turn alerts on
 
     private static func permission(

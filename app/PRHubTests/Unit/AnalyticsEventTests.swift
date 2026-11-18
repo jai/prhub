@@ -26,7 +26,8 @@ struct AnalyticsEventTests {
         .aiAnswered(.keyLines, .done, milliseconds: 8200, slop: true),
         .askSent(.explainPR, .failed(.offline)), .askAnswerFailed, .askRefused, .askReviewUsed(.posted),
         .askLinearPosted(.failed(.refused)), .linearConnected, .linearDisconnected,
-        .accountActionFailed(.deleteAccount, .server(status: 502)), .alertsAnswered(.notNow),
+        .accountActionFailed(.deleteAccount, .server(status: 502)), .alertsAnswered(.notNow), .updateOpenFailed,
+        .pullRequestLinkOpened(.notAPullRequest), .alertIgnored(.samples), .sessionEnded(.githubSignedOut),
     ]
 
     // swiftlint:disable:next cyclomatic_complexity - one arm per case, by design
@@ -70,13 +71,17 @@ struct AnalyticsEventTests {
         case .linearDisconnected: 35
         case .accountActionFailed: 36
         case .alertsAnswered: 37
+        case .updateOpenFailed: 38
+        case .pullRequestLinkOpened: 39
+        case .alertIgnored: 40
+        case .sessionEnded: 41
         }
     }
 
     // MARK: - What an event can carry
 
     @Test func everyCaseIsListed() {
-        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0 ... 37))
+        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0 ... 41))
     }
 
     @Test func eachEventHasItsOwnSnakeCaseName() {
@@ -115,7 +120,8 @@ struct AnalyticsEventTests {
                 + ActionOutcomeWord.allCases.map(\.rawValue) + PRAIKind.allCases.map(\.rawValue)
                 + PRAskOrigin.allCases.map(\.rawValue) + PRAskReviewUse.allCases.map(\.rawValue)
                 + AccountAction.allCases.map(\.rawValue) + AccountFailureCode.allCases.map(\.rawValue)
-                + AlertsAnswer.allCases.map(\.rawValue)
+                + AlertsAnswer.allCases.map(\.rawValue) + PRLinkOutcome.allCases.map(\.rawValue)
+                + AlertIgnoredReason.allCases.map(\.rawValue) + SessionEndReason.allCases.map(\.rawValue)
                 + ["push", "other_push", "foreground", "pull", "changed", "unchanged", "failed"]
         )
         for (key, value) in event.properties {

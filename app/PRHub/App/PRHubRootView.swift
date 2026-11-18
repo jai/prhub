@@ -237,7 +237,7 @@ private struct UpdateOffer: ViewModifier {
             Button("Later", role: .cancel) { update.later() }
             Button("Update") {
                 update.update()
-                openURL(PRHubUpdate.testFlightURL)
+                openURL(PRHubUpdate.testFlightURL) { update.opened(accepted: $0) }
             }
             .keyboardShortcut(.defaultAction)
         } message: {

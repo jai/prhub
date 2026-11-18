@@ -98,6 +98,14 @@ public final class PRHubUpdate {
         usage.record(.updateAnswered(.update))
     }
 
+    /// Update's TestFlight link, as the system took it: one it could not open (no TestFlight on the phone) is
+    /// `update_open_failed`.
+    public func opened(accepted: Bool) {
+        if !accepted {
+            usage.record(.updateOpenFailed)
+        }
+    }
+
     /// Later: not this build again.
     public func later() {
         guard let offered else {

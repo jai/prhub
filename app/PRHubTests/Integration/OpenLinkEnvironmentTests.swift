@@ -39,6 +39,15 @@ struct OpenLinkEnvironmentTests {
         #expect(environment.prs.navigation.pending == nil)
     }
 
+    @MainActor @Test func eachHandoffIsRecordedAndOtherLinksAreNot() throws {
+        let sink = AnalyticsTests.RecordingAnalytics()
+        let environment = PRHubEnvironment.sample(usage: AnalyticsTests.usage(sink))
+        try environment.openPullRequestLink(Self.incoming("https://github.com/acme/web/pull/412"))
+        try environment.openPullRequestLink(Self.incoming("https://github.com/acme/web/issues/412"))
+        environment.openPullRequestLink(PRHubBuild.settingsURL)
+        #expect(sink.events == [.pullRequestLinkOpened(.opened), .pullRequestLinkOpened(.notAPullRequest)])
+    }
+
     @MainActor @Test func aRefusedHandoffChangesNeitherTheTabNorItsOpenPR() throws {
         let environment = PRHubEnvironment.sample()
         environment.navigation.selectedTab = .settings

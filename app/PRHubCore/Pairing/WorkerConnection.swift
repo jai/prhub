@@ -242,8 +242,10 @@ public final class WorkerConnection {
     /// deleted), so the phone forgets it and shows Sign in with GitHub.
     private func sessionRefused(code: String?) {
         if code == "signed_out" {
+            usage.record(.sessionEnded(.githubSignedOut))
             isSignedOutOfGitHub = true
         } else if forget() {
+            usage.record(.sessionEnded(.workerForgot))
             phase = .signInFailed(.sessionEnded)
         }
     }
@@ -261,6 +263,7 @@ public final class WorkerConnection {
         guard isHosted else {
             return
         }
+        usage.record(.sessionEnded(.githubSignedOut))
         isSignedOutOfGitHub = true
         await readConfig()
     }
