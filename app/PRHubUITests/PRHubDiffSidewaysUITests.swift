@@ -141,7 +141,8 @@ final class PRHubDiffSidewaysUITests: XCTestCase {
     /// A sample PR's row on For review, scrolled to: at the largest text size a row is taller than half the screen.
     private func openPR(_ title: String) {
         let row = app.staticTexts[title]
-        XCTAssertTrue(app.tab(.settings).waitForExistence(timeout: 10))
+        // Up to 30 s: right after a launch GitHub's Macs took over 10 s to show the tabs (release run 44207540993).
+        XCTAssertTrue(app.tab(.settings).waitForExistence(timeout: 30))
         // On a wide screen, in the list's own column: the PR's page is beside it.
         let list = app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.7))
         for _ in 0 ..< 25 where !row.exists || (!isWide && !row.isHittable) {

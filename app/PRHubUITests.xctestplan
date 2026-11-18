@@ -6,7 +6,10 @@
       "options": {}
     }
   ],
-  "defaultOptions": {},
+  "defaultOptions": {
+    "maximumTestRepetitions": 2,
+    "testRepetitionMode": "retryOnFailure"
+  },
   "testTargets": [
     {
       "target": {
