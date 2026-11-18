@@ -23,10 +23,26 @@ extension PRsModel {
     }
 
     /// Posts as Jai: the PR as it now stands, or the write saved on the phone and still going. The mirror follows on
-    /// its own, soon after.
+    /// its own, soon after. How it went goes to the host (`PRKitEvent.wrote`); a refusal after the screen has gone is
+    /// `writeRefused`.
     /// `queued` hears the outbox's id for it, when it is saved there.
     func write(
         _ write: PRWrite, to ref: PullRequestRef, queued: (String) -> Void = { _ in }
+    ) async throws -> PRWriteOutcome {
+        do {
+            let outcome = try await post(write, to: ref, queued: queued)
+            onEvent(.wrote(PRWriteKind(write), PRActionOutcome(outcome)))
+            return outcome
+        } catch {
+            if let outcome = PRActionOutcome(error: error) {
+                onEvent(.wrote(PRWriteKind(write), outcome))
+            }
+            throw error
+        }
+    }
+
+    private func post(
+        _ write: PRWrite, to ref: PullRequestRef, queued: (String) -> Void
     ) async throws -> PRWriteOutcome {
         // A sample row can name a real PR. Nothing done to it may reach GitHub.
         if let samples {

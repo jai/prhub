@@ -22,6 +22,7 @@ struct AnalyticsEventTests {
         .listRefreshBackgrounded(milliseconds: 1200),
         .feedbackSent(FeedbackSend(kind: .new, images: 1, kilobytes: 412, milliseconds: 1840)),
         .feedbackSendFailed(FeedbackSend(kind: .reply, images: 0, kilobytes: 1, milliseconds: 15000), .timeout),
+        .pullRequestWrote(.merge, .failed(.refused)),
     ]
 
     // swiftlint:disable:next cyclomatic_complexity - one arm per case, by design
@@ -54,13 +55,14 @@ struct AnalyticsEventTests {
         case .listRefreshBackgrounded: 24
         case .feedbackSent: 25
         case .feedbackSendFailed: 26
+        case .pullRequestWrote: 27
         }
     }
 
     // MARK: - What an event can carry
 
     @Test func everyCaseIsListed() {
-        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0 ... 26))
+        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0 ... 27))
     }
 
     @Test func eachEventHasItsOwnSnakeCaseName() {
@@ -95,6 +97,8 @@ struct AnalyticsEventTests {
                 + TestFlightGroup.allCases.map(\.rawValue) + UpdateAnswer.allCases.map(\.rawValue)
                 + PRListRefreshOutcome.allCases.map(\.rawValue) + PRListRefreshSource.allCases.map(\.rawValue)
                 + PRListSceneState.allCases.map(\.rawValue) + FeedbackSend.Kind.allCases.map(\.rawValue)
+                + PRWriteKind.allCases.map(\.rawValue) + PRActionFailure.allCases.map(\.rawValue)
+                + ActionOutcomeWord.allCases.map(\.rawValue)
                 + ["push", "other_push", "foreground", "pull", "changed", "unchanged", "failed"]
         )
         for (key, value) in event.properties {
@@ -139,6 +143,26 @@ struct AnalyticsEventTests {
         #expect(AnalyticsEvent.requestFailed(.diff, .offline).properties == [
             "area": .word("diff"), "failure": .word("offline"),
         ])
+    }
+
+    @Test func aWriteSendsWhatItDoesAndHowItWentNeverItsWords() {
+        let review = PRWrite.review(.requestChanges, body: "Rename acme_secret", commit: "c", comments: [])
+        #expect(AnalyticsEvent(.wrote(PRWriteKind(review), .done)) == .pullRequestWrote(.requestChanges, .done))
+        #expect(AnalyticsEvent.pullRequestWrote(.requestChanges, .done).properties == [
+            "kind": .word("request_changes"), "outcome": .word("done"),
+        ])
+        #expect(AnalyticsEvent.pullRequestWrote(.merge, .failed(.offline)).properties == [
+            "kind": .word("merge"), "outcome": .word("failed"), "failure": .word("offline"),
+        ])
+    }
+
+    /// Only a failure is held back when it repeats: what failed and why, not when or how long it took.
+    @Test func aRepeatingFailureIsLimitedByWhatFailedAndWhy() {
+        #expect(AnalyticsEvent.pullRequestWrote(.merge, .done).limitKey == nil)
+        #expect(AnalyticsEvent.pullRequestWrote(.merge, .failed(.offline)).limitKey == "pr_write merge offline")
+        #expect(AnalyticsEvent.pullRequestWrote(.merge, .failed(.offline)).limitKey
+            != AnalyticsEvent.pullRequestWrote(.merge, .failed(.timeout)).limitKey)
+        #expect(AnalyticsEvent.signedOut.limitKey == nil)
     }
 
     @Test func aPushesSyncIsReportedOnlyWhenItFails() {

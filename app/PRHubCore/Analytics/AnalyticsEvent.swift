@@ -45,6 +45,9 @@ public enum AnalyticsEvent: Equatable, Sendable {
     case feedbackSent(FeedbackSend)
     /// A Feedback send that failed, and why: the screen says only "Could not send feedback".
     case feedbackSendFailed(FeedbackSend, PRRequestFailure)
+    /// From PRKit (`PRKitEvent.wrote`): a review, comment, merge, edit or other write, and how it went. A failure of
+    /// the same kind and why at most once a minute (`limitKey`).
+    case pullRequestWrote(PRWriteKind, PRActionOutcome)
 
     /// The event's name in the vendor's project: one literal each.
     public var name: String {
@@ -76,6 +79,7 @@ public enum AnalyticsEvent: Equatable, Sendable {
         case .updateAnswered: "update_answered"
         case .feedbackSent: "feedback_sent"
         case .feedbackSendFailed: "feedback_send_failed"
+        case .pullRequestWrote: "pr_write"
         }
     }
 
@@ -119,9 +123,22 @@ public enum AnalyticsEvent: Equatable, Sendable {
         case let .feedbackSent(send): send.properties
         case let .feedbackSendFailed(send, failure):
             send.properties.merging(failure.properties) { first, _ in first }
+        case let .pullRequestWrote(kind, outcome):
+            ["kind": .word(kind.rawValue)].merging(outcome.properties) { first, _ in first }
         case .signInSucceeded, .workerPaired, .samplesLeft, .anthropicKeySet, .anthropicKeyRemoved, .signedOut,
              .accountDeleted, .workerDisconnected, .pullRequestWriteRefused:
             [:]
+        }
+    }
+}
+
+extension AnalyticsEvent {
+    /// A failure that can repeat, by what failed and why: `UsageAnalytics` sends each at most once a minute, as
+    /// `PRFailureReporter` does a request's. Nil for an event that is sent each time.
+    var limitKey: String? {
+        switch self {
+        case let .pullRequestWrote(kind, .failed(failure)): "\(name) \(kind.rawValue) \(failure.rawValue)"
+        default: nil
         }
     }
 }
@@ -245,6 +262,8 @@ extension AnalyticsEvent {
             self = .listRefreshStuck(stuck)
         case let .listRefreshBackgrounded(milliseconds):
             self = .listRefreshBackgrounded(milliseconds: milliseconds)
+        case let .wrote(kind, outcome):
+            self = .pullRequestWrote(kind, outcome)
         }
     }
 }
@@ -270,6 +289,22 @@ enum RequestFailureKind: String, CaseIterable {
         case .timeout: .timeout
         case .network: .network
         case .unreadable: .unreadable
+        }
+    }
+}
+
+/// `outcome`: `done`, `queued` or `failed`, and a failure's `failure` (`PRActionFailure`).
+enum ActionOutcomeWord: String, CaseIterable {
+    case done, queued, failed
+}
+
+extension PRActionOutcome {
+    var properties: [String: AnalyticsValue] {
+        switch self {
+        case .done: ["outcome": .word(ActionOutcomeWord.done.rawValue)]
+        case .queued: ["outcome": .word(ActionOutcomeWord.queued.rawValue)]
+        case let .failed(failure):
+            ["outcome": .word(ActionOutcomeWord.failed.rawValue), "failure": .word(failure.rawValue)]
         }
     }
 }

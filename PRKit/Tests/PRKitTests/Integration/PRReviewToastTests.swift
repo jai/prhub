@@ -112,7 +112,9 @@ struct PRReviewToastTests {
         kit.outboxRefused(id: host.held.jobs[0].id, kind: .write, reason: "Pull request is locked")
         #expect(kit.model.reviewToast?.words == "Review not sent. Pull request is locked")
         #expect(kit.model.lateRefusal == nil, "said on the toast, not again on the list")
-        #expect(host.events == [.writeRefused("GitHub refused your review on \(ref.repo)#7: Pull request is locked")])
+        #expect(host.events == [
+            .wrote(.approve, .queued), .writeRefused("GitHub refused your review on \(ref.repo)#7: Pull request is locked"),
+        ])
         #expect(PRDraftStore().load(ref) == [draft], "its line comment is back on the PR")
         #expect(settled == [.failed("Pull request is locked")])
 

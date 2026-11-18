@@ -37,7 +37,9 @@ PostHog, an analytics service that processes it for Jai in its EU region (Frankf
   `code_refused`; a request to the Worker that fails sends what it was for (such as the PR list or Feedback) and its
   HTTP status, or that the phone was offline. Sending feedback sends whether it went through, whether it
   started a new chat, how many screenshots it had, its size and how long it took, or why it failed; never its words or
-  its screenshots. Each event also carries the app version, the iOS version, the device model, the screen size, and the
+  its screenshots. An action on a PR, such as a review, a comment, a merge or a description edit, sends which kind of
+  action it was and whether GitHub took it, the phone saved it to send later, or why it failed (such as `offline` or
+  `refused`); never its words. A failure that repeats is sent at most once a minute. Each event also carries the app version, the iOS version, the device model, the screen size, and the
   phone's language and time zone.
 - **What is never sent.** Your GitHub username or email, repo and organization names, PR titles, file paths, code,
   comments, your Worker's address, your push token, and anything that you type. The app cannot attach these: each

@@ -36,6 +36,25 @@ struct AnalyticsTests {
         #expect(sink.events == [.pullRequestWriteRefused])
     }
 
+    @Test func aRepeatingFailureIsSentOnceAMinute() {
+        let sink = RecordingAnalytics()
+        let usage = Self.usage(sink)
+        var time = Date(timeIntervalSince1970: 1000)
+        usage.now = { time }
+        let offline = AnalyticsEvent.pullRequestWrote(.merge, .failed(.offline))
+        usage.record(offline)
+        usage.record(offline)
+        usage.record(.pullRequestWrote(.merge, .failed(.timeout)))
+        usage.record(.pullRequestWrote(.merge, .done))
+        usage.record(.pullRequestWrote(.merge, .done))
+        time += UsageAnalytics.failureWindow
+        usage.record(offline)
+        #expect(sink.events == [
+            offline, .pullRequestWrote(.merge, .failed(.timeout)), .pullRequestWrote(.merge, .done),
+            .pullRequestWrote(.merge, .done), offline,
+        ])
+    }
+
     // MARK: - The switch in Settings
 
     @Test func sharingIsOnUntilTurnedOffAndThenNothingIsSent() {

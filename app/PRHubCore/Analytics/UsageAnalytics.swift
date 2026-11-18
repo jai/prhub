@@ -73,10 +73,27 @@ public final class UsageAnalytics {
     }
 
     public func record(_ event: AnalyticsEvent) {
-        guard isSharing else {
+        guard isSharing, isDue(event) else {
             return
         }
         sink?.record(event)
+    }
+
+    /// A repeating failure (`AnalyticsEvent.limitKey`) once a minute at most, as `PRFailureReporter` sends a request's.
+    static let failureWindow: TimeInterval = 60
+    @ObservationIgnored var now: () -> Date = { .now }
+    @ObservationIgnored private var lastFailure: [String: Date] = [:]
+
+    private func isDue(_ event: AnalyticsEvent) -> Bool {
+        guard let key = event.limitKey else {
+            return true
+        }
+        let time = now()
+        if let last = lastFailure[key], time.timeIntervalSince(last) < Self.failureWindow {
+            return false
+        }
+        lastFailure[key] = time
+        return true
     }
 
     public func setSharing(_ isOn: Bool) {

@@ -189,6 +189,9 @@ public enum PRKitEvent: Equatable, Sendable {
     case listRefreshStuck(PRListRefreshStuck)
     /// The app left the foreground while a refresh ran, this long after it began.
     case listRefreshBackgrounded(milliseconds: Int)
+    /// A write of the user's (a review, a comment, a merge, an edit…): what it does, and whether GitHub took it, it
+    /// is saved on the phone and still going, or why it failed. A refusal after its screen has gone is `writeRefused`.
+    case wrote(PRWriteKind, PRActionOutcome)
 }
 
 /// One PR opened, from the tap to its content on screen (`PRKitEvent.contentShown`).

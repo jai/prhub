@@ -77,6 +77,16 @@ struct PROutboxJobTests {
         }
     }
 
+    @Test func eachWriteTellsTheHostWhatItDidAndHowItWent() async throws {
+        let (kit, host) = kit(wait: .seconds(5))
+        let merge = Task { try await kit.model.write(.merge(method: "squash", commit: "c"), to: ref) }
+        await #expect(throws: (any Error).self) { try await merge.value }
+        let approve = Task { try await kit.model.write(.review(.approve, body: "", commit: "c", comments: []), to: ref) }
+        kit.outboxAnswered(id: await firstJob(host), data: Self.detail)
+        _ = try await approve.value
+        #expect(host.events == [.wrote(.merge, .failed(.local)), .wrote(.approve, .done)])
+    }
+
     @Test func aSlowWriteOnlineIsSendingAndSaysSoInTheWaitingTone() async throws {
         let (kit, _) = kit()
         let outcome = try await kit.model.write(.comment(body: "Ship it."), to: ref)
@@ -105,7 +115,8 @@ struct PROutboxJobTests {
         let sent = Task { try await kit.model.write(.comment(body: "Ship it."), to: ref) }
         kit.outboxRefused(id: await firstJob(host), kind: .write, reason: "Pull request is locked")
         await #expect(throws: PRWorkerError.refused("Pull request is locked")) { try await sent.value }
-        #expect(kit.model.lateRefusal == nil && host.events.isEmpty)
+        #expect(kit.model.lateRefusal == nil)
+        #expect(host.events == [.wrote(.comment, .failed(.refused))], "the screen shows it; the host hears how it went")
     }
 
     @Test func aLateRefusalOfAWriteQuotesItAsGitHubs() async throws {
@@ -114,7 +125,7 @@ struct PROutboxJobTests {
         kit.outboxRefused(id: host.held.jobs[0].id, kind: .write, reason: "Pull request is locked")
         let words = "GitHub refused your comment “Ship it.” on acme/api#7: Pull request is locked"
         #expect(kit.model.lateRefusal == words)
-        #expect(host.events == [.writeRefused(words)])
+        #expect(host.events == [.wrote(.comment, .queued), .writeRefused(words)])
     }
 
     @Test func aLateRefusalOfAQuestionIsNeverGitHubs() async throws {
@@ -126,7 +137,7 @@ struct PROutboxJobTests {
         let words = "Your question “Is it tested?” to the AI on acme/api#7 couldn't be sent: Spending limit reached."
         #expect(kit.model.lateRefusal == words)
         #expect(!words.contains("GitHub"))
-        #expect(host.events == [.questionRefused(words)])
+        #expect(host.events.last == .questionRefused(words))
     }
 
     @Test func aLateAnswerIsDroppedNotKeptForAScreenThatWentAway() async throws {
