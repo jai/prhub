@@ -6,7 +6,7 @@ import Testing
 /// Key lines checked off as reviewed: at once on screen, kept by the Worker so another device shows them, at one head.
 @MainActor
 struct PRKeyLineReviewTests {
-    private let preferences = TestPreferences()
+    private let storage = TestStorage()
     /// The Worker's `key-lines-reviewed` route, as docs/api.md has it, or a Worker that refuses or lacks it.
     final class Worker: Sendable {
         enum Mode { case keeps, refuses, lacksRoute, offline }
@@ -91,8 +91,9 @@ struct PRKeyLineReviewTests {
         let worker = worker
         let access = PRViewerAccess(baseURL: { URL(string: "https://worker.test")! }, bearer: { "t" }, discard: {})
         let client = PRViewerClient(access: access) { try await worker.exchange($0) }
-        let directory = directory ?? URL.temporaryDirectory.appending(path: "key-line-review-\(UUID().uuidString)")
-        let model = PRsModel(client: client, directory: directory, defaults: preferences.defaults)
+        let directory = directory ?? storage.directory.appending(path: UUID().uuidString)
+        let model = PRsModel(client: client, directory: directory, defaults: storage.defaults,
+                             network: PRNetwork(isOnline: true), draftDirectory: storage.draftDirectory)
         var data = try FixtureContractTests.data("detail.json")
         if let detail {
             var object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -113,20 +114,12 @@ struct PRKeyLineReviewTests {
         try #require(session.content?.detail.head)
     }
 
-    /// Until the session's send has had its answer.
-    private func settle(_: PRSession, posts: Int) async throws {
-        for _ in 0 ..< 200 where worker.posts.count < posts {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        try await Task.sleep(for: .milliseconds(50))
-    }
-
     @Test func aTickShowsAtOnceGoesToTheWorkerAndAnotherDeviceReadsIt() async throws {
         let phone = try await session()
         let item = phone.keyLineItems[1]
-        phone.setReviewed(true, item)
+        let phoneMark = try #require(phone.setReviewed(true, item))
         #expect(phone.isReviewed(item) && phone.reviewedKeyLineCount == 1, "ticked before the Worker answers")
-        try await settle(phone, posts: 1)
+        await phoneMark.value
         #expect(worker.posts == ["a.swift:RIGHT:5=true"])
 
         let mac = try await session()
@@ -134,8 +127,8 @@ struct PRKeyLineReviewTests {
         await mac.loadReviewedKeyLines()
         #expect(mac.isReviewed(item) && mac.reviewedKeyLineCount == 1)
 
-        mac.setReviewed(false, item)
-        try await settle(mac, posts: 2)
+        let macMark = try #require(mac.setReviewed(false, item))
+        await macMark.value
         await phone.loadReviewedKeyLines()
         #expect(!phone.isReviewed(item), "unticked on the Mac, unticked on the phone")
     }
@@ -144,9 +137,9 @@ struct PRKeyLineReviewTests {
         let session = try await session()
         worker.set(.refuses)
         let item = session.keyLineItems[0]
-        session.setReviewed(true, item)
+        let marking = try #require(session.setReviewed(true, item))
         #expect(session.isReviewed(item))
-        try await settle(session, posts: 1)
+        await marking.value
         #expect(!session.isReviewed(item))
         #expect(session.notice == .failed("Too many."))
     }
@@ -155,8 +148,8 @@ struct PRKeyLineReviewTests {
         let session = try await session()
         worker.set(.lacksRoute)
         let item = session.keyLineItems[0]
-        session.setReviewed(true, item)
-        try await settle(session, posts: 1)
+        let marking = try #require(session.setReviewed(true, item))
+        await marking.value
         await session.loadReviewedKeyLines()
         #expect(session.isReviewed(item) && session.notice == nil)
     }
@@ -173,7 +166,7 @@ struct PRKeyLineReviewTests {
     }
 
     @Test func ticksReadOnlineShowOfflineOnTheNextLaunch() async throws {
-        let directory = URL.temporaryDirectory.appending(path: "key-line-review-\(UUID().uuidString)")
+        let directory = storage.directory.appending(path: UUID().uuidString)
         let online = try await session(in: directory)
         try worker.seed(["a.swift:RIGHT:1"], at: head(of: online))
         await online.loadReviewedKeyLines()
@@ -188,7 +181,7 @@ struct PRKeyLineReviewTests {
     @Test func nextAndPreviousSkipTicksUntilAllAreTicked() async throws {
         let session = try await session()
         let items = session.keyLineItems
-        session.setReviewed(true, items[1])
+        let firstMark = try #require(session.setReviewed(true, items[1]))
         session.stepKeyLine(by: 1)
         #expect(session.selectedKeyLine?.id == items[0].id)
         session.stepKeyLine(by: 1)
@@ -200,11 +193,13 @@ struct PRKeyLineReviewTests {
         session.stepKeyLine(by: 1)
         #expect(session.selectedKeyLine?.id == items[2].id, "from a ticked one on show, on to the next open one")
 
-        session.setReviewed(true, items[0])
-        session.setReviewed(true, items[2])
+        let secondMark = try #require(session.setReviewed(true, items[0]))
+        let thirdMark = try #require(session.setReviewed(true, items[2]))
         session.stepKeyLine(by: 1)
         #expect(session.selectedKeyLine?.id == items[0].id, "all ticked: every one, in order")
-        try await settle(session, posts: 3)
+        await firstMark.value
+        await secondMark.value
+        await thirdMark.value
     }
 }
 
@@ -212,15 +207,17 @@ struct PRKeyLinesSummaryTests {
     /// A PR's page shows its summary from key lines the session already holds, at whatever context, and asks for none:
     /// on an API key, asking is what makes them.
     @MainActor @Test func aPRsPageHasItsSummaryFromKeyLinesAlreadyHeldAndAsksForNone() throws {
-        let preferences = TestPreferences()
+        let storage = TestStorage()
+        defer { withExtendedLifetime(storage) {} }
         let asked = Mutex(0)
         let access = PRViewerAccess(baseURL: { URL(string: "https://worker.test")! }, bearer: { "t" }, discard: {})
         let client = PRViewerClient(access: access) { _ in
             asked.withLock { $0 += 1 }
             throw URLError(.notConnectedToInternet)
         }
-        let directory = URL.temporaryDirectory.appending(path: "summary-\(UUID().uuidString)")
-        let model = PRsModel(client: client, directory: directory, defaults: preferences.defaults)
+        let directory = storage.directory
+        let model = PRsModel(client: client, directory: directory, defaults: storage.defaults,
+                             network: PRNetwork(isOnline: true), draftDirectory: storage.draftDirectory)
         let json = #"""
         {"items": [], "context": 10, "leftOut": [],
          "summary": {"risk": "low", "riskWhy": "", "points": ["One"], "bugs": []}}

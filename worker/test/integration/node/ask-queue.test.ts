@@ -1,51 +1,19 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { afterEach, test } from "node:test";
 import type { AskChat } from "../../../src/ask-chat.ts";
 import {
   acceptAsk,
-  ASK_HANDOVER_MS,
-  askPr,
   askView,
   type AskIntake,
   createAskTables,
   drainAsks,
-  NOT_HANDED_OVER,
-  type QueuedAsk,
   queueAsk,
   rememberChat,
-  withQueued,
 } from "../../../src/ask-queue.ts";
-import type { RepoFullName, Sha } from "../../../src/ids.ts";
-import { memorySql } from "../../support/memory-sql.ts";
+import { ANSWERED, PR, question } from "../../support/ask-queue-values.ts";
+import { closeMemorySql, memorySql } from "../../support/memory-sql.ts";
 
-const HEAD = "a".repeat(40) as Sha;
-const REPO = "acme/api" as RepoFullName;
-const PR = askPr(REPO, 7);
-
-function question(id: string, words: string, at = 1_000): QueuedAsk {
-  return {
-    id,
-    repo: REPO,
-    number: 7,
-    input: { question: words, head: HEAD, anchor: null },
-    choice: { model: "claude-haiku-5-5", effort: "high" },
-    at,
-    error: null,
-  };
-}
-
-const ANSWERED: AskChat = {
-  messages: [
-    { id: "m1", role: "you", text: "What does it change?", anchor: null },
-    { id: "m2", role: "agent", text: "The retry.", anchor: null },
-  ],
-  isWorking: false,
-  activity: null,
-  problem: null,
-  costCents: 3,
-  model: "claude-haiku-5-5",
-  effort: "high",
-};
+afterEach(closeMemorySql);
 
 function queue() {
   const sql = memorySql();
@@ -104,24 +72,23 @@ test("a question is answered 202 once it is stored, with the chat so far and the
   ]);
 });
 
-test("the answer never waits on the handover: a question the agent takes a minute to get still answers at once", async () => {
+test("a stored question answers before its unfinished handover completes", async () => {
   const { answer, sql } = intake();
-  const started = Date.now();
   const response = await acceptAsk(answer, question("ref-1", "Is it tested?"), null);
   assert.equal(response.status, 202);
-  assert.ok(Date.now() - started < 500);
+  let release!: (answer: string | null) => void;
+  const handover = new Promise<string | null>((resolve) => {
+    release = resolve;
+  });
   let handedOver = false;
-  const slow = drainAsks(
-    sql,
-    () =>
-      new Promise((resolve) =>
-        setTimeout(() => {
-          handedOver = true;
-          resolve(null);
-        }, 50),
-      ),
-  );
-  assert.equal(handedOver, false, "the route returned before the handover began");
+  const slow = drainAsks(sql, async () => {
+    const answer = await handover;
+    handedOver = true;
+    return answer;
+  });
+  assert.equal(handedOver, false, "the stored response needs no completed handover");
+  assert.equal(askView(sql, PR).queued.length, 1, "pending until the handover completes");
+  release(null);
   await slow;
   assert.equal(handedOver, true);
   assert.deepEqual(askView(sql, PR).queued, []);
@@ -171,49 +138,4 @@ test("questions go to the agent one at a time, oldest first, and a failed one st
     ["c"],
     "Try again replaces the failed question",
   );
-});
-
-test("the chat shows a failed question with why, and stops working", () => {
-  const failed = {
-    ...question("a", "Is it tested?"),
-    error: "The AI couldn't be reached. Try again.",
-  };
-  const chat = withQueued(ANSWERED, [failed], 2_000);
-  assert.equal(chat.messages.at(-1)?.text, "Is it tested?");
-  assert.equal(chat.isWorking, false);
-  assert.equal(chat.problem, "The AI couldn't be reached. Try again.");
-});
-
-test("a question never handed over says so after a while, rather than working for ever", () => {
-  const chat = withQueued(
-    ANSWERED,
-    [question("a", "Is it tested?", 1_000)],
-    1_000 + ASK_HANDOVER_MS + 1,
-  );
-  assert.equal(chat.isWorking, false);
-  assert.equal(chat.problem, NOT_HANDED_OVER);
-});
-
-test("a question the agent's chat already ends with is not shown twice", () => {
-  const asked = {
-    ...ANSWERED,
-    messages: [
-      ...ANSWERED.messages,
-      { id: "m3", role: "you" as const, text: "Is it tested?", anchor: null },
-    ],
-    isWorking: true,
-  };
-  const chat = withQueued(asked, [question("a", "Is it tested?")], 2_000);
-  assert.equal(chat.messages.length, 3);
-  assert.equal(chat.isWorking, true);
-});
-
-test("a question about a line names it, and a chat with nothing yet starts empty", () => {
-  const ask = question("a", "Why?");
-  ask.input.anchor = { path: "src/retry.ts", line: 12, side: "RIGHT" };
-  const chat = withQueued(null, [ask], 2_000);
-  assert.deepEqual(chat.messages, [
-    { id: "queued:a", role: "you", text: "Why?", anchor: "src/retry.ts:12", side: "RIGHT" },
-  ]);
-  assert.equal(chat.isWorking, true);
 });

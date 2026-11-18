@@ -22,7 +22,7 @@ import {
 
 const exec = promisify(execFile);
 
-const PORT = Number(process.env.PORT) || 8080;
+const PORT = process.env.PORT === "0" ? 0 : Number(process.env.PORT) || 8080;
 
 /** One structured answer: `{system, prompt, model, effort, schema}` in, the parsed output and what it spent out. */
 async function run({ system, prompt, model, effort, schema }) {
@@ -295,7 +295,7 @@ for (const signal of ["SIGTERM", "SIGINT"]) {
   });
 }
 
-createServer(async (request, response) => {
+const server = createServer(async (request, response) => {
   response.setHeader("content-type", "application/json");
   if (request.method === "GET" && request.url === "/health") {
     response.end('{"ok":true}');
@@ -323,4 +323,9 @@ createServer(async (request, response) => {
     response.statusCode = 500;
     response.end(JSON.stringify({ error: String(error instanceof Error ? error.message : error) }));
   }
-}).listen(PORT);
+});
+
+server.listen(PORT, () => {
+  // A supervising Node process can wait for the actual listening socket, including an assigned port.
+  process.send?.({ type: "listening", port: server.address().port });
+});

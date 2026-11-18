@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test read-tools.test.mjs server.test.mjs"
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "node --test read-tools.unit.test.mjs",
+    "test:integration": "node --test read-tools.integration.test.mjs server.test.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.322",

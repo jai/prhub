@@ -12,8 +12,12 @@ public final class PRNetwork {
     @ObservationIgnored private var watcher: PathWatcher?
     @ObservationIgnored private var isHeld = false
 
-    init(isOnline: Bool = NetworkStatus.shared.isOnline) {
+    public init(isOnline: Bool) {
         self.isOnline = isOnline
+    }
+
+    convenience init() {
+        self.init(isOnline: NetworkStatus.shared.isOnline)
     }
 
     /// Follows the system's path from now on. Not in `init`, so a test's network stays where the test puts it.

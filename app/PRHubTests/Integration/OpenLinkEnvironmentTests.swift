@@ -4,6 +4,7 @@ import Foundation
 import Testing
 
 struct OpenLinkEnvironmentTests {
+    private let resources = IntegrationResources()
     private static func incoming(_ target: String) throws -> URL {
         var parts = URLComponents()
         parts.scheme = "prhub-pr"
@@ -13,7 +14,7 @@ struct OpenLinkEnvironmentTests {
     }
 
     @MainActor @Test func aHandoffSelectsThePRsTabAndOpensItsDiff() throws {
-        let environment = PRHubEnvironment.sample()
+        let environment = resources.sample()
         environment.navigation.selectedTab = .settings
         let url = try Self.incoming("https://github.com/acme/web/pull/412/files")
         #expect(environment.openPullRequestLink(url))
@@ -24,7 +25,7 @@ struct OpenLinkEnvironmentTests {
     }
 
     @MainActor @Test func aHandoffUsesTheCurrentSamplesWithoutEndingThem() throws {
-        let environment = PRHubEnvironment(connection: PRHubEnvironment.sample().connection)
+        let environment = resources.environment()
         environment.navigation.selectedTab = .settings
         environment.startSample()
         let sample = try #require(environment.sample)
@@ -41,7 +42,7 @@ struct OpenLinkEnvironmentTests {
 
     @MainActor @Test func eachHandoffIsRecordedAndOtherLinksAreNot() throws {
         let sink = AnalyticsTests.RecordingAnalytics()
-        let environment = PRHubEnvironment.sample(usage: AnalyticsTests.usage(sink))
+        let environment = resources.sample(usage: resources.usage(sink))
         try environment.openPullRequestLink(Self.incoming("https://github.com/acme/web/pull/412"))
         try environment.openPullRequestLink(Self.incoming("https://github.com/acme/web/issues/412"))
         environment.openPullRequestLink(PRHubBuild.settingsURL)
@@ -49,7 +50,7 @@ struct OpenLinkEnvironmentTests {
     }
 
     @MainActor @Test func aRefusedHandoffChangesNeitherTheTabNorItsOpenPR() throws {
-        let environment = PRHubEnvironment.sample()
+        let environment = resources.sample()
         environment.navigation.selectedTab = .settings
         #expect(try !environment.openPullRequestLink(Self.incoming("https://github.com/acme/web/issues/412")))
         #expect(environment.navigation.selectedTab == .settings)

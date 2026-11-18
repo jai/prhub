@@ -100,10 +100,11 @@ public final class PRHubAlertPermission {
     @ObservationIgnored private let center: Center
     @ObservationIgnored private let defaults: UserDefaults
     /// Each answer, as `alerts_answered`. Set by the environment, which owns it.
-    @ObservationIgnored var usage = UsageAnalytics.disabled()
+    @ObservationIgnored var usage: UsageAnalytics
     private static let declinedKey = "prhubAlertsDeclined"
 
     init(center: Center = .live, defaults: UserDefaults = .standard) {
+        usage = UsageAnalytics(hasProject: false, sink: nil, defaults: defaults)
         self.center = center
         self.defaults = defaults
     }

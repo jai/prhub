@@ -90,28 +90,30 @@ struct PRReviewToast: Identifiable, Equatable {
 extension PRsModel {
     /// Sends a review whose box has already closed, through the outbox where the host has one, so it survives the app
     /// going to the background. The toast says each step; a refusal stays on it with Retry.
+    @discardableResult
     func submitReview(
         _ write: PRWrite, to ref: PullRequestRef, drafts: [PRDraftComment], head: String, answer: String?,
         settle: @escaping @MainActor (PRReviewToast.Phase, PullRequestDetail?) -> Void
-    ) {
+    ) -> Task<Void, Never> {
         let toast = PRReviewToast(
             ref: ref, write: write, drafts: drafts, head: head, answer: answer, settle: settle
         )
         withAnimation(AppMotion.fold) { reviewToast = toast }
-        Task { await send(toast) }
+        return Task { await send(toast) }
     }
 
     /// Sends the toast's review again, its line comments with it.
-    func retryReview() {
+    @discardableResult
+    func retryReview() -> Task<Void, Never>? {
         guard var toast = reviewToast, case .failed = toast.phase else {
-            return
+            return nil
         }
         toast.phase = .sending
         toast.job = nil
         removeDrafts(toast.drafts, from: toast.ref)
         withAnimation(AppMotion.swap) { reviewToast = toast }
         toast.settle(.sending, nil)
-        Task { await send(toast) }
+        return Task { await send(toast) }
     }
 
     func dismissReviewToast() {
@@ -182,7 +184,7 @@ extension PRsModel {
         guard let toast = reviewToast, toast.id == id else {
             return
         }
-        let store = PRDraftStore()
+        let store = draftStore
         let kept = store.load(toast.ref)
         store.save(kept + toast.drafts.filter { !kept.contains($0) }, for: toast.ref)
         update(id) { $0.phase = .failed(reason) }
@@ -190,7 +192,7 @@ extension PRsModel {
     }
 
     private func removeDrafts(_ drafts: [PRDraftComment], from ref: PullRequestRef) {
-        let store = PRDraftStore()
+        let store = draftStore
         store.save(store.load(ref).filter { !drafts.contains($0) }, for: ref)
     }
 

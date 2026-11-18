@@ -1,21 +1,37 @@
 import { env, exports } from "cloudflare:workers";
-import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
+import {
+  evictDurableObject,
+  reset,
+  runDurableObjectAlarm,
+  runInDurableObject,
+} from "cloudflare:test";
 import { setupNetwork } from "@msw/cloudflare";
 import { http } from "msw";
-import { afterAll, beforeAll, expect, test } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, test } from "vitest";
 import type { PendingSignIn } from "../../../src/hosted.ts";
 import { LimitName, limitsOf, rateWindowOf } from "../../../src/limits.ts";
 
 const network = setupNetwork();
+const unexpectedRequests: string[] = [];
 beforeAll(() => {
   network.use(
     http.all("*", ({ request }) => {
-      throw new Error(`Unexpected outbound request: ${request.method} ${request.url}`);
+      const call = `${request.method} ${request.url}`;
+      unexpectedRequests.push(call);
+      throw new Error(`Unexpected outbound request: ${call}`);
     }),
   );
   network.enable();
 });
 afterAll(() => network.disable());
+afterEach(async () => {
+  try {
+    expect(unexpectedRequests).toEqual([]);
+  } finally {
+    unexpectedRequests.length = 0;
+    await reset();
+  }
+});
 
 const authorization = { Authorization: "Bearer runtime-app-token" };
 
@@ -71,6 +87,9 @@ test("a sign-in survives eviction, is consumed once, and its expiry alarm remove
   expect(await signIn.take()).toBeNull();
   expect(await runInDurableObject(signIn, (_, state) => state.storage.getAlarm())).toBeNull();
   await signIn.begin(pending);
+  expect(await runInDurableObject(signIn, (_, state) => state.storage.getAlarm())).toBe(
+    pending.expires_at,
+  );
   expect(await runDurableObjectAlarm(signIn)).toBe(true);
   expect(await signIn.take()).toBeNull();
 });
@@ -88,6 +107,11 @@ test("an IP limit's alarm clears expired storage and leaves the object able to c
     now + window!.windowMs,
   );
   expect(await runDurableObjectAlarm(counter)).toBe(true);
+  expect(
+    await runInDurableObject(counter, (_, state) =>
+      state.storage.sql.exec("SELECT * FROM limit_hits").toArray(),
+    ),
+  ).toEqual([]);
   expect(await counter.consume(checks, "after-expiry", now + window!.windowMs)).toEqual({
     allowed: true,
   });

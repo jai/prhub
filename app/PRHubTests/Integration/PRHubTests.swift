@@ -11,21 +11,12 @@ private let prHubSecret = "prhub-device-secret-0123456789"
 /// `GET /device/config` (docs/api.md), and pairing needs nothing after `POST /device/pair`.
 @MainActor
 struct PRHubTests {
-    private static func endpoint(saving url: String? = nil) throws -> WorkerEndpoint {
-        let endpoint = WorkerEndpoint(store: WorkerURLStore(
-            service: "com.jaigovindani.prreview.tests", account: "prhub-url-\(UUID().uuidString)"
-        ))
-        try endpoint.clear()
-        if let url {
-            try endpoint.save(URL(string: url)!)
-        }
-        return endpoint
-    }
-
-    private static func model(_ config: DeviceConfig?) -> PRsModel {
+    private let resources = IntegrationResources()
+    private func makeModel(_ config: DeviceConfig?) -> PRsModel {
         let model = PRsModel(client: PRViewerClient(access: .paired(
             endpoint: WorkerEndpoint(fixed: URL(string: "https://pr-review.alex.workers.dev")!), secret: { prHubSecret }
-        )))
+        )), directory: resources.directory(), defaults: resources.defaults(),
+        network: PRNetwork(isOnline: true), draftDirectory: resources.directory())
         model.featureSource = { PRHubPRHost.configuration(config) }
         return model
     }
@@ -33,7 +24,7 @@ struct PRHubTests {
     // MARK: - Where requests go
 
     @Test func aPairedRequestGoesToThePairedWorkerWithTheDeviceSecret() async throws {
-        let endpoint = try Self.endpoint(saving: "https://pr-review.alex.workers.dev")
+        let endpoint = try resources.endpoint(saving: "https://pr-review.alex.workers.dev")
         let client = PRViewerClient(access: .paired(endpoint: endpoint, secret: { prHubSecret }))
         let request = try await client.outboxRequest(path: "prs/acme/api/7/write", body: Data("{}".utf8))
         #expect(request.url?.host() == "pr-review.alex.workers.dev")
@@ -43,7 +34,7 @@ struct PRHubTests {
     }
 
     @Test func beforePairingNothingIsBuilt() async throws {
-        let endpoint = try Self.endpoint()
+        let endpoint = try resources.endpoint()
         let client = PRViewerClient(access: .paired(endpoint: endpoint, secret: { prHubSecret }))
         await #expect(throws: PRWorkerError.notPaired) {
             try await client.outboxRequest(path: "prs", body: Data())
@@ -61,19 +52,19 @@ struct PRHubTests {
     }
 
     @Test func thePRScreensFollowTheWorkersAIFeatures() {
-        let none = Self.model(DeviceConfig(features: [.push]))
+        let none = makeModel(DeviceConfig(features: [.push]))
         let session = none.session(for: PullRequestRef(repo: "acme/api", number: 7))
         #expect(!session.offersAsk && !session.offersKeyLines && !session.offersRewrite)
         #expect(session.keyLineItems.isEmpty)
 
-        let all = Self.model(DeviceConfig(features: [.askAI, .keyLines, .rewrite]))
+        let all = makeModel(DeviceConfig(features: [.askAI, .keyLines, .rewrite]))
         let full = all.session(for: PullRequestRef(repo: "acme/api", number: 7))
         #expect(full.offersAsk && full.offersKeyLines && full.offersRewrite)
         #expect(!all.configuration.isOn(.push))
     }
 
     @Test func beforeTheFirstConfigEveryFeatureIsOff() {
-        let model = Self.model(nil)
+        let model = makeModel(nil)
         for feature in [PRKitConfiguration.Feature.askAI, .keyLines, .rewrite, .push] {
             #expect(!model.configuration.isOn(feature))
         }
@@ -82,10 +73,10 @@ struct PRHubTests {
     // MARK: - The org filter's default
 
     @Test func theFilterDefaultsToTheWorkersOrgsElseEveryOwner() {
-        #expect(Self.model(DeviceConfig(features: [], orgs: ["acme", "beta"])).orgDefault == .orgs(["acme", "beta"]))
-        #expect(Self.model(DeviceConfig(features: [], orgs: [])).orgDefault == .everyOwner)
-        #expect(Self.model(DeviceConfig(features: [])).orgDefault == .everyOwner)
-        #expect(Self.model(nil).orgDefault == .everyOwner)
+        #expect(makeModel(DeviceConfig(features: [], orgs: ["acme", "beta"])).orgDefault == .orgs(["acme", "beta"]))
+        #expect(makeModel(DeviceConfig(features: [], orgs: [])).orgDefault == .everyOwner)
+        #expect(makeModel(DeviceConfig(features: [])).orgDefault == .everyOwner)
+        #expect(makeModel(nil).orgDefault == .everyOwner)
 
         let owners = ["acme", "beta", "gamma"]
         #expect(PROrgDefault.orgs(["acme"]).filter(owners: owners).selected == ["acme"])
@@ -94,10 +85,9 @@ struct PRHubTests {
 
     // MARK: - Pairing
 
-    private static func connection(
+    private func makeConnection(
         endpoint: WorkerEndpoint, config: DeviceConfig, unpaired: Shared<Int>, forgotten: Shared<Int>,
-        defaults: UserDefaults = UserDefaults(suiteName: "prhub-tests-\(UUID().uuidString)")!,
-        usage: UsageAnalytics = .disabled()
+        defaults: UserDefaults? = nil, usage: UsageAnalytics? = nil
     ) -> WorkerConnection {
         WorkerConnection(
             endpoint: endpoint,
@@ -110,17 +100,17 @@ struct PRHubTests {
             ),
             fetchConfig: { _ in config }, forgetSecret: { forgotten.with { $0 += 1 } },
             unpair: { unpaired.with { $0 += 1 } },
-            defaults: defaults,
+            defaults: defaults ?? resources.defaults(),
             build: PRHubBuild(hostedURL: nil, signInWithGitHub: false, selfHosted: true, samples: true),
-            usage: usage
+            usage: usage ?? resources.usage()
         )
     }
 
     @Test func aPRWorkerAdmitsThePhoneAtOnceAndItsConfigIsReadBeforeThePRsShow() async throws {
-        let endpoint = try Self.endpoint()
-        let defaults = try #require(UserDefaults(suiteName: "prhub-tests-\(UUID().uuidString)"))
+        let endpoint = try resources.endpoint()
+        let defaults = resources.defaults()
         let config = DeviceConfig(features: [.askAI, .push], login: "alex", orgs: ["acme"])
-        let connection = Self.connection(
+        let connection = makeConnection(
             endpoint: endpoint, config: config, unpaired: Shared(0), forgotten: Shared(0), defaults: defaults
         )
         #expect(connection.showsOnboarding)
@@ -133,7 +123,7 @@ struct PRHubTests {
         #expect(connection.config == config)
 
         // A later launch finds both: the Worker in the Keychain, the config in the cache.
-        let relaunched = Self.connection(
+        let relaunched = makeConnection(
             endpoint: endpoint, config: config, unpaired: Shared(0), forgotten: Shared(0), defaults: defaults
         )
         #expect(relaunched.isPaired && relaunched.config == config)
@@ -141,11 +131,11 @@ struct PRHubTests {
     }
 
     @Test func pairingAndDisconnectingAreRecordedWithoutTheWorker() async throws {
-        let endpoint = try Self.endpoint()
+        let endpoint = try resources.endpoint()
         let sink = AnalyticsTests.RecordingAnalytics()
-        let connection = Self.connection(
+        let connection = makeConnection(
             endpoint: endpoint, config: DeviceConfig(features: []), unpaired: Shared(0), forgotten: Shared(0),
-            usage: AnalyticsTests.usage(sink)
+            usage: resources.usage(sink)
         )
         await connection.connect(text: "https://pr-review.alex.workers.dev")
         await connection.connect(text: "prhub://setup?worker=https%3A%2F%2Fpr-review.alex.workers.dev&code=7kq2-m9xa")
@@ -156,8 +146,8 @@ struct PRHubTests {
     }
 
     @Test func aBadLinkSaysWhyAndPairsNothing() async throws {
-        let endpoint = try Self.endpoint()
-        let connection = Self.connection(
+        let endpoint = try resources.endpoint()
+        let connection = makeConnection(
             endpoint: endpoint, config: DeviceConfig(features: []), unpaired: Shared(0), forgotten: Shared(0)
         )
         await connection.connect(text: "https://pr-review.alex.workers.dev")
@@ -168,8 +158,8 @@ struct PRHubTests {
     }
 
     @Test func aLinkInAnotherSchemeIsNotFollowed() throws {
-        let endpoint = try Self.endpoint()
-        let connection = Self.connection(
+        let endpoint = try resources.endpoint()
+        let connection = makeConnection(
             endpoint: endpoint, config: DeviceConfig(features: []), unpaired: Shared(0), forgotten: Shared(0)
         )
         try connection.open(#require(URL(string: "agentpager://setup?worker=https%3A%2F%2Fa.example&code=7KQ2M9XA")))
@@ -179,8 +169,8 @@ struct PRHubTests {
     }
 
     @Test func aLinkOpenedWhilePairedIsNotFollowed() async throws {
-        let endpoint = try Self.endpoint()
-        let connection = Self.connection(
+        let endpoint = try resources.endpoint()
+        let connection = makeConnection(
             endpoint: endpoint, config: DeviceConfig(features: []), unpaired: Shared(0), forgotten: Shared(0)
         )
         await connection.connect(worker: "pr-review.alex.workers.dev", code: "7KQ2M9XA")
@@ -191,10 +181,10 @@ struct PRHubTests {
     }
 
     @Test func disconnectTellsTheWorkerThenForgetsEverything() async throws {
-        let endpoint = try Self.endpoint()
+        let endpoint = try resources.endpoint()
         let unpaired = Shared(0)
         let forgotten = Shared(0)
-        let connection = Self.connection(
+        let connection = makeConnection(
             endpoint: endpoint, config: DeviceConfig(features: [.push]), unpaired: unpaired, forgotten: forgotten
         )
         await connection.connect(worker: "pr-review.alex.workers.dev", code: "7KQ2M9XA")

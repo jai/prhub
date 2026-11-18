@@ -10,15 +10,15 @@ struct FeatureKitKeptTests {
         let title: String
     }
 
-    private let kept = ReadStore(
-        directory: URL.temporaryDirectory
-            .appending(path: "feedback-kept-\(UUID().uuidString)", directoryHint: .isDirectory)
-    )
+    private let storage = TestStorage()
+    private var kept: ReadStore {
+        ReadStore(directory: storage.directory)
+    }
 
-    private func connection(_ answer: @escaping @Sendable () throws -> Data) -> PRViewerFeedbackConnection {
+    private func connection(status: Int = 200, _ answer: @escaping @Sendable () throws -> Data) -> PRViewerFeedbackConnection {
         let access = PRViewerAccess(baseURL: { URL(string: "https://worker.test")! }, bearer: { "t" }, discard: {})
         let viewer = PRViewerClient(access: access) { request in
-            try (answer(), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            try (answer(), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
         }
         return PRViewerFeedbackConnection(viewer: viewer, kept: kept)
     }
@@ -38,7 +38,7 @@ struct FeatureKitKeptTests {
     @Test func aRefusalIsNotAnsweredFromTheKeptCopy() async throws {
         let body = try JSONEncoder().encode(Answer(title: "Dark mode"))
         _ = try await connection { body }.read("feedback", as: Answer.self)
-        let refusing = connection { throw URLError(.badServerResponse) }
-        await #expect(throws: URLError.self) { try await refusing.read("feedback", as: Answer.self) }
+        let refusing = connection(status: 403) { Data(#"{"error":"Feedback is disabled."}"#.utf8) }
+        await #expect(throws: PRWorkerError.self) { try await refusing.read("feedback", as: Answer.self) }
     }
 }

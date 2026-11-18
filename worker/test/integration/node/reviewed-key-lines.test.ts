@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { parseKeyLineMark } from "../../../src/boundary.ts";
+import { afterEach, test } from "node:test";
 import type { PrId, Sha } from "../../../src/ids.ts";
 import {
   createReviewedKeyLinesTable,
@@ -11,7 +10,9 @@ import {
   REVIEWED_KEPT_MS,
   reviewedKeyLines,
 } from "../../../src/reviewed-key-lines.ts";
-import { memorySql } from "../../support/memory-sql.ts";
+import { closeMemorySql, memorySql } from "../../support/memory-sql.ts";
+
+afterEach(closeMemorySql);
 
 const PR = "acme/api#7" as PrId;
 const HEAD = "a".repeat(40) as Sha;
@@ -87,17 +88,4 @@ test("losing a repo takes its ticks, whatever the case, and leaves a repo whose 
   forgetReviewedKeyLinesOf(sql, "ACME/api");
   assert.deepEqual(reviewedKeyLines(sql, PR, HEAD).reviewed, []);
   assert.deepEqual(reviewedKeyLines(sql, "acme/api-docs#7" as PrId, HEAD).reviewed, ["a:RIGHT:1"]);
-});
-
-test("a mark names a head commit, a key line and whether it is reviewed", () => {
-  assert.deepEqual(parseKeyLineMark({ head: HEAD, line: "a:RIGHT:1", reviewed: true }), {
-    head: HEAD,
-    line: "a:RIGHT:1",
-    reviewed: true,
-  });
-  assert.equal(parseKeyLineMark({ head: "main", line: "a:RIGHT:1", reviewed: true }), null);
-  assert.equal(parseKeyLineMark({ head: HEAD, line: "", reviewed: true }), null);
-  assert.equal(parseKeyLineMark({ head: HEAD, line: "a".repeat(1_101), reviewed: true }), null);
-  assert.equal(parseKeyLineMark({ head: HEAD, line: "a:RIGHT:1", reviewed: "yes" }), null);
-  assert.equal(parseKeyLineMark(null), null);
 });

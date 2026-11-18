@@ -32,6 +32,9 @@ public final class PRHubEnvironment {
     /// Anonymous usage events, and Settings' switch for them.
     public let usage: UsageAnalytics
     @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let sampleDefaults: UserDefaults?
+    @ObservationIgnored private let storageDirectory: URL?
+    @ObservationIgnored private let network: PRNetwork?
     /// Runs on the bundled samples (`PRHubEnvironment.sample()`), with no Worker.
     public let isSample: Bool
     /// "Try with sample PRs", while it is on: shown in place of onboarding until Connect your own Worker.
@@ -66,6 +69,9 @@ public final class PRHubEnvironment {
         update = PRHubUpdate(group: testFlightGroup, defaults: defaults, usage: usage)
         self.usage = usage
         self.defaults = defaults
+        sampleDefaults = nil
+        storageDirectory = nil
+        network = nil
         let refusals = SessionRefusals()
         let host = PRHubPRHost(
             access: .paired(endpoint: endpoint, secret: { try secrets.loadOrCreate() }, refused: {
@@ -110,20 +116,30 @@ public final class PRHubEnvironment {
     /// Over `access` (none: nothing is sent) and, for "Try with sample PRs", `samples`.
     init(
         connection: WorkerConnection, access: PRViewerAccess = .offline, samples: PRSampleSet? = nil,
-        isSample: Bool = false, alertPermission: PRHubAlertPermission = PRHubAlertPermission(),
+        isSample: Bool = false, alertPermission: PRHubAlertPermission? = nil,
         usage: UsageAnalytics = .disabled(), outbox: (any PRKitOutbox)? = nil, update: PRHubUpdate? = nil,
-        transport: (any HTTPTransport)? = nil, defaults: UserDefaults = .standard
+        transport: (any HTTPTransport)? = nil, defaults: UserDefaults = .standard,
+        sampleDefaults: UserDefaults? = nil, storageDirectory: URL? = nil, network: PRNetwork? = nil
     ) {
+        let alertPermission = alertPermission ?? PRHubAlertPermission(defaults: defaults)
         self.alertPermission = alertPermission
         alertPermission.usage = usage
-        self.update = update ?? PRHubUpdate()
+        self.update = update ?? PRHubUpdate(
+            defaults: defaults, usage: UsageAnalytics(hasProject: false, sink: nil, defaults: defaults)
+        )
         self.usage = usage
         self.defaults = defaults
+        self.sampleDefaults = sampleDefaults
+        self.storageDirectory = storageDirectory
+        self.network = network
         let host = PRHubPRHost(access: access, samples: samples, usage: usage)
+        host.mirrorDirectoryOverride = storageDirectory?.appending(path: "mirror")
         host.outbox = outbox
         host.transportOverride = transport
         self.connection = connection
-        prs = PRKitController(host: host, defaults: defaults)
+        prs = PRKitController(
+            host: host, defaults: defaults, network: network, draftDirectory: storageDirectory?.appending(path: "drafts")
+        )
         self.outbox = nil
         self.isSample = isSample
         navigation = PRHubNavigation(pullRequests: prs)
@@ -173,7 +189,10 @@ public final class PRHubEnvironment {
     /// Onboarding's "Try with sample PRs".
     public func startSample() {
         usage.record(.onboardingPathChosen(.samples))
-        sample = .sample(usage: usage, defaults: defaults)
+        sample = .sample(
+            usage: usage, defaults: defaults, configurationDefaults: sampleDefaults,
+            storageDirectory: storageDirectory?.appending(path: "samples"), network: network
+        )
     }
 
     /// Settings' "Connect your own Worker", or a setup link opened during the samples: back to onboarding, with no
@@ -280,7 +299,7 @@ public final class PRHubEnvironment {
     /// A tapped review alert: its PR on the PRs tab, from the row it carried. Nothing while no Worker is paired, as
     /// during the samples: `alert_ignored` says so, as the tap opened nothing.
     func openAlert(_ ref: PullRequestRef, row: PullRequestRow? = nil) {
-        guard connection.isPaired, sample == nil else {
+        guard !isSample, connection.isPaired, sample == nil else {
             usage.record(.alertIgnored(isSample || sample != nil ? .samples : .notPaired))
             return
         }

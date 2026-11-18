@@ -5,6 +5,7 @@ import Testing
 /// Analytics preferences and host integration; vendors are replaced with a recording sink.
 @MainActor
 struct AnalyticsTests {
+    private let resources = IntegrationResources()
     /// What the vendor was handed.
     final class RecordingAnalytics: Analytics {
         var events: [AnalyticsEvent] = []
@@ -19,17 +20,9 @@ struct AnalyticsTests {
         }
     }
 
-    static func defaults() -> UserDefaults {
-        UserDefaults(suiteName: "prhub-analytics-\(UUID().uuidString)")!
-    }
-
-    static func usage(_ sink: RecordingAnalytics, defaults: UserDefaults = defaults()) -> UsageAnalytics {
-        UsageAnalytics(hasProject: true, sink: sink, defaults: defaults)
-    }
-
     @Test func theHostPassesPRKitsEventsOn() {
         let sink = RecordingAnalytics()
-        let host = PRHubPRHost(access: .offline, samples: nil, usage: Self.usage(sink))
+        let host = PRHubPRHost(access: .offline, samples: nil, usage: resources.usage(sink))
         host.receive(.opened(PullRequestRef(repo: "acme/checkout", number: 7)))
         host.receive(.reviewRequests(2))
         host.receive(.writeRefused("no"))
@@ -38,7 +31,7 @@ struct AnalyticsTests {
 
     @Test func aRepeatingFailureIsSentOnceAMinute() {
         let sink = RecordingAnalytics()
-        let usage = Self.usage(sink)
+        let usage = resources.usage(sink)
         var time = Date(timeIntervalSince1970: 1000)
         usage.now = { time }
         let offline = AnalyticsEvent.pullRequestWrote(.merge, .failed(.offline))
@@ -59,20 +52,20 @@ struct AnalyticsTests {
 
     @Test func sharingIsOnUntilTurnedOffAndThenNothingIsSent() {
         let sink = RecordingAnalytics()
-        let defaults = Self.defaults()
-        let usage = Self.usage(sink, defaults: defaults)
+        let defaults = resources.defaults()
+        let usage = UsageAnalytics(hasProject: true, sink: sink, defaults: defaults)
         #expect(usage.isSharing)
         usage.record(.signedOut)
         usage.setSharing(false)
         usage.record(.accountDeleted)
         #expect(sink.events == [.signedOut])
         #expect(sink.sharing == [false])
-        #expect(!Self.usage(RecordingAnalytics(), defaults: defaults).isSharing)
+        #expect(!UsageAnalytics(hasProject: true, sink: RecordingAnalytics(), defaults: defaults).isSharing)
     }
 
     @Test func turningSharingBackOnSendsAgain() {
         let sink = RecordingAnalytics()
-        let usage = Self.usage(sink)
+        let usage = resources.usage(sink)
         usage.setSharing(false)
         usage.setSharing(true)
         usage.record(.samplesLeft)
@@ -81,7 +74,7 @@ struct AnalyticsTests {
     }
 
     @Test func theVendorStartsOptedOutWhenSharingWasTurnedOff() {
-        let defaults = Self.defaults()
+        let defaults = resources.defaults()
         defaults.set(false, forKey: UsageAnalytics.sharingKey)
         var startedSharing: Bool?
         _ = UsageAnalytics.make(
@@ -103,7 +96,7 @@ struct AnalyticsTests {
     @Test func withoutAProjectNothingIsSentAndSettingsHasNoSwitch() {
         var made = false
         let usage = UsageAnalytics.make(
-            project: nil, isDebugBuild: false, isRunningTests: false, defaults: Self.defaults(),
+            project: nil, isDebugBuild: false, isRunningTests: false, defaults: resources.defaults(),
             vendor: { _, _ in
                 made = true
                 return RecordingAnalytics()
@@ -118,7 +111,7 @@ struct AnalyticsTests {
         var made = false
         let usage = UsageAnalytics.make(
             project: Self.project, isDebugBuild: isDebugBuild, isRunningTests: isRunningTests,
-            defaults: Self.defaults(),
+            defaults: resources.defaults(),
             vendor: { _, _ in
                 made = true
                 return RecordingAnalytics()
@@ -130,7 +123,7 @@ struct AnalyticsTests {
     @Test func aReleaseBuildWithAProjectSends() {
         let sink = RecordingAnalytics()
         let usage = UsageAnalytics.make(
-            project: Self.project, isDebugBuild: false, isRunningTests: false, defaults: Self.defaults(),
+            project: Self.project, isDebugBuild: false, isRunningTests: false, defaults: resources.defaults(),
             vendor: { _, _ in sink }
         )
         usage.record(.workerPaired)
@@ -142,8 +135,8 @@ struct AnalyticsTests {
         let connection = try WorkerConnection(
             endpoint: WorkerEndpoint(fixed: #require(URL(string: "https://worker.example"))),
             pairing: DevicePairing(pair: { _, _ in throw URLError(.badURL) }, save: { _ in }),
-            fetchConfig: { _ in throw URLError(.badURL) }, forgetSecret: {}, defaults: Self.defaults(),
-            usage: Self.usage(sink)
+            fetchConfig: { _ in throw URLError(.badURL) }, forgetSecret: {}, defaults: resources.defaults(),
+            usage: resources.usage(sink)
         )
         connection.scanUnavailable(.cameraOff)
         connection.scanUnavailable(.unsupported)
@@ -154,7 +147,7 @@ struct AnalyticsTests {
 
     @Test func tryingAndLeavingTheSamplesIsRecorded() {
         let sink = RecordingAnalytics()
-        let environment = PRHubEnvironment(connection: PRHubEnvironment.sample().connection, usage: Self.usage(sink))
+        let environment = resources.environment(usage: resources.usage(sink))
         environment.startSample()
         #expect(environment.sample?.usage === environment.usage)
         environment.endSample()

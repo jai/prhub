@@ -8,30 +8,45 @@ import UserNotifications
 /// A tapped pr-worker alert opens its PR (docs/api.md, "Alerts"), and the one offer to turn alerts on.
 @MainActor
 struct PRHubAlertTests {
+    private let resources = IntegrationResources()
     private static let ref = PullRequestRef(repo: "acme/app", number: 7)
 
     @Test func anAlertOpensNothingDuringTheSamples() {
-        let environment = PRHubEnvironment.sample()
+        let sink = AnalyticsTests.RecordingAnalytics()
+        let environment = resources.sample(usage: resources.usage(sink))
+        environment.navigation.selectedTab = .settings
         environment.openAlert(Self.ref)
-        #expect(environment.navigation.selectedTab == .prs)
+        #expect(environment.navigation.selectedTab == .settings)
+        #expect(environment.prs.navigation.pending == nil)
+        #expect(sink.events == [.alertIgnored(.samples)])
     }
 
     @Test func anAlertThatOpensNothingSaysWhy() {
         let sink = AnalyticsTests.RecordingAnalytics()
-        let environment = PRHubEnvironment(
-            connection: PRHubEnvironment.sample().connection, usage: AnalyticsTests.usage(sink)
-        )
+        let environment = resources.environment(usage: resources.usage(sink))
         environment.startSample()
+        environment.navigation.selectedTab = .settings
         environment.openAlert(Self.ref)
+        #expect(environment.navigation.selectedTab == .settings)
+        #expect(environment.prs.navigation.pending == nil)
+        #expect(environment.sample?.prs.navigation.pending == nil)
         #expect(sink.events == [.onboardingPathChosen(.samples), .alertIgnored(.samples)])
+    }
+
+    @Test func aPairedWorkerAlertSelectsThePRsTabAndOpensItsPR() {
+        let environment = resources.environment()
+        environment.navigation.selectedTab = .settings
+        environment.openAlert(Self.ref)
+        #expect(environment.navigation.selectedTab == .prs)
+        #expect(environment.prs.navigation.pending?.link.ref == Self.ref)
     }
 
     // MARK: - The offer to turn alerts on
 
-    private static func permission(
+    private func permission(
         _ status: UNAuthorizationStatus, asked: Shared<Int> = Shared(0)
     ) -> (PRHubAlertPermission, UserDefaults) {
-        let defaults = UserDefaults(suiteName: "prhub-alerts-\(UUID().uuidString)")!
+        let defaults = resources.defaults()
         let state = Shared(status)
         let center = PRHubAlertPermission.Center(
             status: { state.with { $0 } },
@@ -46,7 +61,7 @@ struct PRHubAlertTests {
 
     @Test func aWorkerThatPushesIsOfferedAlertsOnceAndTurnOnAsksTheSystem() async {
         let asked = Shared(0)
-        let (permission, _) = Self.permission(.notDetermined, asked: asked)
+        let (permission, _) = permission(.notDetermined, asked: asked)
         await permission.offerIfDue(workerPushes: true)
         #expect(permission.isOffering && permission.status == .notAsked)
         await permission.ask()
@@ -56,7 +71,7 @@ struct PRHubAlertTests {
     }
 
     @Test func notNowIsKeptUntilTheNextPairing() async {
-        let (permission, defaults) = Self.permission(.notDetermined)
+        let (permission, defaults) = permission(.notDetermined)
         await permission.offerIfDue(workerPushes: true)
         permission.decline()
         await permission.offerIfDue(workerPushes: true)
@@ -72,11 +87,11 @@ struct PRHubAlertTests {
 
     @Test func eachAnswerToTheOfferIsRecorded() async {
         let sink = AnalyticsTests.RecordingAnalytics()
-        let (allowing, _) = Self.permission(.notDetermined)
-        allowing.usage = AnalyticsTests.usage(sink)
+        let (allowing, _) = permission(.notDetermined)
+        allowing.usage = resources.usage(sink)
         await allowing.ask()
         let center = PRHubAlertPermission.Center(status: { .denied }, request: { false })
-        let denying = PRHubAlertPermission(center: center, defaults: AnalyticsTests.defaults())
+        let denying = PRHubAlertPermission(center: center, defaults: resources.defaults())
         denying.usage = allowing.usage
         await denying.ask()
         denying.decline()
@@ -84,10 +99,10 @@ struct PRHubAlertTests {
     }
 
     @Test func aWorkerThatDoesNotPushOrAnAnsweredQuestionOffersNothing() async {
-        let (quiet, _) = Self.permission(.notDetermined)
+        let (quiet, _) = permission(.notDetermined)
         await quiet.offerIfDue(workerPushes: false)
         #expect(!quiet.isOffering)
-        let (denied, _) = Self.permission(.denied)
+        let (denied, _) = permission(.denied)
         await denied.offerIfDue(workerPushes: true)
         #expect(!denied.isOffering && denied.status == .denied)
     }

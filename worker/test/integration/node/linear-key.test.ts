@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
+import { closeMemorySql } from "../../support/memory-sql.ts";
 import { AccountCore } from "../../../src/account-core.ts";
 import { parseKeyring } from "../../../src/token-crypto.ts";
 import { authenticate, hostedAccountConfig } from "../../../src/hosted.ts";
-import { checkLinearKey } from "../../../src/tickets.ts";
 import {
   APP,
   bearer,
@@ -13,6 +13,8 @@ import {
   signIn,
   KEY,
 } from "../../support/hosted-world.ts";
+
+afterEach(closeMemorySql);
 
 const key = "lin_api_synthetic012345678901234567890";
 const otherKey = "lin_api_synthetic98765432109876543210";
@@ -122,21 +124,6 @@ test("Linear keys rotate encryption and cannot move to another account", async (
   const rotated = await reopened.resealStale();
   assert.ok(rotated?.resealed.includes("linear"));
   assert.match((await world.stores.get("4242")!.get<string>("linear"))!, /^v1\.k2\./);
-});
-
-test("Linear GraphQL rejection and transport failures do not become a connected account", async () => {
-  assert.equal(
-    await checkLinearKey(key, async () =>
-      Response.json({ errors: [{ message: "Authentication required" }] }),
-    ),
-    "invalid",
-  );
-  assert.equal(
-    await checkLinearKey(key, async () => {
-      throw new Error("offline");
-    }),
-    "unavailable",
-  );
 });
 
 test("a key that may only read is connected for tickets, and Settings hears it can't comment", async () => {

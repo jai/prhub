@@ -162,8 +162,10 @@ final class PRHubPRHost: PRKitHost {
     func log(_: String) {}
 
     /// The app group's, which PRHubNotifications fills before an alert's tap. Samples keep their own.
+    var mirrorDirectoryOverride: URL?
+
     var mirrorDirectory: URL? {
-        samples == nil ? Self.mirrorDirectory() : nil
+        mirrorDirectoryOverride ?? (samples == nil ? Self.mirrorDirectory() : nil)
     }
 
     /// The mirror in the app group (`PRHubAppGroup` in Info.plist), in its Application Support. `PRMirrorLocation`

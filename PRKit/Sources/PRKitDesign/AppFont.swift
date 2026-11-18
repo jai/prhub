@@ -125,20 +125,28 @@ public extension Font {
 
         /// The stored scale, or `standard` when none is stored or it is not one of `scales`.
         public static var scale: Double {
-            let stored = UserDefaults.standard.double(forKey: key)
+            scale(in: .standard)
+        }
+
+        public static func scale(in defaults: UserDefaults) -> Double {
+            let stored = defaults.double(forKey: key)
             return scales.contains(stored) ? stored : standard
         }
 
-        public static func points(_ style: Font.TextStyle) -> CGFloat {
-            (DesignTokens.macStyles[style]?.size ?? 14) * scale
+        public static func points(_ style: Font.TextStyle, defaults: UserDefaults = .standard) -> CGFloat {
+            (DesignTokens.macStyles[style]?.size ?? 14) * scale(in: defaults)
         }
 
         /// For what is sized beside the text in iPhone points (an avatar, a mark): the Mac's body over the iPhone's, times
         /// the chosen scale, so it keeps its size next to the words.
         public static var layoutScale: Double {
+            layoutScale(in: .standard)
+        }
+
+        public static func layoutScale(in defaults: UserDefaults) -> Double {
             let mac = DesignTokens.macStyles[.body]?.size ?? 14
             let phone = DesignTokens.styles[.body]?.size ?? 17
-            return scale * Double(mac / phone)
+            return scale(in: defaults) * Double(mac / phone)
         }
 
         /// For code, whose size is the diff font's in iPhone points: the Mac's code size over the iPhone's, times the scale.

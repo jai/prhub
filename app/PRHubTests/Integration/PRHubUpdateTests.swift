@@ -6,6 +6,7 @@ import Testing
 /// Update available (`PRHubUpdate`): a newer build for this build's TestFlight group, at most hourly, and Later.
 @MainActor
 struct PRHubUpdateTests {
+    private let resources = IntegrationResources()
     private static let running = AppBuild(version: "1.0", build: "200")
 
     private static func config(
@@ -17,28 +18,28 @@ struct PRHubUpdateTests {
         ))
     }
 
-    private static func update(
-        group: TestFlightGroup = .public, clock: Shared<Date> = Shared(.now)
+    private func makeUpdate(
+        group: TestFlightGroup = .public, clock: Shared<Date> = Shared(Date(timeIntervalSince1970: 1000))
     ) -> PRHubUpdate {
         PRHubUpdate(
-            running: running, group: group, defaults: UserDefaults(suiteName: "prhub-update-\(UUID().uuidString)")!,
-            isEnabled: true, now: { clock.with { $0 } }
+            running: Self.running, group: group, defaults: resources.defaults(),
+            isEnabled: true, usage: resources.usage(), now: { clock.with { $0 } }
         )
     }
 
     @Test func eachBuildComparesWithItsOwnGroup() {
-        let internalBuild = Self.update(group: .internal)
+        let internalBuild = makeUpdate(group: .internal)
         internalBuild.check(Self.config(internal: "205", public: "200"))
         #expect(internalBuild.offered?.build == "205")
 
-        let release = Self.update(group: .public)
+        let release = makeUpdate(group: .public)
         release.check(Self.config(internal: "205", public: "200"))
         #expect(release.offered == nil)
     }
 
     @Test func laterSkipsThatBuildAndANewerOneIsOfferedAgain() {
-        let clock = Shared(Date.now)
-        let update = Self.update(clock: clock)
+        let clock = Shared(Date(timeIntervalSince1970: 1000))
+        let update = makeUpdate(clock: clock)
         update.check(Self.config(public: "201"))
         #expect(update.offered == AppBuild(version: "1.0", build: "201"))
         update.later()
@@ -53,11 +54,11 @@ struct PRHubUpdateTests {
         #expect(update.offered?.build == "202")
     }
 
-    @Test func theOfferAndTheAnswerAreReported() throws {
+    @Test func theOfferAndTheAnswerAreReported() {
         let sink = AnalyticsTests.RecordingAnalytics()
-        let update = try PRHubUpdate(
-            running: Self.running, defaults: #require(UserDefaults(suiteName: "prhub-update-\(UUID().uuidString)")),
-            isEnabled: true, usage: AnalyticsTests.usage(sink)
+        let update = PRHubUpdate(
+            running: Self.running, defaults: resources.defaults(),
+            isEnabled: true, usage: resources.usage(sink)
         )
         update.check(Self.config(public: "201"))
         update.later()
@@ -67,8 +68,8 @@ struct PRHubUpdateTests {
     }
 
     @Test func checkedAtMostHourly() {
-        let clock = Shared(Date.now)
-        let update = Self.update(clock: clock)
+        let clock = Shared(Date(timeIntervalSince1970: 1000))
+        let update = makeUpdate(clock: clock)
         update.check(Self.config(public: "200"))
         clock.with { $0 += PRHubUpdate.interval - 60 }
         update.check(Self.config(public: "201"))
@@ -79,11 +80,11 @@ struct PRHubUpdateTests {
     }
 
     @Test func nothingWithoutAConfigInADebugBuildOrWhenTheWorkerDoesNotSay() {
-        let update = Self.update()
+        let update = makeUpdate()
         update.check(nil)
         update.check(DeviceConfig(features: []))
         #expect(update.offered == nil)
-        let debug = PRHubUpdate(running: Self.running, isEnabled: false)
+        let debug = PRHubUpdate(running: Self.running, defaults: resources.defaults(), isEnabled: false, usage: resources.usage())
         debug.check(Self.config(public: "300"))
         #expect(debug.offered == nil)
     }

@@ -5,57 +5,14 @@ import PRKitDesign
 import SwiftUI
 import Testing
 
-/// The diff's font setting: today's font until someone changes it, kept on the device, and every face it offers
-/// installed and monospaced.
+/// Platform fonts and the diff layout use the selected face, weight and size.
 @MainActor
 struct DiffFontTests {
-    private func freshDefaults() -> UserDefaults {
-        let name = "DiffFontTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name)!
-        defaults.removePersistentDomain(forName: name)
-        return defaults
-    }
-
-    @Test func theDefaultIsTodaysDiff() {
-        #expect(DiffFont.standard.face == .system)
-        #expect(DiffFont.standard.size == DesignTokens.codeFontSize)
-        #expect(AppStorage(diffFontIn: freshDefaults()).wrappedValue == .standard)
-    }
-
     @Test func todaysDiffKeepsItsMeasures() {
         let metrics = DiffMetrics(.standard, scale: 1)
         #expect(metrics.code.pointSize == 12)
         #expect(metrics.rowHeight == 17)
         #expect(metrics.headerPath.pointSize == 14)
-    }
-
-    @Test func aChosenFontIsKeptOnTheDevice() {
-        let defaults = freshDefaults()
-        AppStorage(diffFontIn: defaults).wrappedValue = DiffFont(face: .jetBrainsMono, size: 15)
-        #expect(defaults.string(forKey: DiffFont.storageKey) == "jetBrainsMono:15")
-        #expect(AppStorage(diffFontIn: defaults).wrappedValue == DiffFont(face: .jetBrainsMono, size: 15))
-    }
-
-    @Test(arguments: ["", "menlo", "menlo:", "comicSans:12", "menlo:big", "menlo:8", "menlo:21", "menlo:12:1"])
-    func aBadStoredValueReadsAsTheDefault(stored: String) {
-        let defaults = freshDefaults()
-        defaults.set(stored, forKey: DiffFont.storageKey)
-        #expect(AppStorage(diffFontIn: defaults).wrappedValue == .standard)
-    }
-
-    @Test func aStoredValueOfAnotherTypeReadsAsTheDefault() {
-        let defaults = freshDefaults()
-        defaults.set(14, forKey: DiffFont.storageKey)
-        #expect(AppStorage(diffFontIn: defaults).wrappedValue == .standard)
-    }
-
-    @Test(arguments: DiffFontFace.allCases.filter { $0.bundledFolder != nil })
-    func everyBundledFaceShipsRegularBoldAndItsLicence(face: DiffFontFace) throws {
-        let files = DiffFontRegistry.fontFiles(of: face)
-        #expect(files.count == 2)
-        let folder = try #require(files.first?.deletingLastPathComponent())
-        let licence = try String(contentsOf: folder.appendingPathComponent("OFL.txt"), encoding: .utf8)
-        #expect(licence.contains("SIL Open Font License"))
     }
 
     @Test(arguments: DiffFontFace.allCases.filter { $0.postScriptNames != nil })

@@ -5,8 +5,10 @@ import Testing
 /// Where the mirror lives (`PRMirrorLocation`): Application Support in the app group's container, else the app's own;
 /// a mirror left in an earlier build's caches moves there once.
 struct PRMirrorLocationTests {
-    private let root = URL.temporaryDirectory
-        .appending(path: "mirror-location-\(UUID().uuidString)", directoryHint: .isDirectory)
+    private let storage = TestStorage()
+    private var root: URL {
+        storage.directory
+    }
 
     private var own: PRMirrorLocation.Library {
         PRMirrorLocation.Library(

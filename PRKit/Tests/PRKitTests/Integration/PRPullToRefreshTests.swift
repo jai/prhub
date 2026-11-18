@@ -6,7 +6,7 @@ import Testing
 /// A pull on a PR's page: the PR as GitHub has it now, over the copy on screen.
 @MainActor
 struct PRPullToRefreshTests {
-    private let preferences = TestPreferences()
+    private let storage = TestStorage()
     private let ref = PullRequestRef(repo: "acme/api", number: 7)
     private static let lines = """
     {"items":[{"path":"a.swift","line":1,"side":"RIGHT","kind":"risk","why":"one"}],"context":100,"leftOut":[]}
@@ -56,8 +56,9 @@ struct PRPullToRefreshTests {
         let worker = worker
         let access = PRViewerAccess(baseURL: { URL(string: "https://worker.test")! }, bearer: { "t" }, discard: {})
         let client = PRViewerClient(access: access) { try await worker.exchange($0) }
-        let directory = URL.temporaryDirectory.appending(path: "pull-to-refresh-\(UUID().uuidString)")
-        let model = PRsModel(client: client, directory: directory, defaults: preferences.defaults)
+        let directory = storage.directory
+        let model = PRsModel(client: client, directory: directory, defaults: storage.defaults,
+                             network: PRNetwork(isOnline: true), draftDirectory: storage.draftDirectory)
         let keyLines = try JSONDecoder().decode(PRKeyLines.self, from: Data(Self.lines.utf8))
         return try PRSession(
             ref: ref, title: nil,
@@ -88,12 +89,11 @@ struct PRPullToRefreshTests {
         worker.serve(nil)
         await session.pullToRefresh()
         #expect(session.title == "Before")
-        if session.model.network.isOnline {
-            guard case let .failed(words) = session.notice else {
-                Issue.record("no notice")
-                return
-            }
-            #expect(words.hasPrefix("Didn't refresh."))
+        #expect(session.model.network.isOnline)
+        guard case let .failed(words) = session.notice else {
+            Issue.record("no notice")
+            return
         }
+        #expect(words.hasPrefix("Didn't refresh."))
     }
 }

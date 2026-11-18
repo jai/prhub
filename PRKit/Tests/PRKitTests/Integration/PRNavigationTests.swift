@@ -7,7 +7,14 @@ import Testing
 /// list beside the PR, and the diff's panel.
 @MainActor
 struct PRNavigationTests {
-    private let kit = PRKitController(host: PRKitControllerTests.Host())
+    private let kit: PRKitController
+
+    init() {
+        let host = PRKitControllerTests.Host()
+        kit = PRKitController(host: host, defaults: host.storage.defaults, network: PRNetwork(isOnline: true),
+                              draftDirectory: host.storage.draftDirectory)
+    }
+
     private let ref = PullRequestRef(repo: "acme/api", number: 7)
 
     @Test func aLinkToAPRsFilesOrChangesShowsItsDiff() {
@@ -142,7 +149,9 @@ struct PRNavigationTests {
 
     @Test func viewedFromTheKeyboardMarksTheFileOnTop() throws {
         let samples = PRSampleSet(samples: [], mergedReviewed: [], mergedMine: [], answersOnPhone: false)
-        let kit = PRKitController(host: PRKitControllerTests.Host(samples: samples))
+        let host = PRKitControllerTests.Host(samples: samples)
+        let kit = PRKitController(host: host, defaults: host.storage.defaults, network: PRNetwork(isOnline: true),
+                                  draftDirectory: host.storage.draftDirectory)
         let text = "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-x\n+y\n"
         let document = DiffDocument(data: Data(text.utf8))
         let detail = try PullRequestDetail.decode(FixtureContractTests.data("detail.json"))

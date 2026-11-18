@@ -1,6 +1,6 @@
 // The PR index's marks on real SQLite (`marks.ts`): a burst of deliveries for one PR or head is one read per window.
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
 import { prId, type RepoFullName } from "../../../src/ids.ts";
 import {
   BUSY_WINDOW_MS,
@@ -14,7 +14,9 @@ import {
   type Scope,
   throttledDue,
 } from "../../../src/marks.ts";
-import { memorySql } from "../../support/memory-sql.ts";
+import { closeMemorySql, memorySql } from "../../support/memory-sql.ts";
+
+afterEach(closeMemorySql);
 
 const repo = "acme/app" as RepoFullName;
 const pr = { id: prId(repo, 7), repo, number: 7 };

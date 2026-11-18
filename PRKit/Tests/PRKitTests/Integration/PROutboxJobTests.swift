@@ -24,6 +24,11 @@ struct PROutboxJobTests {
 
     @MainActor
     final class Host: PRKitHost {
+        let storage = TestStorage()
+        var mirrorDirectory: URL? {
+            storage.directory
+        }
+
         let access = PRViewerAccess.offline
         let configuration = PRKitConfiguration.everything
         let held = Outbox()
@@ -36,7 +41,7 @@ struct PROutboxJobTests {
         let launchOptions = PRKitLaunchOptions.none
         private(set) var events: [PRKitEvent] = []
 
-        let transport: any HTTPTransport = URLSessionTransport.background
+        let transport: any HTTPTransport = UnexpectedTransport()
         func log(_: String) {}
         func receive(_ event: PRKitEvent) {
             events.append(event)
@@ -52,23 +57,22 @@ struct PROutboxJobTests {
 
     private func kit(wait: Duration = .milliseconds(50), isOnline: Bool = true) -> (PRKitController, Host) {
         let host = Host()
-        let kit = PRKitController(host: host)
+        let kit = PRKitController(host: host, defaults: host.storage.defaults, network: PRNetwork(isOnline: true),
+                                  draftDirectory: host.storage.draftDirectory)
         kit.model.answerWait = wait
         kit.model.isOnline = { isOnline }
         return (kit, host)
     }
 
-    private func firstJob(_ host: Host) async -> String {
-        while host.held.jobs.isEmpty {
-            await Task.yield()
-        }
-        return host.held.jobs[0].id
+    private func firstJob(_ kit: PRKitController, _ host: Host) async throws -> String {
+        try await waitUntil("outbox job registered as waiting") { !kit.model.waiting.isEmpty }
+        return try #require(host.held.jobs.first?.id)
     }
 
     @Test func aWriteAnsweredInTimeIsPosted() async throws {
         let (kit, host) = kit(wait: .seconds(5))
         let sent = Task { try await kit.model.write(.comment(body: "Ship it."), to: ref) }
-        kit.outboxAnswered(id: await firstJob(host), data: Self.detail)
+        try kit.outboxAnswered(id: await firstJob(kit, host), data: Self.detail)
         let outcome = try await sent.value
         #expect(outcome.posted?.mergeState == "CLEAN")
         guard case .write(.comment("Ship it."), ref) = host.held.jobs[0].job else {
@@ -82,7 +86,7 @@ struct PROutboxJobTests {
         let merge = Task { try await kit.model.write(.merge(method: "squash", commit: "c"), to: ref) }
         await #expect(throws: (any Error).self) { try await merge.value }
         let approve = Task { try await kit.model.write(.review(.approve, body: "", commit: "c", comments: []), to: ref) }
-        kit.outboxAnswered(id: await firstJob(host), data: Self.detail)
+        try kit.outboxAnswered(id: await firstJob(kit, host), data: Self.detail)
         _ = try await approve.value
         #expect(host.events == [.wrote(.merge, .failed(.local)), .wrote(.approve, .done)])
     }
@@ -110,10 +114,10 @@ struct PROutboxJobTests {
         #expect(PRNotice.queued(noun: "Your review", .waitingForNetwork).words.contains("back online"))
     }
 
-    @Test func aRefusalInTimeIsThrownInGitHubsWords() async {
+    @Test func aRefusalInTimeIsThrownInGitHubsWords() async throws {
         let (kit, host) = kit(wait: .seconds(5))
         let sent = Task { try await kit.model.write(.comment(body: "Ship it."), to: ref) }
-        kit.outboxRefused(id: await firstJob(host), kind: .write, reason: "Pull request is locked")
+        try kit.outboxRefused(id: await firstJob(kit, host), kind: .write, reason: "Pull request is locked")
         await #expect(throws: PRWorkerError.refused("Pull request is locked")) { try await sent.value }
         #expect(kit.model.lateRefusal == nil)
         #expect(host.events == [.wrote(.comment, .failed(.refused))], "the screen shows it; the host hears how it went")
@@ -164,6 +168,31 @@ struct PROutboxJobTests {
             try await kit.model.write(.merge(method: "squash", commit: "c"), to: ref)
         }
         #expect(host.held.jobs.isEmpty)
+    }
+
+    @Test func cancellingAnOutboxWaitStopsWaitingAndKeepsTheQueuedJob() async throws {
+        let (kit, host) = kit(wait: .milliseconds(200))
+        let sent = Task { try await kit.model.write(.comment(body: "Ship it."), to: ref) }
+        _ = try await firstJob(kit, host)
+        sent.cancel()
+        await #expect(throws: CancellationError.self) { try await sent.value }
+        #expect(kit.model.waiting.isEmpty)
+        #expect(kit.model.queued["job-1"]?.kind == .write, "cancelling a screen does not discard the host's job")
+        #expect(host.events.isEmpty, "a cancelled wait reports no completed action")
+    }
+
+    @Test func anAnswerDeliveredBeforeCancellationStillCompletesTheWrite() async throws {
+        let (kit, host) = kit(wait: .seconds(5))
+        let sent = Task { try await kit.model.write(.comment(body: "Ship it."), to: ref) }
+        let id = try await firstJob(kit, host)
+        kit.outboxAnswered(id: id, data: Self.detail)
+        sent.cancel()
+        let outcome = try await sent.value
+        #expect(outcome.posted?.mergeState == "CLEAN")
+        #expect(kit.model.outcomes.isEmpty)
+        #expect(kit.model.queued.isEmpty)
+        #expect(kit.model.waiting.isEmpty)
+        #expect(host.events == [.wrote(.comment, .done)])
     }
 
     private static func thread() throws -> PullRequestDetail.Thread {

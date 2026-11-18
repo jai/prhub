@@ -75,9 +75,18 @@ final class PRsModel {
     /// How long a screen waits for GitHub's answer before the write carries on without it.
     var answerWait: Duration = .seconds(15)
     /// Whether the device has a network now (`PRNetwork`), which the host's offline banner shows too.
-    let network = PRNetwork()
+    let network: PRNetwork
     /// Whether the device has a network: what a question left in the outbox says while it waits. A test sets its own.
-    @ObservationIgnored var isOnline: @MainActor () -> Bool = { NetworkStatus.shared.isOnline }
+    @ObservationIgnored var isOnline: @MainActor () -> Bool
+    private let draftDirectory: URL?
+
+    var draftStore: PRDraftStore {
+        if let draftDirectory {
+            return PRDraftStore(directory: draftDirectory)
+        }
+        return PRDraftStore()
+    }
+
     let mirror: PRMirror
     /// Last good answers to the reads the mirror doesn't hold (the merged lists, each PR's Ask chat, key lines at
     /// other contexts, reviewed ticks), in the mirror's folder.
@@ -124,8 +133,10 @@ final class PRsModel {
     /// `directory`: where the mirror's files go, the app's caches unless a test gives its own.
     init(
         client: PRViewerClient, samples: PRSampleSet? = nil, directory: URL? = nil,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard, network: PRNetwork = PRNetwork(), draftDirectory: URL? = nil
     ) {
+        self.network = network
+        self.draftDirectory = draftDirectory
         self.defaults = defaults
         localAnswers = defaults.data(forKey: Self.answersKey)
             .flatMap { try? JSONDecoder().decode([String: PRLocalAnswer].self, from: $0) } ?? [:]

@@ -5,12 +5,16 @@ import Foundation
 /// repos and people are made up (`acme/*`, `octocat`); nothing is read from or sent to GitHub. A review or a comment
 /// stays on the phone, and says so.
 extension PRHubEnvironment {
-    public static func sample(usage: UsageAnalytics = .disabled(), defaults: UserDefaults = .standard) -> PRHubEnvironment {
+    public static func sample(
+        usage: UsageAnalytics = .disabled(), defaults: UserDefaults = .standard,
+        configurationDefaults: UserDefaults? = nil, storageDirectory: URL? = nil, network: PRNetwork? = nil
+    ) -> PRHubEnvironment {
         offline(
             config: DeviceConfig(features: [.keyLines], login: PRSampleSet.prHubLogin),
             samples: .prHub,
             worker: URL(string: "https://samples.prhub.invalid")!, defaultsSuite: "prhub-samples", isSample: true,
-            usage: usage, listDefaults: defaults
+            usage: usage, listDefaults: defaults, configurationDefaults: configurationDefaults,
+            storageDirectory: storageDirectory, network: network
         )
     }
 
@@ -20,19 +24,22 @@ extension PRHubEnvironment {
         config: DeviceConfig, access: PRViewerAccess = .offline, samples: PRSampleSet? = nil, worker: URL,
         defaultsSuite: String, isSample: Bool, usage: UsageAnalytics = .disabled(), outbox: (any PRKitOutbox)? = nil,
         checksUpdates: Bool = false, testFlightGroup: TestFlightGroup = .public, transport: (any HTTPTransport)? = nil,
-        listDefaults: UserDefaults = .standard
+        listDefaults: UserDefaults = .standard, configurationDefaults: UserDefaults? = nil,
+        storageDirectory: URL? = nil, network: PRNetwork? = nil
     ) -> PRHubEnvironment {
-        let defaults = UserDefaults(suiteName: defaultsSuite) ?? .standard
+        let defaults = configurationDefaults ?? UserDefaults(suiteName: defaultsSuite) ?? .standard
         defaults.set(try? JSONEncoder().encode(config), forKey: WorkerConnection.configKey)
         let connection = WorkerConnection(
             endpoint: WorkerEndpoint(fixed: worker),
             pairing: DevicePairing(pair: { _, _ in throw URLError(.badURL) }, save: { _ in }),
-            fetchConfig: { _ in config }, forgetSecret: {}, defaults: defaults
+            fetchConfig: { _ in config }, forgetSecret: {}, defaults: defaults,
+            usage: UsageAnalytics(hasProject: false, sink: nil, defaults: defaults)
         )
         return PRHubEnvironment(
             connection: connection, access: access, samples: samples, isSample: isSample, usage: usage, outbox: outbox,
             update: PRHubUpdate(group: testFlightGroup, defaults: defaults, isEnabled: checksUpdates, usage: usage),
-            transport: transport, defaults: listDefaults
+            transport: transport, defaults: listDefaults, sampleDefaults: configurationDefaults,
+            storageDirectory: storageDirectory, network: network
         )
     }
 }

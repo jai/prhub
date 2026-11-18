@@ -16,32 +16,48 @@ final class PRHubOutbox: PRKitOutbox {
     private var items: [OutboxItem] = []
     private var revision = -1
     private var watcher: PathWatcher?
+    private var starting: Task<Void, Never>?
+    private let now: @Sendable () -> Date
     // The outbox's hooks capture self, so it is made last in init; it is never nil after init returns.
     // swiftlint:disable:next implicitly_unwrapped_optional
     private var outbox: Outbox!
 
     /// `send` makes one try; the outbox does the waiting and the trying again. `file` nil keeps it in memory.
-    init(client: PRViewerClient, file: URL? = PRHubOutbox.file, send: (any HTTPTransport)? = nil) {
+    init(
+        client: PRViewerClient, file: URL? = PRHubOutbox.file, send: (any HTTPTransport)? = nil,
+        backoff: OutboxBackoff = OutboxBackoff(), now: @escaping @Sendable () -> Date = { Date() },
+        sleep: (@Sendable (Duration) async throws -> Void)? = nil,
+        changed: @escaping @Sendable () async -> Void = {}
+    ) {
+        self.now = now
         let transport = send ?? AppNetwork.oneTry
         var hooks = Outbox.Hooks()
-        hooks.changed = { [weak self] in await self?.refresh() }
+        hooks.changed = { [weak self] in
+            await self?.refresh()
+            await changed()
+        }
         hooks.accepted = { [weak self] item, data in await self?.accepted(item, data) }
         hooks.rejected = { [weak self] item, reason in await self?.rejected(item, reason) }
-        outbox = Outbox(file: file, hooks: hooks) { item in
+        outbox = Outbox(file: file, backoff: backoff, hooks: hooks, now: now, sleep: sleep) { item in
             await Self.attempt(item, client: client, transport: transport)
         }
     }
 
     /// Sends what an earlier launch left, and again each time a network comes back. Before this nothing goes out.
-    func start() {
-        guard watcher == nil else {
-            return
+    @discardableResult
+    func start(watchingNetwork: Bool = true) -> Task<Void, Never> {
+        if let starting {
+            return starting
         }
-        watcher = PathWatcher(returned: { [weak self] in Task { await self?.outbox.kick() } })
-        Task {
+        if watchingNetwork {
+            watcher = PathWatcher(returned: { [weak self] in Task { await self?.outbox.kick() } })
+        }
+        let task = Task {
             await outbox.start()
             await refresh()
         }
+        starting = task
+        return task
     }
 
     func enqueue(_ job: PROutboxJob) async throws -> String {
@@ -55,7 +71,7 @@ final class PRHubOutbox: PRKitOutbox {
         fields["client_ref"] = id
         let item = try OutboxItem(
             id: id, lane: Self.lane(ref), path: "prs/\(ref.repo)/\(ref.number)/\(route)",
-            body: JSONSerialization.data(withJSONObject: fields, options: .sortedKeys), createdAt: .now
+            body: JSONSerialization.data(withJSONObject: fields, options: .sortedKeys), createdAt: now()
         )
         try await outbox.enqueue(item)
         await refresh()

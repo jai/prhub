@@ -1,8 +1,7 @@
 // The push gate on real SQLite: an alert goes once its PR's files are stored at its head, or after the bounded wait.
 import assert from "node:assert/strict";
-import test from "node:test";
+import { afterEach, test } from "node:test";
 import type { PrAlert } from "../../../src/alerts.ts";
-import { alertMessage } from "../../../src/alerts.ts";
 import type { RepoFullName } from "../../../src/ids.ts";
 import {
   ALERT_HOLD_MAX_MS,
@@ -11,7 +10,9 @@ import {
   holdAlert,
   releaseAlerts,
 } from "../../../src/push-gate.ts";
-import { memorySql } from "../../support/memory-sql.ts";
+import { closeMemorySql, memorySql } from "../../support/memory-sql.ts";
+
+afterEach(closeMemorySql);
 
 const HEAD = "a".repeat(40);
 const NOW = Date.parse("2026-11-08T07:00:00Z");
@@ -102,24 +103,4 @@ test("holding the same alert twice keeps the first wait", () => {
   holdAlert(sql, "review_requested:acme/api#7@a", alert, NOW + 5_000);
   setRow({ diff_state: "ready" });
   assert.equal(releaseAlerts(sql, NOW + 6_000, noKeyLines).release[0]?.heldMs, 6_000);
-});
-
-test("an alert carries its row for the phone's prefetch, and leaves it out when it would not fit", () => {
-  const row = {
-    repo: "acme/api",
-    number: 7,
-    title: "Add retries",
-    head: HEAD,
-    revision: `${HEAD}-main`,
-    diff: "ready",
-    detail: "2026-11-08T07:00:00Z.SUCCESS.0123456789abcdef",
-    status: null,
-    keyLines: null,
-  };
-  const message = alertMessage(alert, row);
-  assert.deepEqual(message.payload.row, row);
-  assert.equal((message.payload.aps as Record<string, unknown>)["mutable-content"], 1);
-  const huge = alertMessage(alert, { ...row, title: "x".repeat(5_000) });
-  assert.equal(huge.payload.row, undefined);
-  assert.ok(new TextEncoder().encode(JSON.stringify(huge.payload)).length <= 4096);
 });

@@ -69,19 +69,20 @@ extension PRSession {
     }
 
     /// Ticks it here at once. A refusal takes the tick back and says why; a Worker without the route keeps it here.
-    func setReviewed(_ isReviewed: Bool, _ item: PRKeyLines.Item) {
+    @discardableResult
+    func setReviewed(_ isReviewed: Bool, _ item: PRKeyLines.Item) -> Task<Void, Never>? {
         guard let head = content?.detail.head else {
-            return
+            return nil
         }
         keyLineMarks += 1
         notice = nil
         withAnimation(AppMotion.fold) { mark(item, isReviewed, at: head) }
         guard model.samples == nil else {
-            return
+            return nil
         }
         let marks = keyLineMarks
         let body = PRKeyLineMark(head: head, line: item.id, reviewed: isReviewed)
-        Task {
+        return Task {
             do {
                 let answer = try await model.client.send(reviewedPath, body, as: PRReviewedKeyLines.self)
                 if marks == keyLineMarks, answer.head == content?.detail.head {

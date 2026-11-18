@@ -8,11 +8,11 @@
 #   make test-unit-ios            swift test on PRHubUnitTests
 #   make test-unit-prkit          swift test on PRKitUnitTests
 #   make test-ui-ios              the UI test plan (SIM_NAME picks the Simulator: iPhone 17 by default)
-#   make test-unit-worker         the Worker unit tests
+#   make test-unit-worker         Worker and agent unit tests
 #   make test-integration-ios     app persistence and Keychain tests
 #   make test-integration-prkit   PRKit persistence and contract tests
 #   make test-ui-prkit            native Mac rendering tests
-#   make test-integration-worker  Worker storage/runtime tests and agent/ tests
+#   make test-integration-worker  Worker storage/runtime and agent integration tests
 #   make lint                     all lint targets
 #   make all-tests                all test targets
 #
@@ -89,12 +89,14 @@ test-ui-ios:
 test-unit-worker:
 	npm --prefix worker ci --no-audit --no-fund
 	npm --prefix worker run test:unit
+	npm --prefix agent ci --no-audit --no-fund
+	npm --prefix agent run test:unit
 
 test-integration-worker:
 	npm --prefix worker ci --no-audit --no-fund
 	npm --prefix worker run test:integration
 	npm --prefix agent ci --no-audit --no-fund
-	npm --prefix agent test
+	npm --prefix agent run test:integration
 
 lint: lint-ios lint-prkit lint-worker lint-workflows
 

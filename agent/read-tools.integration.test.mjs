@@ -5,121 +5,37 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import test from "node:test";
+import { beforeEach, test } from "node:test";
+import { WRITERS } from "./test-fixtures/git-arguments.mjs";
 import {
   LINEAR_ACTS,
+  gitEnv,
   readOnlyHooks,
   readToolNames,
   readTools,
   runGit,
-  vetApiPath,
-  vetGit,
-  vetRepo,
-  vetRef,
 } from "./read-tools.mjs";
 
-// Inside a git hook (the pre-push hook runs these tests) GIT_DIR and its kin point at this repo: a test repo ignores them.
-const gitFree = Object.fromEntries(
-  Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")),
-);
+// Setup Git with the same isolated environment as the tool, independent of the operator's config.
+const gitFree = gitEnv();
 
-test("git reads pass", () => {
-  for (const args of [
-    ["log", "--oneline", "-20"],
-    ["show", "HEAD:src/a.ts"],
-    ["diff", "main..HEAD", "--", "src"],
-    ["grep", "-n", "retry"],
-    ["blame", "-L", "10,20", "src/a.ts"],
-    ["for-each-ref", "--contains", "abc123", "refs/tags"],
-    ["describe", "--tags"],
-    ["grep", "--count", "x"],
-    ["grep", "-n", "-e", "retry", "--", "src"],
-    ["log", "--pretty", "-1"],
-    ["log", "--pretty=%H"],
-    ["diff", "--abbrev", "--stat"],
-    ["diff", "-U5"],
-    ["log", "-n", "5"],
-    ["ls-tree", "--abbrev=8", "HEAD"],
-    ["log", "-S", "retry", "-5"],
-    ["log", "--format=%H %s"],
-    ["blame", "-L", "1,5", "--", "a.txt"],
-    ["for-each-ref", "--contains", "HEAD", "--format=%(refname)"],
-  ]) {
-    assert.equal(vetGit(args), null, args.join(" "));
-  }
-});
+function temporaryRoot(t) {
+  const root = mkdtempSync(`${tmpdir()}/ask-`);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  return root;
+}
 
-test("git writes, pushes, programs and outside paths are denied", () => {
-  for (const args of [
-    ["push", "origin", "main"],
-    ["commit", "-m", "x"],
-    ["fetch", "origin"],
-    ["checkout", "main"],
-    ["config", "a.b", "c"],
-    ["tag", "v9"],
-    ["branch", "-D", "main"],
-    ["-c", "core.pager=sh", "log"],
-    ["--git-dir=/tmp", "log"],
-    ["log", "--output=/tmp/x"],
-    ["log", "--outp=/tmp/x"],
-    ["diff", "--no-index", "a", "b"],
-    ["diff", "/proc/self/environ", "/dev/null"],
-    ["show", "../../etc/passwd"],
-    ["grep", "-O", "sh", "x"],
-    ["grep", "-nf", "/etc/passwd"],
-    ["blame", "--contents", "x", "a"],
-    ["diff", "--ext-diff"],
-    [],
-    "log",
-    // The review's exploits: blame reads its -S and --ignore-revs-file and echoes them as "bad graft data".
-    ["blame", "-S", "/proc/self/environ", "a"],
-    ["blame", "-Sx", "a"],
-    ["blame", "-S", "link", "--", "f"],
-    ["blame", "--ignore-revs-file=x", "a"],
-    ["blame", "--ignore-revs-f=x", "a"],
-    ["blame", "--ignore-revs-file", "x", "a"],
-    // Any option off the list, and every abbreviation of one on it.
-    ["log", "--output-indicator-new=+"],
-    ["log", "--onelin"],
-    ["log", "--textconv"],
-    ["cat-file", "--batch"],
-    ["grep", "--no-index", "x"],
-    ["log", "--grep"],
-  ]) {
-    assert.notEqual(vetGit(args), null, JSON.stringify(args));
-  }
-});
-
-test("only GETs of api.github.com paths", () => {
-  assert.equal(vetApiPath("/repos/acme/api/pulls/1/reviews?per_page=100"), null);
-  assert.equal(vetApiPath("/repos/acme/actions/releases/latest"), null);
-  for (const path of [
-    "https://evil.example/x",
-    "//evil.example/x",
-    "/repos/../user",
-    "/x@evil",
-    "repos/a/b",
-    "/a b",
-  ]) {
-    assert.notEqual(vetApiPath(path), null, path);
-  }
-});
-
-test("repos and refs are named, never paths", () => {
-  assert.equal(vetRepo("acme/actions"), null);
-  assert.equal(vetRef("v1.2.3"), null);
-  assert.equal(vetRef(undefined), null);
-  for (const repo of ["acme", "../x/y", "acme/..", "acme/a/b", "-x/y"]) {
-    assert.notEqual(vetRepo(repo), null, repo);
-  }
-  for (const ref of ["--upload-pack=sh", "a..b", "a b"]) {
-    assert.notEqual(vetRef(ref), null, ref);
-  }
+beforeEach((t) => {
+  const send = t.mock.method(globalThis, "fetch", async () => {
+    throw new Error("Unexpected outbound request in an agent test");
+  });
+  t.after(() => assert.equal(send.mock.callCount(), 0, "no unstubbed network request"));
 });
 
 async function decide(hooks, tool_name, tool_input) {
@@ -127,8 +43,8 @@ async function decide(hooks, tool_name, tool_input) {
   return output.hookSpecificOutput?.permissionDecision ?? "allow";
 }
 
-test("the hook allows reads in the checkout and the clones, and denies everything else", async () => {
-  const root = mkdtempSync(`${tmpdir()}/ask-`);
+test("the hook allows reads in the checkout and the clones, and denies everything else", async (t) => {
+  const root = temporaryRoot(t);
   const cwd = `${root}/acme/api/7`;
   const clones = `${root}/.clones`;
   mkdirSync(cwd, { recursive: true });
@@ -183,8 +99,8 @@ test("the hook allows reads in the checkout and the clones, and denies everythin
   );
 });
 
-test("the git tool runs a read in the checkout, refuses a write itself, and keeps no token in what it says", async () => {
-  const root = mkdtempSync(`${tmpdir()}/ask-`);
+test("the git tool runs a read in the checkout, refuses a write itself, and keeps no token in what it says", async (t) => {
+  const root = temporaryRoot(t);
   const cwd = `${root}/acme/api/7`;
   mkdirSync(cwd, { recursive: true });
   const run = (...args) => execFileSync("git", ["-C", cwd, ...args], { env: gitFree });
@@ -258,8 +174,8 @@ test("a repo the token can't reach answers that the reviewer can't access it", a
 });
 
 /** A scope with the PR's checkout, a committed file and a committed symlink out, and the git tool on it. */
-function scopeWithLink() {
-  const root = mkdtempSync(`${tmpdir()}/ask-`);
+function scopeWithLink(t) {
+  const root = temporaryRoot(t);
   const cwd = `${root}/acme/api/7`;
   mkdirSync(cwd, { recursive: true });
   const run = (...args) => execFileSync("git", ["-C", cwd, ...args], { env: gitFree });
@@ -281,8 +197,8 @@ function scopeWithLink() {
   return { root, cwd, call: (args, repo) => (git.handler ?? git.callback)({ args, repo }, {}) };
 }
 
-test("blame's file options and a committed symlink out of the repo are refused before git runs", async () => {
-  const { call } = scopeWithLink();
+test("blame's file options and a committed symlink out of the repo are refused before git runs", async (t) => {
+  const { call } = scopeWithLink(t);
   for (const args of [
     ["blame", "-S", "link", "--", "a.txt"],
     ["blame", "--ignore-revs-file=link", "a.txt"],
@@ -299,19 +215,14 @@ test("blame's file options and a committed symlink out of the repo are refused b
   assert.equal(fine.isError, false);
 });
 
-test("git has an empty stdin, so a command that would read it ends at once", async () => {
-  const { cwd } = scopeWithLink();
-  const started = Date.now();
+test("git has an empty stdin, so a command that would read it ends at once", async (t) => {
+  const { cwd } = scopeWithLink(t);
   const answer = await runGit(cwd, ["shortlog"], null, 10_000);
-  assert.ok(
-    Date.now() - started < 5_000,
-    "shortlog with no revision reads stdin; it must not wait for it",
-  );
   assert.equal(answer.ok, true);
 });
 
-test("hosted, a clone outside this question's grant can't be read, gitted or made", async () => {
-  const root = mkdtempSync(`${tmpdir()}/ask-`);
+test("hosted, a clone outside this question's grant can't be read, gitted or made", async (t) => {
+  const root = temporaryRoot(t);
   const cwd = `${root}/acme/api/7`;
   const clones = `${root}/.clones`;
   mkdirSync(cwd, { recursive: true });
@@ -357,8 +268,8 @@ test("hosted, a clone outside this question's grant can't be read, gitted or mad
   assert.match(cloneOld.content[0].text, /can't access acme\/old/);
 });
 
-test("tool output never carries the subscription token either", async () => {
-  const { cwd, call } = scopeWithLink();
+test("tool output never carries the subscription token either", async (t) => {
+  const { cwd, call } = scopeWithLink(t);
   const saved = process.env.CLAUDE_CODE_OAUTH_TOKEN;
   process.env.CLAUDE_CODE_OAUTH_TOKEN = "sk-subscription-value";
   try {
@@ -375,42 +286,8 @@ test("tool output never carries the subscription token either", async () => {
   }
 });
 
-/** The re-review's exploits: an optional-value option took the next argument, `--output`, as its value. */
-const WRITERS = [
-  ["log", "--pretty", "--output=.git/config", "-1", '--format=[core]%n fsmonitor = "touch pwned"'],
-  ["diff", "--abbrev", "--output=x"],
-  ["diff", "-U", "--output=x"],
-  ["log", "--abbrev", "--output", "x"],
-  ["show", "--decorate", "--output=x"],
-  ["log", "-n", "--output=x"],
-  ["grep", "-e", "--output=x", "a"],
-  ["for-each-ref", "--contains", "--output=x"],
-  ["log", "-o", "x"],
-  ["log", "--outp=x"],
-  ["log", "-c", "core.pager=sh"],
-  ["log", "--git-dir=x"],
-  ["log", "--work-tree=x"],
-  ["log", "--namespace=x"],
-  ["log", "--exec=x"],
-  ["log", "--config=x"],
-  ["log", "--upload-pack=x"],
-  ["diff", "--ext-diff"],
-  ["diff", "--textconv"],
-  ["grep", "-O", "x"],
-  ["grep", "-Ox", "y"],
-  ["grep", "--open-files-in-pager", "x"],
-  ["diff", "-U"],
-  ["log", "--pretty", "-1", "--", "--output=x"],
-];
-
-test("no spelling of a writer or runner passes, wherever it appears", () => {
-  for (const args of WRITERS) {
-    assert.notEqual(vetGit(args), null, JSON.stringify(args));
-  }
-});
-
-test("the exploits change no .git/config, and no allowed command does", async () => {
-  const { cwd, call } = scopeWithLink();
+test("the exploits change no .git/config, and no allowed command does", async (t) => {
+  const { cwd, call } = scopeWithLink(t);
   const config = `${cwd}/.git/config`;
   const before = readFileSync(config, "utf8");
   for (const args of WRITERS) {
@@ -443,8 +320,8 @@ test("the exploits change no .git/config, and no allowed command does", async ()
   }
 });
 
-test("a repo config that names a program runs nothing: every git call overrides it", async () => {
-  const { cwd, call } = scopeWithLink();
+test("a repo config that names a program runs nothing: every git call overrides it", async (t) => {
+  const { cwd, call } = scopeWithLink(t);
   const marker = `${cwd}/../ran`;
   writeFileSync(
     `${cwd}/.git/config`,
@@ -458,9 +335,17 @@ test("a repo config that names a program runs nothing: every git call overrides 
   );
   writeFileSync(`${cwd}/a.txt`, "changed\n");
   for (const args of [["diff"], ["log", "-p", "-1"], ["show"], ["grep", "x"]]) {
-    await call(args);
+    const answer = await call(args);
+    // grep exits 1 when no match exists; all other reads must actually succeed.
+    if (args[0] !== "grep") {
+      assert.equal(answer.isError, false, answer.content[0].text);
+    }
   }
-  assert.throws(() => statSync(marker), "no program from the repo's config ran");
+  assert.throws(
+    () => statSync(marker),
+    { code: "ENOENT" },
+    "no program from the repo's config ran",
+  );
 });
 
 test("draft_review keeps the draft for the Worker, posts nothing, and the hook lets it through", async () => {

@@ -12,10 +12,17 @@ public final class PRKitController {
     let navigation = PRNavigation()
     @ObservationIgnored let launchOptions: PRKitLaunchOptions
 
-    public init(host: some PRKitHost, defaults: UserDefaults = .standard) {
+    /// A supplied network is controlled by its owner; otherwise the system path is watched.
+    /// Drafts remain in Application Support unless an explicit directory is supplied.
+    public init(
+        host: some PRKitHost, defaults: UserDefaults = .standard, network: PRNetwork? = nil, draftDirectory: URL? = nil
+    ) {
         let client = PRViewerClient(access: host.access, transport: host.transport)
             .reporting { area, failure in Task { @MainActor in host.receive(.requestFailed(area, failure)) } }
-        model = PRsModel(client: client, samples: host.samples, directory: host.mirrorDirectory, defaults: defaults)
+        model = PRsModel(
+            client: client, samples: host.samples, directory: host.mirrorDirectory, defaults: defaults,
+            network: network ?? PRNetwork(), draftDirectory: draftDirectory
+        )
         launchOptions = host.launchOptions
         model.outboxSource = { host.outbox }
         model.apnsEnvironment = host.apnsEnvironment
@@ -23,7 +30,9 @@ public final class PRKitController {
         model.onEvent = { host.receive($0) }
         model.onEmptyHintLink = { host.opensEmptyHintLink($0) }
         model.logFailures { line in Task { @MainActor in host.log(line) } }
-        model.network.watch()
+        if network == nil {
+            model.network.watch()
+        }
     }
 
     /// For a test: a model made by hand.

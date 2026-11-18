@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
 import { createAskTables, queueAsk } from "../../../src/ask-queue.ts";
 import {
   readCarriedAskState,
@@ -9,7 +9,9 @@ import {
 } from "../../../src/carry.ts";
 import type { PrId, Sha } from "../../../src/ids.ts";
 import { createReviewedKeyLinesTable, markKeyLine } from "../../../src/reviewed-key-lines.ts";
-import { memorySql } from "../../support/memory-sql.ts";
+import { closeMemorySql, memorySql } from "../../support/memory-sql.ts";
+
+afterEach(closeMemorySql);
 
 const PR = "acme/api#7" as PrId;
 const HEAD = "a".repeat(40) as Sha;

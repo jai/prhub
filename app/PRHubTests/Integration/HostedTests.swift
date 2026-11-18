@@ -7,12 +7,15 @@ private let worker = URL(string: "https://prhub.example.workers.dev")!
 
 /// `GET /device/config` on the hosted Worker, the session secret in the Keychain, and the build's flags.
 struct HostedConfigTests {
+    private let resources = IntegrationResources()
     @Test func theSessionSecretIsKeptWhereTheDeviceSecretIs() throws {
         let store = DeviceSecretStore(
             service: "com.jaigovindani.prreview.tests", account: "session-\(UUID().uuidString)",
             isProtectedDataAvailable: { true }
         )
-        defer { try? store.delete() }
+        defer {
+            do { try store.delete() } catch { Issue.record(error, "could not remove test session secret") }
+        }
         try store.save("4242.first")
         #expect(try store.load() == "4242.first")
         try store.save("4242.second")
@@ -33,7 +36,9 @@ struct HostedConfigTests {
 /// `WorkerConnection` on the hosted Worker: sign-in to the first config, signed out, a forgotten session, Sign out,
 /// Delete Account, the key, and setup links in a build without self-hosting.
 @MainActor
+@Suite(.timeLimit(.minutes(1)))
 struct HostedConnectionTests {
+    private let resources = IntegrationResources()
     private static let build = PRHubBuild(hostedURL: worker, signInWithGitHub: true, selfHosted: false, samples: true)
 
     final class Fake: Sendable {
@@ -48,6 +53,8 @@ struct HostedConnectionTests {
         let configReads = Shared<[Bool]>([])
         /// While true, a config read waits before it answers.
         let holdsConfig = Shared(false)
+        let configStarted = AsyncStream<Void>.makeStream()
+        let configRelease = AsyncStream<Void>.makeStream()
         let signInResult = Shared(SignInResult(secret: "4242.new", login: "octocat", userId: "4242"))
         let signInError = Shared<SignInError?>(nil)
         let actionError = Shared<AccountClient.Failure?>(nil)
@@ -65,13 +72,10 @@ struct HostedConnectionTests {
         }
     }
 
-    private static func connection(
-        _ fake: Fake, paired: Bool = false, usage: UsageAnalytics = .disabled()
+    private func makeConnection(
+        _ fake: Fake, paired: Bool = false, usage: UsageAnalytics? = nil
     ) throws -> WorkerConnection {
-        let endpoint = WorkerEndpoint(store: WorkerURLStore(
-            service: "com.jaigovindani.prreview.tests", account: "hosted-url-\(UUID().uuidString)"
-        ))
-        try endpoint.clear()
+        let endpoint = try resources.endpoint()
         if paired {
             try endpoint.save(worker)
             fake.secret.with { $0 = "4242.old" }
@@ -107,8 +111,11 @@ struct HostedConnectionTests {
             }, save: { _ in }),
             fetchConfig: { fresh in
                 fake.configReads.with { $0.append(fresh) }
-                while fake.holdsConfig.with({ $0 }) {
-                    try await Task.sleep(for: .milliseconds(5))
+                if fake.holdsConfig.with({ $0 }) {
+                    fake.configStarted.continuation.yield(())
+                    for await _ in fake.configRelease.stream {
+                        break
+                    }
                 }
                 if let error = fake.configError.with({ $0 }) {
                     throw error
@@ -116,14 +123,14 @@ struct HostedConnectionTests {
                 return fake.config.with { $0 }
             },
             forgetSecret: { fake.secret.with { $0 = nil } },
-            defaults: UserDefaults(suiteName: "prhub-hosted-\(UUID().uuidString)")!,
-            build: build, usage: usage, hosted: hosted
+            defaults: resources.defaults(),
+            build: Self.build, usage: usage ?? resources.usage(), hosted: hosted
         )
     }
 
     @Test func aSignInKeepsTheSessionAndReadsTheConfigBeforeTheListShows() async throws {
         let fake = Fake()
-        let connection = try Self.connection(fake)
+        let connection = try makeConnection(fake)
         #expect(connection.showsOnboarding && !connection.isHosted)
         let outcome = await connection.signIn()
         #expect(outcome == .samePerson)
@@ -136,7 +143,7 @@ struct HostedConnectionTests {
 
     @Test func backFromGitHubsInstallPagesTheConfigIsReadFreshOnceWhileItSaysChecking() async throws {
         let fake = Fake()
-        let connection = try Self.connection(fake, paired: true)
+        let connection = try makeConnection(fake, paired: true)
         await connection.refreshConfig()
         try connection.leavesForGitHub(#require(URL(string: "https://github.com/acme/api/pull/7")))
         await connection.refreshConfig()
@@ -145,11 +152,17 @@ struct HostedConnectionTests {
         connection.leavesForGitHub(PRHubBuild.appInstallURL)
         fake.holdsConfig.with { $0 = true }
         let reading = Task { await connection.refreshConfig() }
-        while fake.configReads.with({ $0.count }) < 3 {
-            await Task.yield()
+        defer {
+            reading.cancel()
+            fake.configStarted.continuation.finish()
+            fake.configRelease.continuation.finish()
+        }
+        for await _ in fake.configStarted.stream {
+            break
         }
         #expect(connection.isCheckingInstallations, "Checking GitHub while the Worker reads")
         fake.holdsConfig.with { $0 = false }
+        fake.configRelease.continuation.yield(())
         await reading.value
         #expect(fake.configReads.with { $0 } == [false, false, true])
         #expect(!connection.isCheckingInstallations)
@@ -159,7 +172,7 @@ struct HostedConnectionTests {
 
     @Test func aFailedOrCancelledSignInKeepsNothing() async throws {
         let fake = Fake()
-        let connection = try Self.connection(fake)
+        let connection = try makeConnection(fake)
         fake.signInError.with { $0 = .denied }
         #expect(await connection.signIn() == nil)
         #expect(connection.phase == .signInFailed(.denied))
@@ -172,7 +185,7 @@ struct HostedConnectionTests {
     @Test func aSignInIsRecordedFromStartToEnd() async throws {
         let fake = Fake()
         let sink = AnalyticsTests.RecordingAnalytics()
-        let connection = try Self.connection(fake, usage: AnalyticsTests.usage(sink))
+        let connection = try makeConnection(fake, usage: resources.usage(sink))
         fake.signInError.with { $0 = .server(status: 502) }
         _ = await connection.signIn()
         fake.signInError.with { $0 = nil }
@@ -185,7 +198,7 @@ struct HostedConnectionTests {
 
     @Test func signInAgainIsNotAnOnboardingPath() async throws {
         let sink = AnalyticsTests.RecordingAnalytics()
-        let connection = try Self.connection(Fake(), paired: true, usage: AnalyticsTests.usage(sink))
+        let connection = try makeConnection(Fake(), paired: true, usage: resources.usage(sink))
         _ = await connection.signIn()
         #expect(sink.events == [.signInStarted(.signInAgain), .signInSucceeded])
     }
@@ -193,11 +206,13 @@ struct HostedConnectionTests {
     @Test func theKeyAndTheAccountAreRecordedOnceTheWorkerHasThem() async throws {
         let fake = Fake()
         let sink = AnalyticsTests.RecordingAnalytics()
-        let connection = try Self.connection(fake, paired: true, usage: AnalyticsTests.usage(sink))
+        let connection = try makeConnection(fake, paired: true, usage: resources.usage(sink))
         try await connection.setAnthropicKey("key-0123456789abcdefghij")
         try await connection.removeAnthropicKey()
         fake.actionError.with { $0 = .server("anthropic_key_invalid", 422) }
-        _ = try? await connection.setAnthropicKey("bad-key-012345678901")
+        await #expect(throws: AccountActionError.keyRefused) {
+            try await connection.setAnthropicKey("bad-key-012345678901")
+        }
         fake.actionError.with { $0 = nil }
         try await connection.deleteAccount()
         #expect(sink.events == [
@@ -209,12 +224,12 @@ struct HostedConnectionTests {
     @Test func linearsConnectionAndEachRefusalAreRecorded() async throws {
         let fake = Fake()
         let sink = AnalyticsTests.RecordingAnalytics()
-        let connection = try Self.connection(fake, paired: true, usage: AnalyticsTests.usage(sink))
+        let connection = try makeConnection(fake, paired: true, usage: resources.usage(sink))
         fake.actionError.with { $0 = .server("linear_key_invalid", 422) }
-        _ = try? await connection.setLinearKey("lin_api_bad")
+        await #expect(throws: AccountActionError.linearKeyRefused) { try await connection.setLinearKey("lin_api_bad") }
         fake.actionError.with { $0 = .transport }
-        _ = try? await connection.setLinearKey("lin_api_bad")
-        _ = try? await connection.deleteAccount()
+        await #expect(throws: AccountActionError.unreachable) { try await connection.setLinearKey("lin_api_bad") }
+        await #expect(throws: AccountActionError.unreachable) { try await connection.deleteAccount() }
         fake.actionError.with { $0 = nil }
         try await connection.setLinearKey("lin_api_0123456789")
         try await connection.removeLinearKey()
@@ -227,7 +242,7 @@ struct HostedConnectionTests {
     @Test func signedOutByGitHubShowsSignInAgainAndSigningInEndsTheOldSession() async throws {
         let fake = Fake()
         fake.config.with { $0.account = .init(state: .signedOut, login: "octocat", userId: "4242", reason: "revoked") }
-        let connection = try Self.connection(fake, paired: true)
+        let connection = try makeConnection(fake, paired: true)
         await connection.refreshConfig()
         #expect(connection.needsSignInAgain)
         fake.config.with { $0.account = .init(state: .signedIn, login: "octocat", userId: "4242") }
@@ -239,7 +254,7 @@ struct HostedConnectionTests {
 
     @Test func anotherAccountIsANewPerson() async throws {
         let fake = Fake()
-        let connection = try Self.connection(fake, paired: true)
+        let connection = try makeConnection(fake, paired: true)
         await connection.refreshConfig()
         fake.signInResult.with { $0 = SignInResult(secret: "77.new", login: "hubot", userId: "77") }
         #expect(await connection.signIn() == .newPerson)
@@ -247,7 +262,7 @@ struct HostedConnectionTests {
 
     @Test func theSignedOutPushShowsSignInAgainAtOnce() async throws {
         let fake = Fake()
-        let connection = try Self.connection(fake, paired: true)
+        let connection = try makeConnection(fake, paired: true)
         await connection.refreshConfig()
         // The Worker cannot be asked: the push alone decides.
         fake.configError.with { $0 = .transport }
@@ -258,7 +273,7 @@ struct HostedConnectionTests {
     @Test func a401SignedOutShowsSignInAgain() async throws {
         let fake = Fake()
         let sink = AnalyticsTests.RecordingAnalytics()
-        let connection = try Self.connection(fake, paired: true, usage: AnalyticsTests.usage(sink))
+        let connection = try makeConnection(fake, paired: true, usage: resources.usage(sink))
         await connection.refreshConfig()
         fake.configError.with { $0 = .server("signed_out", 401) }
         await connection.checkSession()
@@ -269,7 +284,7 @@ struct HostedConnectionTests {
     @Test func aSessionTheWorkerForgotIsForgottenHere() async throws {
         let fake = Fake()
         let sink = AnalyticsTests.RecordingAnalytics()
-        let connection = try Self.connection(fake, paired: true, usage: AnalyticsTests.usage(sink))
+        let connection = try makeConnection(fake, paired: true, usage: resources.usage(sink))
         await connection.refreshConfig()
         fake.configError.with { $0 = .server("unauthorized", 401) }
         await connection.checkSession()
@@ -280,7 +295,7 @@ struct HostedConnectionTests {
 
     @Test func signOutEndsTheSessionAndForgetsIt() async throws {
         let fake = Fake()
-        let connection = try Self.connection(fake, paired: true)
+        let connection = try makeConnection(fake, paired: true)
         await connection.refreshConfig()
         await connection.signOut()
         #expect(fake.calls.with { $0 } == ["signOut 4242.old"])
@@ -289,7 +304,7 @@ struct HostedConnectionTests {
 
     @Test func deleteAccountForgetsEverythingOnceTheWorkerHasDeleted() async throws {
         let fake = Fake()
-        let connection = try Self.connection(fake, paired: true)
+        let connection = try makeConnection(fake, paired: true)
         await connection.refreshConfig()
         fake.actionError.with { $0 = .transport }
         await #expect(throws: AccountActionError.unreachable) { try await connection.deleteAccount() }
@@ -302,7 +317,7 @@ struct HostedConnectionTests {
 
     @Test func theKeyIsSetAndRemovedAndTheConfigSaysSo() async throws {
         let fake = Fake()
-        let connection = try Self.connection(fake, paired: true)
+        let connection = try makeConnection(fake, paired: true)
         await connection.refreshConfig()
         try await connection.setAnthropicKey("key-0123456789abcdefghij")
         #expect(connection.config?.account?.anthropicKey == true)
@@ -313,7 +328,7 @@ struct HostedConnectionTests {
     }
 
     @Test func aSetupLinkInABuildWithoutSelfHostingSaysSo() async throws {
-        let connection = try Self.connection(Fake())
+        let connection = try makeConnection(Fake())
         try connection.open(#require(URL(string: "prhub://setup?worker=https%3A%2F%2Fpr-review.alex.workers.dev&code=7KQ2M9XA")))
         #expect(connection.phase == .selfHostedOff)
         await connection.connect(text: "prhub://setup?worker=https%3A%2F%2Fpr-review.alex.workers.dev&code=7KQ2M9XA")
@@ -321,15 +336,12 @@ struct HostedConnectionTests {
     }
 
     @Test func aPairedSelfHostedWorkerKeepsWorkingWithoutTheFlag() async throws {
-        let endpoint = WorkerEndpoint(store: WorkerURLStore(
-            service: "com.jaigovindani.prreview.tests", account: "self-hosted-url-\(UUID().uuidString)"
-        ))
-        try endpoint.save(#require(URL(string: "https://pr-review.alex.workers.dev")))
-        let connection = try WorkerConnection(
+        let endpoint = try resources.endpoint(saving: "https://pr-review.alex.workers.dev")
+        let connection = WorkerConnection(
             endpoint: endpoint,
             pairing: DevicePairing(pair: { _, _ in throw PairingClient.Failure.transport }, save: { _ in }),
             fetchConfig: { _ in DeviceConfig(features: [.push], login: "alex") }, forgetSecret: {},
-            defaults: #require(UserDefaults(suiteName: "prhub-hosted-\(UUID().uuidString)")), build: Self.build
+            defaults: resources.defaults(), build: Self.build, usage: resources.usage()
         )
         await connection.refreshConfig()
         #expect(connection.isPaired && !connection.showsOnboarding)

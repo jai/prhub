@@ -7,14 +7,15 @@ import Testing
 /// The battery soak's MetricKit reports (`PRHubMetricReports`): kept on disk until sent, sent once, and nothing while off.
 @MainActor
 struct PRHubMetricKitTests {
+    private let resources = IntegrationResources()
     private static let payload = Data(#"{"timeStampBegin":"2026-11-15 00:00:00 +0000","cpuMetrics":{}}"#.utf8)
 
-    private static func reports(
+    private func makeReports(
         failing: Shared<(any Error)?> = Shared(nil), sent: Shared<[PRHubMetricReport]> = Shared([]),
-        defaults: UserDefaults = UserDefaults(suiteName: "prhub-metrickit-\(UUID().uuidString)")!
+        defaults: UserDefaults? = nil, directory: URL? = nil
     ) -> PRHubMetricReports {
-        let directory = FileManager.default.temporaryDirectory.appending(path: "metrickit-\(UUID().uuidString)")
-        return PRHubMetricReports(directory: directory, defaults: defaults, build: "1.0 (301)", os: "iOS 27.2",
+        let directory = directory ?? resources.directory()
+        return PRHubMetricReports(directory: directory, defaults: defaults ?? resources.defaults(), build: "1.0 (301)", os: "iOS 27.2",
                                   device: "iPhone13,3")
         { report in
             if let error = failing.with({ $0 }) {
@@ -26,7 +27,7 @@ struct PRHubMetricKitTests {
 
     @Test func aPayloadIsSentOnceWithTheBuildAndDevice() async {
         let sent = Shared<[PRHubMetricReport]>([])
-        let reports = Self.reports(sent: sent)
+        let reports = makeReports(sent: sent)
         reports.set(isOn: true)
         reports.keep(.metric, json: Self.payload)
         await reports.flush()
@@ -38,9 +39,33 @@ struct PRHubMetricKitTests {
         #expect(reports.waiting().isEmpty)
     }
 
+    @Test func queuedPayloadsSurviveRelaunchAndSentPayloadsStayDeduplicated() async {
+        let directory = resources.directory()
+        let defaults = resources.defaults()
+        let sent = Shared<[PRHubMetricReport]>([])
+        let first = makeReports(sent: sent, defaults: defaults, directory: directory)
+        first.set(isOn: true)
+        first.keep(.metric, json: Self.payload)
+        #expect(first.waiting().count == 1)
+
+        let relaunched = makeReports(sent: sent, defaults: defaults, directory: directory)
+        relaunched.set(isOn: true)
+        #expect(relaunched.waiting().count == 1)
+        await relaunched.flush()
+        #expect(sent.with { $0.count } == 1)
+        #expect(relaunched.waiting().isEmpty)
+
+        let afterDelivery = makeReports(sent: sent, defaults: defaults, directory: directory)
+        afterDelivery.set(isOn: true)
+        afterDelivery.keep(.metric, json: Self.payload)
+        await afterDelivery.flush()
+        #expect(sent.with { $0.count } == 1)
+        #expect(afterDelivery.waiting().isEmpty)
+    }
+
     @Test func offKeepsAndSendsNothing() async {
         let sent = Shared<[PRHubMetricReport]>([])
-        let reports = Self.reports(sent: sent)
+        let reports = makeReports(sent: sent)
         reports.keep(.metric, json: Self.payload)
         await reports.flush()
         #expect(reports.waiting().isEmpty)
@@ -54,7 +79,7 @@ struct PRHubMetricKitTests {
     @Test func aPassingFailureWaitsAndAPermanentOneIsDropped() async {
         let failing = Shared<(any Error)?>(URLError(.notConnectedToInternet))
         let sent = Shared<[PRHubMetricReport]>([])
-        let reports = Self.reports(failing: failing, sent: sent)
+        let reports = makeReports(failing: failing, sent: sent)
         reports.set(isOn: true)
         reports.keep(.metric, json: Self.payload)
         await reports.flush()
@@ -70,7 +95,7 @@ struct PRHubMetricKitTests {
     }
 
     @Test func atMostSixtyWait() {
-        let reports = Self.reports()
+        let reports = makeReports()
         reports.set(isOn: true)
         for index in 0 ..< (PRHubMetricReports.waitingMax + 5) {
             reports.keep(.metric, json: Data(#"{"n":\#(index)}"#.utf8))

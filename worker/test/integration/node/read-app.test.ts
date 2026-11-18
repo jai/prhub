@@ -219,10 +219,14 @@ test("unset, and on the hosted Worker, the read App is never asked and every rea
     { SIGNED_IN_USER_ID: "1" },
     { HOSTED: "on" },
   ]) {
-    const calls = gitHub(nodes);
+    const calls = gitHub((query) =>
+      query.includes("search(")
+        ? { data: { search: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } }
+        : nodes(query),
+    );
     await readPullRequests(REFS, env(vars), new Set(), async () => new Map());
     await readChecks(REFS, env(vars));
-    await searchListings(env(vars)).catch(() => null);
+    await searchListings(env(vars));
     assert.ok(!calls.some((call) => call.url.includes("/app/")), JSON.stringify(vars));
     assert.deepEqual(new Set(calls.map((call) => call.token)), new Set(["owner"]));
     assert.equal(calls.filter((call) => call.query.includes("...Viewer")).length, 1);

@@ -27,6 +27,11 @@ struct PRAskSendTests {
 
     @MainActor
     final class Host: PRKitHost {
+        let storage = TestStorage()
+        var mirrorDirectory: URL? {
+            storage.directory
+        }
+
         let access = PRViewerAccess.offline
         let configuration = PRKitConfiguration.everything
         let held = Outbox()
@@ -38,7 +43,7 @@ struct PRAskSendTests {
         let samples: PRSampleSet? = PRSampleSet(samples: [], mergedReviewed: [], mergedMine: [], answersOnPhone: true)
         let launchOptions = PRKitLaunchOptions.none
 
-        let transport: any HTTPTransport = URLSessionTransport.background
+        let transport: any HTTPTransport = UnexpectedTransport()
         func log(_: String) {}
         private(set) var events: [PRKitEvent] = []
         func receive(_ event: PRKitEvent) {
@@ -55,7 +60,8 @@ struct PRAskSendTests {
 
     private func kit(wait: Duration = .milliseconds(100)) -> (PRKitController, Host) {
         let host = Host()
-        let kit = PRKitController(host: host)
+        let kit = PRKitController(host: host, defaults: host.storage.defaults, network: PRNetwork(isOnline: true),
+                                  draftDirectory: host.storage.draftDirectory)
         kit.model.answerWait = wait
         return (kit, host)
     }
@@ -70,9 +76,7 @@ struct PRAskSendTests {
     @Test func theWorkersAnswerEndsTheSend() async throws {
         let (kit, host) = kit(wait: .seconds(5))
         let asked = Task { try await kit.model.ask(question, about: ref) }
-        while host.held.ids.isEmpty {
-            await Task.yield()
-        }
+        try await waitUntil("question registered as waiting") { kit.model.waiting.contains("ask-1") }
         kit.outboxAnswered(id: "ask-1", data: Data("""
         {"messages":[{"id":"m1","role":"you","text":"Is it tested?","anchor":null}],"isWorking":true,\
         "activity":null,"problem":null,"costCents":null}
@@ -84,12 +88,10 @@ struct PRAskSendTests {
         #expect(PRAskSend.sending(question).following(isQueued: false, isOnline: true) == .idle)
     }
 
-    @Test func aRefusalFailsWithItsReasonAndTryAgainHasTheQuestion() async {
+    @Test func aRefusalFailsWithItsReasonAndTryAgainHasTheQuestion() async throws {
         let (kit, host) = kit(wait: .seconds(5))
         let asked = Task { try await kit.model.ask(question, about: ref) }
-        while host.held.ids.isEmpty {
-            await Task.yield()
-        }
+        try await waitUntil("question registered as waiting") { kit.model.waiting.contains("ask-1") }
         kit.outboxRefused(id: "ask-1", kind: .question, reason: "This chat reached its spending limit.")
         let outcome: Result<PRAskOutcome, any Error> = await asked.result
         let send = PRAskSend.after(outcome, of: question, isOnline: true)
@@ -106,9 +108,8 @@ struct PRAskSendTests {
         let session = kit.model.session(for: ref)
         session.askSend = .sending(question)
         let following = Task { await session.followAsk() }
-        while session.askSend == .sending(question) {
-            await Task.yield()
-        }
+        defer { following.cancel() }
+        try await waitUntil("queued question follows offline state") { session.askSend != .sending(question) }
         #expect(session.askSend == .waitingForNetwork(question))
         #expect(session.askError == nil)
         host.held.isHolding = false
@@ -133,9 +134,7 @@ struct PRAskSendTests {
         let (kit, host) = kit()
         let session = try loadedSession(kit)
         session.explainPR()
-        while host.events.isEmpty {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        try await waitUntil("Explain PR reports its outcome") { !host.events.isEmpty }
         session.askDraft = "Is it tested?"
         await session.sendAsk()
         session.askAnchor = PRAskQuestion.Anchor(path: "a.swift", line: 3, side: "RIGHT", code: nil)

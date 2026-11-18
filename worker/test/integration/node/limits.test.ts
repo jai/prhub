@@ -1,7 +1,7 @@
 // The limits: their config (`limits.ts`), the counter (`limit-counter.ts`) on real SQLite, the routes' side
 // (`limit-enforcement.ts`), retention (`retention.ts`), and what the hosted account does with lifetimes and key rotation.
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
 import { prId, repoOf } from "../../../src/ids.ts";
 import { AccountCore } from "../../../src/account-core.ts";
 import type { Env } from "../../../src/env.ts";
@@ -26,8 +26,7 @@ import {
   rateWindowOf,
   WorkerMode,
 } from "../../../src/limits.ts";
-
-import { pullRequestOfKey, sweepClosedPullRequests } from "../../../src/retention.ts";
+import { sweepClosedPullRequests } from "../../../src/retention.ts";
 import { keyIdOf, parseKeyring } from "../../../src/token-crypto.ts";
 import {
   APP,
@@ -40,7 +39,9 @@ import {
   signIn,
   startSignIn,
 } from "../../support/hosted-world.ts";
-import { memorySql } from "../../support/memory-sql.ts";
+import { closeMemorySql, memorySql } from "../../support/memory-sql.ts";
+
+afterEach(closeMemorySql);
 
 const MINUTE = 60_000;
 const NOW = Date.parse("2026-11-07T00:00:00Z");
@@ -133,7 +134,8 @@ function countingEnv(vars: Partial<Env>) {
   return { env: { PR_INDEX: namespace, ...vars } as unknown as Env, recorded };
 }
 
-test("past a person's write limit the answer is 429 limit_reached with the limit and retry_after", async () => {
+test("past a person's write limit the answer is 429 limit_reached with the limit and retry_after", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: NOW });
   const { env } = countingEnv({ LIMIT_WRITES_PER_MINUTE: "1" });
   const names = [LimitName.WritesPerMinute, LimitName.WritesPerHour];
   assert.equal(await personLimitAnswer(env, names, "write:acme/api#7:one"), null);
@@ -153,21 +155,8 @@ test("past a person's write limit the answer is 429 limit_reached with the limit
   assert.equal(error.retry_after > 0 && error.retry_after <= 60, true);
 });
 
-test("a limit that is off never reaches the index", async () => {
-  const env = {
-    PR_INDEX: { idFromName: () => assert.fail("no count"), get: () => assert.fail("no count") },
-  } as unknown as Env;
-  assert.equal(
-    await personLimitAnswer(
-      env,
-      [LimitName.AskQuestionsPerHour, LimitName.AskQuestionsPerDay],
-      null,
-    ),
-    null,
-  );
-});
-
-test("a self-hosted Worker counts pairing attempts per IP", async () => {
+test("a self-hosted Worker counts pairing attempts per IP", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: NOW });
   const { env } = countingEnv({ LIMIT_PAIRING_ATTEMPTS_PER_IP_PER_HOUR: "2" });
   const pair = (ip: string) =>
     new Request("https://worker.example/device/pair", { headers: { "CF-Connecting-IP": ip } });
@@ -195,29 +184,6 @@ test("bad limit config goes to /events once per isolate, as limits_config_error"
 });
 
 // --- Retention ------------------------------------------------------------------------------------------------------
-
-test("each object a PR leaves maps to that PR, under the person's prefix; anything else to none", () => {
-  const prefix = "users/4242/";
-  assert.equal(pullRequestOfKey(`${prefix}acme/api/7/abc-main.diff`, prefix), "acme/api#7");
-  assert.equal(pullRequestOfKey(`${prefix}acme/api/7/detail/v3.json`, prefix), "acme/api#7");
-  assert.equal(
-    pullRequestOfKey(`${prefix}ai/acme/api/7/${"a".repeat(40)}/key-lines-3.json`, prefix),
-    "acme/api#7",
-  );
-  assert.equal(pullRequestOfKey(`${prefix}ask/acme/api/7.json`, prefix), "acme/api#7");
-  assert.equal(
-    pullRequestOfKey(`${prefix}ai/api/7/abc.diff`, prefix),
-    "ai/api#7",
-    "an owner named ai",
-  );
-  assert.equal(pullRequestOfKey(`${prefix}repos/index.json`, prefix), null);
-  assert.equal(
-    pullRequestOfKey("users/5151/acme/api/7/abc.diff", prefix),
-    null,
-    "another person's",
-  );
-  assert.equal(pullRequestOfKey("pair/abc.json", ""), null);
-});
 
 test("the sweep deletes a closed PR's objects once the newest is past retention, and keeps open PRs'", async () => {
   const day = 86_400_000;

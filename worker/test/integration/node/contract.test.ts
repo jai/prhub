@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
+import { closeMemorySql } from "../../support/memory-sql.ts";
 import { URL } from "node:url";
 import { type RepoFullName, type Sha } from "../../../src/ids.ts";
 import { alertMessage } from "../../../src/alerts.ts";
@@ -14,6 +15,8 @@ import { resolvedTickets, rowTickets } from "../../../src/tickets.ts";
 import { authenticate, hostedAccountConfig } from "../../../src/hosted.ts";
 import { bearer, hostedWorld, ORIGIN, signIn } from "../../support/hosted-world.ts";
 import { prNode } from "../../support/pr-node.ts";
+
+afterEach(closeMemorySql);
 
 const WEEK = reviewWeek({
   REVIEW_SLA_UTC_OFFSET_HOURS: "7",

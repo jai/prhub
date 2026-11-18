@@ -176,7 +176,7 @@ final class PRSession: Hashable {
     private var writing: [String: String] = [:]
     private let rowTitle: String?
     let model: PRsModel
-    private let draftStore = PRDraftStore()
+    private let draftStore: PRDraftStore
 
     init(
         ref: PullRequestRef, title: String?, content: PRContent?, keyLines: PRKeyLines? = nil,
@@ -184,6 +184,7 @@ final class PRSession: Hashable {
     ) {
         self.ref = ref
         self.model = model
+        draftStore = model.draftStore
         rowTitle = title
         isPreloaded = content != nil
         self.tappedAt = tappedAt

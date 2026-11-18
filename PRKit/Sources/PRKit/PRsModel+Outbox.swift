@@ -111,10 +111,15 @@ extension PRsModel {
                 queued[id] = nil
                 return try .answered(outcome.get())
             }
+            try Task.checkCancellation()
             guard clock.now < end else {
                 return .stillGoing
             }
-            try? await Task.sleep(nanoseconds: 50_000_000)
+            do {
+                try await Task.sleep(nanoseconds: 50_000_000)
+            } catch is CancellationError {
+                // Consume an answer already delivered before cancelling the screen's wait.
+            }
         }
     }
 
