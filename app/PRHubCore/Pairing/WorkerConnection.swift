@@ -307,10 +307,15 @@ public final class WorkerConnection {
         return previousUser.map { $0 == result.userId ? .samePerson : .newPerson } ?? .samePerson
     }
 
-    /// Settings' Sign out, and Sign in again's: the Worker ends this session where it can; the phone forgets it.
+    /// Settings' Sign out, and Sign in again's: the Worker ends this session where it can; the phone forgets it. A
+    /// Worker that could not be told is recorded: its session outlives the phone's.
     func signOut() async {
         usage.record(.signedOut)
-        try? await hosted?.signOut()
+        do {
+            try await hosted?.signOut()
+        } catch {
+            usage.record(.accountActionFailed(.signOut, AccountActionError(error as? AccountClient.Failure ?? .transport)))
+        }
         forget()
     }
 
@@ -324,6 +329,7 @@ public final class WorkerConnection {
         } catch {
             let error = AccountActionError(error as? AccountClient.Failure ?? .transport)
             guard error == .signedOut else {
+                usage.record(.accountActionFailed(.deleteAccount, error))
                 throw error
             }
         }
@@ -333,24 +339,27 @@ public final class WorkerConnection {
 
     /// Settings' Anthropic key: kept on the Worker, never on the phone; the config then says which AI is on.
     public func setAnthropicKey(_ key: String) async throws(AccountActionError) {
-        try await accountAction(.anthropicKeySet) { try await $0.setAnthropicKey(key) }
+        try await accountAction(.anthropicKeySet, done: .anthropicKeySet) { try await $0.setAnthropicKey(key) }
     }
 
     public func removeAnthropicKey() async throws(AccountActionError) {
-        try await accountAction(.anthropicKeyRemoved) { try await $0.removeAnthropicKey() }
+        try await accountAction(.anthropicKeyRemoved, done: .anthropicKeyRemoved) {
+            try await $0.removeAnthropicKey()
+        }
     }
 
+    /// Settings' Connect Linear.
     public func setLinearKey(_ key: String) async throws(AccountActionError) {
-        try await accountAction(nil) { try await $0.setLinearKey(key) }
+        try await accountAction(.linearKeySet, done: .linearConnected) { try await $0.setLinearKey(key) }
     }
 
     public func removeLinearKey() async throws(AccountActionError) {
-        try await accountAction(nil) { try await $0.removeLinearKey() }
+        try await accountAction(.linearKeyRemoved, done: .linearDisconnected) { try await $0.removeLinearKey() }
     }
 
-    /// `done` is recorded once the Worker has taken the change.
+    /// `done` is recorded once the Worker has taken the change; a refusal is `account_action_failed`, with why.
     private func accountAction(
-        _ done: AnalyticsEvent?, _ action: (Hosted) async throws -> Void
+        _ kind: AccountAction, done: AnalyticsEvent, _ action: (Hosted) async throws -> Void
     ) async throws(AccountActionError) {
         guard let hosted else {
             return
@@ -359,12 +368,11 @@ public final class WorkerConnection {
             try await action(hosted)
         } catch {
             let error = AccountActionError(error as? AccountClient.Failure ?? .transport)
+            usage.record(.accountActionFailed(kind, error))
             await readConfig()
             throw error
         }
-        if let done {
-            usage.record(done)
-        }
+        usage.record(done)
         await readConfig()
     }
 

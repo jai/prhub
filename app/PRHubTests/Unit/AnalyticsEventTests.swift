@@ -25,7 +25,8 @@ struct AnalyticsEventTests {
         .pullRequestWrote(.merge, .failed(.refused)),
         .aiAnswered(.keyLines, .done, milliseconds: 8200, slop: true),
         .askSent(.explainPR, .failed(.offline)), .askAnswerFailed, .askRefused, .askReviewUsed(.posted),
-        .askLinearPosted(.failed(.refused)),
+        .askLinearPosted(.failed(.refused)), .linearConnected, .linearDisconnected,
+        .accountActionFailed(.deleteAccount, .server(status: 502)), .alertsAnswered(.notNow),
     ]
 
     // swiftlint:disable:next cyclomatic_complexity - one arm per case, by design
@@ -65,13 +66,17 @@ struct AnalyticsEventTests {
         case .askRefused: 31
         case .askReviewUsed: 32
         case .askLinearPosted: 33
+        case .linearConnected: 34
+        case .linearDisconnected: 35
+        case .accountActionFailed: 36
+        case .alertsAnswered: 37
         }
     }
 
     // MARK: - What an event can carry
 
     @Test func everyCaseIsListed() {
-        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0 ... 33))
+        #expect(Set(Self.everyEvent.map(Self.kind)) == Set(0 ... 37))
     }
 
     @Test func eachEventHasItsOwnSnakeCaseName() {
@@ -109,6 +114,8 @@ struct AnalyticsEventTests {
                 + PRWriteKind.allCases.map(\.rawValue) + PRActionFailure.allCases.map(\.rawValue)
                 + ActionOutcomeWord.allCases.map(\.rawValue) + PRAIKind.allCases.map(\.rawValue)
                 + PRAskOrigin.allCases.map(\.rawValue) + PRAskReviewUse.allCases.map(\.rawValue)
+                + AccountAction.allCases.map(\.rawValue) + AccountFailureCode.allCases.map(\.rawValue)
+                + AlertsAnswer.allCases.map(\.rawValue)
                 + ["push", "other_push", "foreground", "pull", "changed", "unchanged", "failed"]
         )
         for (key, value) in event.properties {
@@ -192,6 +199,17 @@ struct AnalyticsEventTests {
         ])
         #expect(AnalyticsEvent.askAnswerFailed.limitKey == "ask_answer_failed")
         #expect(AnalyticsEvent.askSent(.typed, .done).limitKey == nil)
+    }
+
+    @Test func anAccountActionsFailureSaysWhichAndWhyAndAServersStatus() {
+        #expect(AnalyticsEvent.accountActionFailed(.linearKeySet, .linearKeyRefused).properties == [
+            "action": .word("linear_key_set"), "code": .word("linear_key_refused"),
+        ])
+        #expect(AnalyticsEvent.accountActionFailed(.deleteAccount, .server(status: 502)).properties == [
+            "action": .word("delete_account"), "code": .word("server_error"), "status": .number(502),
+        ])
+        #expect(AnalyticsEvent.accountActionFailed(.signOut, .unreachable).limitKey
+            == "account_action_failed sign_out unreachable")
     }
 
     /// Only a failure is held back when it repeats: what failed and why, not when or how long it took.

@@ -63,6 +63,14 @@ struct HostedConnectionTests {
         func record(_ call: String) {
             calls.with { $0.append(call) }
         }
+
+        /// An account action: recorded, then refused with `actionError` when one is set.
+        func act(_ call: String) throws {
+            record(call)
+            if let error = actionError.with({ $0 }) {
+                throw error
+            }
+        }
     }
 
     private static func connection(
@@ -87,23 +95,17 @@ struct HostedConnectionTests {
             },
             saveSecret: { secret in fake.secret.with { $0 = secret } },
             signOut: { fake.record("signOut \(fake.secret.with { $0 } ?? "-")") },
-            deleteAccount: {
-                fake.record("delete")
-                if let error = fake.actionError.with({ $0 }) {
-                    throw error
-                }
-            },
+            deleteAccount: { try fake.act("delete") },
             setAnthropicKey: { key in
-                fake.record("setKey \(key)")
-                if let error = fake.actionError.with({ $0 }) {
-                    throw error
-                }
+                try fake.act("setKey \(key)")
                 fake.config.with { $0.account?.anthropicKey = true }
             },
             removeAnthropicKey: {
                 fake.record("removeKey")
                 fake.config.with { $0.account?.anthropicKey = false }
-            }
+            },
+            setLinearKey: { _ in try fake.act("setLinearKey") },
+            removeLinearKey: { fake.record("removeLinearKey") }
         )
         return WorkerConnection(
             endpoint: endpoint,
@@ -206,7 +208,28 @@ struct HostedConnectionTests {
         _ = try? await connection.setAnthropicKey("bad-key-012345678901")
         fake.actionError.with { $0 = nil }
         try await connection.deleteAccount()
-        #expect(sink.events == [.anthropicKeySet, .anthropicKeyRemoved, .accountDeleted])
+        #expect(sink.events == [
+            .anthropicKeySet, .anthropicKeyRemoved, .accountActionFailed(.anthropicKeySet, .keyRefused),
+            .accountDeleted,
+        ])
+    }
+
+    @Test func linearsConnectionAndEachRefusalAreRecorded() async throws {
+        let fake = Fake()
+        let sink = AnalyticsTests.RecordingAnalytics()
+        let connection = try Self.connection(fake, paired: true, usage: AnalyticsTests.usage(sink))
+        fake.actionError.with { $0 = .server("linear_key_invalid", 422) }
+        _ = try? await connection.setLinearKey("lin_api_bad")
+        fake.actionError.with { $0 = .transport }
+        _ = try? await connection.setLinearKey("lin_api_bad")
+        _ = try? await connection.deleteAccount()
+        fake.actionError.with { $0 = nil }
+        try await connection.setLinearKey("lin_api_0123456789")
+        try await connection.removeLinearKey()
+        #expect(sink.events == [
+            .accountActionFailed(.linearKeySet, .linearKeyRefused), .accountActionFailed(.linearKeySet, .unreachable),
+            .accountActionFailed(.deleteAccount, .unreachable), .linearConnected, .linearDisconnected,
+        ])
     }
 
     @Test func signedOutByGitHubShowsSignInAgainAndSigningInEndsTheOldSession() async throws {

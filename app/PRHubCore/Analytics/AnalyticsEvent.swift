@@ -15,6 +15,13 @@ public enum AnalyticsEvent: Equatable, Sendable {
     case samplesLeft
     case anthropicKeySet
     case anthropicKeyRemoved
+    /// Settings' Connect Linear, once the Worker has the key; and Disconnect Linear.
+    case linearConnected
+    case linearDisconnected
+    /// The offer to turn on review alerts, or Settings' ask again: the system's answer, or Not now.
+    case alertsAnswered(AlertsAnswer)
+    /// An action in Settings on the hosted account that the Worker refused or could not be asked: which one, and why.
+    case accountActionFailed(AccountAction, AccountActionError)
     case signedOut
     case accountDeleted
     case workerDisconnected
@@ -74,6 +81,10 @@ public enum AnalyticsEvent: Equatable, Sendable {
         case .samplesLeft: "samples_left"
         case .anthropicKeySet: "anthropic_key_set"
         case .anthropicKeyRemoved: "anthropic_key_removed"
+        case .linearConnected: "linear_connected"
+        case .linearDisconnected: "linear_disconnected"
+        case .accountActionFailed: "account_action_failed"
+        case .alertsAnswered: "alerts_answered"
         case .signedOut: "signed_out"
         case .accountDeleted: "account_deleted"
         case .workerDisconnected: "worker_disconnected"
@@ -151,8 +162,13 @@ public enum AnalyticsEvent: Equatable, Sendable {
             ["origin": .word(origin.rawValue)].merging(outcome.properties) { first, _ in first }
         case let .askReviewUsed(use): ["use": .word(use.rawValue)]
         case let .askLinearPosted(outcome): outcome.properties
+        case let .alertsAnswered(answer): ["answer": .word(answer.rawValue)]
+        case let .accountActionFailed(action, error):
+            ["action": .word(action.rawValue), "code": .word(AccountFailureCode(error).rawValue)]
+                .merging(error.status.map { ["status": .number($0)] } ?? [:]) { first, _ in first }
         case .signInSucceeded, .workerPaired, .samplesLeft, .anthropicKeySet, .anthropicKeyRemoved, .signedOut,
-             .accountDeleted, .workerDisconnected, .pullRequestWriteRefused, .askAnswerFailed, .askRefused:
+             .accountDeleted, .workerDisconnected, .pullRequestWriteRefused, .askAnswerFailed, .askRefused,
+             .linearConnected, .linearDisconnected:
             [:]
         }
     }
@@ -168,6 +184,7 @@ extension AnalyticsEvent {
         case let .askSent(origin, .failed(failure)): "\(name) \(origin.rawValue) \(failure.rawValue)"
         case let .askLinearPosted(.failed(failure)): "\(name) \(failure.rawValue)"
         case .askAnswerFailed, .askRefused: name
+        case let .accountActionFailed(action, error): "\(name) \(action.rawValue) \(AccountFailureCode(error).rawValue)"
         default: nil
         }
     }
@@ -183,6 +200,12 @@ public enum AnalyticsValue: Equatable, Sendable {
 /// Update available's buttons.
 public enum UpdateAnswer: String, CaseIterable, Sendable {
     case update, later
+}
+
+/// What became of the offer to turn on review alerts.
+public enum AlertsAnswer: String, CaseIterable, Sendable {
+    case allowed, denied
+    case notNow = "not_now"
 }
 
 public enum AnalyticsScreen: String, CaseIterable, Sendable {
@@ -253,6 +276,44 @@ public enum PairingFailureCode: String, CaseIterable, Sendable {
         case .unreadable: .unreadable
         case .keychain: .keychain
         }
+    }
+}
+
+/// Why an account action failed (`AccountActionError`), as `account_action_failed`'s `code`; a server's status goes in
+/// `status`.
+enum AccountFailureCode: String, CaseIterable {
+    case unreachable, unreadable
+    case keyMalformed = "key_malformed"
+    case keyRefused = "key_refused"
+    case anthropicUnavailable = "anthropic_unavailable"
+    case linearKeyMalformed = "linear_key_malformed"
+    case linearKeyRefused = "linear_key_refused"
+    case linearUnavailable = "linear_unavailable"
+    case signedOut = "signed_out"
+    case serverError = "server_error"
+
+    init(_ error: AccountActionError) {
+        self = switch error {
+        case .keyMalformed: .keyMalformed
+        case .keyRefused: .keyRefused
+        case .anthropicUnavailable: .anthropicUnavailable
+        case .linearKeyMalformed: .linearKeyMalformed
+        case .linearKeyRefused: .linearKeyRefused
+        case .linearUnavailable: .linearUnavailable
+        case .signedOut: .signedOut
+        case .unreachable: .unreachable
+        case .server: .serverError
+        case .unreadable: .unreadable
+        }
+    }
+}
+
+private extension AccountActionError {
+    var status: Int? {
+        if case let .server(status) = self {
+            return status
+        }
+        return nil
     }
 }
 

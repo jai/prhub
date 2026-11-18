@@ -12,6 +12,7 @@ struct PRRequestFailureTests {
         ("prs/acme/api/7/rewrite", .rewrite), ("prs/acme/api/7/summary", .summary), ("repos", .repos),
         ("feedback", .feedback), ("feedback/fb_0123456789abcdef", .feedback), ("device/config", .config),
         ("device/register", .device), ("events", .other), ("prs/acme/api/7", .other),
+        ("account/anthropic-key", .account), ("account", .account), ("auth/signout", .account),
     ])
     func aRouteNamesItsArea(path: String, area: PRRequestArea) {
         #expect(PRRequestArea(path: path) == area)

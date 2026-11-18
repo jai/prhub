@@ -99,6 +99,8 @@ public final class PRHubAlertPermission {
 
     @ObservationIgnored private let center: Center
     @ObservationIgnored private let defaults: UserDefaults
+    /// Each answer, as `alerts_answered`. Set by the environment, which owns it.
+    @ObservationIgnored var usage = UsageAnalytics.disabled()
     private static let declinedKey = "prhubAlertsDeclined"
 
     init(center: Center = .live, defaults: UserDefaults = .standard) {
@@ -128,12 +130,14 @@ public final class PRHubAlertPermission {
         isOffering = false
         _ = await center.request()
         await reload()
+        usage.record(.alertsAnswered(status == .allowed ? .allowed : .denied))
     }
 
     /// "Not now".
     public func decline() {
         isOffering = false
         defaults.set(true, forKey: Self.declinedKey)
+        usage.record(.alertsAnswered(.notNow))
     }
 
     /// A new pairing may offer again.

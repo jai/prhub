@@ -58,6 +58,10 @@ struct AccountClient: Sendable {
         try await AppNetwork.oneTry.send(request)
     }
 
+    /// Each failed request: its area (`config` or `account`), and its status or why there was none. The app's goes
+    /// through a `PRFailureReporter`, so a config read failing at every foreground says so once a minute.
+    var failed: @Sendable (PRRequestArea, PRRequestFailure) -> Void = { _, _ in }
+
     /// `fresh`: the hosted Worker reads the installations from GitHub before it answers (`?fresh=1`).
     func deviceConfig(fresh: Bool = false) async throws(Failure) -> DeviceConfig {
         let query = fresh ? [URLQueryItem(name: "fresh", value: "1")] : []
@@ -132,12 +136,17 @@ struct AccountClient: Sendable {
         do {
             (data, response) = try await exchange(request)
         } catch {
+            if let failure = PRRequestFailure(transport: error) {
+                failed(PRRequestArea(path: path), failure)
+            }
             throw .transport
         }
         guard let http = response as? HTTPURLResponse else {
+            failed(PRRequestArea(path: path), .network)
             throw .transport
         }
         guard (200 ..< 300).contains(http.statusCode) else {
+            failed(PRRequestArea(path: path), .status(http.statusCode))
             throw .server((try? JSONDecoder().decode(ErrorBody.self, from: data))?.error?.code, http.statusCode)
         }
         return data
@@ -158,6 +167,16 @@ struct AccountClient: Sendable {
             throw .decoding
         }
     }
+}
+
+/// Settings' actions on the hosted account (`AnalyticsEvent.accountActionFailed`).
+public enum AccountAction: String, CaseIterable, Sendable {
+    case anthropicKeySet = "anthropic_key_set"
+    case anthropicKeyRemoved = "anthropic_key_removed"
+    case linearKeySet = "linear_key_set"
+    case linearKeyRemoved = "linear_key_removed"
+    case deleteAccount = "delete_account"
+    case signOut = "sign_out"
 }
 
 /// Why Settings' account action stopped: Sign out, Delete Account, or the Anthropic key.

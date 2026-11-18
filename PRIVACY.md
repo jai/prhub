@@ -36,8 +36,8 @@ PostHog, an analytics service that processes it for Jai in its EU region (Frankf
     `code_refused`.
   - Opening a PR: how it was opened (an alert, the list or a link), whether the phone already had it, and how many
     milliseconds it took. An alert sends whether the phone fetched its PR before you tapped it, and how long that took.
-  - A request to the Worker that fails: what it was for (such as the PR list or Feedback) and its HTTP status, or that
-    the phone was offline.
+  - A request to the Worker that fails: what it was for (such as the PR list, your settings or Feedback) and its HTTP
+    status, or that the phone was offline.
   - Sending feedback: whether it went through, whether it started a new chat, how many screenshots it had, its size
     and how long it took, or why it failed.
   - An action on a PR, such as a review, a comment, a merge or a description edit: which kind of action it was, and
@@ -47,6 +47,9 @@ PostHog, an analytics service that processes it for Jai in its EU region (Frankf
   - A question to Ask AI: what asked it (typed, Explain, Explain this PR or Retry), whether it went through or why it
     failed, and that the AI gave no answer when it did not. A review or a Linear comment that the AI drafted: that it
     was used or posted, or why not.
+  - Settings: setting or removing your Anthropic key, connecting or disconnecting Linear, signing out and deleting
+    your account, and when one of these fails, a short code for why (such as `key_refused` or `unreachable`). Your
+    answer to the offer to turn on review alerts.
 
   A failure that repeats is sent at most once a minute. Each event also carries the app version, the iOS version, the
   device model, the screen size, and the phone's language and time zone.

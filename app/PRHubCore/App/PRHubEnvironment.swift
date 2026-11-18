@@ -62,6 +62,7 @@ public final class PRHubEnvironment {
         testFlightGroup: TestFlightGroup = .public
     ) {
         self.alertPermission = alertPermission
+        alertPermission.usage = usage
         update = PRHubUpdate(group: testFlightGroup, defaults: defaults, usage: usage)
         self.usage = usage
         self.defaults = defaults
@@ -114,6 +115,7 @@ public final class PRHubEnvironment {
         transport: (any HTTPTransport)? = nil, defaults: UserDefaults = .standard
     ) {
         self.alertPermission = alertPermission
+        alertPermission.usage = usage
         self.update = update ?? PRHubUpdate()
         self.usage = usage
         self.defaults = defaults
@@ -149,7 +151,13 @@ public final class PRHubEnvironment {
             },
             save: { try endpoint.save($0) }
         )
-        let account = AccountClient(worker: { endpoint.url }, bearer: { try secrets.loadOrCreate() })
+        // Its failed requests are `request_failed`, each area's kind once a minute: a config read fails quietly.
+        let reporter = PRFailureReporter { area, failure in
+            Task { @MainActor in usage.record(.requestFailed(area, failure)) }
+        }
+        let account = AccountClient(
+            worker: { endpoint.url }, bearer: { try secrets.loadOrCreate() }, failed: { reporter.failed($0, $1) }
+        )
         return WorkerConnection(
             endpoint: endpoint, pairing: pairing,
             fetchConfig: { fresh in try await account.deviceConfig(fresh: fresh) },

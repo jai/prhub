@@ -60,6 +60,19 @@ struct PRHubAlertTests {
         #expect(again.isOffering)
     }
 
+    @Test func eachAnswerToTheOfferIsRecorded() async {
+        let sink = AnalyticsTests.RecordingAnalytics()
+        let (allowing, _) = Self.permission(.notDetermined)
+        allowing.usage = AnalyticsTests.usage(sink)
+        await allowing.ask()
+        let center = PRHubAlertPermission.Center(status: { .denied }, request: { false })
+        let denying = PRHubAlertPermission(center: center, defaults: AnalyticsTests.defaults())
+        denying.usage = allowing.usage
+        await denying.ask()
+        denying.decline()
+        #expect(sink.events == [.alertsAnswered(.allowed), .alertsAnswered(.denied), .alertsAnswered(.notNow)])
+    }
+
     @Test func aWorkerThatDoesNotPushOrAnAnsweredQuestionOffersNothing() async {
         let (quiet, _) = Self.permission(.notDetermined)
         await quiet.offerIfDue(workerPushes: false)

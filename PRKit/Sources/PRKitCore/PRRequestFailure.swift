@@ -22,6 +22,8 @@ public enum PRRequestArea: String, CaseIterable, Sendable {
     case config
     /// The rest of `device/`: the push token and the phone's events.
     case device
+    /// The hosted Worker's `account/` and `auth/`: Settings' keys, Delete Account, sign-in's finish and sign-out.
+    case account
     case other
 
     /// `prs/<owner>/<repo>/<n>/<kind>` by its kind; any other route by its first part.
@@ -32,6 +34,7 @@ public enum PRRequestArea: String, CaseIterable, Sendable {
         case "prs" where parts.count >= 5: self = Self.pullRequestKinds[parts[4]] ?? .other
         case "repos": self = .repos
         case "feedback": self = .feedback
+        case "account", "auth": self = .account
         case "device": self = parts.count >= 2 && parts[1] == "config" ? .config : .device
         default: self = .other
         }
@@ -46,7 +49,7 @@ public enum PRRequestArea: String, CaseIterable, Sendable {
     public var isPullRequest: Bool {
         switch self {
         case .prs, .detail, .diff, .ask, .write, .keyLines, .rewrite, .summary: true
-        case .repos, .feedback, .config, .device, .other: false
+        case .repos, .feedback, .config, .device, .account, .other: false
         }
     }
 }
@@ -84,14 +87,15 @@ public enum PRRequestFailure: Equatable, Hashable, Sendable {
 }
 
 /// Where a client's failures go (`PRViewerClient.reporting`): each kind once a minute at most, per area. A list that
-/// fails every sync while offline, or a polled chat, says so once a minute, not once a request.
-final class PRFailureReporter: Sendable {
-    static let window: TimeInterval = 60
+/// fails every sync while offline, or a polled chat, says so once a minute, not once a request. A host's own client
+/// (PRHub's `AccountClient`) reports through one too.
+public final class PRFailureReporter: Sendable {
+    public static let window: TimeInterval = 60
     private let report: @Sendable (PRRequestArea, PRRequestFailure) -> Void
     private let now: @Sendable () -> Date
     private let lastSent = Mutex<[String: Date]>([:])
 
-    init(
+    public init(
         now: @escaping @Sendable () -> Date = { .now },
         report: @escaping @Sendable (PRRequestArea, PRRequestFailure) -> Void
     ) {
@@ -99,7 +103,7 @@ final class PRFailureReporter: Sendable {
         self.report = report
     }
 
-    func failed(_ area: PRRequestArea, _ failure: PRRequestFailure) {
+    public func failed(_ area: PRRequestArea, _ failure: PRRequestFailure) {
         let key = "\(area.rawValue) \(failure)"
         let time = now()
         let isDue = lastSent.withLock { sent in

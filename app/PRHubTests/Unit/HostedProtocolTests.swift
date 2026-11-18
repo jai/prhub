@@ -124,6 +124,18 @@ struct AccountClientTests {
         try JSONSerialization.jsonObject(with: #require(request.httpBody)) as? [String: String]
     }
 
+    /// A config read failing at each foreground left no trace: each failed request now says its area and how.
+    @Test func eachFailedRequestIsReportedWithItsAreaAndHow() async {
+        let stub = StubWorker([.reply(status: 503, body: ""), .fail(.notConnectedToInternet)])
+        let reports = Shared<[String]>([])
+        var client = Self.client(stub)
+        client.failed = { area, failure in reports.with { $0.append("\(area.rawValue) \(failure)") } }
+        _ = try? await client.deviceConfig()
+        _ = try? await client.removeAnthropicKey()
+        _ = try? await client.signOut()
+        #expect(reports.with { $0 } == ["config status(503)", "account offline", "account timeout"])
+    }
+
     @Test func finishSendsTheCodeAndVerifierWithNoBearer() async throws {
         let stub = StubWorker([.reply(status: 200, body: #"{"secret":"4242.abc","login":"octocat","user_id":"4242"}"#)])
         let result = try await Self.client(stub).finish(code: "one-time", verifier: "the-verifier")
