@@ -32,7 +32,7 @@ jobs:
         env:
           DEVICE: ${{ matrix.device }}
         run: |
-          runtime=$(xcrun simctl list runtimes -j | jq -r '[.runtimes[] | select(.isAvailable and (.name | startswith("iOS")))] | last | .identifier')
+          runtime=$(xcrun simctl list runtimes -j | jq -r --arg device "$DEVICE" '[.runtimes[] | select(.isAvailable and (.name | startswith("iOS")) and any(.supportedDeviceTypes[]; .name == $device))] | last | .identifier')
           simulator=$(xcrun simctl create "$SIMULATOR_NAME" "$DEVICE" "$runtime")
           echo "SIMULATOR=$simulator" >> "$GITHUB_ENV"
           xcrun simctl boot "$simulator"
