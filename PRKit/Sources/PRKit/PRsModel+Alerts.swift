@@ -18,7 +18,7 @@ extension PRsModel {
         guard samples == nil else {
             return []
         }
-        let prefetch = PRPushPrefetch(client: client, directory: mirror.directory)
+        let prefetch = PRPushPrefetch(client: client, files: mirror.files)
         let clock = ContinuousClock()
         let end = clock.now + deadline
         var outcomes: [PRPushPrefetch.Outcome] = []

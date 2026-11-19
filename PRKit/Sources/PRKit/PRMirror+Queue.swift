@@ -94,7 +94,7 @@ extension PRMirror {
             return .passing(data == nil ? "not ready" : "a payload that does not read")
         }
         do {
-            try data.write(to: directory.appending(path: name), options: .atomic)
+            try files.write(data, to: name)
             return .written
         } catch {
             log.say("PR mirror: \(name) not written: \(error.localizedDescription)")

@@ -1,6 +1,7 @@
 import DurableNetworking
 import Foundation
 @testable import PRKit
+import PRKitTestSupport
 import Testing
 
 /// Each kind of outbox job in its own states and words: one delivery, never one meaning.
@@ -33,11 +34,6 @@ struct PROutboxJobTests {
 
     @MainActor
     final class Host: PRKitHost {
-        let storage = TestStorage()
-        var mirrorDirectory: URL? {
-            storage.directory
-        }
-
         let access = PRViewerAccess.offline
         let configuration = PRKitConfiguration.everything
         let held = Outbox()
@@ -68,8 +64,7 @@ struct PROutboxJobTests {
 
     private func kit(wait: Duration = .seconds(15), isOnline: Bool = true) -> (PRKitController, Host) {
         let host = Host()
-        let kit = PRKitController(host: host, defaults: host.storage.defaults, network: PRNetwork(isOnline: true),
-                                  draftDirectory: host.storage.draftDirectory)
+        let kit = PRKitController(host: host, storage: .inMemory(), network: PRNetwork(isOnline: true))
         kit.model.answerWait = wait
         let clock = clock
         kit.model.sleep = { try await clock.sleep(for: $0) }
@@ -87,7 +82,7 @@ struct PROutboxJobTests {
     }
 
     private func firstJob(_ kit: PRKitController, _ host: Host) async throws -> String {
-        try await waitUntil("outbox job registered as waiting") { !kit.model.waiting.isEmpty }
+        try await settle("outbox job registered as waiting") { !kit.model.waiting.isEmpty }
         return try #require(host.held.jobs.first?.id)
     }
 

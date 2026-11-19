@@ -40,7 +40,7 @@ struct PRMirrorQueueTests {
             ?? storage.directory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let saved = PRMirror.savedRows(in: directory)
-        return PRMirror(directory: directory, client: client, shown: saved, policy: Self.quick)
+        return PRMirror(files: PRDiskFileStore(directory: directory), client: client, shown: saved, policy: Self.quick)
     }
 
     private func diffPath(_ row: PullRequestRow) -> String {
@@ -486,5 +486,16 @@ extension PRMirrorQueueTests {
         "deletions":0,"changedFiles":0,"reviewDecision":null,"mergeState":"CLEAN","labels":[],"checks":[],
         "comments":{"nodes":[]},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]},"title":null}
         """
+    }
+}
+
+private extension PRMirror {
+    /// The folder of a mirror made here, which is always on disk.
+    nonisolated var directory: URL {
+        (files as? PRDiskFileStore)?.directory ?? URL(filePath: "/dev/null")
+    }
+
+    static func savedRows(in directory: URL) -> [PullRequestRow] {
+        savedRows(in: PRDiskFileStore(directory: directory))
     }
 }

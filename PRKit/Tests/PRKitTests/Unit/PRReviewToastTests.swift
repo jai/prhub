@@ -1,5 +1,6 @@
 import Foundation
 @testable import PRKit
+import PRKitTestSupport
 import Testing
 
 /// A review sent from its box, which has already closed: the toast says each step, a late answer or refusal still
@@ -19,8 +20,7 @@ struct PRReviewToastTests {
 
     private func kit(wait: Duration = .seconds(15), isOnline: Bool = true) -> (PRKitController, Host) {
         let host = Host()
-        let kit = PRKitController(host: host, defaults: host.storage.defaults, network: PRNetwork(isOnline: isOnline),
-                                  draftDirectory: host.storage.draftDirectory)
+        let kit = PRKitController(host: host, storage: .inMemory(), network: PRNetwork(isOnline: isOnline))
         kit.model.answerWait = wait
         let clock = clock
         kit.model.sleep = { try await clock.sleep(for: $0) }
@@ -51,14 +51,14 @@ struct PRReviewToastTests {
         let (kit, host) = kit(wait: .seconds(5))
         let sending = submit(kit, approve)
         #expect(kit.model.reviewToast?.words == "Submitting review…")
-        try await waitUntil("outbox registered a waiting review") { !kit.model.waiting.isEmpty }
+        try await settle("outbox registered a waiting review") { !kit.model.waiting.isEmpty }
         kit.outboxAnswered(id: host.held.jobs[0].id, data: Self.detail)
         await sending.value
         #expect(kit.model.reviewToast?.phase == .done)
         #expect(kit.model.reviewToast?.words == "Approved")
         #expect(kit.model.reviewToast?.tone == .toneGood)
         try await passTheDwell()
-        try await waitUntil("landed toast dismissed") { kit.model.reviewToast == nil }
+        try await settle("landed toast dismissed") { kit.model.reviewToast == nil }
         #expect(kit.model.reviewToast == nil, "it fades once GitHub has it")
     }
 
@@ -72,7 +72,7 @@ struct PRReviewToastTests {
         kit.outboxAnswered(id: host.held.jobs[0].id, data: Self.detail)
         #expect(kit.model.reviewToast?.phase == .done)
         try await passTheDwell()
-        try await waitUntil("late landed toast dismissed") { kit.model.reviewToast == nil }
+        try await settle("late landed toast dismissed") { kit.model.reviewToast == nil }
     }
 
     @Test func offlineItSaysItGoesWhenOnline() async throws {
@@ -105,19 +105,19 @@ struct PRReviewToastTests {
         let retry = try #require(kit.model.retryReview())
         #expect(kit.model.reviewToast?.phase == .sending)
         #expect(kit.model.draftStore.load(ref).isEmpty, "Retry sends the comment again")
-        try await waitUntil("retry registered in the outbox") { kit.model.waiting.contains("job-2") }
+        try await settle("retry registered in the outbox") { kit.model.waiting.contains("job-2") }
         kit.outboxAnswered(id: host.held.jobs[1].id, data: Self.detail)
         await retry.value
         #expect(kit.model.reviewToast?.phase == .done)
         #expect(settled == [.failed("Pull request is locked"), .sending, .done])
         try await passTheDwell()
-        try await waitUntil("retried toast dismissed") { kit.model.reviewToast == nil }
+        try await settle("retried toast dismissed") { kit.model.reviewToast == nil }
     }
 
     @Test func aRefusalInTimeFailsTheToast() async throws {
         let (kit, host) = kit(wait: .seconds(5))
         let sending = submit(kit, approve)
-        try await waitUntil("outbox registered a waiting review") { !kit.model.waiting.isEmpty }
+        try await settle("outbox registered a waiting review") { !kit.model.waiting.isEmpty }
         kit.outboxRefused(id: host.held.jobs[0].id, kind: .write, reason: "Pull request is locked")
         await sending.value
         #expect(kit.model.reviewToast?.phase == .failed("Pull request is locked"))

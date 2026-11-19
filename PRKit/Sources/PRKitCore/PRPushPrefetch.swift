@@ -99,11 +99,15 @@ public struct PRPushPrefetch: Sendable {
     }
 
     let client: PRViewerClient
-    let directory: URL
+    let files: any PRFileStore
+
+    public init(client: PRViewerClient, files: any PRFileStore) {
+        self.client = client
+        self.files = files
+    }
 
     public init(client: PRViewerClient, directory: URL) {
-        self.client = client
-        self.directory = directory
+        self.init(client: client, files: PRDiskFileStore(directory: directory))
     }
 
     public func prefetch(_ row: PullRequestRow?, deadline: Duration) async -> Outcome {
@@ -114,14 +118,13 @@ public struct PRPushPrefetch: Sendable {
             return .notPaired
         }
         if isLocal(row) {
-            PRAlertedFiles(directory: directory).note(Self.files(of: row))
+            PRAlertedFiles(store: files).note(Self.files(of: row))
             return .alreadyLocal
         }
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         do {
             let outcome = try await withDeadline(deadline) { try await download(row) }
             if outcome == .landed {
-                PRAlertedFiles(directory: directory).note(Self.files(of: row))
+                PRAlertedFiles(store: files).note(Self.files(of: row))
             }
             return outcome
         } catch is DeadlineExceeded {
@@ -150,16 +153,16 @@ public struct PRPushPrefetch: Sendable {
             guard Self.isObject(detailData) else {
                 return .failed
             }
-            try detailData.write(to: directory.appending(path: row.detailFileName), options: .atomic)
+            try files.write(detailData, to: row.detailFileName)
         }
         if let diffData {
             guard !diffData.isEmpty else {
                 return .failed
             }
-            try diffData.write(to: directory.appending(path: row.diffFileName), options: .atomic)
+            try files.write(diffData, to: row.diffFileName)
         }
         if let lines = await keyLines, let name = row.keyLinesFileName, Self.isObject(lines) {
-            try? lines.write(to: directory.appending(path: name), options: .atomic)
+            try? files.write(lines, to: name)
         }
         return .landed
     }
@@ -173,7 +176,7 @@ public struct PRPushPrefetch: Sendable {
     }
 
     private func exists(_ name: String) -> Bool {
-        FileManager.default.fileExists(atPath: directory.appending(path: name).path(percentEncoded: false))
+        files.exists(name)
     }
 
     /// A stored detail and key lines are JSON objects; anything else is not written, and the tap reads the PR itself.
@@ -189,10 +192,14 @@ public struct PRAlertedFiles: Sendable {
     public static let fileName = "alerted.json"
     /// How long an alert is likely to be tapped from Notification Center.
     public static let keptFor: TimeInterval = 7 * 24 * 60 * 60
-    let file: URL
+    let store: any PRFileStore
+
+    public init(store: any PRFileStore) {
+        self.store = store
+    }
 
     public init(directory: URL) {
-        file = directory.appending(path: Self.fileName)
+        self.init(store: PRDiskFileStore(directory: directory))
     }
 
     /// `names` alerted at `now`. Entries older than `keptFor` are removed.
@@ -201,7 +208,9 @@ public struct PRAlertedFiles: Sendable {
         for name in names {
             entries[name] = now
         }
-        try? JSONEncoder().encode(entries).write(to: file, options: .atomic)
+        if let data = try? JSONEncoder().encode(entries) {
+            try? store.write(data, to: Self.fileName)
+        }
     }
 
     /// The files of alerts that are not older than `keptFor`.
@@ -210,7 +219,7 @@ public struct PRAlertedFiles: Sendable {
     }
 
     private func live(at now: Date) -> [String: Date] {
-        let entries = (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode([String: Date].self, from: $0) }
+        let entries = store.read(Self.fileName).flatMap { try? JSONDecoder().decode([String: Date].self, from: $0) }
         return (entries ?? [:]).filter { now.timeIntervalSince($0.value) < Self.keptFor }
     }
 }

@@ -191,9 +191,9 @@ final class PRSession: Hashable {
         self.opening = opening ?? PROpening(source: .link, cache: content == nil ? .miss : .hit, reads: nil)
         let drafts = draftStore.load(ref)
         self.drafts = drafts
-        let changedLinesOnly = model.defaults.bool(forKey: Self.changedLinesKey)
+        let changedLinesOnly = model.settings.bool(forKey: Self.changedLinesKey)
         self.changedLinesOnly = changedLinesOnly
-        contextLines = model.defaults.object(forKey: Self.contextKey) as? Int ?? PRKeyLines.defaultContext
+        contextLines = model.settings.object(forKey: Self.contextKey) as? Int ?? PRKeyLines.defaultContext
         state = (content?.replacing(drafts: drafts, changedLinesOnly: changedLinesOnly)).map(PRSessionState.ready)
             ?? .reading
         viewedFiles = Set(content?.detail.viewedFiles ?? [])
@@ -376,7 +376,7 @@ final class PRSession: Hashable {
 
     func setChangedLinesOnly(_ isOn: Bool) {
         changedLinesOnly = isOn
-        model.defaults.set(isOn, forKey: Self.changedLinesKey)
+        model.settings.set(isOn, forKey: Self.changedLinesKey)
         setDrafts(drafts)
     }
 
@@ -537,7 +537,7 @@ private extension PRSession {
 extension PRSession {
     func setContextLines(_ context: Int) {
         contextLines = context
-        model.defaults.set(context, forKey: Self.contextKey)
+        model.settings.set(context, forKey: Self.contextKey)
     }
 
     /// From the phone if it has them, and otherwise from the Worker, which runs the model once for each commit and

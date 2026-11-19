@@ -14,15 +14,21 @@ public final class PRKitController {
 
     /// A supplied network is controlled by its owner; otherwise the system path is watched.
     /// Drafts remain in Application Support unless an explicit directory is supplied.
-    public init(
+    public convenience init(
         host: some PRKitHost, defaults: UserDefaults = .standard, network: PRNetwork? = nil, draftDirectory: URL? = nil
     ) {
+        let storage = PRKitStorage.onDisk(
+            directory: host.mirrorDirectory ?? PRKitStorage.defaultDirectory(samples: host.samples),
+            draftDirectory: draftDirectory, defaults: defaults
+        )
+        self.init(host: host, storage: storage, network: network)
+    }
+
+    /// The kit over `storage`: on disk from the host's folders above; in memory in a unit test.
+    init(host: some PRKitHost, storage: PRKitStorage, network: PRNetwork? = nil) {
         let client = PRViewerClient(access: host.access, transport: host.transport)
             .reporting { area, failure in Task { @MainActor in host.receive(.requestFailed(area, failure)) } }
-        model = PRsModel(
-            client: client, samples: host.samples, directory: host.mirrorDirectory, defaults: defaults,
-            network: network ?? PRNetwork(), draftDirectory: draftDirectory
-        )
+        model = PRsModel(client: client, samples: host.samples, storage: storage, network: network ?? PRNetwork())
         launchOptions = host.launchOptions
         model.outboxSource = { host.outbox }
         model.apnsEnvironment = host.apnsEnvironment
@@ -53,9 +59,10 @@ public final class PRKitController {
     }
 
     /// Where a host keeps the last good answers of its own reads over `client` (FeatureKit's `keptIn`): beside the PR
-    /// screens' own, so the mirror's prune spares them and Disconnect clears them with the rest.
-    public var keptFolder: URL {
-        model.kept.directory
+    /// screens' own, so the mirror's prune spares them and Disconnect clears them with the rest. Nil when the screens
+    /// keep nothing on disk.
+    public var keptFolder: URL? {
+        model.keptFolder
     }
 
     /// The pr-worker client the PR screens use, for whatever else of the host talks to the same Worker.

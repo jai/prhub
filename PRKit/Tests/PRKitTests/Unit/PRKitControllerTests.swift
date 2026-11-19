@@ -1,6 +1,6 @@
 import DurableNetworking
-import Foundation
 @testable import PRKit
+import PRKitTestSupport
 import Testing
 
 /// The host's way in and out: what it gives the kit, what it asks of it, and what the kit tells it.
@@ -8,11 +8,6 @@ import Testing
 struct PRKitControllerTests {
     @MainActor
     final class Host: PRKitHost {
-        let storage = TestStorage()
-        var mirrorDirectory: URL? {
-            storage.directory
-        }
-
         let access = PRViewerAccess.offline
         var configuration = PRKitConfiguration.everything
         var outbox: (any PRKitOutbox)? {
@@ -37,8 +32,7 @@ struct PRKitControllerTests {
 
     @Test func textThatNamesAPRShowsItAndOtherTextDoesNot() {
         let host = Host()
-        let kit = PRKitController(host: host, defaults: host.storage.defaults, network: PRNetwork(isOnline: true),
-                                  draftDirectory: host.storage.draftDirectory)
+        let kit = PRKitController(host: host, storage: .inMemory(), network: PRNetwork(isOnline: true))
         #expect(!kit.open(text: "not a PR"))
         #expect(kit.navigation.pending == nil)
         #expect(kit.open(text: "https://github.com/jai/agent-pager/pull/28"))
@@ -47,8 +41,7 @@ struct PRKitControllerTests {
 
     @Test func theScreensFollowTheHostsConfigurationAsItChanges() {
         let host = Host()
-        let kit = PRKitController(host: host, defaults: host.storage.defaults, network: PRNetwork(isOnline: true),
-                                  draftDirectory: host.storage.draftDirectory)
+        let kit = PRKitController(host: host, storage: .inMemory(), network: PRNetwork(isOnline: true))
         let ref = PullRequestRef(repo: "acme/api", number: 7)
         #expect(kit.model.session(for: ref).offersAsk)
         host.configuration = PRKitConfiguration(features: [.keyLines], orgDefault: .everyOwner)
@@ -59,8 +52,7 @@ struct PRKitControllerTests {
 
     @Test func theHostHearsOfEachOpenAndEachSync() async {
         let host = Host(samples: PRSampleSet(samples: [], mergedReviewed: [], mergedMine: [], answersOnPhone: true))
-        let kit = PRKitController(host: host, defaults: host.storage.defaults, network: PRNetwork(isOnline: true),
-                                  draftDirectory: host.storage.draftDirectory)
+        let kit = PRKitController(host: host, storage: .inMemory(), network: PRNetwork(isOnline: true))
         _ = kit.model.session(for: PullRequestRef(repo: "acme/api", number: 7))
         #expect(await kit.refresh(.pull) == .unchanged)
         #expect(host.events == [.opened(PullRequestRef(repo: "acme/api", number: 7)), .synced(.pull, .unchanged)])
@@ -68,8 +60,7 @@ struct PRKitControllerTests {
 
     @Test func aRefusalAfterTheScreenHasGoneIsShownAndTold() {
         let host = Host()
-        let kit = PRKitController(host: host, defaults: host.storage.defaults, network: PRNetwork(isOnline: true),
-                                  draftDirectory: host.storage.draftDirectory)
+        let kit = PRKitController(host: host, storage: .inMemory(), network: PRNetwork(isOnline: true))
         kit.outboxRefused(id: "item-1", kind: .write, reason: "Pull request is locked")
         #expect(kit.model.lateRefusal == "GitHub refused a write: Pull request is locked")
         #expect(host.events == [.writeRefused("GitHub refused a write: Pull request is locked")])

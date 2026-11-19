@@ -7,19 +7,12 @@ import Testing
 
 private let prHubSecret = "prhub-device-secret-0123456789"
 
-/// PRHub's requests go to the paired pr-worker with the device secret as the bearer, the PR screens follow its
-/// `GET /device/config` (docs/api.md), and pairing needs nothing after `POST /device/pair`.
+/// PRHub's requests go to the paired pr-worker with the device secret as the bearer, its `GET /device/config` fixture
+/// decodes (docs/api.md), and pairing needs nothing after `POST /device/pair`. What the PR screens make of the config is
+/// in the unit layer's `PRHubTests`.
 @MainActor
 struct PRHubTests {
     private let resources = IntegrationResources()
-    private func makeModel(_ config: DeviceConfig?) -> PRsModel {
-        let model = PRsModel(client: PRViewerClient(access: .paired(
-            endpoint: WorkerEndpoint(fixed: URL(string: "https://pr-review.alex.workers.dev")!), secret: { prHubSecret }
-        )), directory: resources.directory(), defaults: resources.defaults(),
-        network: PRNetwork(isOnline: true), draftDirectory: resources.directory())
-        model.featureSource = { PRHubPRHost.configuration(config) }
-        return model
-    }
 
     // MARK: - Where requests go
 
@@ -49,38 +42,6 @@ struct PRHubTests {
         #expect(config.login == "alex" && config.orgs == ["acme"])
         #expect(config.appLatest?.build(for: .internal) == AppBuild(version: "1.0", build: "212"))
         #expect(config.appLatest?.build(for: .public) == AppBuild(version: "1.0", build: "198"))
-    }
-
-    @Test func thePRScreensFollowTheWorkersAIFeatures() {
-        let none = makeModel(DeviceConfig(features: [.push]))
-        let session = none.session(for: PullRequestRef(repo: "acme/api", number: 7))
-        #expect(!session.offersAsk && !session.offersKeyLines && !session.offersRewrite)
-        #expect(session.keyLineItems.isEmpty)
-
-        let all = makeModel(DeviceConfig(features: [.askAI, .keyLines, .rewrite]))
-        let full = all.session(for: PullRequestRef(repo: "acme/api", number: 7))
-        #expect(full.offersAsk && full.offersKeyLines && full.offersRewrite)
-        #expect(!all.configuration.isOn(.push))
-    }
-
-    @Test func beforeTheFirstConfigEveryFeatureIsOff() {
-        let model = makeModel(nil)
-        for feature in [PRKitConfiguration.Feature.askAI, .keyLines, .rewrite, .push] {
-            #expect(!model.configuration.isOn(feature))
-        }
-    }
-
-    // MARK: - The org filter's default
-
-    @Test func theFilterDefaultsToTheWorkersOrgsElseEveryOwner() {
-        #expect(makeModel(DeviceConfig(features: [], orgs: ["acme", "beta"])).orgDefault == .orgs(["acme", "beta"]))
-        #expect(makeModel(DeviceConfig(features: [], orgs: [])).orgDefault == .everyOwner)
-        #expect(makeModel(DeviceConfig(features: [])).orgDefault == .everyOwner)
-        #expect(makeModel(nil).orgDefault == .everyOwner)
-
-        let owners = ["acme", "beta", "gamma"]
-        #expect(PROrgDefault.orgs(["acme"]).filter(owners: owners).selected == ["acme"])
-        #expect(PROrgDefault.everyOwner.filter(owners: owners).selected == Set(owners))
     }
 
     // MARK: - Pairing

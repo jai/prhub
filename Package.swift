@@ -68,10 +68,17 @@ let package = Package(
             path: "app/PRHubCore"
         ),
         .target(name: "PRHubTestSupport", path: "app/PRHubTests/Support"),
+        // The PR screens' stores in memory, a test clock and a transport no test should reach: for PRKit's and the app's
+        // tests alike.
+        .target(
+            name: "PRKitTestSupport",
+            dependencies: ["PRKit", "PRKitCore", .product(name: "DurableNetworking", package: "durable-networking")],
+            path: "PRKit/Tests/PRKitTestSupport"
+        ),
         .testTarget(
             name: "PRHubUnitTests",
             dependencies: [
-                "PRHubTestSupport", "PRHubCore", "PRKit", "PRKitCore",
+                "PRHubTestSupport", "PRKitTestSupport", "PRHubCore", "PRKit", "PRKitCore",
                 .product(name: "DurableNetworking", package: "durable-networking"),
             ],
             path: "app/PRHubTests/Unit"
@@ -91,13 +98,15 @@ let package = Package(
         ),
         .testTarget(
             name: "PRKitUnitTests",
-            dependencies: ["PRKit", "PRKitCore", .product(name: "DurableNetworking", package: "durable-networking")],
+            dependencies: [
+                "PRKit", "PRKitCore", "PRKitTestSupport", .product(name: "DurableNetworking", package: "durable-networking"),
+            ],
             path: "PRKit/Tests/PRKitTests/Unit"
         ),
         .testTarget(
             name: "PRKitIntegrationTests",
             dependencies: [
-                "PRContractFixtures", "PRKit", "FeatureKit",
+                "PRContractFixtures", "PRKit", "PRKitTestSupport", "FeatureKit",
                 .product(name: "DurableNetworking", package: "durable-networking"),
             ],
             path: "PRKit/Tests/PRKitTests/Integration"

@@ -42,7 +42,8 @@ actor PRMirror {
         var sleep: @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     }
 
-    nonisolated let directory: URL
+    /// The mirror's folder (`PRDiskFileStore` on the phone): every file the mirror reads, writes and prunes.
+    nonisolated let files: any PRFileStore
     nonisolated let client: PRViewerClient
     let policy: RetryPolicy
     /// Where a disk error or a download that failed for good is said: the host's event log, set at any time.
@@ -89,9 +90,9 @@ actor PRMirror {
     }
 
     init(
-        directory: URL, client: PRViewerClient, shown: [PullRequestRow] = [], policy: RetryPolicy = RetryPolicy()
+        files: any PRFileStore, client: PRViewerClient, shown: [PullRequestRow] = [], policy: RetryPolicy = RetryPolicy()
     ) {
-        self.directory = directory
+        self.files = files
         self.client = client
         self.shown = shown
         self.policy = policy
@@ -99,10 +100,9 @@ actor PRMirror {
 
     /// The rows the last launch saved, those whose files are all still here: one that lost a file (a crash, or iOS
     /// clearing the cache) is downloaded again at the next sync.
-    static func savedRows(in directory: URL) -> [PullRequestRow] {
-        let saved = try? Data(contentsOf: directory.appending(path: rowsFile))
-        let rows = saved.flatMap { try? JSONDecoder().decode([PullRequestRow].self, from: $0) } ?? []
-        return rows.filter { isLocal($0, in: directory) }
+    static func savedRows(in files: any PRFileStore) -> [PullRequestRow] {
+        let rows = files.read(rowsFile).flatMap { try? JSONDecoder().decode([PullRequestRow].self, from: $0) } ?? []
+        return rows.filter { isLocal($0, in: files) }
     }
 
     /// The rows to show. A row whose files are not all here keeps the version that was, or waits if there was none.
@@ -121,14 +121,11 @@ actor PRMirror {
     /// A row's set: its description and its diff. Key lines are not part of it: a PR opens without them, and the screen
     /// asks for them itself.
     nonisolated func isLocal(_ row: PullRequestRow) -> Bool {
-        Self.isLocal(row, in: directory)
+        Self.isLocal(row, in: files)
     }
 
-    private static func isLocal(_ row: PullRequestRow, in directory: URL) -> Bool {
-        let exists = { (name: String) in
-            FileManager.default.fileExists(atPath: directory.appending(path: name).path(percentEncoded: false))
-        }
-        return exists(row.detailFileName) && (!row.hasDiff || exists(row.diffFileName))
+    private static func isLocal(_ row: PullRequestRow, in files: any PRFileStore) -> Bool {
+        files.exists(row.detailFileName) && (!row.hasDiff || files.exists(row.diffFileName))
     }
 
     /// A new list, as generation `generation`: what can show now, from files already here, saved as the list the next
@@ -192,10 +189,7 @@ actor PRMirror {
             ending[download.id] = name
         }
         inFlight = [:]
-        let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
-        for file in files ?? [] {
-            try? FileManager.default.removeItem(at: file)
-        }
+        files.removeAll()
     }
 
     /// The newest list's PRs whose files failed for good.
@@ -207,7 +201,7 @@ actor PRMirror {
     private func publish() -> [PullRequestRow] {
         shown = Self.publishable(latest, previous: shown, isLocal: isLocal)
         do {
-            try JSONEncoder().encode(shown).write(to: directory.appending(path: Self.rowsFile), options: .atomic)
+            try files.write(JSONEncoder().encode(shown), to: Self.rowsFile)
         } catch {
             log.say("PR mirror: rows not saved: \(error.localizedDescription)")
         }
@@ -258,12 +252,11 @@ actor PRMirror {
     /// says (`changedFiles`): GitHub's diff of such a PR is empty, and refusing it left the PR "not downloaded" for
     /// good. Before the description is here the diff is asked again; for a PR with changes it is an unreadable answer.
     private nonisolated func readableDiff(of row: PullRequestRow, route: String) -> @Sendable (Data) -> Bool {
-        { [client, directory] data in
+        { [client, files] data in
             guard data.isEmpty else {
                 return true
             }
-            let detail = (try? Data(contentsOf: directory.appending(path: row.detailFileName)))
-                .flatMap { try? PullRequestDetail.decode($0) }
+            let detail = files.read(row.detailFileName).flatMap { try? PullRequestDetail.decode($0) }
             guard let detail else {
                 return false
             }
@@ -303,20 +296,17 @@ actor PRMirror {
     private func prune() {
         let wanted = Set((latest + shown).flatMap(\.files))
             .union(inFlight.keys).union(ending.values)
-            .union(PRAlertedFiles(directory: directory).names())
+            .union(PRAlertedFiles(store: files).names())
             .union([Self.rowsFile, PRPushPrefetchLog.fileName, PRAlertedFiles.fileName, Self.keptFolder])
-        let manager = FileManager.default
-        let keys: Set<URLResourceKey> = [.contentModificationDateKey]
-        let files = (try? manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: Array(keys))) ?? []
-        for file in files where !wanted.contains(file.lastPathComponent) {
-            let modified = (try? file.resourceValues(forKeys: keys))?.contentModificationDate ?? .distantPast
+        for name in files.names() where !wanted.contains(name) {
+            let modified = files.modified(name) ?? .distantPast
             if Date.now.timeIntervalSince(modified) >= Double(policy.keepsUnlisted.components.seconds) {
-                try? manager.removeItem(at: file)
+                files.remove(name)
             }
         }
     }
 
     nonisolated func fileExists(_ name: String) -> Bool {
-        FileManager.default.fileExists(atPath: directory.appending(path: name).path(percentEncoded: false))
+        files.exists(name)
     }
 }

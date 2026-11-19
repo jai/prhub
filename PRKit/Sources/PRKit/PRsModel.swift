@@ -40,7 +40,8 @@ final class PRsModel {
     private(set) var removedRequests: Set<String> = []
     /// By row id. Saved, so a row stays read through a restart until the Worker's list catches up.
     private(set) var localAnswers: [String: PRLocalAnswer]
-    let defaults: UserDefaults
+    /// The model's and its sessions' settings: the answers, the org filter, the diff's options.
+    let settings: any PRKeyValueStore
     let client: PRViewerClient
     /// PRs with no Worker (`PRSampleSet`): Jai's Debug `-UXFixtures`, or PRHub's "Try with sample PRs". Nothing then
     /// leaves the phone.
@@ -86,21 +87,14 @@ final class PRsModel {
     let network: PRNetwork
     /// Whether the device has a network: what a question left in the outbox says while it waits. A test sets its own.
     @ObservationIgnored var isOnline: @MainActor () -> Bool
-    private let draftDirectory: URL?
-
-    var draftStore: PRDraftStore {
-        if let draftDirectory {
-            return PRDraftStore(directory: draftDirectory)
-        }
-        return PRDraftStore()
-    }
+    let draftStore: PRDraftStore
 
     let mirror: PRMirror
     /// Last good answers to the reads the mirror doesn't hold (the merged lists, each PR's Ask chat, key lines at
     /// other contexts, reviewed ticks), in the mirror's folder.
-    var kept: ReadStore {
-        ReadStore(directory: mirror.directory.appending(path: PRMirror.keptFolder, directoryHint: .isDirectory))
-    }
+    let kept: any PRKeptStore
+    /// The folder `kept` writes to on disk (`PRKitStorage.keptFolder`).
+    let keptFolder: URL?
 
     /// The newest sync, and its list fetch while that is out: what a wake waits for, and what a pull waits for.
     private var running: Task<PRSyncOutcome, Never>?
@@ -138,29 +132,37 @@ final class PRsModel {
         featureSource()
     }
 
-    /// `directory`: where the mirror's files go, the app's caches unless a test gives its own.
-    init(
-        client: PRViewerClient, samples: PRSampleSet? = nil, directory: URL? = nil,
-        defaults: UserDefaults = .standard, network: PRNetwork = PRNetwork(), draftDirectory: URL? = nil
-    ) {
+    init(client: PRViewerClient, samples: PRSampleSet? = nil, storage: PRKitStorage, network: PRNetwork = PRNetwork()) {
         self.network = network
-        self.draftDirectory = draftDirectory
-        self.defaults = defaults
-        localAnswers = defaults.data(forKey: Self.answersKey)
+        settings = storage.settings
+        draftStore = PRDraftStore(store: storage.drafts)
+        kept = storage.kept
+        keptFolder = storage.keptFolder
+        localAnswers = settings.data(forKey: Self.answersKey)
             .flatMap { try? JSONDecoder().decode([String: PRLocalAnswer].self, from: $0) } ?? [:]
         self.client = client
         self.samples = samples
-        let name = samples == nil ? "pr-viewer" : PRSampleSet.directoryName
-        let directory = directory ?? URL.cachesDirectory.appending(path: name, directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let saved = samples.map { $0.seed(in: directory, defaults: defaults) } ?? PRMirror.savedRows(in: directory)
+        let files = storage.mirror
+        let saved = samples.map { $0.seed(in: files, settings: storage.settings) } ?? PRMirror.savedRows(in: files)
         rows = saved
         if let samples {
             localAnswers = [:]
             errorMessage = samples.notUpToDate
         }
-        mirror = PRMirror(directory: directory, client: client, shown: saved)
+        mirror = PRMirror(files: files, client: client, shown: saved)
         isOnline = { [network] in network.isOnline }
+    }
+
+    /// On disk: the mirror in `directory`, the app's caches unless the host names its own (`PRKitStorage.onDisk`).
+    convenience init(
+        client: PRViewerClient, samples: PRSampleSet? = nil, directory: URL? = nil,
+        defaults: UserDefaults = .standard, network: PRNetwork = PRNetwork(), draftDirectory: URL? = nil
+    ) {
+        let storage = PRKitStorage.onDisk(
+            directory: directory ?? PRKitStorage.defaultDirectory(samples: samples), draftDirectory: draftDirectory,
+            defaults: defaults
+        )
+        self.init(client: client, samples: samples, storage: storage, network: network)
     }
 
     var orgs: [String] {
@@ -280,15 +282,12 @@ final class PRsModel {
         notUpdated = []
         lateRefusal = nil
         saveAnswers([:])
-        defaults.removeObject(forKey: "prOrgFilter")
+        settings.removeObject(forKey: "prOrgFilter")
         // Nothing of a sync still running may show, and nothing it downloads may stay.
         generation += 1
         running = nil
         listing = nil
-        let files = (try? FileManager.default.contentsOfDirectory(at: mirror.directory, includingPropertiesForKeys: nil))
-        for file in files ?? [] {
-            try? FileManager.default.removeItem(at: file)
-        }
+        mirror.files.removeAll()
         let mirror = mirror
         let generation = generation
         Task { await mirror.forget(generation: generation) }
@@ -362,15 +361,13 @@ final class PRsModel {
 
     private func localKeyLines(_ row: PullRequestRow) -> PRKeyLines? {
         row.keyLinesFileName
-            .flatMap { try? Data(contentsOf: mirror.directory.appending(path: $0)) }
+            .flatMap { mirror.files.read($0) }
             .flatMap { try? JSONDecoder().decode(PRKeyLines.self, from: $0) }
     }
 
     /// Nil if iOS cleared the cache under a row: the session then reads the PR live.
     private func localContent(_ row: PullRequestRow) -> PRContent? {
-        let read = { (name: String) in
-            try? Data(contentsOf: self.mirror.directory.appending(path: name), options: .mappedIfSafe)
-        }
+        let read = { (name: String) in self.mirror.files.read(name) }
         guard let detail = read(row.detailFileName).flatMap({ try? PullRequestDetail.decode($0) }) else {
             return nil
         }
@@ -414,7 +411,7 @@ final class PRsModel {
         guard samples == nil else {
             return
         }
-        defaults.set(try? JSONEncoder().encode(answers), forKey: Self.answersKey)
+        settings.set(try? JSONEncoder().encode(answers), forKey: Self.answersKey)
     }
 
     /// Takes Jai off this PR's review on GitHub.

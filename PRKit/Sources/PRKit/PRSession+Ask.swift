@@ -212,7 +212,7 @@ extension PRSession {
 
     func isUsed(_ message: PRAskChat.Message) -> Bool {
         _ = askReviewsUsed
-        return UserDefaults.standard.stringArray(forKey: Self.usedReviewsKey)?.contains(message.id) ?? false
+        return model.settings.stringArray(forKey: Self.usedReviewsKey)?.contains(message.id) ?? false
     }
 
     /// The newest answer, when it drafted a review not yet used: what "go" posts.
@@ -254,9 +254,9 @@ extension PRSession {
     }
 
     private func markUsed(_ message: PRAskChat.Message) {
-        var used = UserDefaults.standard.stringArray(forKey: Self.usedReviewsKey) ?? []
+        var used = model.settings.stringArray(forKey: Self.usedReviewsKey) ?? []
         used.append(message.id)
-        UserDefaults.standard.set(Array(used.suffix(Self.usedReviewsKept)), forKey: Self.usedReviewsKey)
+        model.settings.set(Array(used.suffix(Self.usedReviewsKept)), forKey: Self.usedReviewsKey)
         askReviewsUsed += 1
     }
 }

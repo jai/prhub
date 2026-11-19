@@ -19,26 +19,34 @@ public struct PRDraftComment: Codable, Identifiable, Hashable, Sendable {
 
 /// One file per PR, in Application Support: a draft is Jai's words, so iOS clearing a cache must not take it.
 public struct PRDraftStore: Sendable {
-    public let directory: URL
+    let store: any PRFileStore
 
-    public init(directory: URL = URL.applicationSupportDirectory.appending(path: "pr-drafts", directoryHint: .isDirectory)) {
-        self.directory = directory
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    public init(store: any PRFileStore) {
+        self.store = store
     }
 
-    private func file(_ ref: PullRequestRef) -> URL {
-        directory.appending(path: "\(ref.repo.replacing("/", with: "__"))__\(ref.number).json")
+    public init(directory: URL = Self.defaultDirectory) {
+        self.init(store: PRDiskFileStore(directory: directory))
+    }
+
+    /// Application Support's `pr-drafts`.
+    public static var defaultDirectory: URL {
+        URL.applicationSupportDirectory.appending(path: "pr-drafts", directoryHint: .isDirectory)
+    }
+
+    private func file(_ ref: PullRequestRef) -> String {
+        "\(ref.repo.replacing("/", with: "__"))__\(ref.number).json"
     }
 
     public func load(_ ref: PullRequestRef) -> [PRDraftComment] {
-        (try? Data(contentsOf: file(ref))).flatMap { try? JSONDecoder().decode([PRDraftComment].self, from: $0) } ?? []
+        store.read(file(ref)).flatMap { try? JSONDecoder().decode([PRDraftComment].self, from: $0) } ?? []
     }
 
     public func save(_ drafts: [PRDraftComment], for ref: PullRequestRef) {
         if drafts.isEmpty {
-            try? FileManager.default.removeItem(at: file(ref))
+            store.remove(file(ref))
         } else if let data = try? JSONEncoder().encode(drafts) {
-            try? data.write(to: file(ref), options: .atomic)
+            try? store.write(data, to: file(ref))
         }
     }
 }

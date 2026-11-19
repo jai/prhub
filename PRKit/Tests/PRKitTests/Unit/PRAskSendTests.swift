@@ -1,6 +1,7 @@
 import DurableNetworking
 import Foundation
 @testable import PRKit
+import PRKitTestSupport
 import Testing
 
 /// A question to the PR's AI between its send and the chat having it: slow, offline, failed and answered.
@@ -27,11 +28,6 @@ struct PRAskSendTests {
 
     @MainActor
     final class Host: PRKitHost {
-        let storage = TestStorage()
-        var mirrorDirectory: URL? {
-            storage.directory
-        }
-
         let access = PRViewerAccess.offline
         let configuration = PRKitConfiguration.everything
         let held = Outbox()
@@ -62,8 +58,7 @@ struct PRAskSendTests {
 
     private func kit(wait: Duration = .seconds(15)) -> (PRKitController, Host) {
         let host = Host()
-        let kit = PRKitController(host: host, defaults: host.storage.defaults, network: PRNetwork(isOnline: true),
-                                  draftDirectory: host.storage.draftDirectory)
+        let kit = PRKitController(host: host, storage: .inMemory(), network: PRNetwork(isOnline: true))
         kit.model.answerWait = wait
         let clock = clock
         kit.model.sleep = { try await clock.sleep(for: $0) }
@@ -90,7 +85,7 @@ struct PRAskSendTests {
     @Test func theWorkersAnswerEndsTheSend() async throws {
         let (kit, host) = kit(wait: .seconds(5))
         let asked = Task { try await kit.model.ask(question, about: ref) }
-        try await waitUntil("question registered as waiting") { kit.model.waiting.contains("ask-1") }
+        try await settle("question registered as waiting") { kit.model.waiting.contains("ask-1") }
         kit.outboxAnswered(id: "ask-1", data: Data("""
         {"messages":[{"id":"m1","role":"you","text":"Is it tested?","anchor":null}],"isWorking":true,\
         "activity":null,"problem":null,"costCents":null}
@@ -105,7 +100,7 @@ struct PRAskSendTests {
     @Test func aRefusalFailsWithItsReasonAndTryAgainHasTheQuestion() async throws {
         let (kit, host) = kit(wait: .seconds(5))
         let asked = Task { try await kit.model.ask(question, about: ref) }
-        try await waitUntil("question registered as waiting") { kit.model.waiting.contains("ask-1") }
+        try await settle("question registered as waiting") { kit.model.waiting.contains("ask-1") }
         kit.outboxRefused(id: "ask-1", kind: .question, reason: "This chat reached its spending limit.")
         let outcome: Result<PRAskOutcome, any Error> = await asked.result
         let send = PRAskSend.after(outcome, of: question, isOnline: true)
@@ -124,7 +119,7 @@ struct PRAskSendTests {
         session.askSend = .sending(question)
         let following = Task { await session.followAsk() }
         defer { following.cancel() }
-        try await waitUntil("queued question follows offline state") { session.askSend != .sending(question) }
+        try await settle("queued question follows offline state") { session.askSend != .sending(question) }
         #expect(session.askSend == .waitingForNetwork(question))
         #expect(session.askError == nil)
         host.held.isHolding = false
@@ -151,7 +146,7 @@ struct PRAskSendTests {
         let session = try loadedSession(kit)
         session.explainPR()
         try await clock.advance(by: kit.model.answerWait, afterSleepers: 1)
-        try await waitUntil("Explain PR reports its outcome") { !host.events.isEmpty }
+        try await settle("Explain PR reports its outcome") { !host.events.isEmpty }
         session.askDraft = "Is it tested?"
         try await pastTheWait(kit) { await session.sendAsk() }
         session.askAnchor = PRAskQuestion.Anchor(path: "a.swift", line: 3, side: "RIGHT", code: nil)

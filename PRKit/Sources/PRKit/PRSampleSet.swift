@@ -72,22 +72,27 @@ public struct PRSampleSet: Sendable {
         reviewed ? mergedReviewed : mergedMine
     }
 
-    /// Writes every sample's files into `directory` and starts the list with no saved settings.
-    public func seed(in directory: URL, defaults: UserDefaults = .standard) -> [PullRequestRow] {
-        Self.resetListSettings(defaults)
+    /// Writes every sample's files into `files` and starts the list with no saved settings.
+    public func seed(in files: any PRFileStore, settings: any PRKeyValueStore) -> [PullRequestRow] {
+        Self.resetListSettings(settings)
         for sample in samples {
-            try? Data(sample.detail.utf8).write(to: directory.appending(path: sample.row.detailFileName))
-            try? Data(sample.diff.utf8).write(to: directory.appending(path: sample.row.diffFileName))
+            try? files.write(Data(sample.detail.utf8), to: sample.row.detailFileName)
+            try? files.write(Data(sample.diff.utf8), to: sample.row.diffFileName)
             if let name = sample.row.keyLinesFileName, let keyLines = sample.keyLines {
-                try? Data(keyLines.utf8).write(to: directory.appending(path: name))
+                try? files.write(Data(keyLines.utf8), to: name)
             }
         }
         return rows
     }
 
-    public static func resetListSettings(_ defaults: UserDefaults = .standard) {
+    /// `seed(in:settings:)` on disk.
+    public func seed(in directory: URL, defaults: UserDefaults = .standard) -> [PullRequestRow] {
+        seed(in: PRDiskFileStore(directory: directory), settings: defaults)
+    }
+
+    public static func resetListSettings(_ settings: any PRKeyValueStore = UserDefaults.standard) {
         for key in listSettingKeys {
-            defaults.removeObject(forKey: key)
+            settings.removeObject(forKey: key)
         }
     }
 
