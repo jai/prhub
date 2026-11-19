@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { test } from "vitest";
-import { URL } from "node:url";
+import policyCases from "../fixtures/policy-cases.json" with { type: "json" };
 import {
   type Membership,
   type PeopleFacts,
   parsePolicy,
   peopleDecision,
-} from "../../../src/policy-people.ts";
+} from "../../src/policy-people.ts";
 
 /**
  * Real PRs, captured by scripts/capture-policy-cases.mts and checked against PolicyBot by hand: the people count must
@@ -22,9 +21,7 @@ interface Case {
   policyBot: string | null;
 }
 
-const fixture = JSON.parse(
-  readFileSync(new URL("../../fixtures/policy-cases.json", import.meta.url), "utf8"),
-) as {
+const fixture = policyCases as unknown as {
   policies: Record<string, string>;
   cases: Case[];
 };
