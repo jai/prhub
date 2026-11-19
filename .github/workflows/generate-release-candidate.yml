@@ -1,8 +1,8 @@
 # Generate a release candidate for each component (docs/workflow.md): ios, worker and prkit. jai/ci's release-clock
 # starts it every 3 hours, through workflow_dispatch. For each component, git-cliff gets the next version from the
 # conventional commits that change the component's files since its newest release tag (feat: minor, fix or perf: patch,
-# a breaking change: major; nothing else releases). The RC tag is rc-<component>-v<version>-<short hash>, on the newest
-# commit of main that changes the component (docs/workflow.md, Part 2). Its push starts release.yml.
+# a breaking change: major; nothing else releases). The RC tag is rc-<component>-v<version>-<short hash>, on the
+# current head of main, including fixes to its test host. Its push starts release.yml.
 name: generate-release-candidate
 
 on:
@@ -67,9 +67,7 @@ jobs:
             echo "nothing cut: a $COMPONENT release is queued or running"
             exit 0
           fi
-          # The newest commit that changes the component or its CI files: its release tag must be on such a commit, or
-          # git-cliff's path filter does not see the tag the next time.
-          git checkout -q "$(git log -1 --format=%H -- "${paths[@]}")"
+          # Keep the checked-out head of main. Component paths select version changes, not the tested source tree.
           include=()
           for path in "${paths[@]}"; do
             if [ -d "$path" ]; then include+=(--include-path "$path/**"); else include+=(--include-path "$path"); fi

@@ -53,6 +53,8 @@ Each test workflow runs one test layer of one component. Each push workflow runs
 
 ## Release order
 
+`generate-release-candidate` tags the current head of `main`. Component paths determine the next version, while the tested source tree includes every current test-host fix. Git-cliff uses `--unreleased` to bump from the newest component release tag even when that tag points to a commit outside the component paths.
+
 `release` runs the checks of the RC's component in its own run, cheapest first. Lint and unit tests start together; integration waits for its unit tests. `test-ui-prkit` waits for the kit's cheap checks and, on an ios RC, every cheap app check too. Its explicit condition allows app-only checks to be skipped on a prkit RC. `test-ui-ios` then waits for the kit UI gate and the app's cheap checks, without rerunning library UI. Both UI gates run inside the same release run and hold that component's concurrency group. Worker RCs skip both. The final `release` job requires every check that ran to pass, including the kit UI gate.
 
 ## Make targets
@@ -104,7 +106,6 @@ UI jobs still delete their own simulator and testing clones in their cleanup ste
 Each names what it changes, why, and Jai's approval.
 
 - **`prkit` releases as `v<version>`**, not `prkit-v<version>`. Swift Package Manager reads only `v<version>` tags, and Agent Pager pins PRKit by version. Approval: pending.
-- **The RC is the newest commit of `main` that changes the component** or its CI files, not the head of `main`. git-cliff reads a component's commits by path (`--include-path`), and it does not see a release tag on a commit outside those paths. Since `generate-release-candidate` passes `--unreleased`, git-cliff bumps from the newest release tag wherever it is, so this deviation may no longer be needed. Approval: pending.
 - **An `ios` release also runs `lint-prkit`, `test-unit-prkit`, `test-integration-prkit` and `test-ui-prkit`**: the app contains PRKit. Approval: pending.
 - **`lint-ios` has a second job, `build-ios`**, and `make build-ios` is a target Part 1 does not list. Part 1 asks for builds of every shipped target on each push, and has no build workflow. Approval: pending.
 - **`test-ui-ios` and `test-ui-prkit` also run their app-hosted rendering plans.** Its checks are UI-layer: they need the app on a Simulator. Folding it in keeps one make target per workflow, and the release still gates it. Approval: pending.
