@@ -2,7 +2,7 @@ import XCTest
 
 /// The code scrolls sideways and nothing else does: at the left edge a swipe right moves nothing, and the file header
 /// and a key line's note stay whole and in view wherever the code is; in the largest text the note stays clear of its
-/// stepper. On the sample PRs, at the default text size and the largest. Pictures go to `SCREENSHOTS_DIR` when set.
+/// stepper. On the sample PRs, at the default text size and the largest.
 @MainActor
 final class PRHubDiffSidewaysUITests: PRHubUITestCase {
     /// Review alerts already declined: the offer came up over the PR on an iPad and took the tap meant for Review
@@ -44,10 +44,10 @@ final class PRHubDiffSidewaysUITests: PRHubUITestCase {
     private func swipeRightAtTheLeftEdge(_ name: String, textSize: String?) throws {
         try openKeyLineNote(textSize: textSize)
         let before = Positions(app)
-        try recordScreenshot("diff-sideways-\(name)-1-open")
+        recordScreenshot("diff-sideways-\(name)-1-open")
 
         drag(from: 0.3, by: 200, holding: 0.5)
-        try recordScreenshot("diff-sideways-\(name)-2-swiped-right")
+        recordScreenshot("diff-sideways-\(name)-2-swiped-right")
         let after = Positions(app)
         XCTAssertEqual(after.line, before.line, "\(name): the code's first line stays at the left edge")
         XCTAssertEqual(after.header, before.header, "\(name): the header's path stays where it was")
@@ -58,7 +58,7 @@ final class PRHubDiffSidewaysUITests: PRHubUITestCase {
     private func headerAndNoteStay(_ name: String, textSize: String?) throws {
         try openKeyLineNote(textSize: textSize)
         let before = drag(from: 0.6, by: -150, holding: 0.3, bringingUpCode: true)
-        try recordScreenshot("diff-sideways-\(name)-3-scrolled-left")
+        recordScreenshot("diff-sideways-\(name)-3-scrolled-left")
         let after = Positions(app)
         // DiffTableContainer gives each code cell the full canvas width. DiffFileHeader pins the viewed button's
         // trailing edge to the viewport. Classify the geometry before the gesture, never from whether it moved.

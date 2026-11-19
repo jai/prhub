@@ -137,12 +137,11 @@ targets:
     scheme:
       # One plan a layer, each picked by -testPlan (docs/workflow.md): the UI tests, parallel on Simulator clones and
       # retried once on failure by the command line that runs them; the app-hosted rendering checks, one at a time and
-      # never retried; the screenshot captures, which gate nothing. Unit and integration tests are `swift test`.
+      # never retried. Unit and integration tests are `swift test`.
       testPlans:
         - path: PRHubUITests.xctestplan
           defaultPlan: true
         - path: PRHubRenderingTests.xctestplan
-        - path: PRHubScreenshots.xctestplan
         - path: PRHubE2EPairingTests.xctestplan
         - path: PRHubE2ETests.xctestplan
         - path: PRHubPerformanceTests.xctestplan
@@ -238,21 +237,6 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jaigovindani.prreview.uitests
-        GENERATE_INFOPLIST_FILE: YES
-
-  # Screenshot captures, not tests: every screen in each look and the diff in each font, for review and the App Store.
-  # Only PRHubScreenshots.xctestplan runs them; the release gate never does.
-  PRHubScreenshots:
-    type: bundle.ui-testing
-    platform: iOS
-    sources:
-      - PRHubScreenshots
-      - PRHubUITests/UITestSupport.swift
-    dependencies:
-      - target: PRHub
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.jaigovindani.prreview.screenshots
         GENERATE_INFOPLIST_FILE: YES
 
   # iOS rendering checks use an app host; shared PRKit cases also run natively on Mac through SwiftPM.

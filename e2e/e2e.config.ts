@@ -15,7 +15,7 @@ const signedIn =
   );
 const model = signedIn ? chatgpt(modelId) : openai(modelId);
 
-// The Debug build's launch modes (app/PRHub/Debug/PRHubScreenshots.swift). None needs a Worker or reaches GitHub.
+// The Debug build's launch modes (app/PRHub/Debug/PRHubFixtureLaunch.swift). None needs a Worker or reaches GitHub.
 export const modes = {
   // Signed in as if paired, over the sample PRs, every AI feature on.
   paired: ["-PRHubPaired"],

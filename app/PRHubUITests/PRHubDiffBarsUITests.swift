@@ -3,7 +3,7 @@ import XCTest
 /// The diff's nav bar and tab bar leave as you scroll down a long file, and nothing can leave them gone with no way out:
 /// the status bar brings them back, and the edge swipe goes back to the PR while they are gone (when they leave and
 /// come back is PRKit's `DiffBarsTests`). On
-/// `-PRHubLongDiff`, whose first PR has one file longer than the screen. Pictures go to `SCREENSHOTS_DIR` when set.
+/// `-PRHubLongDiff`, whose first PR has one file longer than the screen.
 @MainActor
 final class PRHubDiffBarsUITests: PRHubUITestCase {
     func testTheStatusBarBringsTheBarsBack() {

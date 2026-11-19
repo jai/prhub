@@ -12,7 +12,7 @@ final class PRHubOpenLinkUITests: PRHubUITestCase {
 
         XCTAssertTrue(app.buttons["pr-review-changes"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.navigationBars["acme/web#412"].exists, "the requested PR's detail, not its list row")
-        try recordScreenshot("handoff-requested-pr")
+        recordScreenshot("handoff-requested-pr")
     }
 
     private func handoff(_ target: String) throws -> URL {

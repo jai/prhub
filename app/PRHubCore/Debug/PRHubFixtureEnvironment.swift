@@ -13,19 +13,18 @@
     ///   list is the samples. The ways in follow the build's flags; `-PRHubSelfHosted YES` (any flag, `PRHubBuild`) changes
     ///   one.
     /// - `-PRHubHosted`: signed in on that fake hosted Worker. With `-PRHubSignedOut` GitHub signed the person out; with
-    ///   `-PRHubHostedEmpty` the list is empty; with `-PRHubAnthropicKey` a key is set; with `-PRHubSettings` it opens on
+    ///   `-PRHubHostedEmpty` the list is empty; with `-PRHubSettings` it opens on
     ///   Settings. The App is installed on `octocat`, on two of acme's repos and, suspended, on initech; with
     ///   `-PRHubInstallations none` on no account, and with `-PRHubInstallations onReturn` on `octocat` alone until the
     ///   app leaves the foreground (as for GitHub), and on acme too when it comes back.
     /// - `-PRHubPaired`: the PRs and Settings over the sample PRs as if paired, every AI feature on. With `-PRHubSettings`
     ///   it opens on Settings; with `-PRHubLongDiff` For review starts with a PR whose one file is longer than the screen,
-    ///   for the diff's bars; with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View; with
-    ///   `-PRHubNotUpToDate` the list opens under its "Not up to date" line.
+    ///   for the diff's bars; with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View.
     ///
     /// Each launch starts on empty storage of its own (`PRHubUITestResources`). `-prkit.diffFont face:size` sets one for
     /// the run. `-PRHubAppearance dark` (or `light`) sets the run's appearance whatever the Simulator's is: on CI's
     /// Simulator `XCUIDevice.shared.appearance` left everything light, so every "dark" picture came out light.
-    public enum PRHubScreenshotEnvironment {
+    public enum PRHubFixtureEnvironment {
         @MainActor public static func environment(
             usage: @MainActor (UserDefaults) -> UsageAnalytics, testFlightGroup: TestFlightGroup
         ) -> PRHubEnvironment? {
@@ -60,12 +59,7 @@
         }
 
         private static func pairedSamples(_ arguments: [String]) -> PRSampleSet {
-            var samples: PRSampleSet = arguments.contains("-PRHubLongDiff") ? .prHubLongDiff : .prHub
-            // The list under its "Not up to date" line.
-            if arguments.contains("-PRHubNotUpToDate") {
-                samples.notUpToDate = "1 of 125 PRs could not be downloaded and show their last copy. Refresh to try again."
-            }
-            return samples
+            arguments.contains("-PRHubLongDiff") ? .prHubLongDiff : .prHub
         }
 
         /// The hosted Worker's stand-in: sign-in, sign-out, Delete Account and the Anthropic key answer at once, and the
@@ -156,10 +150,10 @@
 
         private let state: Mutex<State>
 
-        /// `-PRHubSignedOut`, `-PRHubAnthropicKey` and `-PRHubInstallations`.
+        /// `-PRHubSignedOut` and `-PRHubInstallations`; the Anthropic key starts unset.
         init(arguments: [String]) {
             state = Mutex(State(
-                signedOut: arguments.contains("-PRHubSignedOut"), anthropicKey: arguments.contains("-PRHubAnthropicKey"),
+                signedOut: arguments.contains("-PRHubSignedOut"), anthropicKey: false,
                 installations: Installations(UserDefaults.standard.string(forKey: "PRHubInstallations"))
             ))
             watchForGitHub()

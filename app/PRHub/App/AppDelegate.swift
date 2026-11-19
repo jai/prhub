@@ -69,7 +69,7 @@
     extension AppDelegate {
         private static var isFixtureLaunch: Bool {
             #if DEBUG
-                PRHubScreenshots.isFixtureLaunch
+                PRHubFixtureLaunch.isFixtureLaunch
             #else
                 false
             #endif

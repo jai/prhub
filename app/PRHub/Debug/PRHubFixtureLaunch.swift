@@ -4,7 +4,7 @@
     import SwiftUI
 
     /// Debug launch scenarios are built in PRHubCore; appearance stays with the app's views.
-    enum PRHubScreenshots {
+    enum PRHubFixtureLaunch {
         static let appearanceKey = "PRHubAppearance"
 
         static func colorScheme(_ defaults: UserDefaults = .standard) -> ColorScheme? {
@@ -16,7 +16,7 @@
         }
 
         @MainActor static func environment() -> PRHubEnvironment? {
-            PRHubScreenshotEnvironment.environment(usage: { UsageAnalytics.live(defaults: $0) }, testFlightGroup: .current)
+            PRHubFixtureEnvironment.environment(usage: { UsageAnalytics.live(defaults: $0) }, testFlightGroup: .current)
         }
 
         static var isFixtureLaunch: Bool {

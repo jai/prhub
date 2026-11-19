@@ -45,7 +45,7 @@ Each test workflow runs one test layer of one component. Each push workflow runs
 - **Integration**: `swift test` on `PRHubIntegrationTests` (persistence, Keychain, contract fixtures) and `PRKitIntegrationTests` (persistence, contract fixtures, bundled fonts, and the AppKit checks of `PRKit/Tests/PRKitRenderingTests`); Vitest projects `integration-node` and `integration-runtime` (workerd) in `worker/`, and `integration` in `agent/` (a real git and a local server). Outside services are stubbed.
 - **UI**: `make test-ui-ios` runs two Xcode test plans on one Simulator: `PRHubRenderingTests` (rendering that needs the app host, serial, never retried), then `PRHubUITests` (what only the running app shows, in parallel on Simulator clones, each failing test run once more). Both are on an iPhone 17 and an iPad Pro 13-inch Simulator. Each plan names its full test target, so a new test class runs with no file change.
 - **End-to-end**: `PRHubE2ETests.xctestplan` and `PRHubE2EPairingTests.xctestplan` need a paired deployed Worker; a person runs them. Tester Army (`e2e/`) is started by hand.
-- **Not tests**: `PRHubScreenshots.xctestplan` captures every screen for review and the App Store, and asserts nothing. Only `make screenshots-ios` runs it. `PRHubPerformanceTests.xctestplan` needs a physical device.
+- **Not in CI**: `PRHubPerformanceTests.xctestplan` needs a physical device.
 - `deploy-worker` deploys with `wrangler deploy` (`deploy/hosted/wrangler.jsonc`) and then checks that the live Worker answers. Xcode Cloud's "PRHub TestFlight Internal and External" starts on the `ios-v` tag and only archives and uploads; `app/ci_scripts/ci_post_clone.sh` generates the project for it.
 - This repo is public. Each `lint-<component>` runs gitleaks on its component's files.
 
@@ -66,7 +66,6 @@ Each test workflow runs one test layer of one component. Each push workflow runs
 | `make test-unit-ios` | `swift test --filter PRHubUnitTests` |
 | `make test-integration-ios` | `swift test --filter PRHubIntegrationTests` |
 | `make test-ui-ios` | The rendering plan, then the UI plan (`SIMULATOR=<udid>` or `SIM_NAME=<name>` picks the Simulator) |
-| `make screenshots-ios` | The screenshot plan, into `app/build/screenshots` |
 | `make test-unit-prkit` | `swift test --filter PRKitUnitTests` |
 | `make test-integration-prkit` | `swift test --filter PRKitIntegrationTests` |
 | `make test-unit-worker` | The Worker's and the agent's unit tests |
@@ -103,14 +102,12 @@ Each names what it changes, why, and Jai's approval.
 - **`lint-ios` has a second job, `build-ios`**, and `make build-ios` is a target Part 1 does not list. Part 1 asks for builds of every shipped target on each push, and has no build workflow. Approval: pending.
 - **`test-ui-ios` also runs the app-hosted rendering plan.** Its checks are UI-layer: they need the app on a Simulator. Folding it in keeps one make target per workflow, and the release still gates it. Approval: pending.
 - **`ios` has fewer integration tests (13) than UI tests (22).** After the test-layer cleanup, the UI tests that remain each need the running app: layout, gestures, system screens and the ways in. Approval: pending.
-- **`make screenshots-ios` has no workflow.** It asserts nothing, so it is not a test layer. Approval: pending.
 - **`notify-update-available` runs `release/app-latest.test.mjs` before each run.** `release/` belongs to no component, so no test workflow covers it. Approval: pending.
 - **`.claude/hooks/fix-edited-file.py`** is a Claude Code hook that Part 1 does not list. Approval: pending.
 
 ## Open questions
 
 - **UI timing**: Part 1 leaves it unresolved. `test-ui-ios` runs only in `ios` releases, not on pushes.
-- **A screenshots workflow**: should `make screenshots-ios` get one (for example `screenshots-ios`, on the `ios-v` tag), or stay local?
 - **`release/app-latest.test.mjs`**: move it into `test-unit-worker`, or give `release/` a test workflow?
 - **Runners**: the playbook names Borg Cube 03 and the Mac mini. Since 2026-11-18 the Mac jobs ran on Cube 03, and two `mac` jobs on Cube 04, which the playbook leaves for later. The Mac mini ran none.
 

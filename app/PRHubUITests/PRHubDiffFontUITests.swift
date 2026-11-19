@@ -4,7 +4,7 @@ import XCTest
 /// the rendering tests' (`DiffViewedMarkTests`, PRKit's `DiffFontTests`); their pictures are `PRHubDiffScreenshotTests`'.
 @MainActor
 final class PRHubDiffFontUITests: PRHubUITestCase {
-    func testSettingsChangesAnOpenDiff() throws {
+    func testSettingsChangesAnOpenDiff() {
         // No font argument: it would override what Settings stores.
         openDiff()
         let line = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH 'diff-line-'")).firstMatch
@@ -14,7 +14,7 @@ final class PRHubDiffFontUITests: PRHubUITestCase {
         app.go(to: .settings)
         let preview = app.descendants(matching: .any)["diff-font-preview"]
         XCTAssertTrue(app.scrollSettings(to: preview))
-        try recordScreenshot("diff-font-settings-before")
+        recordScreenshot("diff-font-settings-before")
         let bigger = app.descendants(matching: .any)["diff-font-size"].buttons["Bigger"]
         for _ in 0 ..< 4 {
             bigger.tap()
@@ -23,11 +23,11 @@ final class PRHubDiffFontUITests: PRHubUITestCase {
         XCTAssertTrue(app.scrollSettings(to: face))
         face.tap()
         XCTAssertTrue(app.scrollSettings(to: preview, up: false))
-        try recordScreenshot("diff-font-settings-after")
+        recordScreenshot("diff-font-settings-after")
 
         app.go(to: .prs)
         XCTAssertTrue(waitFor { line.exists && line.frame.height > before }, "the open diff redrew at 16 pt")
-        try recordScreenshot("diff-font-live-update")
+        recordScreenshot("diff-font-live-update")
     }
 
     private func openDiff() {

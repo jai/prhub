@@ -4,7 +4,7 @@ import XCTest
 /// open on Key lines, so Back returns to the PR; a row's swipe and its menu land on the diff with the PR under it. On a
 /// wide screen (an iPad) the list sits beside the PR and a diff takes the whole width, with its panel as a column; a
 /// narrow Split View keeps the phone's layout. Where each way in lands is PRKit's `PRNavigationTests`. Pictures go to
-/// `SCREENSHOTS_DIR` when it is set.
+///
 @MainActor
 final class PRHubNavigationUITests: PRHubUITestCase {
     private let checkout = "Show a retry button when checkout fails"
@@ -207,6 +207,6 @@ final class PRHubNavigationUITests: PRHubUITestCase {
 
     private func picture(_ name: String) throws {
         let look = XCUIDevice.shared.appearance == .dark ? "dark" : "light"
-        try recordScreenshot("\(name)-\(look)")
+        recordScreenshot("\(name)-\(look)")
     }
 }

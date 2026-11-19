@@ -10,43 +10,30 @@ struct PRHubApp: App {
     #endif
 
     /// A fixture launch (`-PRHubPaired`, `-PRHubHosted`, `-PRHubFirstRun`): PRHub over the sample PRs and a fake
-    /// Worker, for the UI tests, the screenshot captures and Tester Army (`PRHubScreenshotEnvironment`). Debug only.
+    /// Worker, for the UI tests, the screenshot captures and Tester Army (`PRHubFixtureEnvironment`). Debug only.
     @MainActor private static let screenshotEnvironment: PRHubEnvironment? = {
         #if DEBUG
-            PRHubScreenshots.environment()
+            PRHubFixtureLaunch.environment()
         #else
             nil
         #endif
     }()
 
     /// `-PRHubAppearance dark` or `light`: the UI tests' pictures in the look they name. Debug only.
-    private static let screenshotColorScheme: ColorScheme? = {
+    private static let fixtureColorScheme: ColorScheme? = {
         #if DEBUG
-            PRHubScreenshots.colorScheme()
+            PRHubFixtureLaunch.colorScheme()
         #else
             nil
         #endif
     }()
-
-    #if os(macOS) && DEBUG
-        init() {
-            PRHubMacSnapshot.openWindowIfNoneOpened {
-                Self.windowContent { PRHubRootView(environment: $0) }
-                    .symbolVariant(DesignTokens.iconVariant)
-                    .task { await PRHubMacSnapshot.runIfAsked() }
-            }
-        }
-    #endif
 
     var body: some Scene {
         WindowGroup {
             Self.windowContent { PRHubRootView(environment: $0) }
                 // DESIGN.md's icon style, for every symbol in the app.
                 .symbolVariant(DesignTokens.iconVariant)
-                .preferredColorScheme(Self.screenshotColorScheme)
-            #if os(macOS) && DEBUG
-                .task { await PRHubMacSnapshot.runIfAsked() }
-            #endif
+                .preferredColorScheme(Self.fixtureColorScheme)
         }
         #if os(macOS)
         .defaultSize(width: 1200, height: 800)
@@ -59,14 +46,14 @@ struct PRHubApp: App {
                         .prKitOfflineBanner(environment.prs)
                 }
                 .symbolVariant(DesignTokens.iconVariant)
-                .preferredColorScheme(Self.screenshotColorScheme)
+                .preferredColorScheme(Self.fixtureColorScheme)
             }
             .defaultSize(width: 560, height: 720)
             .keyboardShortcut("f", modifiers: [.command, .shift])
             Settings {
                 Self.windowContent { PRHubMacSettings(environment: $0) }
                     .symbolVariant(DesignTokens.iconVariant)
-                    .preferredColorScheme(Self.screenshotColorScheme)
+                    .preferredColorScheme(Self.fixtureColorScheme)
             }
         #endif
     }

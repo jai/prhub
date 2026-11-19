@@ -1,7 +1,7 @@
 # PRHub UI exploration
 
 AI-driven exploratory testing and bug bashes for the PRHub iPhone app, with [e2e](https://github.com/tester-army/e2e).
-The app runs on iOS Simulators in its Debug fixture modes (`app/PRHubCore/Debug/PRHubScreenshotEnvironment.swift`), so
+The app runs on iOS Simulators in its Debug fixture modes (`app/PRHubCore/Debug/PRHubFixtureEnvironment.swift`), so
 no Worker and no GitHub are involved: this is not end-to-end testing, and it is not part of CI. Each launch starts on
 empty fixture storage. The checks against a deployed Worker are `app/PRHubE2ETests`.
 

@@ -197,7 +197,7 @@ private extension View {
         func compactWidthForUITests() -> some View {
             #if DEBUG
                 onAppear {
-                    guard PRHubScreenshots.forcesCompactWidth else {
+                    guard PRHubFixtureLaunch.forcesCompactWidth else {
                         return
                     }
                     for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {

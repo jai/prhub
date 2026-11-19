@@ -1,6 +1,6 @@
 import XCTest
 
-/// Sign in with GitHub against the fake hosted Worker (`PRHubScreenshots`): sign-in to the list, the Anthropic key and
+/// Sign in with GitHub against the fake hosted Worker (`PRHubFixtureLaunch`): sign-in to the list, the Anthropic key and
 /// Delete Account, and a new install read again on the way back from GitHub. The connection's logic is
 /// `HostedConnectionTests`'.
 @MainActor
@@ -62,5 +62,5 @@ final class PRHubHostedUITests: PRHubUITestCase {
         XCTAssertTrue(acme.waitForExistence(timeout: 10), "the config is read again on the way back")
     }
 
-    // A picture for the test's result, and in `SCREENSHOTS_DIR` when it is set.
+    // A picture for the test's result.
 }

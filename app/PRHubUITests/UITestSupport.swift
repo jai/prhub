@@ -31,18 +31,12 @@ class PRHubUITestCase: XCTestCase {
         return true
     }
 
-    func recordScreenshot(_ name: String) throws {
-        let screenshot = XCUIScreen.main.screenshot()
-        let attachment = XCTAttachment(screenshot: screenshot)
+    /// A picture of the screen, kept in the test's result bundle.
+    func recordScreenshot(_ name: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
-        guard let folder = ProcessInfo.processInfo.environment["SCREENSHOTS_DIR"], !folder.isEmpty else {
-            return
-        }
-        let directory = URL(fileURLWithPath: folder, isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try screenshot.pngRepresentation.write(to: directory.appendingPathComponent(name + ".png"))
     }
 }
 

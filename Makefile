@@ -10,7 +10,6 @@
 #   make test-unit-ios            swift test on PRHubUnitTests
 #   make test-integration-ios     swift test on PRHubIntegrationTests: app persistence and Keychain
 #   make test-ui-ios              the app-hosted rendering plan, then the UI plan, on one Simulator (SIMULATOR or SIM_NAME)
-#   make screenshots-ios          every screen's picture, in app/build/screenshots; not a test, no workflow runs it
 #   make test-unit-prkit          swift test on PRKitUnitTests
 #   make test-integration-prkit   swift test on PRKitIntegrationTests: persistence, contracts, fonts, AppKit rendering
 #   make test-unit-worker         Worker and agent unit tests (needs `npm ci` in worker/ and agent/)
@@ -22,7 +21,7 @@
 
 SHELL := /bin/bash
 .PHONY: fix lint-ios lint-prkit lint-worker lint-workflows build-ios test-unit-ios test-integration-ios test-ui-ios \
-	screenshots-ios test-unit-prkit test-integration-prkit test-unit-worker test-integration-worker lint all-tests
+	test-unit-prkit test-integration-prkit test-unit-worker test-integration-worker lint all-tests
 
 X := mise exec
 ACTIONLINT  := $(X) actionlint@1.7.12 -- actionlint
@@ -54,7 +53,7 @@ fix:
 lint-ios:
 	$(SWIFTFORMAT) app --lint
 	$(SWIFTLINT) lint --strict --quiet app/PRHub app/PRHubCore app/PRHubTests app/PRHubUITests app/PRHubRenderingTests \
-		app/PRHubScreenshots app/PRHubE2ETests app/PRHubPerformanceTests
+		app/PRHubE2ETests app/PRHubPerformanceTests
 	$(MAKE) -C app design-check
 	$(SHELLCHECK) app/ci_scripts/ci_post_clone.sh
 	$(GITLEAKS) app
@@ -133,11 +132,6 @@ test-ui-ios:
 	$(GENERATE_XCODE_PROJECT)
 	$(call XCODEBUILD_TEST,PRHubRenderingTests)
 	$(call XCODEBUILD_TEST,PRHubUITests) -parallel-testing-enabled YES -retry-tests-on-failure -test-iterations 2
-
-screenshots-ios: export TEST_RUNNER_SCREENSHOTS_DIR := $(CURDIR)/app/build/screenshots
-screenshots-ios:
-	$(GENERATE_XCODE_PROJECT)
-	$(call XCODEBUILD_TEST,PRHubScreenshots) -parallel-testing-enabled YES
 
 all-tests: test-unit-ios test-integration-ios test-ui-ios test-unit-prkit test-integration-prkit test-unit-worker \
 	test-integration-worker

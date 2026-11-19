@@ -2,7 +2,7 @@ import XCTest
 
 /// A PR's page over the sample PRs, where only a screen shows it: the review box above the keyboard, and Open in GitHub's
 /// menu. What the page decides is `PRHubScreenTests`'; Ask's width is `PresentedWidthTests`'. Pictures go to
-/// `SCREENSHOTS_DIR` when it is set.
+///
 @MainActor
 final class PRHubPRPageUITests: PRHubUITestCase {
     private let checkout = "Show a retry button when checkout fails"
@@ -65,6 +65,6 @@ final class PRHubPRPageUITests: PRHubUITestCase {
     }
 
     private func picture(_ name: String) throws {
-        try recordScreenshot("\(name)-light")
+        recordScreenshot("\(name)-light")
     }
 }
