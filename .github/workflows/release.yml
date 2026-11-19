@@ -5,9 +5,10 @@
 # ios-v starts Xcode Cloud ("PRHub TestFlight Internal and External"); worker-v starts deploy-worker.yml.
 #
 # Order within a component, cheapest first: lint and unit tests start together; integration tests wait for their unit
-# tests; the ios UI tests wait for every other ios check, so a long Simulator run never holds the Mac for a commit
+# tests; the UI tests wait for the applicable cheaper checks, so a long Simulator run never holds the Mac for a commit
 # that a cheaper check already failed. The app contains PRKit, so an ios release runs PRKit's checks too.
-# Only each component's first jobs name its RC tags: a job that needs a skipped job is skipped too.
+# App-only jobs inherit their component selection. The shared kit UI gate explicitly permits skipped app checks on a
+# prkit RC, while requiring every applicable cheap check to pass.
 name: release
 
 on:
@@ -33,7 +34,7 @@ jobs:
     needs: [test-unit-ios]
     uses: ./.github/workflows/test-integration-ios.yml
   test-ui-ios:
-    needs: [lint-ios, test-unit-ios, test-integration-ios, lint-prkit, test-unit-prkit, test-integration-prkit]
+    needs: [lint-ios, test-unit-ios, test-integration-ios, test-ui-prkit]
     uses: ./.github/workflows/test-ui-ios.yml
 
   # ---- prkit: in prkit and ios releases ----
@@ -46,6 +47,15 @@ jobs:
   test-integration-prkit:
     needs: [test-unit-prkit]
     uses: ./.github/workflows/test-integration-prkit.yml
+
+  # On a prkit RC, the app-only checks are skipped. On an ios RC, every cheap app and kit check must pass before UI.
+  test-ui-prkit:
+    needs: [lint-prkit, test-unit-prkit, test-integration-prkit, lint-ios, test-unit-ios, test-integration-ios]
+    if: >-
+      ${{ !cancelled() &&
+          (startsWith(github.ref_name, 'rc-prkit-') || startsWith(github.ref_name, 'rc-ios-')) &&
+          !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    uses: ./.github/workflows/test-ui-prkit.yml
 
   # ---- worker ----
   lint-worker:
@@ -60,7 +70,7 @@ jobs:
 
   # ---- The release: every check above that ran passed (the other components' checks are skipped) ----
   release:
-    needs: [lint-ios, test-unit-ios, test-integration-ios, test-ui-ios, lint-prkit, test-unit-prkit, test-integration-prkit, lint-worker, test-unit-worker, test-integration-worker]
+    needs: [lint-ios, test-unit-ios, test-integration-ios, test-ui-ios, lint-prkit, test-unit-prkit, test-integration-prkit, test-ui-prkit, lint-worker, test-unit-worker, test-integration-worker]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

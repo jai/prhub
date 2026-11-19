@@ -4,7 +4,7 @@ import XCTest
 /// and a key line's note stay whole and in view wherever the code is; in the largest text the note stays clear of its
 /// stepper. On the sample PRs, at the default text size and the largest.
 @MainActor
-final class PRHubDiffSidewaysUITests: PRHubUITestCase {
+final class PRKitDiffSidewaysUITests: PRHubUITestCase {
     /// Review alerts already declined: the offer came up over the PR on an iPad and took the tap meant for Review
     /// changes (CI's recording, 2026-11-14).
     private static let noAlertsOffer = ["-prhubAlertsDeclined", "YES"]

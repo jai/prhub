@@ -5,7 +5,7 @@ import XCTest
 /// come back is PRKit's `DiffBarsTests`). On
 /// `-PRHubLongDiff`, whose first PR has one file longer than the screen.
 @MainActor
-final class PRHubDiffBarsUITests: PRHubUITestCase {
+final class PRKitDiffBarsUITests: PRHubUITestCase {
     func testTheStatusBarBringsTheBarsBack() {
         openLongDiff(.light)
         hideBars()

@@ -12,6 +12,7 @@
 #   make test-ui-ios              the app-hosted rendering plan, then the UI plan, on one Simulator (SIMULATOR or SIM_NAME)
 #   make test-unit-prkit          swift test on PRKitUnitTests
 #   make test-integration-prkit   swift test on PRKitIntegrationTests: persistence, contracts, fonts, AppKit rendering
+#   make test-ui-prkit            PRKit rendering, then native interactions, on one Simulator (SIMULATOR or SIM_NAME)
 #   make test-unit-worker         Worker and agent unit tests (needs `npm ci` in worker/ and agent/)
 #   make test-integration-worker  Worker storage and workerd tests, agent tests with real git and a local server
 #   make lint                     all lint targets
@@ -21,7 +22,7 @@
 
 SHELL := /bin/bash
 .PHONY: fix lint-ios lint-prkit lint-worker lint-workflows build-ios test-unit-ios test-integration-ios test-ui-ios \
-	test-unit-prkit test-integration-prkit test-unit-worker test-integration-worker lint all-tests
+	test-unit-prkit test-integration-prkit test-ui-prkit test-unit-worker test-integration-worker lint all-tests
 
 X := mise exec
 ACTIONLINT  := $(X) actionlint@1.7.12 -- actionlint
@@ -97,17 +98,19 @@ build-ios:
 
 # ---- Tests ----------------------------------------------------------------------------------------------------------
 
+SWIFT_JOBS ?= 4
+
 test-unit-ios:
-	swift test -j 4 --filter PRHubUnitTests
+	swift test -j $(SWIFT_JOBS) --filter PRHubUnitTests
 
 test-integration-ios:
-	swift test -j 4 --filter PRHubIntegrationTests
+	swift test -j $(SWIFT_JOBS) --filter PRHubIntegrationTests
 
 test-unit-prkit:
-	swift test -j 4 --filter PRKitUnitTests
+	swift test -j $(SWIFT_JOBS) --filter PRKitUnitTests
 
 test-integration-prkit:
-	swift test -j 4 --filter PRKitIntegrationTests
+	swift test -j $(SWIFT_JOBS) --filter PRKitIntegrationTests
 
 test-unit-worker:
 	npm --prefix worker run test:unit
@@ -133,5 +136,11 @@ test-ui-ios:
 	$(call XCODEBUILD_TEST,PRHubRenderingTests)
 	$(call XCODEBUILD_TEST,PRHubUITests) -parallel-testing-enabled YES -retry-tests-on-failure -test-iterations 2
 
-all-tests: test-unit-ios test-integration-ios test-ui-ios test-unit-prkit test-integration-prkit test-unit-worker \
+# Library rendering and native interactions have their own full-target plans and do not rerun the app's UI tests.
+test-ui-prkit:
+	$(GENERATE_XCODE_PROJECT)
+	$(call XCODEBUILD_TEST,PRKitRenderingTests)
+	$(call XCODEBUILD_TEST,PRKitUITests) -parallel-testing-enabled YES -retry-tests-on-failure -test-iterations 2
+
+all-tests: test-unit-ios test-integration-ios test-ui-ios test-unit-prkit test-integration-prkit test-ui-prkit test-unit-worker \
 	test-integration-worker

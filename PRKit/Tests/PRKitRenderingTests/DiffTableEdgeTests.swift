@@ -5,7 +5,7 @@ import Testing
 
 /// The code stops at its sideways edges: a bounce would pull it off the screen's edge, with the file header cut where
 /// the table ends. A finger's bounce can't be driven from a test, so this holds the setting that stops it, on the
-/// phone and on the Mac; `PRHubDiffSidewaysUITests` and its recording show what the reader sees.
+/// phone and on the Mac; `PRKitDiffSidewaysUITests` and its recording show what the reader sees.
 @MainActor
 struct DiffTableEdgeTests {
     @Test func theCodeDoesNotBounceSideways() {

@@ -11,15 +11,6 @@ import Testing
 @MainActor
 struct PRHubSamplesTests {
     private let resources = UnitResources()
-    private struct RecordingTransport: HTTPTransport {
-        let calls: Shared<Int>
-
-        func send(_: URLRequest) async throws -> (Data, HTTPURLResponse) {
-            calls.with { $0 += 1 }
-            throw URLError(.unsupportedURL)
-        }
-    }
-
     private func makeModel() -> PRsModel {
         let model = PRsModel(
             client: PRViewerClient(access: .offline, transport: UnexpectedTransport()), samples: .prHub,
@@ -34,6 +25,7 @@ struct PRHubSamplesTests {
 
     @Test func theSamplesFillBothListsWithMadeUpRepos() {
         let model = makeModel()
+        #expect(PRSampleSet.prHub.answersOnPhone)
         #expect(model.rows.filter { PRListPage.review.holds($0) }.count == 4)
         #expect(model.rows.filter { PRListPage.mine.holds($0) }.count == 2)
         for row in model.rows {
@@ -53,82 +45,6 @@ struct PRHubSamplesTests {
             }
             #expect(!document.files.isEmpty)
         }
-    }
-
-    @Test func keyLinesAnswerOnThePhoneAtAnyContext() async throws {
-        let model = makeModel()
-        var events: [PRKitEvent] = []
-        model.onEvent = { events.append($0) }
-        let lines: PRKeyLines = try await model.aiAnswer(
-            "key-lines", ref: Self.checkout, head: "sample-412", context: 10, retry: false
-        )
-        #expect(lines.items.count == 2)
-        await #expect(throws: PRLocalRefusal.sampleAI) {
-            let _: PRRewrite = try await model.aiAnswer("rewrite", ref: Self.checkout, head: "sample-412", retry: true)
-        }
-        #expect(events.count == 2)
-        guard case let .aiAnswered(.keyLines, .done, keyLinesMilliseconds, true) = events.first,
-              case let .aiAnswered(.rewrite, .failed(.local), rewriteMilliseconds, nil) = events.last
-        else {
-            Issue.record("sample answers must report their result and the checkout description's AI slop")
-            return
-        }
-        #expect(keyLinesMilliseconds >= 0 && rewriteMilliseconds >= 0)
-    }
-
-    @Test func aReviewStaysOnThePhoneAndSaysSo() async throws {
-        let model = makeModel()
-        let detail = try #require(try await model.write(
-            .review(.approve, body: "Ship it", commit: "sample-412", comments: []), to: Self.checkout
-        ).posted)
-        let review = try #require(detail.reviews.nodes.last)
-        #expect(review.state == "APPROVED" && review.body == "Ship it")
-        #expect(review.author?.login == PRSampleSet.prHubLogin)
-        #expect(model.writeNotice == .sampleOnly)
-        // The PR shows the review when it opens again.
-        let row = try #require(model.rows.first { $0.id == "acme/web#412" })
-        #expect(model.session(for: row).content?.detail.reviews.nodes.last?.body == "Ship it")
-    }
-
-    @Test func aCommentJoinsTheConversation() async throws {
-        let model = makeModel()
-        let detail = try #require(
-            try await model.write(.comment(body: "Nice one"), to: PullRequestRef(repo: "acme/api", number: 88)).posted
-        )
-        #expect(detail.comments.nodes.last?.body == "Nice one")
-    }
-
-    @Test func nothingIsSentFromTheSamples() async throws {
-        let client = PRViewerClient(access: .offline, transport: UnexpectedTransport())
-        await #expect(throws: PRWorkerError.notPaired) {
-            try await client.outboxRequest(path: "prs/acme/web/412/write", body: Data("{}".utf8))
-        }
-        let calls = Shared(0)
-        let access = PRViewerAccess(baseURL: { URL(string: "https://worker.test")! }, bearer: { "test" }, discard: {})
-        let model = PRsModel(
-            client: PRViewerClient(access: access, transport: RecordingTransport(calls: calls)), samples: .prHub,
-            storage: .inMemory(), network: PRNetwork(isOnline: true)
-        )
-        #expect(await model.refresh(.foreground) == .unchanged)
-        await model.loadMerged(on: .review)
-        #expect(model.merged[.review]?.isEmpty == true)
-        _ = try await model.write(.comment(body: "Stayed here"), to: Self.checkout)
-        let _: PRKeyLines = try await model.aiAnswer("key-lines", ref: Self.checkout, head: "sample-412", retry: false)
-        #expect(calls.with { $0 } == 0, "sample reads, writes and AI must not reach the configured transport")
-    }
-
-    @Test func aSetThatDoesNotAnswerOnThePhoneRefusesWrites() async throws {
-        let refusing = PRSampleSet(
-            samples: PRSampleSet.prHub.samples, mergedReviewed: [], mergedMine: [], answersOnPhone: false
-        )
-        let model = PRsModel(
-            client: PRViewerClient(access: .offline, transport: UnexpectedTransport()), samples: refusing,
-            storage: .inMemory(), network: PRNetwork(isOnline: true)
-        )
-        await #expect(throws: PRLocalRefusal.sampleWrite) {
-            try await model.write(.comment(body: "x"), to: Self.checkout)
-        }
-        #expect(model.writeNotice == nil)
     }
 
     @Test func connectYourOwnWorkerLeavesNoSampleSettingBehind() {

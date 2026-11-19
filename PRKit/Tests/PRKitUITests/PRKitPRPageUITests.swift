@@ -1,10 +1,10 @@
 import XCTest
 
 /// A PR's page over the sample PRs, where only a screen shows it: the review box above the keyboard, and Open in GitHub's
-/// menu. What the page decides is `PRHubScreenTests`'; Ask's width is `PresentedWidthTests`'. Pictures go to
-///
+/// menu. What the page decides is `PRScreenModelTests`'; Ask's width is `PresentedWidthTests`'. Pictures stay in the
+/// test's result bundle.
 @MainActor
-final class PRHubPRPageUITests: PRHubUITestCase {
+final class PRKitPRPageUITests: PRHubUITestCase {
     private let checkout = "Show a retry button when checkout fails"
 
     @MainActor override func setUp() async throws {

@@ -3,10 +3,9 @@ import XCTest
 /// How a PR's diff is reached and left, over the sample PRs: Review changes pushes the diff over the PR with its panel
 /// open on Key lines, so Back returns to the PR; a row's swipe and its menu land on the diff with the PR under it. On a
 /// wide screen (an iPad) the list sits beside the PR and a diff takes the whole width, with its panel as a column; a
-/// narrow Split View keeps the phone's layout. Where each way in lands is PRKit's `PRNavigationTests`. Pictures go to
-///
+/// narrow Split View keeps the phone's layout. Where each way in lands is PRKit's `PRNavigationTests`. Pictures stay in the test's result bundle.
 @MainActor
-final class PRHubNavigationUITests: PRHubUITestCase {
+final class PRKitNavigationUITests: PRHubUITestCase {
     private let checkout = "Show a retry button when checkout fails"
     private let checkoutRef = "acme/web#412"
 

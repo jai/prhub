@@ -4,7 +4,7 @@ import XCTest
 /// scrolls off, and the next file comes up under it. On `-PRHubLongDiff`'s PR of three long files.
 /// Device hitch measurements live in the separate PRHubPerformanceTests target.
 @MainActor
-final class PRHubFoldUITests: PRHubUITestCase {
+final class PRKitFoldUITests: PRHubUITestCase {
     func testFoldingFromAPinnedHeaderKeepsItInPlace() {
         let header = openSecondFilePinned()
         let before = header.frame.minY

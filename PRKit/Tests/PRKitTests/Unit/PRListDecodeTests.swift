@@ -86,4 +86,38 @@ struct PRListDecodeTests {
         let single = try Self.listPullRequest(#", "title": "Retry [ENG-7]""#)
         #expect(PRListItem(ticket: Self.ticket("ENG-7"), pullRequests: [single]).title(of: single) == "Retry")
     }
+
+    @Test func unresolvedAndMissingRefsDecodeWithTheirFieldsNull() throws {
+        let json = #"""
+        {"ticket": {"key": "ENG-8", "url": "https://linear.app/acme/issue/ENG-8", "title": null, "state": null,
+                    "state_type": null, "found": null, "resolved_at": null},
+         "prs": [{"repo": "acme/web", "number": 8, "url": "https://github.com/acme/web/pull/8",
+                  "title": null, "state": null, "checks": null, "merge": null, "review": null,
+                  "created_at": null, "author": null, "found": null, "resolved_at": null},
+                 {"repo": "acme/tools", "number": 9, "url": "https://github.com/acme/tools/pull/9",
+                  "title": null, "state": null, "checks": null, "merge": null, "review": null,
+                  "created_at": null, "author": null, "found": false, "resolved_at": "2026-10-28T05:00:16Z"}],
+         "title": "Retry uploads on timeout", "note": null}
+        """#
+        let item = try Self.decoder.decode(PRListItem.self, from: Data(json.utf8))
+        #expect(item.ticket?.found == nil && item.ticket?.title == nil && item.ticket?.resolvedAt == nil)
+        #expect(item.ticket?.url == "https://linear.app/acme/issue/ENG-8")
+        #expect(item.pullRequests.map(\.found) == [nil, false])
+        #expect(item.pullRequests.allSatisfy { $0.status.state == nil && $0.createdAt == nil })
+        #expect(item.pullRequests.last?.resolvedAt != nil)
+        let noURL = try Self.decoder.decode(PRListTicket.self, from: Data(#"{"key":"ENG-9","url":null,"found":null}"#.utf8))
+        #expect(noURL.url == nil && noURL.found == nil)
+    }
+
+    @Test func aStateWordThisBuildDoesNotKnowReadsAsNoState() throws {
+        let json = #"""
+        {"repo":"acme/tools","number":9,"url":"https://github.com/acme/tools/pull/9",
+         "title":"Lists","state":"queued","checks":"skipped","merge":"clean","review":"dismissed",
+         "created_at":"2026-10-27T05:00:00Z","author":null,"found":true,"resolved_at":"2026-10-28T05:00:16Z"}
+        """#
+        let pullRequest = try Self.decoder.decode(PRListPullRequest.self, from: Data(json.utf8))
+        #expect(pullRequest.status.state == nil && pullRequest.status.checks == nil)
+        #expect(pullRequest.status.merge == .clean && pullRequest.status.review == nil)
+        #expect(pullRequest.status.statusText == "unknown")
+    }
 }

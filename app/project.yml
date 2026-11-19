@@ -142,6 +142,8 @@ targets:
         - path: PRHubUITests.xctestplan
           defaultPlan: true
         - path: PRHubRenderingTests.xctestplan
+        - path: PRKitUITests.xctestplan
+        - path: PRKitRenderingTests.xctestplan
         - path: PRHubE2EPairingTests.xctestplan
         - path: PRHubE2ETests.xctestplan
         - path: PRHubPerformanceTests.xctestplan
@@ -239,13 +241,42 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.jaigovindani.prreview.uitests
         GENERATE_INFOPLIST_FILE: YES
 
-  # iOS rendering checks use an app host; shared PRKit cases also run natively on Mac through SwiftPM.
+  # PRKit's native interactions use PRHub only as the controlled sample host.
+  PRKitUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - ../PRKit/Tests/PRKitUITests
+      - PRHubUITests/UITestSupport.swift
+    dependencies:
+      - target: PRHub
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jaigovindani.prkit.uitests
+        GENERATE_INFOPLIST_FILE: YES
+
+  # Library rendering owns its direct PRKit fixtures; PRHub supplies the iOS window scene only.
+  PRKitRenderingTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - ../PRKit/Tests/PRKitRenderingTests
+      - ../PRKit/Tests/PRKitTestSupport/InMemoryStorage.swift
+    dependencies:
+      - target: PRHub
+      - package: PRKit
+        product: PRKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jaigovindani.prkit.renderingtests
+        GENERATE_INFOPLIST_FILE: YES
+
+  # App build settings and the app-owned account sheet, using the running app as host.
   PRHubRenderingTests:
     type: bundle.unit-test
     platform: iOS
     sources:
       - PRHubRenderingTests
-      - ../PRKit/Tests/PRKitRenderingTests
     dependencies:
       - target: PRHub
       - package: PRKit
@@ -277,7 +308,7 @@ targets:
     sources:
       - PRHubPerformanceTests
       - PRHubUITests/UITestSupport.swift
-      - PRHubUITests/PRHubFoldTestSupport.swift
+      - ../PRKit/Tests/PRKitUITests/PRKitFoldTestSupport.swift
     dependencies:
       - target: PRHub
     settings:

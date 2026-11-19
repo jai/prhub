@@ -108,7 +108,7 @@ let package = Package(
                 .product(name: "DurableNetworking", package: "durable-networking"),
             ],
             path: "PRKit/Tests",
-            exclude: ["PRContractFixtures", "PRKitTestSupport", "PRKitTests/Unit"],
+            exclude: ["PRContractFixtures", "PRKitTestSupport", "PRKitTests/Unit", "PRKitUITests"],
             sources: ["PRKitTests/Integration", "PRKitRenderingTests"]
         ),
     ]
