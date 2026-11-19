@@ -89,7 +89,8 @@ lint: lint-ios lint-prkit lint-worker lint-workflows
 XCODE_PINS := app/PRHub.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
 GENERATE_XCODE_PROJECT := $(XCODEGEN) generate --spec app/project.yml --quiet && mkdir -p $(XCODE_PINS) \
 	&& cp app/Package.resolved $(XCODE_PINS)/Package.resolved
-XCODEBUILD := cd app && xcodebuild -project PRHub.xcodeproj -scheme PRHub -derivedDataPath build/DerivedData -jobs 4
+JOBS ?= 2
+XCODEBUILD := cd app && xcodebuild -project PRHub.xcodeproj -scheme PRHub -derivedDataPath build/DerivedData -jobs $(JOBS)
 
 build-ios:
 	$(GENERATE_XCODE_PROJECT)
@@ -127,20 +128,20 @@ COMMA := ,
 SIM_DESTINATION = $(if $(SIMULATOR),id=$(SIMULATOR),platform=iOS Simulator$(COMMA)name=$(SIM_NAME))
 # One test plan on that Simulator; its result bundle is app/build/results/<plan>.xcresult.
 XCODEBUILD_TEST = rm -rf app/build/results/$(1).xcresult && $(XCODEBUILD) test -testPlan $(1) \
-	-destination '$(SIM_DESTINATION)' -resultBundlePath build/results/$(1).xcresult
+	-destination '$(SIM_DESTINATION)' -resultBundlePath build/results/$(1).xcresult -parallel-testing-enabled NO
 
 # The UI layer: rendering that needs the app host (serial, never retried), then the screens and interactions only a
-# running app shows (in parallel on clones of the Simulator; a test that fails runs once more).
+# running app shows on the same owned Simulator; a test that fails runs once more.
 test-ui-ios:
 	$(GENERATE_XCODE_PROJECT)
 	$(call XCODEBUILD_TEST,PRHubRenderingTests)
-	$(call XCODEBUILD_TEST,PRHubUITests) -parallel-testing-enabled YES -retry-tests-on-failure -test-iterations 2
+	$(call XCODEBUILD_TEST,PRHubUITests) -retry-tests-on-failure -test-iterations 2
 
 # Library rendering and native interactions have their own full-target plans and do not rerun the app's UI tests.
 test-ui-prkit:
 	$(GENERATE_XCODE_PROJECT)
 	$(call XCODEBUILD_TEST,PRKitRenderingTests)
-	$(call XCODEBUILD_TEST,PRKitUITests) -parallel-testing-enabled YES -retry-tests-on-failure -test-iterations 2
+	$(call XCODEBUILD_TEST,PRKitUITests) -retry-tests-on-failure -test-iterations 2
 
 all-tests: test-unit-ios test-integration-ios test-ui-ios test-unit-prkit test-integration-prkit test-ui-prkit test-unit-worker \
 	test-integration-worker

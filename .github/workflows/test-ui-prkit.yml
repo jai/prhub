@@ -1,7 +1,7 @@
 # test-ui-prkit (make test-ui-prkit): PRKit's UI layer, the app-hosted rendering plan and then the UI plan, on an iPhone
 # and an iPad Simulator. In each prkit and ios release (release.yml), after the cheaper applicable ios and PRKit checks pass.
 # Prepare: mise (XcodeGen) and a Simulator of the job's own. Test: make test-ui-prkit on it, which also generates the
-# project. Keep: result bundles only on failure, for 3 days. Clean up: delete the job's Simulator, testing clones
+# project. Keep: result bundles only on failure, for 3 days. Clean up: delete the job's Simulator
 # and logs. GitHub discards the VM and all remaining job products afterward (docs/workflow.md, "Disk use").
 name: test-ui-prkit
 
@@ -21,7 +21,7 @@ jobs:
       matrix:
         device: ["iPhone 17", "iPad Pro 13-inch (M5)"]
     env:
-      # Unique on the host: the two devices of one run can share a Mac.
+      # One owned Simulator per hosted Mac; interaction tests run serially on it.
       SIMULATOR_NAME: prkit-ui-${{ github.run_id }}-${{ github.run_attempt }}-${{ strategy.job-index }}
     steps:
       - uses: actions/checkout@v5
@@ -46,20 +46,9 @@ jobs:
           path: app/build/results
           retention-days: 3
           if-no-files-found: ignore
-      - name: Delete the job's Simulator, its clones and its logs
+      - name: Delete the job's Simulator and its logs
         if: always()
         run: |
-          # xcodebuild names each parallel-testing clone "Clone <n> of <Simulator name>" and deletes it at the end of a
-          # run that finishes; these are the ones a cancelled run leaves.
-          clones="$HOME/Library/Developer/XCTestDevices"
-          if [ -d "$clones" ]; then
-            xcrun simctl --set "$clones" list devices -j \
-              | jq -r --arg name "$SIMULATOR_NAME" '.devices[][] | select(.name | endswith(" of " + $name)) | .udid' \
-              | while read -r clone; do
-                  xcrun simctl --set "$clones" shutdown "$clone" || true
-                  xcrun simctl --set "$clones" delete "$clone"
-                done
-          fi
           if [ -n "${SIMULATOR:-}" ]; then
             xcrun simctl shutdown "$SIMULATOR" || true
             xcrun simctl delete "$SIMULATOR"
