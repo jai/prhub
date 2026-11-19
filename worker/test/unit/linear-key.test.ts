@@ -4,6 +4,7 @@ import { AccountCore } from "../../src/account-core.ts";
 import { authenticate, hostedAccountConfig } from "../../src/hosted.ts";
 import { checkLinearKey } from "../../src/tickets.ts";
 import { parseKeyring } from "../../src/token-crypto.ts";
+import { fakeFetch } from "../support/fake-fetch.ts";
 import { APP, bearer, hostedWorld, KEY, keyOf, ORIGIN, signIn } from "../support/hosted-world.ts";
 
 const key = "lin_api_synthetic012345678901234567890";
@@ -28,19 +29,18 @@ test("connecting Linear validates, seals and uses only that person's key; discon
   const world = hostedWorld({ LINEAR_API_KEY: "operators-key-must-not-be-used" });
   const secret = await signIn(world);
   const second = await signIn(world, { id: 5555, login: "other" });
-  const seen: string[] = [];
-  world.services.fetch = async (url, init) => {
-    assert.equal(url, "https://api.linear.app/graphql");
-    assert.equal(init?.method, "POST");
-    seen.push(new Headers(init?.headers).get("Authorization") ?? "");
+  const linear = fakeFetch((call) => {
+    assert.equal(call.url, "https://api.linear.app/graphql");
+    assert.equal(call.method, "POST");
     // The write probe: a comment on an issue that can't exist, which a key that may write gets "not found" for.
-    return String(init?.body).includes("PRHubCanComment")
+    return call.graphql?.operation === "PRHubCanComment"
       ? Response.json({
           errors: [{ message: "Entity not found: Issue", extensions: { code: "INPUT_ERROR" } }],
           data: null,
         })
       : Response.json({ data: { viewer: { id: "linear-person" } } });
-  };
+  });
+  world.services.fetch = linear.fetch;
   const connect = (secret: string, value: string) =>
     world.route("/account/linear-key", {
       ...bearer(secret),
@@ -50,7 +50,10 @@ test("connecting Linear validates, seals and uses only that person's key; discon
   const first = await connect(secret, key);
   assert.equal(first.status, 200);
   assert.deepEqual(await first.json(), { linear_key: true, linear_can_comment: true });
-  assert.deepEqual(seen, [key, key]);
+  assert.deepEqual(
+    linear.asked.map((call) => call.headers.get("Authorization")),
+    [key, key],
+  );
   const stored = await world.stores.get("4242")!.get<string>("linear");
   assert.match(stored!, /^v1\.k1\./);
   assert.equal(stored?.includes(key), false);
@@ -84,7 +87,7 @@ test("refused, malformed and unavailable keys never replace a working connection
     [otherKey, 429, 503],
     [otherKey, 500, 503],
   ] as const) {
-    world.services.fetch = async () => Response.json({}, { status });
+    world.services.fetch = fakeFetch(() => Response.json({}, { status })).fetch;
     const response = await world.route("/account/linear-key", {
       ...bearer(secret),
       method: "PUT",
@@ -134,15 +137,16 @@ test("Linear keys rotate encryption and cannot move to another account", async (
 test("a key that may only read is connected for tickets, and Settings hears it can't comment", async () => {
   const world = hostedWorld();
   const secret = await signIn(world);
-  world.services.fetch = async (_url, init) =>
-    String(init?.body).includes("PRHubCanComment")
+  world.services.fetch = fakeFetch((call) =>
+    call.graphql?.operation === "PRHubCanComment"
       ? Response.json({
           errors: [
             { message: "Invalid scope: `write` required", extensions: { code: "FORBIDDEN" } },
           ],
           data: null,
         })
-      : Response.json({ data: { viewer: { id: "linear-person" } } });
+      : Response.json({ data: { viewer: { id: "linear-person" } } }),
+  ).fetch;
   const response = await world.route("/account/linear-key", {
     ...bearer(secret),
     method: "PUT",

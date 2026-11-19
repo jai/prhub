@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "vitest";
+import { test } from "vitest";
 import { repoOf } from "../../src/ids.ts";
 import {
   ALERT_FRESH_MS,
@@ -12,6 +12,7 @@ import {
 } from "../../src/alerts.ts";
 import { sendDirect } from "../../src/apns.ts";
 import type { Env } from "../../src/env.ts";
+import { env as envOf } from "../support/env.ts";
 import { pullRequestSummary, summaryOf } from "../../src/github.ts";
 import {
   buildRepoIndex,
@@ -21,27 +22,16 @@ import {
   rankRepos,
   type RepoIndex,
 } from "../../src/repos.ts";
+import { rootOf, searchOf, stubFetch } from "../support/fake-fetch.ts";
 
-const env = (vars: Partial<Env>) => ({ GITHUB_TOKEN: "t", ...vars }) as Env;
+const env = (vars: Partial<Env>) => envOf({ GITHUB_TOKEN: "t", ...vars });
 const NOW = Date.parse("2026-11-07T10:00:00Z");
-const realFetch = globalThis.fetch;
 
-afterEach(() => {
-  globalThis.fetch = realFetch;
-});
-
-/** Answers each GitHub GraphQL call from `answer`, and keeps what was asked. */
-function mockGraphql(answer: (query: string, variables: Record<string, unknown>) => unknown) {
-  const asked: { query: string; variables: Record<string, unknown> }[] = [];
-  globalThis.fetch = (async (_url: string, init: RequestInit) => {
-    const { query, variables } = JSON.parse(String(init.body)) as {
-      query: string;
-      variables: Record<string, unknown>;
-    };
-    asked.push({ query, variables });
-    return Response.json(answer(query, variables));
-  }) as typeof fetch;
-  return asked;
+/** Answers each GitHub GraphQL call from `answer`, given its root field (`search`, `viewer`…) and variables. */
+function mockGraphql(answer: (root: string, variables: Record<string, unknown>) => unknown) {
+  return stubFetch((call) =>
+    Response.json(answer(rootOf(call.graphql), call.graphql?.variables ?? {})),
+  );
 }
 
 function read(fields: Partial<ReadPullRequest> = {}): ReadPullRequest {
@@ -160,11 +150,7 @@ test("an alert names the PR for a tap to open, and fits APNs whatever the title"
 });
 
 test("straight to APNs an alert sends alert headers, and the wake keeps its own", async () => {
-  const sent: { url: string; headers: Record<string, string>; body: string }[] = [];
-  globalThis.fetch = (async (url: string, init: RequestInit) => {
-    sent.push({ url, headers: init.headers as Record<string, string>, body: String(init.body) });
-    return new Response(null, { status: 200 });
-  }) as typeof fetch;
+  const sent = stubFetch(() => new Response(null, { status: 200 }));
   const apns = env({ APNS_BUNDLE_ID: "com.example.app" });
   const [alert] = alertsFor(null, read(), requests, NOW);
   assert.deepEqual(await sendDirect("abcd", "sandbox", "jwt", apns, 1_000, alertMessage(alert)), {
@@ -173,22 +159,22 @@ test("straight to APNs an alert sends alert headers, and the wake keeps its own"
   });
   await sendDirect("abcd", "production", "jwt", apns, 1_000);
   assert.equal(sent[0].url, "https://api.sandbox.push.apple.com/3/device/abcd");
-  assert.equal(sent[0].headers["apns-push-type"], "alert");
-  assert.equal(sent[0].headers["apns-priority"], "10");
-  assert.equal(sent[0].headers["apns-collapse-id"], undefined);
-  assert.equal(JSON.parse(sent[0].body).reason, "pr_alert");
-  assert.equal(sent[1].headers["apns-push-type"], "background");
-  assert.equal(sent[1].headers["apns-collapse-id"], "pr-sync");
-  assert.deepEqual(JSON.parse(sent[1].body), {
+  assert.equal(sent[0].headers.get("apns-push-type"), "alert");
+  assert.equal(sent[0].headers.get("apns-priority"), "10");
+  assert.equal(sent[0].headers.get("apns-collapse-id"), null);
+  assert.equal(JSON.parse(sent[0].body!).reason, "pr_alert");
+  assert.equal(sent[1].headers.get("apns-push-type"), "background");
+  assert.equal(sent[1].headers.get("apns-collapse-id"), "pr-sync");
+  assert.deepEqual(JSON.parse(sent[1].body!), {
     aps: { "content-available": 1 },
     reason: "pr_sync",
   });
 });
 
 test("a network failure straight to APNs is a reason, not a throw", async () => {
-  globalThis.fetch = (async () => {
+  stubFetch(() => {
     throw new TypeError("network");
-  }) as typeof fetch;
+  });
   assert.deepEqual(await sendDirect("abcd", "production", "jwt", env({}), 1_000), {
     status: null,
     reason: "fetch_error: network",
@@ -272,8 +258,8 @@ test("repos rank by the user's list, then recent work, then last push, archived 
 test("GITHUB_ORGS names the owners; unset, the index is every repo the user owns or sees through an org", async () => {
   assert.deepEqual(ownersOf(env({ GITHUB_ORGS: "acme, ,jai" })), ["acme", "jai"]);
   assert.deepEqual(ownersOf(env({})), []);
-  const asked = mockGraphql((query, variables) => {
-    if (query.includes("search(")) {
+  const asked = mockGraphql((root, variables) => {
+    if (root === "search") {
       return {
         data: {
           search: {
@@ -310,20 +296,20 @@ test("GITHUB_ORGS names the owners; unset, the index is every repo the user owns
     ],
   );
   assert.deepEqual(index.owners, ["acme", "jai"]);
-  const viewerQueries = asked.filter(({ query }) => query.includes("viewer"));
+  const viewerQueries = asked.filter((call) => rootOf(call.graphql) === "viewer");
   assert.deepEqual(
-    viewerQueries.map(({ variables }) => variables.after),
+    viewerQueries.map((call) => call.graphql?.variables.after),
     [null, "c1"],
   );
   assert.match(
-    asked.find(({ query }) => query.includes("search("))?.variables.q as string,
+    searchOf(asked.find((call) => rootOf(call.graphql) === "search")!),
     /^is:pr involves:jai updated:>=2026-08-09$/,
   );
 });
 
 test("an owner GitHub won't show costs only that owner, and a failed relevance search only the hint", async () => {
-  mockGraphql((query, variables) => {
-    if (query.includes("search(")) {
+  mockGraphql((root, variables) => {
+    if (root === "search") {
       return { errors: [{ type: "RATE_LIMITED" }] };
     }
     return variables.owner === "acme"
@@ -374,12 +360,12 @@ test("a PR's summary says its state, open or not, and null when there is no such
   });
   assert.equal(summaryOf({ ...node, state: "OPEN", isDraft: true }).state, "draft");
   assert.equal(summaryOf({ ...node, state: "CLOSED", author: null }).author, null);
-  const asked = mockGraphql((_query, variables) =>
+  const asked = mockGraphql((_root, variables) =>
     variables.number === 7
       ? { data: { repository: { pullRequest: node } } }
       : { data: { repository: { pullRequest: null } }, errors: [{ type: "NOT_FOUND" }] },
   );
   assert.equal((await pullRequestSummary(repoOf("acme/api"), 7, env({})))?.state, "merged");
-  assert.deepEqual(asked[0].variables, { owner: "acme", name: "api", number: 7 });
+  assert.deepEqual(asked[0].graphql?.variables, { owner: "acme", name: "api", number: 7 });
   assert.equal(await pullRequestSummary(repoOf("acme/api"), 8, env({})), null);
 });

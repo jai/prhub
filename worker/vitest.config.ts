@@ -24,7 +24,7 @@ export default defineConfig({
           name: "integration-node",
           environment: "node",
           include: ["test/integration/node/**/*.test.ts"],
-          setupFiles: ["test/support/no-network.ts"],
+          setupFiles: ["test/support/no-network.ts", "test/support/memory-sql-setup.ts"],
         },
       },
       {
@@ -54,6 +54,7 @@ export default defineConfig({
           ...shared,
           name: "integration-runtime",
           include: ["test/integration/runtime/**/*.test.ts"],
+          setupFiles: ["test/integration/runtime/setup.ts"],
         },
       },
     ],

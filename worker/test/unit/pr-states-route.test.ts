@@ -4,6 +4,7 @@ import { test } from "vitest";
 import { prId, repoOf } from "../../src/ids.ts";
 import type { Env } from "../../src/env.ts";
 import { readStates, statesRoute } from "../../src/pr-states.ts";
+import { type Asked, fieldsNamed, stubFetch } from "../support/fake-fetch.ts";
 
 const post = (body: unknown) =>
   new Request("https://w/prs/states", { method: "POST", body: JSON.stringify(body) });
@@ -37,49 +38,36 @@ test("the states come back with the GitHub calls they cost, and a refusal is a 5
 });
 
 test("a states answer GitHub cut off is asked again one PR at a time, not a 500", async () => {
-  const real = globalThis.fetch;
-  const asked: number[] = [];
-  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-    const { query } = JSON.parse(String(init?.body)) as { query: string };
-    const prs = (query.match(/pullRequest\(/g) ?? []).length;
-    asked.push(prs);
-    return prs > 1
+  const prsOf = (asked: Asked) => fieldsNamed(asked.graphql?.fields ?? [], "pullRequest").length;
+  const calls = stubFetch((asked) =>
+    prsOf(asked) > 1
       ? new Response('{"data":{"r0":{"p0":{"title":"Unterminated')
-      : Response.json({ data: { r0: { p0: null } } });
-  }) as typeof fetch;
-  try {
-    const answer = await readStates(
-      [prId(repoOf("acme/api"), 7), prId(repoOf("acme/api"), 8)],
-      null,
-      {
-        GITHUB_TOKEN: "t",
-        GITHUB_LOGIN: "jai",
-      } as unknown as Env,
-    );
-    assert.deepEqual(asked, [2, 1, 1], "the whole query once, then each PR");
-    assert.equal(Object.keys(answer.states).length + answer.unanswered.length, 2);
-  } finally {
-    globalThis.fetch = real;
-  }
+      : Response.json({ data: { r0: { p0: null } } }),
+  );
+  const answer = await readStates(
+    [prId(repoOf("acme/api"), 7), prId(repoOf("acme/api"), 8)],
+    null,
+    {
+      GITHUB_TOKEN: "t",
+      GITHUB_LOGIN: "jai",
+    } as unknown as Env,
+  );
+  assert.deepEqual(calls.map(prsOf), [2, 1, 1], "the whole query once, then each PR");
+  assert.equal(Object.keys(answer.states).length + answer.unanswered.length, 2);
 });
 
 test("GitHub's rate limit, its own trouble and any other refusal each have their code", async () => {
-  const real = globalThis.fetch;
   const answers = [
     new Response("", { status: 403, headers: { "x-ratelimit-remaining": "0" } }),
     new Response("", { status: 502 }),
     new Response("", { status: 401 }),
   ];
-  globalThis.fetch = (async () => answers.shift()!) as unknown as typeof fetch;
-  try {
-    const env = { GITHUB_TOKEN: "t", GITHUB_LOGIN: "jai" } as unknown as Env;
-    for (const code of ["github_rate_limited", "github_unavailable", "github_failed"]) {
-      await assert.rejects(
-        readStates([prId(repoOf("acme/api"), 7)], null, env),
-        (error: { code?: string }) => error.code === code,
-      );
-    }
-  } finally {
-    globalThis.fetch = real;
+  stubFetch(() => answers.shift()!);
+  const env = { GITHUB_TOKEN: "t", GITHUB_LOGIN: "jai" } as unknown as Env;
+  for (const code of ["github_rate_limited", "github_unavailable", "github_failed"]) {
+    await assert.rejects(
+      readStates([prId(repoOf("acme/api"), 7)], null, env),
+      (error: { code?: string }) => error.code === code,
+    );
   }
 });

@@ -4,6 +4,7 @@ import { BUILT_IN_GUIDE, guideSource } from "../../src/ai.ts";
 import { pagerOutcome, pushMode, sendViaPager } from "../../src/apns.ts";
 import { deviceConfig } from "../../src/config.ts";
 import type { Env } from "../../src/env.ts";
+import { env } from "../support/env.ts";
 import {
   codeHashOf,
   deviceSecretOf,
@@ -13,8 +14,7 @@ import {
   sha256Hex,
 } from "../../src/pairing.ts";
 import { appManifest, newAppUrl } from "../../src/setup.ts";
-
-const env = (vars: Partial<Env>) => vars as Env;
+import { stubFetch } from "../support/fake-fetch.ts";
 
 test("a pairing code is eight Crockford characters, whatever the case, spaces or hyphens", () => {
   assert.equal(normalizePairingCode("7kq2-m9xa"), "7KQ2M9XA");
@@ -218,36 +218,27 @@ test("Jai's instance hands every push to his Agent Pager Worker, over its own ke
 });
 
 test("a push to Agent Pager carries the message as it is, and its answer reads as APNs'", async () => {
-  const sent: { url: string; init: RequestInit }[] = [];
-  const realFetch = globalThis.fetch;
-  globalThis.fetch = (async (url: string, init: RequestInit) => {
-    sent.push({ url, init });
-    return Response.json({ apns_status: 200 });
-  }) as typeof fetch;
-  try {
-    const outcome = await sendViaPager(
-      env({ AGENT_PAGER_URL: "https://agent-pager.example/", AGENT_PAGER_PUSH_TOKEN: "secret" }),
-      {
-        pushType: "alert",
-        priority: 10,
-        collapseId: null,
-        lifetimeSeconds: 60,
-        payload: { aps: {}, reason: "pr_alert" },
-      },
-    );
-    assert.deepEqual(outcome, { status: 200, reason: null });
-    assert.equal(sent[0]?.url, "https://agent-pager.example/pr-push");
-    assert.equal(new Headers(sent[0]?.init.headers).get("authorization"), "Bearer secret");
-    assert.deepEqual(JSON.parse(String(sent[0]?.init.body)), {
-      push_type: "alert",
+  const sent = stubFetch(() => Response.json({ apns_status: 200 }));
+  const outcome = await sendViaPager(
+    env({ AGENT_PAGER_URL: "https://agent-pager.example/", AGENT_PAGER_PUSH_TOKEN: "secret" }),
+    {
+      pushType: "alert",
       priority: 10,
-      collapse_id: null,
-      lifetime_seconds: 60,
+      collapseId: null,
+      lifetimeSeconds: 60,
       payload: { aps: {}, reason: "pr_alert" },
-    });
-  } finally {
-    globalThis.fetch = realFetch;
-  }
+    },
+  );
+  assert.deepEqual(outcome, { status: 200, reason: null });
+  assert.equal(sent[0]?.url, "https://agent-pager.example/pr-push");
+  assert.equal(sent[0]?.headers.get("authorization"), "Bearer secret");
+  assert.deepEqual(JSON.parse(String(sent[0]?.body)), {
+    push_type: "alert",
+    priority: 10,
+    collapse_id: null,
+    lifetime_seconds: 60,
+    payload: { aps: {}, reason: "pr_alert" },
+  });
 });
 
 test("Feedback is on through a FeedbackKit binding with no URL, and an unfilled URL placeholder is no URL", () => {

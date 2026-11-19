@@ -2,24 +2,11 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { patchedRead } from "../../src/check-refresh.ts";
-import { detailVersionOf, pullRequest, reviewWeek } from "../../src/github.ts";
+import { detailVersionOf, pullRequest } from "../../src/github.ts";
 import { POLICY_TTL_MS } from "../../src/policy-github.ts";
 import type { PeopleDecision } from "../../src/policy-people.ts";
-import { prNode } from "../support/pr-node.ts";
+import { policyBot, prNode, REVIEW_WEEK as WEEK } from "../support/pr-node.ts";
 
-const WEEK = reviewWeek({
-  REVIEW_SLA_UTC_OFFSET_HOURS: "7",
-  REVIEW_SLA_HOURS: "9-18",
-  REVIEW_SLA_WEEKDAYS: "1,2,3,4,5",
-});
-const policyBot = (state: string) => ({
-  __typename: "StatusContext",
-  context: "policy-bot: main",
-  state,
-  description: state === "SUCCESS" ? "Approved by sam" : "1 approval needed",
-  targetUrl: "https://policy/7",
-  isRequired: true,
-});
 const check = (name: string, conclusion: string | null) => ({
   __typename: "CheckRun",
   name,
@@ -46,14 +33,18 @@ test("checks finishing, PolicyBot approving and the merge unblocking read the sa
   for (const people of ["APPROVED", "REVIEW_REQUIRED"] as const) {
     const before = read(
       {
-        commits: contexts(check("test", null), policyBot("PENDING")),
+        commits: contexts(check("test", null), policyBot("PENDING", { isRequired: true })),
         overall: overall("PENDING"),
         mergeStateStatus: "BLOCKED",
       },
       people,
     );
     const afterNode = prNode({
-      commits: contexts(check("test", "SUCCESS"), check("lint", "FAILURE"), policyBot("SUCCESS")),
+      commits: contexts(
+        check("test", "SUCCESS"),
+        check("lint", "FAILURE"),
+        policyBot("SUCCESS", { isRequired: true }),
+      ),
       overall: overall("FAILURE"),
       mergeStateStatus: "UNSTABLE",
     });

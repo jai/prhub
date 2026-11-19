@@ -4,6 +4,7 @@ import { deviceConfig } from "../../src/config.ts";
 import type { Env } from "../../src/env.ts";
 import { userEnv } from "../../src/hosted.ts";
 import { dayOf, metricsRoute, parseMetricReport } from "../../src/metrickit.ts";
+import { memoryR2 } from "../support/memory-r2.ts";
 
 const now = new Date("2026-11-16T03:00:00Z");
 const metricPayload = {
@@ -11,20 +12,6 @@ const metricPayload = {
   timeStampEnd: "2026-11-15 23:59:00 +0000",
   cpuMetrics: { cumulativeCPUTime: "12 sec" },
 };
-
-function bucket() {
-  const objects = new Map<string, { body: string; metadata: Record<string, string> | undefined }>();
-  return {
-    objects,
-    put: async (
-      key: string,
-      body: string,
-      options?: { customMetadata?: Record<string, string> },
-    ) => {
-      objects.set(key, { body, metadata: options?.customMetadata });
-    },
-  };
-}
 
 function post(body: unknown): Request {
   return new Request("https://worker.example/device/metrics", {
@@ -72,7 +59,7 @@ test("a report is a kind and MetricKit's JSON; anything else is refused", () => 
 });
 
 test("a report is kept once per payload, under the person's day, and only for whom it is on", async () => {
-  const diffs = bucket();
+  const diffs = memoryR2();
   const off = await metricsRoute(
     post({ kind: "metric", payload: JSON.stringify(metricPayload) }),
     { DIFFS: diffs } as unknown as Env,

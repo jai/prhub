@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "vitest";
+import { test } from "vitest";
 import { summaryOf } from "../../src/ai.ts";
 import { repoOf, type Sha } from "../../src/ids.ts";
 import { runAiJob } from "../../src/ai-run.ts";
 import type { Env } from "../../src/env.ts";
 import type { AiJob } from "../../src/models.ts";
+import { fakeAgent } from "../support/agent-container.ts";
+import { stubFetch } from "../support/fake-fetch.ts";
+import { memoryR2 } from "../support/memory-r2.ts";
+import { pullRequestRest } from "../support/pr-node.ts";
 
 const SUMMARY = {
   risk: "low" as const,
@@ -53,81 +57,50 @@ test("AI slop keeps up to four tells; a description that isn't slop has none", (
 });
 
 const HEAD = "c".repeat(40) as Sha;
-const realFetch = globalThis.fetch;
-afterEach(() => {
-  globalThis.fetch = realFetch;
-});
-
-/** GitHub with a PR on `branch`, and Linear holding `issues` by key. Linear's queries are recorded. */
+/** GitHub with acme/app#7 on `branch`, and Linear holding `issues` by key. */
 function world(
   branch: string,
   issues: Record<string, { title: string; description: string }>,
-  linear: string[],
 ): void {
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input instanceof Request ? input.url : input);
-    if (url === "https://api.linear.app/graphql") {
-      const { query } = JSON.parse(String(init?.body)) as { query: string };
-      linear.push(query);
+  stubFetch((asked) => {
+    if (asked.url === "https://api.linear.app/graphql") {
       const data = Object.fromEntries(
-        [...query.matchAll(/(t\d+): issue\(id: "([^"]+)"\)/g)].map(([, alias, key]) => [
-          alias,
-          issues[key] ? { identifier: key, ...issues[key] } : null,
-        ]),
+        (asked.graphql?.fields ?? []).map((field) => {
+          const key = String(field.args.id);
+          return [field.alias, issues[key] ? { identifier: key, ...issues[key] } : null];
+        }),
       );
       return Response.json({ data });
     }
-    if (url === "https://api.github.com/repos/acme/app/pulls/7") {
-      const accept = new Headers(init?.headers).get("Accept") ?? "";
-      return accept.includes("diff")
-        ? new Response("diff --git a/x b/x\n")
-        : Response.json({
-            title: "Sync holidays",
-            body: "",
-            head: { sha: HEAD, ref: branch },
-            base: { ref: "main" },
-          });
-    }
-    return new Response("not here", { status: 500 });
-  }) as typeof fetch;
+    return pullRequestRest(asked, HEAD, branch) ?? new Response("not here", { status: 500 });
+  });
 }
 
+type Sent = { system: string; prompt: string; schema: unknown };
+
 /** The subscription's container, answering `requirements` when its schema asks for them. What it was sent is kept. */
-function agent(sent: { system: string; prompt: string; schema: unknown }[]): Env["AGENT"] {
-  return {
-    idFromName: (name: string) => name,
-    get: () => ({
-      fetch: async (_url: string, init: RequestInit) => {
-        const body = JSON.parse(String(init.body)) as {
-          system: string;
-          prompt: string;
-          schema: unknown;
-        };
-        sent.push(body);
-        const asksRequirements = JSON.stringify(body.schema).includes("requirements");
-        const requirements = { fits: false, gaps: ["Skips Fridays"] };
-        const summary = asksRequirements ? { ...SUMMARY, requirements } : SUMMARY;
-        return Response.json({
-          subtype: "success",
-          output: { items: [], summary },
-          model: "claude-sonnet-5-5",
-          tokens: { input: 1, output: 1 },
-          costUsd: 0,
-        });
-      },
-    }),
-  } as unknown as Env["AGENT"];
+function agent() {
+  return fakeAgent<Sent>((body) => {
+    const asksRequirements = JSON.stringify(body.schema).includes("requirements");
+    const requirements = { fits: false, gaps: ["Skips Fridays"] };
+    const summary = asksRequirements ? { ...SUMMARY, requirements } : SUMMARY;
+    return {
+      subtype: "success",
+      output: { items: [], summary },
+      model: "claude-sonnet-5-5",
+      tokens: { input: 1, output: 1 },
+      costUsd: 0,
+    };
+  });
 }
 
 async function keyLinesFor(
   branch: string,
   issues: Record<string, { title: string; description: string }>,
 ) {
-  const linear: string[] = [];
-  const sent: { system: string; prompt: string; schema: unknown }[] = [];
-  world(branch, issues, linear);
-  const puts: string[] = [];
-  const store = { put: async (_key: string, value: string) => puts.push(value) };
+  const container = agent();
+  world(branch, issues);
+  const store = memoryR2();
   const job: AiJob = {
     kind: "key_lines",
     repo: repoOf("acme/app"),
@@ -139,12 +112,15 @@ async function keyLinesFor(
     GITHUB_TOKEN: "t",
     LINEAR_API_KEY: "lin",
     CLAUDE_CODE_OAUTH_TOKEN: "oat",
-    AGENT: agent(sent),
+    AGENT: container.binding,
   } as Env;
   await runAiJob(job, env, store as never);
-  const stored = JSON.parse(puts[0]) as { summary: { requirements?: unknown }; error?: string };
+  const stored = JSON.parse(store.puts[0].value) as {
+    summary: { requirements?: unknown };
+    error?: string;
+  };
   assert.equal(stored.error, undefined);
-  return { requirements: stored.summary.requirements, sent, linear };
+  return { requirements: stored.summary.requirements, sent: container.sent };
 }
 
 test("a PR whose branch names one ticket is checked against it, the ticket in the prompt", async () => {

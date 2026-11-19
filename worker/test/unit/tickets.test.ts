@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "vitest";
+import { test } from "vitest";
 import type { Env } from "../../src/env.ts";
 import { pullRequest } from "../../src/github.ts";
 import { botAuthorsOf, isBotAuthor, requestedByOf } from "../../src/requester.ts";
@@ -13,11 +13,7 @@ import {
   unresolved,
 } from "../../src/tickets.ts";
 import { prNode } from "../support/pr-node.ts";
-
-const realFetch = globalThis.fetch;
-afterEach(() => {
-  globalThis.fetch = realFetch;
-});
+import { stubFetch } from "../support/fake-fetch.ts";
 
 test("a title's bracketed keys come first, each once, then keys only the branch names", () => {
   assert.deepEqual(
@@ -72,10 +68,8 @@ test("without Linear a title's keys show unresolved and a branch's key does not 
 });
 
 test("Linear's answer fills each ticket; a key it has no issue for is Not found, a branch's is dropped", async () => {
-  let asked = "";
-  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-    asked = String(init?.body);
-    return Response.json({
+  const asked = stubFetch(() =>
+    Response.json({
       data: {
         t0: {
           identifier: "ENG-1",
@@ -91,12 +85,16 @@ test("Linear's answer fills each ticket; a key it has no issue for is Not found,
         { message: "Entity not found: Issue", path: ["t1"] },
         { message: "Entity not found: Issue", path: ["t2"] },
       ],
-    });
-  }) as typeof fetch;
+    }),
+  );
   const keys = ticketKeysOf("Retry [ENG-1] [ENG-404]", "fix-12-retry");
   const issues = await lookUpTickets(allKeys(keys), { LINEAR_API_KEY: "key" } as Env);
-  assert.match(asked, /issue\(id: \\"ENG-1\\"\)/);
-  assert.match(asked, /assignee \{ name \}/, "Linear is asked who owns each ticket");
+  const lookups = asked[0]?.graphql?.fields ?? [];
+  assert.ok(lookups.some((field) => field.name === "issue" && field.args.id === "ENG-1"));
+  assert.ok(
+    lookups.every((issue) => issue.fields.some((field) => field.name === "assignee")),
+    "Linear is asked who owns each ticket",
+  );
   assert.deepEqual(resolvedTickets(keys, issues), [
     {
       key: "ENG-1",
@@ -151,9 +149,9 @@ test("a title naming several tickets in one bracket shows each Linear has, in th
 });
 
 test("Linear failing leaves every ticket unresolved, never Not found", async () => {
-  const refuse = async () =>
-    Response.json({ errors: [{ message: "Authentication required" }] }, { status: 401 });
-  globalThis.fetch = refuse as typeof fetch;
+  stubFetch(() =>
+    Response.json({ errors: [{ message: "Authentication required" }] }, { status: 401 }),
+  );
   const issues = await lookUpTickets(["ENG-1"], { LINEAR_API_KEY: "key" } as Env);
   assert.deepEqual(resolvedTickets({ title: ["ENG-1"], branch: [], body: [] }, issues), [
     unresolved("ENG-1"),

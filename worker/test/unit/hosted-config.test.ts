@@ -3,8 +3,8 @@ import { test } from "vitest";
 import { deviceConfig } from "../../src/config.ts";
 import { scopedKey, type Env } from "../../src/env.ts";
 import { hostedMode, userEnv } from "../../src/hosted.ts";
+import { env } from "../support/env.ts";
 
-const env = (vars: Partial<Env>) => vars as Env;
 const complete = env({
   HOSTED: "on",
   GITHUB_APP_CLIENT_ID: "id",

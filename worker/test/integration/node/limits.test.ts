@@ -1,6 +1,6 @@
 // The limit counter (`limit-counter.ts`) on real SQLite, and the routes' side (`limit-enforcement.ts`) counting on it.
 import assert from "node:assert/strict";
-import { afterEach, test, vi } from "vitest";
+import { test, vi } from "vitest";
 import type { Env } from "../../../src/env.ts";
 import {
   consumeLimits,
@@ -11,9 +11,7 @@ import {
 } from "../../../src/limit-counter.ts";
 import { pairingLimitAnswer, personLimitAnswer } from "../../../src/limit-enforcement.ts";
 import { type Count, LimitName, type Milliseconds } from "../../../src/limits.ts";
-import { closeMemorySql, memorySql } from "../../support/memory-sql.ts";
-
-afterEach(closeMemorySql);
+import { memorySql } from "../../support/memory-sql.ts";
 
 const MINUTE = 60_000;
 const NOW = Date.parse("2026-11-07T00:00:00Z");

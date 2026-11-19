@@ -18,13 +18,7 @@ import {
   reviewWeek,
 } from "../../src/github.ts";
 import { revisionOf, type Sha } from "../../src/ids.ts";
-
-/** Jai's own review SLA vars. */
-const JAI_WEEK = reviewWeek({
-  REVIEW_SLA_UTC_OFFSET_HOURS: "7",
-  REVIEW_SLA_HOURS: "9-18",
-  REVIEW_SLA_WEEKDAYS: "1,2,3,4,5",
-});
+import { policyBot, REVIEW_WEEK } from "../support/pr-node.ts";
 
 const pr = {
   state: "OPEN",
@@ -171,14 +165,6 @@ test("a row carries Jai's own review", () => {
 });
 
 const unit = { __typename: "CheckRun", name: "unit", status: "COMPLETED", conclusion: "SUCCESS" };
-const policyBot = (state: string) => ({
-  __typename: "StatusContext",
-  context: "policy-bot: main",
-  state,
-  description: "0/1 rules approved",
-  targetUrl: "https://policy.example/details",
-});
-
 test("PolicyBot waiting on a person is not a check running, and is a review required", () => {
   const contexts = [unit, policyBot("PENDING")];
   const policy = policyOf(contexts);
@@ -379,20 +365,20 @@ test("a detail says GitHub's state, a draft as a draft", () => {
 
 test("Jai's review is due one Bangkok working day after he can first see the request", () => {
   // Thursday 10:00 in Bangkok: Friday 10:00.
-  assert.equal(reviewDueAt("2026-11-05T03:00:00Z", JAI_WEEK), "2026-11-06T03:00:00Z");
+  assert.equal(reviewDueAt("2026-11-05T03:00:00Z", REVIEW_WEEK), "2026-11-06T03:00:00Z");
   // Friday 10:00: Monday 10:00, past the weekend.
-  assert.equal(reviewDueAt("2026-11-06T03:00:00Z", JAI_WEEK), "2026-11-09T03:00:00Z");
+  assert.equal(reviewDueAt("2026-11-06T03:00:00Z", REVIEW_WEEK), "2026-11-09T03:00:00Z");
   // Thursday 20:00, after hours: the day starts Friday 09:00, so Monday 09:00.
-  assert.equal(reviewDueAt("2026-11-05T13:00:00Z", JAI_WEEK), "2026-11-09T02:00:00Z");
+  assert.equal(reviewDueAt("2026-11-05T13:00:00Z", REVIEW_WEEK), "2026-11-09T02:00:00Z");
   // Saturday: the day starts Monday 09:00, so Tuesday 09:00.
-  assert.equal(reviewDueAt("2026-11-07T05:00:00Z", JAI_WEEK), "2026-11-10T02:00:00Z");
+  assert.equal(reviewDueAt("2026-11-07T05:00:00Z", REVIEW_WEEK), "2026-11-10T02:00:00Z");
   // Thursday 07:00, before hours: Thursday 09:00 opens it, so Friday 09:00.
-  assert.equal(reviewDueAt("2026-11-05T00:00:00Z", JAI_WEEK), "2026-11-06T02:00:00Z");
-  assert.equal(reviewDueAt(null, JAI_WEEK), null);
+  assert.equal(reviewDueAt("2026-11-05T00:00:00Z", REVIEW_WEEK), "2026-11-06T02:00:00Z");
+  assert.equal(reviewDueAt(null, REVIEW_WEEK), null);
 });
 
 test("the review week comes from the three SLA vars, and is off when any is unset or makes no sense", () => {
-  assert.deepEqual(JAI_WEEK, {
+  assert.deepEqual(REVIEW_WEEK, {
     offsetHours: 7,
     startHour: 9,
     endHour: 18,

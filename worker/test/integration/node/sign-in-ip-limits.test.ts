@@ -1,12 +1,10 @@
 // The hosted sign-in routes' per-IP limits on the real counter: each IP hash counted on its own SQLite, as an `IpLimit`
 // object counts it, through `/auth/github/start` and `/finish`.
 import assert from "node:assert/strict";
-import { afterEach, test } from "vitest";
+import { test } from "vitest";
 import { consumeLimits, createLimitHitsTable, type LimitSql } from "../../../src/limit-counter.ts";
 import { hostedWorld, type LimitIp } from "../../support/hosted-world.ts";
-import { closeMemorySql, memorySql } from "../../support/memory-sql.ts";
-
-afterEach(closeMemorySql);
+import { memorySql } from "../../support/memory-sql.ts";
 
 /** One SQLite counter per IP hash, as each IP gets its own `IpLimit` object. */
 function sqliteIpLimits(): LimitIp {

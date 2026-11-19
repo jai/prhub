@@ -1,39 +1,9 @@
 import { env, exports } from "cloudflare:workers";
-import {
-  evictDurableObject,
-  reset,
-  runDurableObjectAlarm,
-  runInDurableObject,
-} from "cloudflare:test";
-import { setupNetwork } from "@msw/cloudflare";
-import { http } from "msw";
-import { afterAll, afterEach, beforeAll, expect, test } from "vitest";
+import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
+import { expect, test } from "vitest";
 import type { PendingSignIn } from "../../../src/hosted.ts";
 import { LimitName, limitsOf, rateWindowOf } from "../../../src/limits.ts";
-
-const network = setupNetwork();
-const unexpectedRequests: string[] = [];
-beforeAll(() => {
-  network.use(
-    http.all("*", ({ request }) => {
-      const call = `${request.method} ${request.url}`;
-      unexpectedRequests.push(call);
-      throw new Error(`Unexpected outbound request: ${call}`);
-    }),
-  );
-  network.enable();
-});
-afterAll(() => network.disable());
-afterEach(async () => {
-  try {
-    expect(unexpectedRequests).toEqual([]);
-  } finally {
-    unexpectedRequests.length = 0;
-    await reset();
-  }
-});
-
-const authorization = { Authorization: "Bearer runtime-app-token" };
+import { authorization } from "./values.ts";
 
 test("the real PR index initializes its schema and keeps write receipts across eviction", async () => {
   const index = env.PR_INDEX.getByName("write-receipts");

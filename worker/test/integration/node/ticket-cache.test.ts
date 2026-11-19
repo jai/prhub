@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "vitest";
+import { test } from "vitest";
 import {
   cachedTickets,
   createTicketsTable,
@@ -8,9 +8,7 @@ import {
   TICKET_FRESH_MS,
 } from "../../../src/ticket-cache.ts";
 import { type Ticket, unresolved } from "../../../src/tickets.ts";
-import { closeMemorySql, memorySql } from "../../support/memory-sql.ts";
-
-afterEach(closeMemorySql);
+import { memorySql } from "../../support/memory-sql.ts";
 
 function index() {
   const sql = memorySql();

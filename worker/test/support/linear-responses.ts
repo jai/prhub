@@ -1,3 +1,5 @@
+import { type GraphqlRequest, stubFetch } from "./fake-fetch.ts";
+
 export const USERS = [
   {
     name: "Octo Bot",
@@ -32,23 +34,20 @@ export const USERS = [
   },
 ];
 
-/** Linear as a stand-in: the users query, and `commentCreate` answered by `comment`. */
+/** Linear as a stand-in: `PRHubUsers` answered with `USERS`, every other operation by `answer`. Returns what was asked. */
 export function linear(
-  comment: (body: { query: string; variables?: Record<string, unknown> }) => unknown = () => ({}),
-) {
-  const asked: { query: string; variables?: Record<string, unknown> }[] = [];
-  globalThis.fetch = (async (_url: string, init: RequestInit) => {
-    const body = JSON.parse(String(init.body)) as {
-      query: string;
-      variables?: Record<string, unknown>;
-    };
-    asked.push(body);
+  answer: (graphql: GraphqlRequest) => unknown = () => ({}),
+): GraphqlRequest[] {
+  const asked: GraphqlRequest[] = [];
+  stubFetch((request) => {
+    const graphql = request.graphql!;
+    asked.push(graphql);
     return Response.json(
-      body.query.includes("users(")
+      graphql.operation === "PRHubUsers"
         ? { data: { users: { nodes: USERS, pageInfo: { hasNextPage: false, endCursor: null } } } }
-        : comment(body),
+        : answer(graphql),
     );
-  }) as typeof fetch;
+  });
   return asked;
 }
 

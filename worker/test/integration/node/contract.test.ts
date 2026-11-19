@@ -7,23 +7,13 @@ import { alertMessage } from "../../../src/alerts.ts";
 import { parseRowStatus } from "../../../src/boundary.ts";
 import { deviceConfig } from "../../../src/config.ts";
 import type { Env } from "../../../src/env.ts";
-import { detailVersionOf, mergedRow, pullRequest, reviewWeek } from "../../../src/github.ts";
+import { detailVersionOf, mergedRow } from "../../../src/github.ts";
 import { DEFAULT_CONTEXT } from "../../../src/key-lines.ts";
 
 import { resolvedTickets, rowTickets } from "../../../src/tickets.ts";
 import { authenticate, hostedAccountConfig } from "../../../src/hosted.ts";
 import { bearer, hostedWorld, ORIGIN, signIn } from "../../support/hosted-world.ts";
-import { prNode } from "../../support/pr-node.ts";
-
-const WEEK = reviewWeek({
-  REVIEW_SLA_UTC_OFFSET_HOURS: "7",
-  REVIEW_SLA_HOURS: "9-18",
-  REVIEW_SLA_WEEKDAYS: "1,2,3,4,5",
-});
-
-function read(overrides: Record<string, unknown> = {}) {
-  return pullRequest(prNode(overrides) as never, "jai", false, WEEK, null);
-}
+import { readPr as read } from "../../support/pr-node.ts";
 
 // Golden fixtures (PRKit/Tests/PRContractFixtures/Fixtures/): what the Worker sends, from the real builders, for the app's contract tests.
 // `UPDATE_FIXTURES=1 npm test` writes them after a deliberate change; otherwise a change fails here.

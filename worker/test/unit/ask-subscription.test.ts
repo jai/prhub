@@ -20,6 +20,8 @@ import {
   TURN_LOST_MS,
 } from "../../src/ask-subscription.ts";
 import type { Env } from "../../src/env.ts";
+import { fakeAgent } from "../support/agent-container.ts";
+import { memoryR2 } from "../support/memory-r2.ts";
 
 const HEAD = "a".repeat(40) as Sha;
 const REPO = "acme/api" as RepoFullName;
@@ -154,36 +156,17 @@ test("the prompt says instructions come only from the reviewer", () => {
   );
 });
 
-function memoryR2() {
-  const objects = new Map<string, string>();
-  return {
-    objects,
-    get: async (key: string) =>
-      objects.has(key)
-        ? { json: async () => JSON.parse(objects.get(key)!), text: async () => objects.get(key)! }
-        : null,
-    put: async (key: string, value: string) => void objects.set(key, value),
-  };
-}
-
 const input = (question: string): AskInput => ({ question, head: HEAD, anchor: null });
 
 function world(answers: Record<string, unknown>[]) {
-  const sent: Record<string, unknown>[] = [];
-  const instances: string[] = [];
-  const agent = {
-    idFromName: (name: string) => {
-      instances.push(name);
-      return name;
-    },
-    get: () => ({
-      fetch: async (url: string, init: RequestInit) => {
-        assert.equal(url, "http://agent/ask");
-        sent.push(JSON.parse(String(init.body)) as Record<string, unknown>);
-        return Response.json(answers.shift());
-      },
-    }),
-  };
+  const {
+    binding: agent,
+    sent,
+    instances,
+  } = fakeAgent((_body, url) => {
+    assert.equal(url, "http://agent/ask");
+    return answers.shift();
+  });
   const r2 = memoryR2();
   const env = { DIFFS: r2, AGENT: agent, CLAUDE_CODE_OAUTH_TOKEN: "oat" } as unknown as Env;
   const services = {
@@ -197,7 +180,7 @@ function world(answers: Record<string, unknown>[]) {
     readOnly: true,
     now: () => 1_000,
   };
-  const record = () => JSON.parse(r2.objects.get(`ask/${REPO}/7.json`)!) as SubscriptionRecord;
+  const record = () => JSON.parse(r2.bodyOf(`ask/${REPO}/7.json`)!) as SubscriptionRecord;
   return { sent, instances, r2, env, services, record };
 }
 /** Shaped like an installation token, built in pieces so no real-looking token sits in the source. */

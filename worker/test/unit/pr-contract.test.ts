@@ -1,16 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { pullRequest, reviewWeek } from "../../src/github.ts";
 import { stateOf } from "../../src/pr-states.ts";
-import { prNode } from "../support/pr-node.ts";
-const WEEK = reviewWeek({
-  REVIEW_SLA_UTC_OFFSET_HOURS: "7",
-  REVIEW_SLA_HOURS: "9-18",
-  REVIEW_SLA_WEEKDAYS: "1,2,3,4,5",
-});
-function read(overrides: Record<string, unknown> = {}) {
-  return pullRequest(prNode(overrides) as never, "jai", false, WEEK, null);
-}
+import { prNode, readPr as read } from "../support/pr-node.ts";
 
 test("a row and its detail say the same merge state and review, a lagging merge state among them", () => {
   const cases: [string, string, string][] = [
@@ -35,7 +26,7 @@ test("a row and its detail say the same merge state and review, a lagging merge 
 
 test("a draft is on no list, and its detail says blocked as the threads' PR state does", () => {
   const node = prNode({ isDraft: true, mergeStateStatus: "DRAFT" });
-  const pr = pullRequest(node as never, "jai", false, WEEK, null);
+  const pr = read({ isDraft: true, mergeStateStatus: "DRAFT" });
   assert.equal(pr.status, null);
   assert.equal(pr.detail.merge, "blocked");
   assert.equal(stateOf(node as never, "jai").merge, pr.detail.merge);

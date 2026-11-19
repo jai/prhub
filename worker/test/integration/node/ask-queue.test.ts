@@ -1,7 +1,7 @@
 // Ask's queue on real SQLite (`ask-queue.ts`): a question stored and answered at once, then handed to the agent one at a
 // time.
 import assert from "node:assert/strict";
-import { afterEach, test } from "vitest";
+import { test } from "vitest";
 import {
   acceptAsk,
   askView,
@@ -11,9 +11,7 @@ import {
   queueAsk,
 } from "../../../src/ask-queue.ts";
 import { PR, question } from "../../support/ask-queue-values.ts";
-import { closeMemorySql, memorySql } from "../../support/memory-sql.ts";
-
-afterEach(closeMemorySql);
+import { memorySql } from "../../support/memory-sql.ts";
 
 function queue() {
   const sql = memorySql();

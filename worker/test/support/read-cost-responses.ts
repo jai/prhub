@@ -1,5 +1,6 @@
-import type { Env } from "../../src/env.ts";
 import { prId, type RepoFullName } from "../../src/ids.ts";
+import { env as envOf } from "./env.ts";
+import { stubFetch } from "./fake-fetch.ts";
 import { prNode } from "./pr-node.ts";
 
 const POLICY = `policy:
@@ -9,7 +10,7 @@ approval_rules:
     requires: { count: 1, teams: [acme/backend] }
 `;
 const ETAG = '"policy-1"';
-export const env = { GITHUB_TOKEN: "t", GITHUB_LOGIN: "jai" } as Env;
+export const env = envOf({ GITHUB_TOKEN: "t", GITHUB_LOGIN: "jai" });
 const repo = "acme/app" as RepoFullName;
 export const ref = (number: number) => ({ id: prId(repo, number), repo, number });
 const approved = {
@@ -21,24 +22,30 @@ const approved = {
     },
   ],
 };
-/** Stands in for GitHub; answers each call and keeps what was asked, and whether it would count against the hour. */
-export function stubGitHub() {
+/**
+ * Stands in for GitHub; answers each call and keeps what was asked, and whether it would count against the hour.
+ * `graphqlAnswer` may change a GraphQL answer before it goes.
+ */
+export function stubGitHub(
+  graphqlAnswer: (answer: { data: Record<string, unknown> }) => unknown = (answer) => answer,
+): { kind: string; counted: boolean }[] {
   const calls: { kind: string; counted: boolean }[] = [];
-  globalThis.fetch = (async (input: string, init?: RequestInit) => {
-    const url = new URL(String(input));
-    const etag = (init?.headers as Record<string, string> | undefined)?.["If-None-Match"];
-    if (url.pathname === "/graphql") {
-      const { query } = JSON.parse(String(init?.body)) as { query: string };
+  stubFetch((asked) => {
+    const url = new URL(asked.url);
+    const etag = asked.headers.get("If-None-Match");
+    if (asked.graphql) {
       calls.push({ kind: "graphql", counted: true });
-      const aliases = [...query.matchAll(/(p\d+): repository/g)].map((match) => match[1] as string);
-      return Response.json({
-        data: Object.fromEntries(
-          aliases.map((alias, index) => [
-            alias,
-            { pullRequest: prNode({ number: 7 + index, latestReviews: approved }) },
-          ]),
-        ),
-      });
+      const prs = asked.graphql.fields.filter((field) => field.name === "repository");
+      return Response.json(
+        graphqlAnswer({
+          data: Object.fromEntries(
+            prs.map((field, index) => [
+              field.alias,
+              { pullRequest: prNode({ number: 7 + index, latestReviews: approved }) },
+            ]),
+          ),
+        }),
+      );
     }
     if (url.pathname.endsWith("/contents/.policy.yml")) {
       calls.push({ kind: "policy", counted: etag !== ETAG });
@@ -53,6 +60,6 @@ export function stubGitHub() {
         : Response.json({ state: "active" }, { headers: { ETag: '"team-1"' } });
     }
     throw new Error(`unexpected ${url}`);
-  }) as typeof fetch;
+  });
   return calls;
 }

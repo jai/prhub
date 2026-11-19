@@ -6,23 +6,28 @@ import {
   forgetAppLatest,
   parseAppLatest,
 } from "../../src/app-latest.ts";
+import { fakeFetch } from "../support/fake-fetch.ts";
 
 const published = {
   internal: { version: "1.0", build: "212" },
   public: { version: "1.0", build: "198" },
 };
 
+/** A fetch answering `answers` in turn (an `Error` is thrown), and the URLs it was asked for. */
 function answering(...answers: (object | Error)[]) {
-  const urls: string[] = [];
-  const fetchImpl = (async (input: RequestInfo | URL) => {
-    urls.push(String(input));
+  const { fetch: fetchImpl, asked } = fakeFetch(() => {
     const answer = answers.shift() ?? new Error("no answer left");
     if (answer instanceof Error) {
       throw answer;
     }
     return Response.json(answer);
-  }) as typeof fetch;
-  return { urls, fetchImpl };
+  });
+  return {
+    fetchImpl,
+    get urls() {
+      return asked.map((call) => call.url);
+    },
+  };
 }
 
 test("the published file's groups are kept only when well formed", () => {

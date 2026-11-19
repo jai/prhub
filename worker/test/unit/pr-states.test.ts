@@ -1,14 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { prId, repoOf } from "../../src/ids.ts";
-import { reviewWeek } from "../../src/github.ts";
 import { parseRefs, stateOf, statesFrom, statesQuery } from "../../src/pr-states.ts";
+import { policyBot, REVIEW_WEEK as WEEK } from "../support/pr-node.ts";
 
-const policyBot = (state: string) => ({
-  __typename: "StatusContext",
-  context: "policy-bot: main",
-  state,
-});
 const check = (conclusion: string) => ({
   __typename: "CheckRun",
   name: "unit",
@@ -122,12 +117,6 @@ test("Jai's own review: his change request stands, a draft shows, and being aske
   );
   assert.deepEqual([draft.jai_review, draft.jai_reviewed_at], ["pending", null]);
   assert.equal(stateOf(node(), "jai").jai_review, null);
-});
-
-const WEEK = reviewWeek({
-  REVIEW_SLA_UTC_OFFSET_HOURS: "7",
-  REVIEW_SLA_HOURS: "9-18",
-  REVIEW_SLA_WEEKDAYS: "1,2,3,4,5",
 });
 
 test("the review's due time is the PRs tab's, and only while review is asked of Jai", () => {

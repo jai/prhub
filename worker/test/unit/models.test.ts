@@ -3,7 +3,7 @@ import { test } from "vitest";
 import { repoOf, shaOf } from "../../src/ids.ts";
 import { chatOf } from "../../src/ask-chat.ts";
 import { deviceConfig } from "../../src/config.ts";
-import type { Env } from "../../src/env.ts";
+import { env } from "../support/env.ts";
 import {
   aiKey,
   BUILT_IN_DEFAULTS,
@@ -191,7 +191,6 @@ test("cost is list price in cents, Haiku's long-prompt rate included, and null f
 });
 
 test("/device/config lists models only for the AI features that are on", () => {
-  const env = (vars: Partial<Env>) => vars as Env;
   assert.equal("ai" in deviceConfig(env({ GITHUB_TOKEN: "t" }), "alex"), false);
   const keyOnly = deviceConfig(
     env({

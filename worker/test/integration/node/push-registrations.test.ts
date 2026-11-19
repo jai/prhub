@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "vitest";
+import { test } from "vitest";
 import type { DeviceToken, Fingerprint } from "../../../src/ids.ts";
 import {
   createPushRegistrationsTable,
@@ -7,9 +7,7 @@ import {
   pruneUnlinkedPushTokens,
   registerPushToken,
 } from "../../../src/push-registrations.ts";
-import { closeMemorySql, memorySql } from "../../support/memory-sql.ts";
-
-afterEach(closeMemorySql);
+import { memorySql } from "../../support/memory-sql.ts";
 
 const PHONE = "a".repeat(64) as Fingerprint;
 const IPAD = "b".repeat(64) as Fingerprint;

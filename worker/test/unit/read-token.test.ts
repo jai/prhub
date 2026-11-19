@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "vitest";
+import { test } from "vitest";
 import {
   graphql,
   mergedPullRequests,
@@ -9,14 +9,11 @@ import {
   searchListings,
   sendToGitHub,
 } from "../../src/github.ts";
+import { searchOf } from "../support/fake-fetch.ts";
 import { env, gitHub } from "../support/read-token-responses.ts";
 import { prId, repoOf } from "../../src/ids.ts";
 import { prNode } from "../support/pr-node.ts";
 
-const realFetch = globalThis.fetch;
-afterEach(() => {
-  globalThis.fetch = realFetch;
-});
 const EMPTY_SEARCH = {
   data: { search: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } },
 };
@@ -26,7 +23,7 @@ test("the searches go with the read token and name the owner, never @me", async 
   await searchListings(env());
   await mergedPullRequests(env(), "reviewed");
   assert.deepEqual(new Set(calls.map((call) => call.token)), new Set(["reader"]));
-  const qs = calls.map((call) => String(call.q));
+  const qs = calls.map(searchOf);
   assert.ok(
     qs.every((q) => !q.includes("@me")),
     qs.join("\n"),
@@ -39,7 +36,7 @@ test("without GITHUB_LOGIN the owner is GITHUB_TOKEN's user, not the read token'
   const calls = gitHub(() => EMPTY_SEARCH);
   await searchListings(env({ GITHUB_LOGIN: undefined }));
   assert.equal(calls.find((call) => call.url.endsWith("/user"))?.token, "owner");
-  assert.ok(calls.some((call) => String(call.q).includes("author:jai")));
+  assert.ok(calls.some((call) => searchOf(call).includes("author:jai")));
 });
 
 test("every write goes with GITHUB_TOKEN", async () => {
@@ -99,13 +96,13 @@ test("a PR's detail is read with the read token, and only the owner's own view o
     files: _f,
     ...shared
   } = prNode({ reviewThreads: { nodes: [THREAD] } });
-  const calls = gitHub((query) => ({
-    data: { p0: { pullRequest: query.includes("...Fields") ? shared : VIEWER } },
+  const calls = gitHub((graphql) => ({
+    data: { p0: { pullRequest: graphql.spreads.has("Fields") ? shared : VIEWER } },
   }));
   const read = await readPullRequests([REF], env(), new Set(), async () => new Map());
-  const graphql = calls.filter((call) => call.url.endsWith("/graphql"));
+  const graphql = calls.filter((call) => call.graphql);
   assert.deepEqual(
-    graphql.map((call) => [call.token, /\bviewer/.test(call.query)]),
+    graphql.map((call) => [call.token, call.graphql?.spreads.has("Viewer")]),
     [
       ["reader", false],
       ["owner", true],
@@ -131,6 +128,6 @@ test("unset, and on the hosted Worker, every call goes with GITHUB_TOKEN as befo
     await readPullRequests([REF], env(vars), new Set(), async () => new Map());
     await searchListings(env(vars)).catch(() => null);
     assert.deepEqual(new Set(calls.map((call) => call.token)), new Set(["owner"]));
-    assert.equal(calls.filter((call) => call.query.includes("...Viewer")).length, 1);
+    assert.equal(calls.filter((call) => call.graphql?.spreads.has("Viewer")).length, 1);
   }
 });

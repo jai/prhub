@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "vitest";
+import { test } from "vitest";
 import { isRevisionOf, parseSha, repoOf, revisionOf, type Sha } from "../../src/ids.ts";
 import { FAILURE_KEPT_MS, isStaleFailure, runAiJob } from "../../src/ai-run.ts";
 import { runOnSubscription } from "../../src/agent-container.ts";
 import { prDiff } from "../../src/ask-subscription.ts";
 import type { Env } from "../../src/env.ts";
 import { liveDiff, revisionFrom } from "../../src/github.ts";
-import { type LiveRead, serveVersioned, storeDiff } from "../../src/versioned.ts";
-import { fakeStore, gitHubAt } from "../support/versioned-responses.ts";
+import { type LiveRead, serveVersioned, storeDiff, VERSION_METADATA } from "../../src/versioned.ts";
+import { fakeAgent } from "../support/agent-container.ts";
+import { stubFetch } from "../support/fake-fetch.ts";
+import { type MemoryR2, memoryR2 } from "../support/memory-r2.ts";
+import { pullRequestRest } from "../support/pr-node.ts";
 import { type AiJob, aiKey } from "../../src/models.ts";
 
 const OLD = "a".repeat(40) as Sha;
@@ -19,11 +22,7 @@ function live(body: string, version: string | null, status = 200): () => Promise
 }
 
 /** `serveVersioned` with its deferred writes run before the test looks. */
-async function serve(
-  store: ReturnType<typeof fakeStore>,
-  requested: string,
-  load: () => Promise<LiveRead>,
-) {
+async function serve(store: MemoryR2, requested: string, load: () => Promise<LiveRead>) {
   const pending: Promise<unknown>[] = [];
   const response = await serveVersioned(
     store as never,
@@ -36,10 +35,18 @@ async function serve(
   await Promise.all(pending);
   return { status: response.status, body: await response.text() };
 }
-const realFetch = globalThis.fetch;
-afterEach(() => {
-  globalThis.fetch = realFetch;
-});
+
+/** GitHub with acme/app#7 at `head`; returns every request it was sent. */
+const gitHubAt = (head: Sha) =>
+  stubFetch((asked) => pullRequestRest(asked, head) ?? new Response("not here", { status: 500 }));
+
+/** Each put with the revision it was kept under. */
+const versionedPuts = (store: MemoryR2) =>
+  store.puts.map(({ key, value, customMetadata }) => ({
+    key,
+    value,
+    version: customMetadata?.[VERSION_METADATA],
+  }));
 
 test("a commit is 40 lowercase hex characters, and a revision is of its head", () => {
   assert.equal(parseSha(OLD), OLD);
@@ -51,16 +58,16 @@ test("a commit is 40 lowercase hex characters, and a revision is of its head", (
 });
 
 test("a diff read after the head moved on is answered but not kept under the old revision", async () => {
-  const store = fakeStore();
+  const store = memoryR2();
   const answer = await serve(store, OLD_REVISION, live("new diff", NEW_REVISION));
   assert.deepEqual(answer, { status: 200, body: "new diff" });
   assert.deepEqual(store.puts, []);
 });
 
 test("a live read of the revision asked for is kept under it, and answers from R2 after that", async () => {
-  const store = fakeStore();
+  const store = memoryR2();
   await serve(store, OLD_REVISION, live("old diff", OLD_REVISION));
-  assert.deepEqual(store.puts, [
+  assert.deepEqual(versionedPuts(store), [
     { key: `k/${OLD_REVISION}`, value: "old diff", version: OLD_REVISION },
   ]);
   const again = await serve(store, OLD_REVISION, () => assert.fail("R2 has it"));
@@ -68,7 +75,7 @@ test("a live read of the revision asked for is kept under it, and answers from R
 });
 
 test("a read whose version can't be told, or that GitHub refused, is never kept", async () => {
-  const store = fakeStore();
+  const store = memoryR2();
   assert.equal((await serve(store, OLD_REVISION, live("diff", null))).body, "diff");
   assert.equal((await serve(store, OLD_REVISION, live("gone", OLD_REVISION, 404))).status, 404);
   assert.deepEqual(store.puts, []);
@@ -76,36 +83,38 @@ test("a read whose version can't be told, or that GitHub refused, is never kept"
 
 test("the index marks a diff ready only from a copy known to be of the row's revision", async () => {
   const key = `k/${OLD_REVISION}`;
-  const verified = fakeStore({ [key]: { body: "old diff", version: OLD_REVISION } });
+  const verified = memoryR2({
+    [key]: { body: "old diff", customMetadata: { [VERSION_METADATA]: OLD_REVISION } },
+  });
   assert.equal(
     await storeDiff(verified as never, key, OLD_REVISION, () => assert.fail("R2 has it")),
     "ready",
   );
 
   // A copy from before the check, read again: the head has moved, so it stays pending and nothing is written.
-  const legacy = fakeStore({ [key]: { body: "new diff" } });
+  const legacy = memoryR2({ [key]: { body: "new diff" } });
   assert.equal(
     await storeDiff(legacy as never, key, OLD_REVISION, live("new diff", NEW_REVISION)),
     "pending",
   );
   assert.deepEqual(legacy.puts, []);
 
-  const fresh = fakeStore();
+  const fresh = memoryR2();
   assert.equal(
     await storeDiff(fresh as never, key, OLD_REVISION, live("old diff", OLD_REVISION)),
     "ready",
   );
-  assert.deepEqual(fresh.puts, [{ key, value: "old diff", version: OLD_REVISION }]);
+  assert.deepEqual(versionedPuts(fresh), [{ key, value: "old diff", version: OLD_REVISION }]);
 });
 
 test("too large is said only of the row's own revision", async () => {
   const key = `k/${OLD_REVISION}`;
   assert.equal(
-    await storeDiff(fakeStore() as never, key, OLD_REVISION, live("", OLD_REVISION, 406)),
+    await storeDiff(memoryR2() as never, key, OLD_REVISION, live("", OLD_REVISION, 406)),
     "too_large",
   );
   assert.equal(
-    await storeDiff(fakeStore() as never, key, OLD_REVISION, live("", NEW_REVISION, 406)),
+    await storeDiff(memoryR2() as never, key, OLD_REVISION, live("", NEW_REVISION, 406)),
     "pending",
   );
 });
@@ -201,9 +210,9 @@ const SUMMARY = {
 };
 
 test("key lines for a head the PR has moved on from are never stored under that head", async () => {
-  const others: string[] = [];
-  gitHubAt(NEW, others);
-  const store = fakeStore();
+  const toGitHub = gitHubAt(NEW);
+  const others = () => toGitHub.filter((one) => !pullRequestRest(one, NEW));
+  const store = memoryR2();
   const job: AiJob = {
     kind: "key_lines",
     repo: repoOf("acme/app"),
@@ -223,29 +232,20 @@ test("key lines for a head the PR has moved on from are never stored under that 
   assert.deepEqual(Object.keys(stored), ["error", "moved"]);
   assert.equal(stored.moved, true, "the app asks again at the newest commit");
   assert.match(String(stored.error), /moved on/);
-  assert.deepEqual(others, [], "no model was asked");
+  assert.deepEqual(others(), [], "no model was asked");
 });
 
 test("on the subscription, key lines come from the Agent SDK container, never the API", async () => {
-  const others: string[] = [];
-  gitHubAt(NEW, others);
-  const asked: Record<string, unknown>[] = [];
-  const agent = {
-    idFromName: (name: string) => name,
-    get: () => ({
-      fetch: async (_url: string, init: RequestInit) => {
-        asked.push(JSON.parse(String(init.body)) as Record<string, unknown>);
-        return Response.json({
-          subtype: "success",
-          output: { items: [], summary: SUMMARY },
-          model: "claude-sonnet-5-5",
-          tokens: { input: 10, output: 2 },
-          costUsd: 0.0123,
-        });
-      },
-    }),
-  } as unknown as Env["AGENT"];
-  const store = fakeStore();
+  const toGitHub = gitHubAt(NEW);
+  const others = () => toGitHub.filter((one) => !pullRequestRest(one, NEW));
+  const { binding: agent, sent: asked } = fakeAgent(() => ({
+    subtype: "success",
+    output: { items: [], summary: SUMMARY },
+    model: "claude-sonnet-5-5",
+    tokens: { input: 10, output: 2 },
+    costUsd: 0.0123,
+  }));
+  const store = memoryR2();
   const job: AiJob = {
     kind: "key_lines",
     repo: repoOf("acme/app"),
@@ -287,5 +287,5 @@ test("on the subscription, key lines come from the Agent SDK container, never th
   assert.equal(summary.points.length, 5, "five points at most");
   assert.deepEqual(summary.bugs, [], "a bug at a line the diff doesn't show is dropped");
   assert.deepEqual(summary.slop, { isSlop: false, tells: [] }, "no tells when it isn't slop");
-  assert.deepEqual(others, [], "the API was never asked");
+  assert.deepEqual(others(), [], "the API was never asked");
 });

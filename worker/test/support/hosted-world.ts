@@ -9,6 +9,8 @@ import {
   type SignedOutReason,
 } from "../../src/account-core.ts";
 import type { Env } from "../../src/env.ts";
+import { env } from "./env.ts";
+import { type Asked, askedOf } from "./fake-fetch.ts";
 import {
   canSeeWith,
   type HostedServices,
@@ -23,18 +25,15 @@ import { gitHubReserveOf, limitsOf } from "../../src/limits.ts";
 import type { OAuthApp } from "../../src/oauth.ts";
 import { parseKeyring, pkceChallengeOf, randomToken } from "../../src/token-crypto.ts";
 
-export const env = (vars: Partial<Env>) => vars as Env;
 export const keyOf = (fill: number) => Buffer.alloc(32, fill).toString("base64");
 export const KEY = `k1:${keyOf(1)}`;
 export const APP: OAuthApp = { clientId: "Iv23test", clientSecret: "client-secret" };
 export const ORIGIN = "https://prhub.example.workers.dev";
 export const HOUR = 3_600_000;
 
-export interface GitHubCall {
-  method: string;
-  url: string;
+/** A request to GitHub, with the form an OAuth call carried. */
+export interface GitHubCall extends Asked {
   form: URLSearchParams | null;
-  headers: Headers;
 }
 
 export interface FakeUser {
@@ -71,14 +70,11 @@ export class FakeGitHub {
   headers: Record<string, string> = {};
 
   readonly fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const url = String(input);
-    const method = init?.method ?? "GET";
+    const asked = await askedOf(input, init);
+    const { url, method } = asked;
     const form =
-      typeof init?.body === "string" && url.includes("/login/oauth/")
-        ? new URLSearchParams(init.body)
-        : null;
-    const headers = new Headers(init?.headers);
-    this.calls.push({ method, url, form, headers });
+      asked.body && url.includes("/login/oauth/") ? new URLSearchParams(asked.body) : null;
+    this.calls.push({ ...asked, form });
     if (url === "https://github.com/login/oauth/access_token") {
       if (this.refusal) {
         return Response.json({ error: this.refusal });
@@ -98,7 +94,7 @@ export class FakeGitHub {
     if (url.startsWith("https://api.github.com/applications/") && method === "DELETE") {
       return new Response(null, { status: 204 });
     }
-    const owner = this.owners.get((headers.get("Authorization") ?? "").replace(/^Bearer /, ""));
+    const owner = this.owners.get(asked.token);
     const answer = (body: unknown, status = 200) =>
       Response.json(body, { status, headers: this.headers });
     if (!owner) {

@@ -1,6 +1,6 @@
 // Linear mention matching and request/response adapters.
 import assert from "node:assert/strict";
-import { afterEach, test } from "vitest";
+import { test } from "vitest";
 import {
   canComment,
   postToLinear,
@@ -9,6 +9,8 @@ import {
   userFor,
 } from "../../src/linear-act.ts";
 import { KEY, linear, USERS } from "../support/linear-responses.ts";
+import { fakeAgent } from "../support/agent-container.ts";
+import { memoryR2 } from "../support/memory-r2.ts";
 import { linearPostedNow, postAskLinear } from "../../src/ask-linear.ts";
 import {
   askOnSubscription,
@@ -18,11 +20,6 @@ import {
 import type { Env } from "../../src/env.ts";
 import type { RepoFullName, Sha } from "../../src/ids.ts";
 import type { WriteClaim } from "../../src/write-receipts.ts";
-
-const realFetch = globalThis.fetch;
-afterEach(() => {
-  globalThis.fetch = realFetch;
-});
 
 test("a written name reaches the one user it means: exact, or one letter off when only one is that close", () => {
   assert.equal(
@@ -158,7 +155,7 @@ test("Linear may start the agent's session a moment after the comment: it is ask
   };
   let asks = 0;
   linear((body) => {
-    if (body.query.includes("commentCreate")) {
+    if (body.operation === "PRHubComment") {
       return {
         data: {
           commentCreate: {
@@ -195,17 +192,13 @@ const HEAD = "a".repeat(40) as Sha;
 const REPO = "acme/api" as RepoFullName;
 
 function world(answer: Record<string, unknown>) {
-  const objects = new Map<string, string>();
-  const r2 = {
-    get: async (key: string) =>
-      objects.has(key) ? { json: async () => JSON.parse(objects.get(key)!) } : null,
-    put: async (key: string, value: string) => void objects.set(key, value),
-  };
-  const agent = {
-    idFromName: (name: string) => name,
-    get: () => ({ fetch: async () => Response.json(answer) }),
-  };
-  const env = { DIFFS: r2, AGENT: agent, CLAUDE_CODE_OAUTH_TOKEN: "oat", ...KEY } as unknown as Env;
+  const r2 = memoryR2();
+  const env = {
+    DIFFS: r2,
+    AGENT: fakeAgent(() => answer).binding,
+    CLAUDE_CODE_OAUTH_TOKEN: "oat",
+    ...KEY,
+  } as unknown as Env;
   const receipts = new Map<string, "sending" | "done">();
   let readOnly = 0;
   const services = {
@@ -222,7 +215,7 @@ function world(answer: Record<string, unknown>) {
     readOnly: async () => void readOnly++,
     now: () => 5_000,
   };
-  const record = () => JSON.parse(objects.get(`ask/${REPO}/7.json`)!) as SubscriptionRecord;
+  const record = () => JSON.parse(r2.bodyOf(`ask/${REPO}/7.json`)!) as SubscriptionRecord;
   return { env, services, record, readOnlyMarks: () => readOnly };
 }
 
@@ -401,7 +394,7 @@ test("reading the chat asks Linear where a running session stands, at most every
   let status = "pending";
   let checks = 0;
   linear((body) => {
-    if (body.query.includes("commentCreate")) {
+    if (body.operation === "PRHubComment") {
       return {
         data: {
           commentCreate: {

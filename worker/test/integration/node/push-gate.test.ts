@@ -1,6 +1,6 @@
 // The push gate on real SQLite: an alert goes once its PR's files are stored at its head, or after the bounded wait.
 import assert from "node:assert/strict";
-import { afterEach, test } from "vitest";
+import { test } from "vitest";
 import type { PrAlert } from "../../../src/alerts.ts";
 import type { RepoFullName } from "../../../src/ids.ts";
 import {
@@ -10,9 +10,7 @@ import {
   holdAlert,
   releaseAlerts,
 } from "../../../src/push-gate.ts";
-import { closeMemorySql, memorySql } from "../../support/memory-sql.ts";
-
-afterEach(closeMemorySql);
+import { memorySql } from "../../support/memory-sql.ts";
 
 const HEAD = "a".repeat(40);
 const NOW = Date.parse("2026-11-08T07:00:00Z");
