@@ -41,6 +41,12 @@ enum PRReviewAction {
         }
     }
 
+    /// What VoiceOver says for its button, whether the bar shows words or icons: what you did once it is your standing
+    /// review, else what it does.
+    func spokenTitle(yourReview: PRJaiReview?) -> String {
+        isYours(yourReview) ? doneTitle ?? title : title
+    }
+
     func isYours(_ review: PRJaiReview?) -> Bool {
         switch (self, review) {
         case (.approve, .approved), (.requestChanges, .changesRequested): true
@@ -116,7 +122,7 @@ struct PRReviewBar: View {
         }
         .buttonStyle(PRButtonStyle(isYours ? .chosen : .secondary, inset: PRStyle.barButtonInset))
         .tint(action.tone)
-        .accessibilityLabel(isYours ? action.doneTitle ?? action.title : action.title)
+        .accessibilityLabel(action.spokenTitle(yourReview: yourReview))
         .accessibilityAddTraits(isYours ? .isSelected : [])
         .accessibilityIdentifier(action.identifier)
         .animation(AppMotion.swap, value: isYours)

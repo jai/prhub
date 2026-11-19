@@ -1,27 +1,11 @@
 import XCTest
 
 /// The diff's nav bar and tab bar leave as you scroll down a long file, and nothing can leave them gone with no way out:
-/// folding the file brings them back, so does the status bar, and the edge swipe goes back to the PR while they are gone. On
+/// the status bar brings them back, and the edge swipe goes back to the PR while they are gone (when they leave and
+/// come back is PRKit's `DiffBarsTests`). On
 /// `-PRHubLongDiff`, whose first PR has one file longer than the screen. Pictures go to `SCREENSHOTS_DIR` when set.
 @MainActor
 final class PRHubDiffBarsUITests: PRHubUITestCase {
-    func testFoldingTheOnlyFileBringsTheBarsBack() throws {
-        for appearance in [XCUIDevice.Appearance.light, .dark] {
-            let look = appearance == .dark ? "dark" : "light"
-            openLongDiff(appearance)
-            hideBars()
-            try recordScreenshot("diffbars-1-hidden-\(look)")
-
-            app.buttons["file-header-0"].tap()
-            XCTAssertEqual(app.buttons["file-header-0"].value as? String, "collapsed")
-            waitForBars(shown: true, "folding the only file leaves nothing to scroll")
-            try recordScreenshot("diffbars-2-folded-\(look)")
-
-            app.buttons["file-header-0"].tap()
-            waitForBars(shown: true, "opening it again keeps them")
-        }
-    }
-
     func testTheStatusBarBringsTheBarsBack() {
         openLongDiff(.light)
         hideBars()

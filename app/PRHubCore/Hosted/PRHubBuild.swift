@@ -1,4 +1,5 @@
 import Foundation
+import PRKitCore
 
 /// What this build of PRHub offers, from `Config/PRHub.xcconfig` through Info.plist: the hosted Worker, and which ways
 /// in onboarding shows. A Debug build also takes each path's flag as a launch argument (`-PRHubSelfHosted YES`), for the
@@ -38,7 +39,7 @@ public struct PRHubBuild: Equatable, Sendable {
 
     /// Info.plist's `PRHubHostedHost`, `PRHubSignInWithGitHub`, `PRHubSelfHosted` and `PRHubSamples`. A flag is on for
     /// `YES` (or a true boolean); a missing one is off. `overrides` wins where it has the key.
-    init(info: [String: Any], overrides: UserDefaults? = nil) {
+    init(info: [String: Any], overrides: (any PRKeyValueStore)? = nil) {
         func flag(_ key: String) -> Bool {
             if let override = overrides?.object(forKey: key) {
                 return Self.isOn(override)

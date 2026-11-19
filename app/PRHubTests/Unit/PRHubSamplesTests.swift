@@ -3,13 +3,14 @@ import Foundation
 @testable import PRHubCore
 import PRHubTestSupport
 @testable import PRKit
+import PRKitTestSupport
 import Testing
 
 /// PRHub's "Try with sample PRs" (`PRHubSamples.swift`): made-up PRs that open, show their diff and key lines, and take
 /// a review, with nothing sent anywhere.
 @MainActor
 struct PRHubSamplesTests {
-    private let resources = IntegrationResources()
+    private let resources = UnitResources()
     private struct RecordingTransport: HTTPTransport {
         let calls: Shared<Int>
 
@@ -21,8 +22,8 @@ struct PRHubSamplesTests {
 
     private func makeModel() -> PRsModel {
         let model = PRsModel(
-            client: PRViewerClient(access: .offline), samples: .prHub, directory: resources.directory(),
-            defaults: resources.defaults(), network: PRNetwork(isOnline: true), draftDirectory: resources.directory()
+            client: PRViewerClient(access: .offline, transport: UnexpectedTransport()), samples: .prHub,
+            storage: .inMemory(), network: PRNetwork(isOnline: true)
         )
         let config = DeviceConfig(features: [.keyLines], login: PRSampleSet.prHubLogin)
         model.featureSource = { PRHubPRHost.configuration(config) }
@@ -98,7 +99,7 @@ struct PRHubSamplesTests {
     }
 
     @Test func nothingIsSentFromTheSamples() async throws {
-        let client = PRViewerClient(access: .offline)
+        let client = PRViewerClient(access: .offline, transport: UnexpectedTransport())
         await #expect(throws: PRWorkerError.notPaired) {
             try await client.outboxRequest(path: "prs/acme/web/412/write", body: Data("{}".utf8))
         }
@@ -106,8 +107,7 @@ struct PRHubSamplesTests {
         let access = PRViewerAccess(baseURL: { URL(string: "https://worker.test")! }, bearer: { "test" }, discard: {})
         let model = PRsModel(
             client: PRViewerClient(access: access, transport: RecordingTransport(calls: calls)), samples: .prHub,
-            directory: resources.directory(), defaults: resources.defaults(), network: PRNetwork(isOnline: true),
-            draftDirectory: resources.directory()
+            storage: .inMemory(), network: PRNetwork(isOnline: true)
         )
         #expect(await model.refresh(.foreground) == .unchanged)
         await model.loadMerged(on: .review)
@@ -122,8 +122,8 @@ struct PRHubSamplesTests {
             samples: PRSampleSet.prHub.samples, mergedReviewed: [], mergedMine: [], answersOnPhone: false
         )
         let model = PRsModel(
-            client: PRViewerClient(access: .offline), samples: refusing, directory: resources.directory(),
-            defaults: resources.defaults(), network: PRNetwork(isOnline: true), draftDirectory: resources.directory()
+            client: PRViewerClient(access: .offline, transport: UnexpectedTransport()), samples: refusing,
+            storage: .inMemory(), network: PRNetwork(isOnline: true)
         )
         await #expect(throws: PRLocalRefusal.sampleWrite) {
             try await model.write(.comment(body: "x"), to: Self.checkout)
@@ -140,6 +140,6 @@ struct PRHubSamplesTests {
         defaults.set("acme,octocat|", forKey: "prOrgFilter")
         environment.endSample()
         #expect(environment.sample == nil)
-        #expect(defaults.string(forKey: "prOrgFilter") == nil)
+        #expect(defaults.object(forKey: "prOrgFilter") == nil)
     }
 }

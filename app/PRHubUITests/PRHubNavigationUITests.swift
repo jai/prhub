@@ -1,10 +1,10 @@
 import XCTest
 
 /// How a PR's diff is reached and left, over the sample PRs: Review changes pushes the diff over the PR with its panel
-/// open on Key lines, so Back returns to the PR; Files changed leaves the panel to its button; a row's Review shortcut (its button, its swipe and its menu) and a link to a PR's files land on the diff
-/// with the PR under it; the panel opens on Key lines, or on Files with no model. On a wide screen (an iPad) the list
-/// sits beside the PR and a diff takes the whole width, with its panel as a column; a narrow Split View keeps the phone's
-/// layout. Pictures go to `SCREENSHOTS_DIR` when it is set.
+/// open on Key lines, so Back returns to the PR; a row's swipe and its menu land on the diff with the PR under it. On a
+/// wide screen (an iPad) the list sits beside the PR and a diff takes the whole width, with its panel as a column; a
+/// narrow Split View keeps the phone's layout. Where each way in lands is PRKit's `PRNavigationTests`. Pictures go to
+/// `SCREENSHOTS_DIR` when it is set.
 @MainActor
 final class PRHubNavigationUITests: PRHubUITestCase {
     private let checkout = "Show a retry button when checkout fails"
@@ -28,14 +28,6 @@ final class PRHubNavigationUITests: PRHubUITestCase {
         assertOnDiffWithKeyLinesOpen()
         try picture("nav-review-changes-panel")
         backToThePRThenTheList()
-    }
-
-    func testTheFilesChangedRowOpensTheDiffWithThePanelWaiting() {
-        launch()
-        openCheckout()
-        app.buttons["pr-files-changed"].tap()
-        XCTAssertTrue(app.buttons["diff-files"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["key-lines-context-100"].exists && !isWide, "the panel waits for its button")
     }
 
     /// The diff sends a review the way the PR's page does: the bar under the code, its box in the bar's place.
@@ -70,15 +62,6 @@ final class PRHubNavigationUITests: PRHubUITestCase {
         try picture("nav-diff-review-bar-approved")
     }
 
-    func testTheRowsReviewButtonLandsOnTheDiffWithKeyLinesOpenAndBackGoesToThePR() {
-        launch()
-        let review = app.buttons["pr-row-review-\(checkoutRef)"]
-        XCTAssertTrue(review.waitForExistence(timeout: 10))
-        review.tap()
-        assertOnDiffWithKeyLinesOpen()
-        backToThePRThenTheList()
-    }
-
     func testSwipingARowRightOffersReviewChanges() throws {
         launch()
         let row = app.staticTexts[checkout]
@@ -103,28 +86,6 @@ final class PRHubNavigationUITests: PRHubUITestCase {
         try picture("nav-row-menu")
         app.buttons["pr-menu-review"].tap()
         assertOnDiffWithKeyLinesOpen()
-    }
-
-    func testALinkToAPRsFilesOpensItsDiffWithThePRUnderIt() {
-        launch(["-PRHubOpen", "https://github.com/acme/web/pull/412/files"])
-        XCTAssertTrue(app.buttons["diff-files"].waitForExistence(timeout: 10), "on the diff")
-        app.back()
-        XCTAssertTrue(waitForHittable(app.buttons["pr-review-changes"]), "with the PR under it")
-    }
-
-    func testThePanelOpensOnKeyLinesAndOnFilesWhenTheWorkerHasNoModel() {
-        launch()
-        openCheckout()
-        app.buttons["pr-files-changed"].tap()
-        openPanel()
-        XCTAssertTrue(app.buttons["key-lines-context-100"].waitForExistence(timeout: 3), "Key lines first")
-
-        launch(["-PRHubNoAI"])
-        openCheckout()
-        app.buttons["pr-files-changed"].tap()
-        openPanel()
-        XCTAssertTrue(app.buttons["diff-changed-only"].waitForExistence(timeout: 3), "Files, with no key lines")
-        XCTAssertFalse(app.buttons["key-lines-context-100"].exists)
     }
 
     /// The wide layout in each orientation: the PR beside the list, then the diff across the width with its panel as a
@@ -210,13 +171,6 @@ final class PRHubNavigationUITests: PRHubUITestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.tap()
         XCTAssertTrue(app.buttons["pr-review-changes"].waitForExistence(timeout: 5))
-    }
-
-    private func openPanel() {
-        XCTAssertTrue(app.buttons["diff-files"].waitForExistence(timeout: 5))
-        if !(isWide && app.buttons["key-lines-context-100"].exists || app.buttons["diff-changed-only"].exists) {
-            app.buttons["diff-files"].tap()
-        }
     }
 
     private func assertOnDiffWithKeyLinesOpen() {

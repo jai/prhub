@@ -25,7 +25,7 @@ public final class PRKitController {
     }
 
     /// The kit over `storage`: on disk from the host's folders above; in memory in a unit test.
-    init(host: some PRKitHost, storage: PRKitStorage, network: PRNetwork? = nil) {
+    public init(host: some PRKitHost, storage: PRKitStorage, network: PRNetwork? = nil) {
         let client = PRViewerClient(access: host.access, transport: host.transport)
             .reporting { area, failure in Task { @MainActor in host.receive(.requestFailed(area, failure)) } }
         model = PRsModel(client: client, samples: host.samples, storage: storage, network: network ?? PRNetwork())

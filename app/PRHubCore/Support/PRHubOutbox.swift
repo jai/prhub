@@ -22,15 +22,16 @@ final class PRHubOutbox: PRKitOutbox {
     // swiftlint:disable:next implicitly_unwrapped_optional
     private var outbox: Outbox!
 
-    /// `send` makes one try; the outbox does the waiting and the trying again. `file` nil keeps it in memory.
+    /// `send` makes one try (`AppNetwork.oneTry` in the app); the outbox does the waiting and the trying again. `file`
+    /// nil keeps it in memory.
     init(
-        client: PRViewerClient, file: URL? = PRHubOutbox.file, send: (any HTTPTransport)? = nil,
+        client: PRViewerClient, file: URL?, send: any HTTPTransport,
         backoff: OutboxBackoff = OutboxBackoff(), now: @escaping @Sendable () -> Date = { Date() },
         sleep: (@Sendable (Duration) async throws -> Void)? = nil,
         changed: @escaping @Sendable () async -> Void = {}
     ) {
         self.now = now
-        let transport = send ?? AppNetwork.oneTry
+        let transport = send
         var hooks = Outbox.Hooks()
         hooks.changed = { [weak self] in
             await self?.refresh()

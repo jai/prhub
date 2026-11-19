@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import PRKitCore
 
 /// PRHub's Worker: whether it has one, what that Worker serves, and the way in: pairing with a self-hosted pr-worker
 /// (docs/api.md, "Pairing") or Sign in with GitHub on the hosted one ("Hosted sign-in"). Both end the same way: a Worker
@@ -64,7 +65,7 @@ public final class WorkerConnection {
     /// `DELETE /device/pair` with this phone's secret, before Disconnect forgets it. Failures are the Worker's to
     /// outlive: its record goes when another device pairs.
     @ObservationIgnored private let unpair: (@Sendable () async -> Void)?
-    @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let defaults: any PRKeyValueStore
     @ObservationIgnored private let usage: UsageAnalytics
     @ObservationIgnored let hosted: Hosted?
 
@@ -74,7 +75,7 @@ public final class WorkerConnection {
         endpoint: WorkerEndpoint, pairing: DevicePairing,
         fetchConfig: @escaping @Sendable (_ fresh: Bool) async throws -> DeviceConfig,
         forgetSecret: @escaping @Sendable () throws -> Void, unpair: (@Sendable () async -> Void)? = nil,
-        defaults: UserDefaults = .standard, build: PRHubBuild = .current, usage: UsageAnalytics = .disabled(),
+        defaults: any PRKeyValueStore, build: PRHubBuild, usage: UsageAnalytics,
         hosted: Hosted? = nil
     ) {
         self.build = build

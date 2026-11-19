@@ -73,10 +73,10 @@ disabled_rules:
 custom_rules:
   # Unit tests run in the process only: nothing on disk, in preferences, in the Keychain or on the network, and no real
   # time. A test that needs one belongs in Integration, or the code under test takes a seam (a store, a transport, a
-  # clock). Integration and UI tests may use these.
+  # clock). Integration and UI tests may use these. `WorkerEndpoint` is a seam: it takes the Keychain store or a fake.
   unit_test_no_outside_resources:
     included: '.*/(PRKit/Tests/PRKitTests/Unit|app/PRHubTests/Unit)/.*\.swift'
-    regex: '\b(FileManager|UserDefaults|NSUbiquitousKeyValueStore|URLSession\w*|AppNetwork|NetworkStatus|NotificationCenter|UNUserNotificationCenter|ProcessInfo|NSTemporaryDirectory|temporaryDirectory|SecItem\w*)\b|\bBundle\.(main|module)\b|\b(WorkerURLStore|DeviceSecretStore|WorkerEndpoint)\s*\('
+    regex: '\b(FileManager|UserDefaults|NSUbiquitousKeyValueStore|URLSession\w*|AppNetwork|NetworkStatus|NotificationCenter|UNUserNotificationCenter|ProcessInfo|NSTemporaryDirectory|temporaryDirectory|SecItem\w*)\b|\bBundle\.(main|module)\b|\b(WorkerURLStore|DeviceSecretStore)\s*\(|\b(WorkerEndpoint|WorkerURLStore|DeviceSecretStore)\.live\b'
     excluded_match_kinds: [comment, doccomment, string]
     message: "A unit test touches nothing outside the process: inject a fake, or move the test to Integration."
     severity: error

@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import PRKitCore
 
 /// Where PRHub's events go: one vendor's SDK (`PostHogAnalytics`). Another vendor is another conformance, in one file.
 @MainActor
@@ -43,23 +44,18 @@ public final class UsageAnalytics {
     /// The build names a project: Settings then offers the switch.
     public let hasProject: Bool
     @ObservationIgnored private let sink: (any Analytics)?
-    @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let defaults: any PRKeyValueStore
 
-    init(hasProject: Bool, sink: (any Analytics)?, defaults: UserDefaults) {
+    init(hasProject: Bool, sink: (any Analytics)?, defaults: any PRKeyValueStore) {
         self.hasProject = hasProject
         self.sink = sink
         self.defaults = defaults
         isSharing = defaults.object(forKey: Self.sharingKey) as? Bool ?? true
     }
 
-    /// Records nothing: the unit tests' and the samples' screenshots'.
-    public static func disabled() -> UsageAnalytics {
-        UsageAnalytics(hasProject: false, sink: nil, defaults: .standard)
-    }
-
     /// The vendor only for a Release build, outside the tests, with a project named.
     public static func make(
-        project: AnalyticsProject?, isDebugBuild: Bool, isRunningTests: Bool, defaults: UserDefaults,
+        project: AnalyticsProject?, isDebugBuild: Bool, isRunningTests: Bool, defaults: any PRKeyValueStore,
         vendor: (AnalyticsProject, _ isSharing: Bool) -> any Analytics
     ) -> UsageAnalytics {
         guard let project else {

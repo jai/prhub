@@ -19,7 +19,7 @@ struct PRHubMetricReport: Codable, Equatable, Sendable {
     let device: String
 }
 
-/// The battery soak's reports: each MetricKit payload iOS hands PRHub is saved to disk at once and sent when the Worker
+/// The battery soak's reports: each MetricKit payload iOS hands PRHub is saved to `store` (a folder on disk) at once and sent when the Worker
 /// asks for them (`metrickit` in `GET /device/config`). A payload sent once is not sent again, one the Worker refuses
 /// for good is dropped, and one that could not go waits for the next try. While off, nothing is kept or sent.
 @MainActor
@@ -32,8 +32,8 @@ final class PRHubMetricReports {
     /// What waits at most; the oldest goes first. Two a day, at most a few weeks offline.
     static let waitingMax = 60
 
-    private let directory: URL
-    private let defaults: UserDefaults
+    private let store: any PRFileStore
+    private let defaults: any PRKeyValueStore
     private let send: Send
     private let build: String
     private let os: String
@@ -42,11 +42,11 @@ final class PRHubMetricReports {
     private var isSending = false
 
     init(
-        directory: URL, defaults: UserDefaults = .standard, build: String = AppIdentity.appVersion(),
+        store: any PRFileStore, defaults: any PRKeyValueStore, build: String = AppIdentity.appVersion(),
         os: String = ProcessInfo.processInfo.operatingSystemVersionString, device: String = PRHubMetricReports.deviceModel(),
         send: @escaping Send
     ) {
-        self.directory = directory
+        self.store = store
         self.defaults = defaults
         self.build = build
         self.os = os
@@ -58,7 +58,7 @@ final class PRHubMetricReports {
     func set(isOn: Bool) {
         self.isOn = isOn
         if !isOn {
-            try? FileManager.default.removeItem(at: directory)
+            store.removeAll()
         }
     }
 
@@ -70,13 +70,12 @@ final class PRHubMetricReports {
         }
         let report = PRHubMetricReport(kind: kind, payload: payload, build: build, os: os, device: device)
         do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try JSONEncoder().encode(report).write(to: directory.appending(path: "\(hash).json"), options: .atomic)
+            try store.write(JSONEncoder().encode(report), to: "\(hash).json")
         } catch {
             return
         }
         for file in waiting().dropLast(Self.waitingMax) {
-            try? FileManager.default.removeItem(at: file)
+            store.remove(file)
         }
     }
 
@@ -91,10 +90,10 @@ final class PRHubMetricReports {
             guard isOn else {
                 return
             }
-            guard let report = (try? Data(contentsOf: file)).flatMap({
+            guard let report = store.read(file).flatMap({
                 try? JSONDecoder().decode(PRHubMetricReport.self, from: $0)
             }) else {
-                try? FileManager.default.removeItem(at: file)
+                store.remove(file)
                 continue
             }
             do {
@@ -104,21 +103,16 @@ final class PRHubMetricReports {
                     return
                 }
             }
-            markSent(file.deletingPathExtension().lastPathComponent)
-            try? FileManager.default.removeItem(at: file)
+            markSent(String(file.dropLast(".json".count)))
+            store.remove(file)
         }
     }
 
-    /// The reports waiting, oldest first.
-    func waiting() -> [URL] {
-        let files = (try? FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: [.creationDateKey]
-        )) ?? []
-        let created = { (file: URL) in
-            (try? file.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
-        }
-        return files.filter { $0.pathExtension == "json" }
-            .sorted { (created($0), $0.lastPathComponent) < (created($1), $1.lastPathComponent) }
+    /// The names of the reports waiting, oldest first.
+    func waiting() -> [String] {
+        let written = { [store] (name: String) in store.modified(name) ?? .distantPast }
+        return store.names().filter { $0.hasSuffix(".json") }
+            .sorted { (written($0), $0) < (written($1), $1) }
     }
 
     private var sent: [String] {

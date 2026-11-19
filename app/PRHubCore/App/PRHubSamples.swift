@@ -6,41 +6,39 @@ import Foundation
 /// stays on the phone, and says so.
 extension PRHubEnvironment {
     public static func sample(
-        usage: UsageAnalytics = .disabled(), defaults: UserDefaults = .standard,
-        configurationDefaults: UserDefaults? = nil, storageDirectory: URL? = nil, network: PRNetwork? = nil
+        usage: UsageAnalytics, storage: PRHubStorage, build: PRHubBuild, alertPermission: PRHubAlertPermission,
+        network: PRNetwork? = nil
     ) -> PRHubEnvironment {
         offline(
             config: DeviceConfig(features: [.keyLines], login: PRSampleSet.prHubLogin),
-            samples: .prHub,
-            worker: URL(string: "https://samples.prhub.invalid")!, defaultsSuite: "prhub-samples", isSample: true,
-            usage: usage, listDefaults: defaults, configurationDefaults: configurationDefaults,
-            storageDirectory: storageDirectory, network: network
+            samples: .prHub, isSample: true, usage: usage,
+            storage: storage, build: build, alertPermission: alertPermission, network: network
         )
     }
 
     /// PRHub over a Worker that is not there: a connection that counts as paired, `config` as its Worker's, and no
-    /// pairing. The samples' environment, and the screenshots' `-PRHubPaired`.
+    /// pairing. The samples' environment, and the screenshots' `-PRHubPaired`. The config is kept in
+    /// `storage.sampleConfiguration`. Nothing is sent to `worker`; the samples' is a name that resolves nowhere.
     static func offline(
-        config: DeviceConfig, access: PRViewerAccess = .offline, samples: PRSampleSet? = nil, worker: URL,
-        defaultsSuite: String, isSample: Bool, usage: UsageAnalytics = .disabled(), outbox: (any PRKitOutbox)? = nil,
-        checksUpdates: Bool = false, testFlightGroup: TestFlightGroup = .public, transport: (any HTTPTransport)? = nil,
-        listDefaults: UserDefaults = .standard, configurationDefaults: UserDefaults? = nil,
-        storageDirectory: URL? = nil, network: PRNetwork? = nil, alertPermission: PRHubAlertPermission? = nil
+        config: DeviceConfig, access: PRViewerAccess = .offline, samples: PRSampleSet? = nil,
+        worker: URL = URL(string: "https://samples.prhub.invalid")!,
+        isSample: Bool, usage: UsageAnalytics, outbox: (any PRKitOutbox)? = nil, checksUpdates: Bool = false,
+        testFlightGroup: TestFlightGroup = .public, transport: (any HTTPTransport)? = nil, storage: PRHubStorage,
+        build: PRHubBuild, alertPermission: PRHubAlertPermission, network: PRNetwork? = nil
     ) -> PRHubEnvironment {
-        let defaults = configurationDefaults ?? UserDefaults(suiteName: defaultsSuite) ?? .standard
+        let defaults = storage.sampleConfiguration
         defaults.set(try? JSONEncoder().encode(config), forKey: WorkerConnection.configKey)
         let connection = WorkerConnection(
             endpoint: WorkerEndpoint(fixed: worker),
             pairing: DevicePairing(pair: { _, _ in throw URLError(.badURL) }, save: { _ in }),
-            fetchConfig: { _ in config }, forgetSecret: {}, defaults: defaults,
+            fetchConfig: { _ in config }, forgetSecret: {}, defaults: defaults, build: build,
             usage: UsageAnalytics(hasProject: false, sink: nil, defaults: defaults)
         )
         return PRHubEnvironment(
-            connection: connection, access: access, samples: samples, isSample: isSample,
-            alertPermission: alertPermission, usage: usage, outbox: outbox,
+            connection: connection, storage: storage, alertPermission: alertPermission, access: access,
+            samples: samples, isSample: isSample, usage: usage, outbox: outbox,
             update: PRHubUpdate(group: testFlightGroup, defaults: defaults, isEnabled: checksUpdates, usage: usage),
-            transport: transport, defaults: listDefaults, sampleDefaults: configurationDefaults,
-            storageDirectory: storageDirectory, network: network
+            transport: transport, network: network
         )
     }
 }

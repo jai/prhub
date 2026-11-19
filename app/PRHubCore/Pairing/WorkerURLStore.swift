@@ -2,11 +2,18 @@ import Foundation
 import Security
 import Synchronization
 
+/// Where `WorkerEndpoint` keeps the paired Worker's URL: the Keychain (`WorkerURLStore`) in the app, memory in a unit test.
+protocol WorkerURLStoring: Sendable {
+    func load() throws(DeviceSecretStore.Failure) -> URL?
+    func save(_ url: URL) throws(DeviceSecretStore.Failure)
+    func delete() throws(DeviceSecretStore.Failure)
+}
+
 /// The pr-worker's URL, learnt from a setup link (docs/api.md, "Pairing"), kept in the Keychain beside the
 /// device secret: the same service (`AppIdentity.bundleID`), its own account, and the same accessibility class, so a
 /// locked background wake after the first unlock can still reach the Worker. Never migrated in a backup: a restored
 /// phone pairs again, as it has a new device secret.
-struct WorkerURLStore: Sendable {
+struct WorkerURLStore: WorkerURLStoring {
     let service: String
     let account: String
 
@@ -71,7 +78,7 @@ struct WorkerURLStore: Sendable {
 /// link has paired the phone, and then every request fails as `notPaired` before anything is sent. The samples have a
 /// fixed one that nothing is sent to.
 final class WorkerEndpoint: Sendable {
-    static let live = WorkerEndpoint(store: .live)
+    static let live = WorkerEndpoint(store: WorkerURLStore.live)
 
     private enum State {
         /// Not read yet, or the Keychain could not be read the last time (a wake before the first unlock).
@@ -80,7 +87,7 @@ final class WorkerEndpoint: Sendable {
     }
 
     private let fixed: URL?
-    private let store: WorkerURLStore?
+    private let store: (any WorkerURLStoring)?
     private let state: Mutex<State>
 
     init(fixed: URL) {
@@ -89,7 +96,7 @@ final class WorkerEndpoint: Sendable {
         state = Mutex(.read(fixed))
     }
 
-    init(store: WorkerURLStore) {
+    init(store: any WorkerURLStoring) {
         fixed = nil
         self.store = store
         state = Mutex(.unread)

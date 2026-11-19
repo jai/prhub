@@ -45,6 +45,14 @@
             try? FileManager.default.removeItem(at: directory)
         }
 
+        /// The fixture's folders and preferences; the samples' Worker config in `sampleConfiguration`, else the
+        /// fixture's own config's.
+        func storage(sampleConfiguration: UserDefaults? = nil) -> PRHubStorage {
+            .onDisk(
+                directory: directory, defaults: defaults, sampleConfiguration: sampleConfiguration ?? configurationDefaults
+            )
+        }
+
         func alertPermission() -> PRHubAlertPermission {
             PRHubAlertPermission(center: .init(status: { .denied }, request: { false }), defaults: defaults)
         }

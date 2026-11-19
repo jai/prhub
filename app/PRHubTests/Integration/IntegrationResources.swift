@@ -1,6 +1,5 @@
 import Foundation
 @testable import PRHubCore
-@testable import PRKit
 import Testing
 
 final class IntegrationResources {
@@ -18,32 +17,15 @@ final class IntegrationResources {
         return UserDefaults(suiteName: domain)!
     }
 
-    func endpoint(saving address: String? = nil) throws -> WorkerEndpoint {
+    /// A Keychain entry of its own, removed when the test ends.
+    func keychain() -> WorkerURLStore {
         let store = WorkerURLStore(service: "com.jaigovindani.prreview.tests", account: UUID().uuidString)
         keychains.append(store)
-        let endpoint = WorkerEndpoint(store: store)
-        if let address {
-            try endpoint.save(#require(URL(string: address)))
-        }
-        return endpoint
+        return store
     }
 
-    @MainActor func usage(_ sink: (any Analytics)? = nil) -> UsageAnalytics {
-        UsageAnalytics(hasProject: sink != nil, sink: sink, defaults: defaults())
-    }
-
-    @MainActor func sample(usage: UsageAnalytics? = nil, defaults: UserDefaults? = nil) -> PRHubEnvironment {
-        PRHubEnvironment.sample(
-            usage: usage ?? self.usage(), defaults: defaults ?? self.defaults(),
-            configurationDefaults: self.defaults(), storageDirectory: directory(), network: PRNetwork(isOnline: true)
-        )
-    }
-
-    @MainActor func environment(usage: UsageAnalytics? = nil, defaults: UserDefaults? = nil) -> PRHubEnvironment {
-        PRHubEnvironment(
-            connection: sample().connection, usage: usage ?? self.usage(), defaults: defaults ?? self.defaults(),
-            sampleDefaults: self.defaults(), storageDirectory: directory(), network: PRNetwork(isOnline: true)
-        )
+    @MainActor func usage() -> UsageAnalytics {
+        UsageAnalytics(hasProject: false, sink: nil, defaults: defaults())
     }
 
     deinit {

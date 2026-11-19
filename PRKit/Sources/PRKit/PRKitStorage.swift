@@ -27,7 +27,9 @@ public struct PRKitStorage {
 
     /// The mirror in `directory` with the kept answers in its `kept` folder, the drafts in `draftDirectory` (Application
     /// Support's `pr-drafts` when nil) and the settings in `defaults`.
-    public static func onDisk(directory: URL, draftDirectory: URL? = nil, defaults: UserDefaults = .standard) -> Self {
+    public static func onDisk(
+        directory: URL, draftDirectory: URL? = nil, defaults: any PRKeyValueStore = UserDefaults.standard
+    ) -> Self {
         let keptFolder = directory.appending(path: PRMirror.keptFolder, directoryHint: .isDirectory)
         return PRKitStorage(
             mirror: PRDiskFileStore(directory: directory), kept: ReadStore(directory: keptFolder),
@@ -37,7 +39,7 @@ public struct PRKitStorage {
     }
 
     /// The mirror's folder when the host names none: the app's caches, one for the samples and one for a Worker's PRs.
-    static func defaultDirectory(samples: PRSampleSet?) -> URL {
+    public static func defaultDirectory(samples: PRSampleSet?) -> URL {
         let name = samples == nil ? "pr-viewer" : PRSampleSet.directoryName
         return URL.cachesDirectory.appending(path: name, directoryHint: .isDirectory)
     }

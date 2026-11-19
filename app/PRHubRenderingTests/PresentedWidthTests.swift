@@ -32,10 +32,12 @@
             samples.askChat = PRHubScreenshotEnvironment.askChat(["-PRHubAskAnswered"])
             let environment = try PRHubEnvironment.offline(
                 config: DeviceConfig(features: [.askAI], login: PRSampleSet.prHubLogin), samples: samples,
-                worker: #require(URL(string: "https://rendering.invalid")), defaultsSuite: name,
-                isSample: false, usage: UsageAnalytics(hasProject: false, sink: nil, defaults: defaults),
-                transport: UnexpectedRenderingRequest(), listDefaults: defaults, configurationDefaults: defaults,
-                storageDirectory: directory, network: PRNetwork(isOnline: true)
+                worker: #require(URL(string: "https://rendering.invalid")), isSample: false,
+                usage: UsageAnalytics(hasProject: false, sink: nil, defaults: defaults),
+                transport: UnexpectedRenderingRequest(),
+                storage: .onDisk(directory: directory, defaults: defaults, sampleConfiguration: defaults), build: .current,
+                alertPermission: PRHubAlertPermission(center: .init(status: { .denied }, request: { false }), defaults: defaults),
+                network: PRNetwork(isOnline: true)
             )
             let session = environment.prs.model.session(for: PullRequestRef(repo: "acme/web", number: 412))
             session.askChat = samples.askChat

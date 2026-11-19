@@ -127,7 +127,7 @@ private struct PRLoadedContent<Content: View>: View {
                 Text("Reading this PR from GitHub")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            case .failed where !session.model.network.isOnline:
+            case .failed where session.isNotSavedOffline:
                 // A PR never read on this device, opened with no network: it comes once the network does.
                 ContentUnavailableView {
                     Label("This PR isn't saved on this device", systemImage: AppIcon.offline.symbol)

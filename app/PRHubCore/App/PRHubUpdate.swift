@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import PRKitCore
 
 /// One build of PRHub: `CFBundleShortVersionString` and `CFBundleVersion`.
 public struct AppBuild: Codable, Equatable, Sendable {
@@ -45,7 +46,7 @@ public final class PRHubUpdate {
 
     @ObservationIgnored private let running: AppBuild
     @ObservationIgnored private let group: TestFlightGroup
-    @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let defaults: any PRKeyValueStore
     @ObservationIgnored private let now: @Sendable () -> Date
     @ObservationIgnored private let isEnabled: Bool
     @ObservationIgnored private let usage: UsageAnalytics
@@ -53,8 +54,8 @@ public final class PRHubUpdate {
 
     /// Off in a Debug build unless a UI test asks for it: a build from Xcode is never on TestFlight.
     init(
-        running: AppBuild = .running, group: TestFlightGroup = .public, defaults: UserDefaults = .standard,
-        isEnabled: Bool = PRHubUpdate.isReleaseBuild, usage: UsageAnalytics = .disabled(),
+        running: AppBuild = .running, group: TestFlightGroup = .public, defaults: any PRKeyValueStore,
+        isEnabled: Bool = PRHubUpdate.isReleaseBuild, usage: UsageAnalytics,
         now: @escaping @Sendable () -> Date = { .now }
     ) {
         self.usage = usage
@@ -84,7 +85,7 @@ public final class PRHubUpdate {
         }
         checkedAt = time
         guard let latest = config.appLatest?.build(for: group), latest.isNewer(than: running),
-              defaults.string(forKey: Self.laterKey) != latest.build
+              defaults.object(forKey: Self.laterKey) as? String != latest.build
         else {
             return
         }

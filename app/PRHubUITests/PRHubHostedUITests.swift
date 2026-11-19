@@ -1,63 +1,13 @@
 import XCTest
 
-/// Sign in with GitHub against the fake hosted Worker (`PRHubScreenshots`): sign-in to the list, the Anthropic key,
-/// Delete Account, a refused sign-in, Sign in again, a setup link in a build without self-hosting, an empty list, and
-/// where the GitHub App is installed.
+/// Sign in with GitHub against the fake hosted Worker (`PRHubScreenshots`): sign-in to the list, the Anthropic key and
+/// Delete Account, and a new install read again on the way back from GitHub. The connection's logic is
+/// `HostedConnectionTests`'.
 @MainActor
 final class PRHubHostedUITests: PRHubUITestCase {
     @MainActor override func setUp() async throws {
         try await super.setUp()
         XCUIDevice.shared.appearance = .light
-    }
-
-    func testLinearConnectsAndDisconnectsInSettingsWithoutShowingTheKey() {
-        app.launchArguments = ["-PRHubHosted"]
-        app.launch()
-        app.go(to: .settings)
-        let field = app.secureTextFields["prhub-linear-key-field"]
-        XCTAssertTrue(app.scrollSettings(to: field))
-        field.tap()
-        field.typeText("lin_api_synthetic01234567890")
-        let connect = app.buttons["prhub-linear-key-save"]
-        XCTAssertTrue(app.scrollSettings(to: connect))
-        connect.tap()
-        let connected = app.descendants(matching: .any)["prhub-linear-key-set"]
-        XCTAssertTrue(connected.waitForExistence(timeout: 5))
-        XCTAssertFalse(field.exists)
-        XCTAssertFalse(app.staticTexts["lin_api_synthetic01234567890"].exists)
-        let disconnect = app.buttons["prhub-linear-key-remove"]
-        XCTAssertTrue(app.scrollSettings(to: disconnect))
-        disconnect.tap()
-        XCTAssertTrue(field.waitForExistence(timeout: 5))
-    }
-
-    /// Without Linear connected, the hosted Worker sends a PR's ticket as its key alone: the page says to connect Linear,
-    /// and the line opens Settings at Linear.
-    func testATicketWithoutLinearAsksToConnectItAndOpensLinearInSettings() throws {
-        app.launchArguments = ["-PRHubHosted", "-PRHubNoLinear"]
-        app.launch()
-        // The offer of review alerts comes first: the fake Worker pushes.
-        let notNow = app.buttons["Not now"]
-        if notNow.waitForExistence(timeout: 5) {
-            notNow.tap()
-        }
-        let row = app.staticTexts["Rate-limit the password reset endpoint [API-88] [SEC-12]"]
-        XCTAssertTrue(row.waitForExistence(timeout: 10))
-        // No ticket line under the row, so its title keeps the brackets.
-        try recordScreenshot("hosted-no-linear-list")
-        row.tap()
-        let connect = app.buttons["pr-ticket-connect-linear"].firstMatch
-        XCTAssertTrue(connect.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["API-88"].exists && app.staticTexts["SEC-12"].exists)
-        XCTAssertTrue(app.staticTexts["Connect Linear to see this ticket"].exists)
-        XCTAssertFalse(app.staticTexts["Throttle password reset emails"].exists, "the Worker had no Linear to ask")
-        try recordScreenshot("hosted-no-linear-pr")
-        connect.tap()
-        let field = app.secureTextFields["prhub-linear-key-field"]
-        XCTAssertTrue(field.waitForExistence(timeout: 5))
-        app.waitForStill(field)
-        XCTAssertTrue(app.isClearOfBars(field), "Settings opens at Linear")
-        try recordScreenshot("hosted-no-linear-settings")
     }
 
     func testSignInSetAKeyThenDeleteTheAccount() {
@@ -94,79 +44,6 @@ final class PRHubHostedUITests: PRHubUITestCase {
         XCTAssertTrue(signIn.waitForExistence(timeout: 10), "back on onboarding, with nothing kept")
     }
 
-    /// Key lines run on the person's own key: without one the panel's Key lines page says so and opens Settings, and
-    /// once the key is saved the same diff shows its key lines.
-    func testKeyLinesWithNoKeyLeadToSettingsAndShowOnceTheKeyIsSet() {
-        app.launchArguments = ["-PRHubHosted"]
-        app.launch()
-        let row = app.staticTexts["Show a retry button when checkout fails"]
-        XCTAssertTrue(row.waitForExistence(timeout: 10))
-        row.tap()
-        let reviewChanges = app.buttons["pr-review-changes"]
-        XCTAssertTrue(reviewChanges.waitForExistence(timeout: 5))
-        reviewChanges.tap()
-        let off = app.descendants(matching: .any)["key-lines-off"]
-        XCTAssertTrue(off.waitForExistence(timeout: 5), "Key lines points at Settings")
-        XCTAssertFalse(app.buttons["key-lines-context-100"].exists)
-        off.tap()
-
-        let field = app.secureTextFields["prhub-anthropic-key-field"]
-        XCTAssertTrue(app.scrollSettings(to: field), "on Settings, at the key")
-        field.tap()
-        field.typeText("key-0123456789abcdefghij")
-        app.buttons["prhub-anthropic-key-save"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["prhub-anthropic-key-set"].waitForExistence(timeout: 5))
-
-        app.go(to: .prs)
-        XCTAssertTrue(app.buttons["key-lines-context-100"].waitForExistence(timeout: 5), "the key lines, on the diff")
-        XCTAssertFalse(off.exists)
-        XCTAssertTrue(app.descendants(matching: .any)["key-lines-reviewed-count"].waitForExistence(timeout: 5))
-    }
-
-    func testARefusedSignInSaysWhyUnderItsButton() {
-        app.launchArguments = ["-PRHubFirstRun", "-PRHubSignInDenied"]
-        app.launch()
-        let signIn = app.buttons["onboardingSignIn"]
-        XCTAssertTrue(signIn.waitForExistence(timeout: 10))
-        signIn.tap()
-        // The line first says "Signing in with GitHub…": wait for the refusal's words, not for the line.
-        let status = app.descendants(matching: .any).matching(identifier: "onboardingStatus")
-            .matching(NSPredicate(format: "label CONTAINS %@", "didn't authorize")).firstMatch
-        XCTAssertTrue(status.waitForExistence(timeout: 10), app.descendants(matching: .any)["onboardingStatus"].label)
-    }
-
-    func testSignedOutByGitHubSignsInAgain() {
-        app.launchArguments = ["-PRHubHosted", "-PRHubSignedOut"]
-        app.launch()
-        XCTAssertTrue(app.descendants(matching: .any)["signedOutReason"].waitForExistence(timeout: 10))
-        app.buttons["onboardingSignIn"].tap()
-        XCTAssertTrue(app.staticTexts["Show a retry button when checkout fails"].waitForExistence(timeout: 10))
-    }
-
-    func testASetupLinkSaysSelfHostingIsOff() throws {
-        app.launchArguments = ["-PRHubFirstRun"]
-        app.launch()
-        XCTAssertTrue(app.buttons["onboardingSignIn"].waitForExistence(timeout: 10))
-        try app.open(XCTUnwrap(URL(string: "prhub://setup?worker=https%3A%2F%2Fpr-review.example.workers.dev&code=7KQ2M9XA")))
-        let status = app.descendants(matching: .any)["onboardingStatus"]
-        XCTAssertTrue(status.waitForExistence(timeout: 5))
-        XCTAssertTrue(status.label.contains("self-hosted"), status.label)
-    }
-
-    func testSettingsListsEachAccountTheAppIsInstalledOn() {
-        app.launchArguments = ["-PRHubHosted", "-PRHubSettings"]
-        app.launch()
-        let own = app.descendants(matching: .any)["github-installation-octocat"]
-        XCTAssertTrue(own.waitForExistence(timeout: 10))
-        XCTAssertTrue(own.label.contains("All repositories"), own.label)
-        let acme = app.descendants(matching: .any)["github-installation-acme"]
-        XCTAssertTrue(acme.label.contains("2 repositories"), acme.label)
-        let initech = app.descendants(matching: .any)["github-installation-initech"]
-        XCTAssertTrue(app.scrollSettings(to: initech))
-        XCTAssertTrue(initech.label.contains("Suspended"), initech.label)
-        XCTAssertTrue(app.descendants(matching: .any)["github-access-add-account"].exists)
-    }
-
     func testANewInstallShowsWhenTheAppComesBackFromGitHub() {
         app.launchArguments = ["-PRHubHosted", "-PRHubSettings", "-PRHubInstallations", "onReturn"]
         app.launch()
@@ -183,72 +60,6 @@ final class PRHubHostedUITests: PRHubUITestCase {
         wait(for: [left], timeout: 30)
         app.activate()
         XCTAssertTrue(acme.waitForExistence(timeout: 10), "the config is read again on the way back")
-    }
-
-    func testBackFromGitHubTheEmptyListNamesTheNewInstall() {
-        app.launchArguments = ["-PRHubHosted", "-PRHubHostedEmpty", "-PRHubInstallations", "onReturn"]
-        app.launch()
-        let notNow = app.buttons["Not now"]
-        if notNow.waitForExistence(timeout: 5) {
-            notNow.tap()
-        }
-        let link = app.descendants(matching: .any)["pr-empty-hint-link"]
-        XCTAssertTrue(link.waitForExistence(timeout: 10))
-        XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'acme'")).firstMatch.exists)
-        link.tap()
-        XCUIDevice.shared.press(.home)
-        let left = expectation(for: NSPredicate { _, _ in self.app.state != .runningForeground }, evaluatedWith: nil)
-        wait(for: [left], timeout: 30)
-        app.activate()
-        let named = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'octocat and acme'")).firstMatch
-        XCTAssertTrue(named.waitForExistence(timeout: 10), "the config is read fresh on the way back")
-        XCTAssertTrue(link.exists, "the hint's link is back once the check is done")
-    }
-
-    func testAnEmptyListSaysTheAppIsOnNoAccount() {
-        app.launchArguments = ["-PRHubHosted", "-PRHubHostedEmpty", "-PRHubInstallations", "none"]
-        app.launch()
-        let notNow = app.buttons["Not now"]
-        if notNow.waitForExistence(timeout: 5) {
-            notNow.tap()
-        }
-        XCTAssertTrue(app.staticTexts["PRHub isn't installed yet"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.descendants(matching: .any)["pr-empty-hint-link"].exists)
-    }
-
-    /// The 2026-11-10 bug bash: with Merged picked, an empty list still said none "are open", and Open's cleared tick
-    /// was still read out as selected.
-    func testAnEmptyMergedListSaysNoneAreMergedAndOnlyMergedIsSelected() {
-        app.launchArguments = ["-PRHubHosted", "-PRHubHostedEmpty"]
-        app.launch()
-        let notNow = app.buttons["Not now"]
-        if notNow.waitForExistence(timeout: 5) {
-            notNow.tap()
-        }
-        let hint = app.descendants(matching: .any)["pr-empty-hint-link"]
-        XCTAssertTrue(hint.waitForExistence(timeout: 10))
-        app.buttons["pr-org-filter"].tap()
-        let merged = app.buttons["pr-filter-merged"]
-        let open = app.buttons["pr-filter-open"]
-        XCTAssertTrue(merged.waitForExistence(timeout: 5))
-        merged.tap()
-        XCTAssertTrue(waitFor { merged.isSelected && !open.isSelected }, "Merged alone is selected")
-        XCTAssertFalse(open.images["Selected"].exists, "a cleared tick is not read out")
-        // A tap beside the filter closes it.
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.95)).tap()
-        XCTAssertTrue(app.staticTexts["No merged PRs"].waitForExistence(timeout: 5))
-        XCTAssertFalse(hint.exists, "the hint about open PRs is gone")
-    }
-
-    func testAnEmptyListPointsAtInstallingTheApp() {
-        app.launchArguments = ["-PRHubHosted", "-PRHubHostedEmpty"]
-        app.launch()
-        // The offer of review alerts comes first: the fake Worker pushes.
-        let notNow = app.buttons["Not now"]
-        if notNow.waitForExistence(timeout: 5) {
-            notNow.tap()
-        }
-        XCTAssertTrue(app.descendants(matching: .any)["pr-empty-hint-link"].waitForExistence(timeout: 10))
     }
 
     // A picture for the test's result, and in `SCREENSHOTS_DIR` when it is set.

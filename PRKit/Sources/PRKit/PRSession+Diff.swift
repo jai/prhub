@@ -33,6 +33,25 @@ extension PRSession {
         offersKeyLines ? nil : model.configuration.keyLinesHint
     }
 
+    /// Whether the panel has a Key lines page: the Worker has key lines, or the host has a way to turn them on.
+    var showsKeyLinesPage: Bool {
+        offersKeyLines || keyLinesHint != nil
+    }
+
+    /// The panel's page as it opens: the one last picked, or Files alone when there is no Key lines page.
+    var shownNavigatorPage: PRNavigatorPage {
+        showsKeyLinesPage ? navigatorPage : .files
+    }
+
+    /// A PR never read on this device, opened with no network: its screen says it comes once the network does, not
+    /// that the read failed.
+    var isNotSavedOffline: Bool {
+        if case .failed = state, !model.network.isOnline {
+            return true
+        }
+        return false
+    }
+
     var offersAsk: Bool {
         model.configuration.isOn(.askAI)
     }

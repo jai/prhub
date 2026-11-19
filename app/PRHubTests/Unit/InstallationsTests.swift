@@ -1,5 +1,6 @@
 import Foundation
 @testable import PRHubCore
+@testable import PRKit
 import Testing
 
 /// Where the PRHub App is installed (`installations` of `GET /device/config`): Settings' GitHub access and what the
@@ -35,6 +36,13 @@ struct InstallationsTests {
         #expect(config.installations?.map(\.account) == ["acme"])
         let unread = try JSONDecoder().decode(DeviceConfig.self, from: Data(#"{"features":{},"hosted":true}"#.utf8))
         #expect(unread.installations == nil)
+    }
+
+    /// Settings' GitHub access, one line an account: which repositories, and Suspended where GitHub suspended the App.
+    @Test func eachInstallationSaysItsReposAndWhetherItIsSuspended() {
+        #expect(Self.own.spokenWords == "octocat, All repositories")
+        #expect(Self.acme.spokenWords == "acme, 2 repositories")
+        #expect(Self.initech.spokenWords == "initech, All repositories, Suspended")
     }
 
     @Test func eachInstallationOpensItsSettingsOnGitHub() {

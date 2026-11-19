@@ -96,7 +96,7 @@ public struct GitHubInstallationLine: View {
         .buttonStyle(.plain)
         .animation(AppMotion.swap, value: installation)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityWords)
+        .accessibilityLabel(installation.spokenWords)
         .accessibilityHint("Opens its settings on GitHub")
         .accessibilityIdentifier("github-installation-\(installation.account)")
     }
@@ -121,9 +121,11 @@ public struct GitHubInstallationLine: View {
                 .transition(.opacity)
         }
     }
+}
 
-    private var accessibilityWords: String {
-        let words = [installation.account, installation.repositoriesWords]
-        return (words + (installation.suspended ? ["Suspended"] : [])).joined(separator: ", ")
+extension GitHubInstallation {
+    /// What VoiceOver says for its line: the account, which repositories, and Suspended when GitHub suspended it there.
+    var spokenWords: String {
+        ([account, repositoriesWords] + (suspended ? ["Suspended"] : [])).joined(separator: ", ")
     }
 }

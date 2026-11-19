@@ -3,8 +3,9 @@ import Foundation
 @testable import PRKit
 import Testing
 
+@MainActor
 struct OpenLinkEnvironmentTests {
-    private let resources = IntegrationResources()
+    private let resources = UnitResources()
     private static func incoming(_ target: String) throws -> URL {
         var parts = URLComponents()
         parts.scheme = "prhub-pr"

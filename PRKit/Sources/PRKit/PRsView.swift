@@ -165,8 +165,8 @@ struct PRsList: View {
                     banner("Last checked GitHub \(since.formatted(.relative(presentation: .named)))")
                 }
                 // Offline, the host's banner already says why the list is not up to date.
-                if !model.rows.isEmpty, model.network.isOnline, let message = model.errorMessage {
-                    banner("Not up to date. \(message)")
+                if let line = model.notUpToDateLine {
+                    banner(line)
                 }
                 if let refused = model.lateRefusal {
                     Button { model.dismissLateRefusal() } label: {
@@ -224,17 +224,17 @@ struct PRsList: View {
             ToolbarItem(placement: .primaryAction) { filterButton }
         }
         .overlay {
-            if model.rows.isEmpty, model.isSyncing {
-                ProgressView(model.arrivingCount > 0 ? "Downloading \(model.arrivingCount) PRs…" : "Loading PRs…")
+            switch model.emptyState(on: page, showsMerged: showsMergedHere, pageIsEmpty: rows(on: page).isEmpty) {
+            case let .loading(arriving):
+                ProgressView(arriving > 0 ? "Downloading \(arriving) PRs…" : "Loading PRs…")
                     .accessibilityIdentifier("pr-list-loading")
                     .transition(.opacity)
-            } else if model.rows.isEmpty, let message = model.errorMessage {
+            case let .failed(stillDownloading, message):
                 ContentUnavailableView(
-                    model.stillDownloading ? "Downloading PRs" : "PRs didn't load", systemImage: "arrow.triangle.pull",
+                    stillDownloading ? "Downloading PRs" : "PRs didn't load", systemImage: "arrow.triangle.pull",
                     description: Text(message)
                 )
-            } else if showsMergedHere, model.mergedError[page] == nil, model.merged[page]?.isEmpty == true {
-                // Before the host's hint, which is about open PRs.
+            case let .noMerged(page):
                 ContentUnavailableView(
                     "No merged PRs", systemImage: AppIcon.merged.symbol,
                     description: Text(
@@ -244,16 +244,16 @@ struct PRsList: View {
                     )
                 )
                 .transition(.opacity)
-            } else if model.rows.isEmpty, model.workerSyncedAt != nil || model.samples != nil,
-                      let hint = model.configuration.emptyHint
-            {
+            case let .hint(hint):
                 emptyHint(hint)
                     .transition(.opacity)
-            } else if !model.rows.isEmpty, rows(on: page).isEmpty, !showsMergedHere || model.mergedError[page] == nil {
+            case .filteredOut:
                 ContentUnavailableView(
                     "No PRs", systemImage: "line.3.horizontal.decrease",
                     description: Text("None in the orgs and repos you picked.")
                 )
+            case nil:
+                EmptyView()
             }
         }
         .scrollPosition($scrollPosition)

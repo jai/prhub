@@ -94,6 +94,15 @@ public struct ObjectReference: Equatable, Sendable {
     public init(_ ticket: PRListTicket) {
         self.init(object: .ticket(ticket), url: ticket.url)
     }
+
+    /// A ticket Linear wasn't asked about, on a line with the last word on it (`awaitsLinear` false), where the person
+    /// can connect Linear: its line says so and opens that setting.
+    func asksToConnectLinear(canConnect: Bool, awaitsLinear: Bool) -> Bool {
+        guard canConnect, !awaitsLinear, case let .ticket(ticket) = object else {
+            return false
+        }
+        return ticket.found == nil
+    }
 }
 
 /// One PR or ticket on its line, drawn as everywhere else. Its whole width opens it, in the GitHub or Linear app when
@@ -111,10 +120,7 @@ public struct ObjectReferenceLine: View {
     /// A ticket the Worker had no Linear to ask about, where the person can connect Linear: the line says so and opens
     /// that setting.
     private var asksToConnectLinear: Bool {
-        guard connectLinear != nil, !awaitsLinear, case let .ticket(ticket) = reference.object else {
-            return false
-        }
-        return ticket.found == nil
+        reference.asksToConnectLinear(canConnect: connectLinear != nil, awaitsLinear: awaitsLinear)
     }
 
     public var body: some View {

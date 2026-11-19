@@ -11,9 +11,15 @@ import PRKit
 @Observable
 public final class PRHubEnvironment {
     public static func live(usage: UsageAnalytics, testFlightGroup: TestFlightGroup) -> PRHubEnvironment {
-        PRHubEnvironment(
+        let storage = PRHubStorage.live(
+            defaults: .standard, sampleConfiguration: UserDefaults(suiteName: "prhub-samples") ?? .standard
+        )
+        return PRHubEnvironment(
             endpoint: .live, secrets: .live(isProtectedDataAvailable: AppIdentity.protectedDataAvailability()),
-            usage: usage, testFlightGroup: testFlightGroup
+            storage: storage, alertPermission: PRHubAlertPermission(center: .live, defaults: storage.prs.settings),
+            build: .current, authenticate: WebSignIn.live, usage: usage, testFlightGroup: testFlightGroup,
+            outbox: { PRHubOutbox(client: $0, file: PRHubOutbox.file, send: AppNetwork.oneTry) },
+            metricReports: PRDiskFileStore(directory: metricKitDirectory)
         )
     }
 
@@ -31,9 +37,7 @@ public final class PRHubEnvironment {
     @ObservationIgnored private var feedbackTokens: PRHubFeedbackTokens?
     /// Anonymous usage events, and Settings' switch for them.
     public let usage: UsageAnalytics
-    @ObservationIgnored private let defaults: UserDefaults
-    @ObservationIgnored private let sampleDefaults: UserDefaults?
-    @ObservationIgnored private let storageDirectory: URL?
+    @ObservationIgnored private let storage: PRHubStorage
     @ObservationIgnored private let network: PRNetwork?
     @ObservationIgnored var readDeliveredAlerts: @Sendable () async -> [PullRequestRow] = {
         await PRHubNotificationDelegate.deliveredRows()
@@ -63,18 +67,17 @@ public final class PRHubEnvironment {
     )
 
     init(
-        endpoint: WorkerEndpoint, secrets: DeviceSecretStore, defaults: UserDefaults = .standard,
-        alertPermission: PRHubAlertPermission = PRHubAlertPermission(), build: PRHubBuild = .current,
-        authenticate: @escaping Authenticate = WebSignIn.live, usage: UsageAnalytics = .disabled(),
-        testFlightGroup: TestFlightGroup = .public
+        endpoint: WorkerEndpoint, secrets: DeviceSecretStore, storage: PRHubStorage,
+        alertPermission: PRHubAlertPermission, build: PRHubBuild, authenticate: @escaping Authenticate,
+        usage: UsageAnalytics, testFlightGroup: TestFlightGroup,
+        outbox makeOutbox: (PRViewerClient) -> PRHubOutbox, metricReports: any PRFileStore
     ) {
+        let defaults = storage.prs.settings
         self.alertPermission = alertPermission
         alertPermission.usage = usage
         update = PRHubUpdate(group: testFlightGroup, defaults: defaults, usage: usage)
         self.usage = usage
-        self.defaults = defaults
-        sampleDefaults = nil
-        storageDirectory = nil
+        self.storage = storage
         network = nil
         let refusals = SessionRefusals()
         let host = PRHubPRHost(
@@ -83,8 +86,8 @@ public final class PRHubEnvironment {
             }),
             samples: nil, usage: usage
         )
-        prs = PRKitController(host: host, defaults: defaults)
-        let outbox = PRHubOutbox(client: prs.client)
+        prs = PRKitController(host: host, storage: storage.prs)
+        let outbox = makeOutbox(prs.client)
         host.outbox = outbox
         outbox.kit = prs
         outbox.start()
@@ -108,7 +111,7 @@ public final class PRHubEnvironment {
         host.isCheckingInstallations = { connection.isCheckingInstallations }
         host.leavesForGitHub = { connection.leavesForGitHub($0) }
         #if os(iOS)
-            let reports = PRHubMetricReports(directory: Self.metricKitDirectory) { [client = prs.client] report in
+            let reports = PRHubMetricReports(store: metricReports, defaults: defaults) { [client = prs.client] report in
                 try await client.post("device/metrics", report)
             }
             metricKit = AppIdentity.isRunningTests ? nil : PRHubMetricKit(reports: reports)
@@ -119,31 +122,25 @@ public final class PRHubEnvironment {
 
     /// Over `access` (none: nothing is sent) and, for "Try with sample PRs", `samples`.
     init(
-        connection: WorkerConnection, access: PRViewerAccess = .offline, samples: PRSampleSet? = nil,
-        isSample: Bool = false, alertPermission: PRHubAlertPermission? = nil,
-        usage: UsageAnalytics = .disabled(), outbox: (any PRKitOutbox)? = nil, update: PRHubUpdate? = nil,
-        transport: (any HTTPTransport)? = nil, defaults: UserDefaults = .standard,
-        sampleDefaults: UserDefaults? = nil, storageDirectory: URL? = nil, network: PRNetwork? = nil
+        connection: WorkerConnection, storage: PRHubStorage, alertPermission: PRHubAlertPermission,
+        access: PRViewerAccess = .offline, samples: PRSampleSet? = nil, isSample: Bool = false,
+        usage: UsageAnalytics, outbox: (any PRKitOutbox)? = nil, update: PRHubUpdate? = nil,
+        transport: (any HTTPTransport)? = nil, network: PRNetwork? = nil
     ) {
-        let alertPermission = alertPermission ?? PRHubAlertPermission(defaults: defaults)
+        let defaults = storage.prs.settings
         self.alertPermission = alertPermission
         alertPermission.usage = usage
         self.update = update ?? PRHubUpdate(
             defaults: defaults, usage: UsageAnalytics(hasProject: false, sink: nil, defaults: defaults)
         )
         self.usage = usage
-        self.defaults = defaults
-        self.sampleDefaults = sampleDefaults
-        self.storageDirectory = storageDirectory
+        self.storage = storage
         self.network = network
         let host = PRHubPRHost(access: access, samples: samples, usage: usage)
-        host.mirrorDirectoryOverride = storageDirectory?.appending(path: "mirror")
         host.outbox = outbox
         host.transportOverride = transport
         self.connection = connection
-        prs = PRKitController(
-            host: host, defaults: defaults, network: network, draftDirectory: storageDirectory?.appending(path: "drafts")
-        )
+        prs = PRKitController(host: host, storage: storage.prs, network: network)
         self.outbox = nil
         self.isSample = isSample
         navigation = PRHubNavigation(pullRequests: prs)
@@ -161,8 +158,8 @@ public final class PRHubEnvironment {
     /// goes to the build's hosted Worker (`PRHubBuild.hostedURL`), and keeps the session secret where the device
     /// secret goes.
     static func makeConnection(
-        endpoint: WorkerEndpoint, secrets: DeviceSecretStore, defaults: UserDefaults, build: PRHubBuild,
-        authenticate: @escaping Authenticate, usage: UsageAnalytics = .disabled(),
+        endpoint: WorkerEndpoint, secrets: DeviceSecretStore, defaults: any PRKeyValueStore, build: PRHubBuild,
+        authenticate: @escaping Authenticate, usage: UsageAnalytics,
         unpair: (@Sendable () async -> Void)? = nil
     ) -> WorkerConnection {
         let pairing = DevicePairing(
@@ -194,8 +191,9 @@ public final class PRHubEnvironment {
     public func startSample() {
         usage.record(.onboardingPathChosen(.samples))
         sample = .sample(
-            usage: usage, defaults: defaults, configurationDefaults: sampleDefaults,
-            storageDirectory: storageDirectory?.appending(path: "samples"), network: network
+            usage: usage, storage: storage.forSamples(), build: connection.build,
+            alertPermission: PRHubAlertPermission(center: alertPermission.center, defaults: storage.prs.settings),
+            network: network
         )
         sample?.readDeliveredAlerts = readDeliveredAlerts
     }
@@ -205,7 +203,7 @@ public final class PRHubEnvironment {
     public func endSample() {
         usage.record(.samplesLeft)
         sample = nil
-        PRSampleSet.resetListSettings(defaults)
+        PRSampleSet.resetListSettings(storage.prs.settings)
     }
 
     /// The samples' way out, from their Settings. Where the build signs in with GitHub this is the sign-in itself, in
@@ -363,8 +361,7 @@ extension PRHubEnvironment {
     }
 
     func sendPrefetchReports() {
-        let directory = storageDirectory?.appending(path: "mirror") ?? PRHubPRHost.mirrorDirectory()
-        for entry in PRPushPrefetchLog(directory: directory).drain() {
+        for entry in PRPushPrefetchLog(store: storage.prs.mirror).drain() {
             usage.record(.pushPrefetch(entry.outcome, milliseconds: entry.milliseconds))
         }
     }

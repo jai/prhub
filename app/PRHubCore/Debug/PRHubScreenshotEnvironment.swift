@@ -63,12 +63,10 @@
             let environment = PRHubEnvironment.offline(
                 config: DeviceConfig(features: features, login: PRSampleSet.prHubLogin, appLatest: Self.appLatest(newer)),
                 samples: samples,
-                worker: URL(string: "https://pr-review.octocat.workers.dev")!, defaultsSuite: "screenshots-paired",
+                worker: URL(string: "https://pr-review.octocat.workers.dev")!,
                 isSample: false, usage: usage(resources.defaults), checksUpdates: newer != nil,
-                testFlightGroup: testFlightGroup,
-                listDefaults: resources.defaults, configurationDefaults: resources.configurationDefaults,
-                storageDirectory: resources.directory, network: PRNetwork(isOnline: true),
-                alertPermission: resources.alertPermission()
+                testFlightGroup: testFlightGroup, storage: resources.storage(), build: .current,
+                alertPermission: resources.alertPermission(), network: PRNetwork(isOnline: true)
             )
             resources.isolateAlerts(in: environment)
             if arguments.contains("-PRHubSettings") {
@@ -193,9 +191,9 @@
                 samples = samples.withoutLinear
             }
             let environment = PRHubEnvironment(
-                connection: connection, samples: samples, alertPermission: resources.alertPermission(),
-                usage: usage(resources.defaults), defaults: resources.defaults, sampleDefaults: resources.sampleDefaults,
-                storageDirectory: resources.directory, network: PRNetwork(isOnline: true)
+                connection: connection, storage: resources.storage(sampleConfiguration: resources.sampleDefaults),
+                alertPermission: resources.alertPermission(), samples: samples, usage: usage(resources.defaults),
+                network: PRNetwork(isOnline: true)
             )
             resources.isolateAlerts(in: environment)
             return environment

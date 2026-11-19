@@ -2,13 +2,14 @@ import Foundation
 @testable import PRHubCore
 import PRHubTestSupport
 @testable import PRKit
+import PRKitTestSupport
 import Testing
 import UserNotifications
 
 /// A tapped pr-worker alert opens its PR (docs/api.md, "Alerts"), and the one offer to turn alerts on.
 @MainActor
 struct PRHubAlertTests {
-    private let resources = IntegrationResources()
+    private let resources = UnitResources()
     private static let ref = PullRequestRef(repo: "acme/app", number: 7)
 
     @Test func anAlertOpensNothingDuringTheSamples() {
@@ -45,7 +46,7 @@ struct PRHubAlertTests {
 
     private func permission(
         _ status: UNAuthorizationStatus, asked: Shared<Int> = Shared(0)
-    ) -> (PRHubAlertPermission, UserDefaults) {
+    ) -> (PRHubAlertPermission, InMemoryKeyValueStore) {
         let defaults = resources.defaults()
         let state = Shared(status)
         let center = PRHubAlertPermission.Center(

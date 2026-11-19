@@ -188,11 +188,6 @@ extension PRViewerAccess {
 }
 
 extension PRViewerClient {
-    /// A client over the app's transport, which waits for a network while someone is looking at the app.
-    init(access: PRViewerAccess) {
-        self.init(access: access, transport: AppNetwork.transport)
-    }
-
     /// `DELETE /device/pair`: the Worker forgets this secret. `204`.
     func unpair() async throws {
         try await delete("device/pair")

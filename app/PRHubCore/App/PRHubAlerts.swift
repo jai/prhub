@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import PRKitCore
 import UserNotifications
 
 /// PRHub's notification delegate: a pr-worker alert shows while the app is in front, and its tap opens the PR
@@ -97,13 +98,14 @@ public final class PRHubAlertPermission {
     /// Shows the explanation; the view sets it back.
     public var isOffering = false
 
-    @ObservationIgnored private let center: Center
-    @ObservationIgnored private let defaults: UserDefaults
+    /// What the system says; the samples' permission asks the same one.
+    @ObservationIgnored let center: Center
+    @ObservationIgnored private let defaults: any PRKeyValueStore
     /// Each answer, as `alerts_answered`. Set by the environment, which owns it.
     @ObservationIgnored var usage: UsageAnalytics
     private static let declinedKey = "prhubAlertsDeclined"
 
-    init(center: Center = .live, defaults: UserDefaults = .standard) {
+    init(center: Center, defaults: any PRKeyValueStore) {
         usage = UsageAnalytics(hasProject: false, sink: nil, defaults: defaults)
         self.center = center
         self.defaults = defaults

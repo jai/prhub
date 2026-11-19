@@ -4,7 +4,8 @@ import Foundation
 import PRHubTestSupport
 import Testing
 
-/// PR writes and questions saved on the device until the Worker has them (`PRHubOutbox`, issue #52).
+/// PR writes and questions saved on the device until the Worker has them (`PRHubOutbox`, issue #52): the saved queue
+/// outlives a relaunch, and Forget empties it on disk. Refusals and retries are the unit layer's.
 @MainActor
 @Suite(.timeLimit(.minutes(1)))
 struct PRHubOutboxTests {
@@ -71,29 +72,6 @@ struct PRHubOutboxTests {
         let body = try #require(sent.httpBody.flatMap { try JSONSerialization.jsonObject(with: $0) as? [String: Any] })
         #expect(body["client_ref"] as? String == id)
         #expect(!relaunched.isQueued(.write, about: ref))
-    }
-
-    @Test func aRefusalIsDroppedNotSentAgain() async throws {
-        let worker = StubWorker([.reply(status: 422, body: #"{"error":"Pull request is closed"}"#)])
-        let outbox = outbox(worker)
-        _ = try await outbox.enqueue(job)
-        await outbox.start(watchingNetwork: false).value
-        try await waitUntilEmpty(outbox, worker: worker, attempts: 1)
-        #expect(!outbox.isQueued(.write, about: ref))
-        let relaunched = self.outbox(worker)
-        await relaunched.start(watchingNetwork: false).value
-        #expect(!relaunched.isQueued(.write, about: ref))
-        #expect(worker.requests.with(\.count) == 1, "a refusal is not tried again")
-    }
-
-    @Test func aServerErrorIsTriedAgainUntilTheWorkerHasIt() async throws {
-        let worker = StubWorker([.reply(status: 503, body: "{}"), .reply(status: 200, body: "{}")])
-        let outbox = outbox(worker)
-        _ = try await outbox.enqueue(job)
-        await outbox.start(watchingNetwork: false).value
-        try await waitUntilEmpty(outbox, worker: worker, attempts: 2)
-        #expect(!outbox.isQueued(.write, about: ref))
-        #expect(worker.requests.with(\.count) == 2)
     }
 
     @Test func forgetEmptiesItSoNothingGoesToTheNextWorker() async throws {

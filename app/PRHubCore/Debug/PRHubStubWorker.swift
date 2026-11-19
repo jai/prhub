@@ -26,11 +26,10 @@
             let access = PRViewerAccess(baseURL: { worker }, bearer: { "stub" }, discard: {})
             let environment = PRHubEnvironment.offline(
                 config: DeviceConfig(features: [.askAI, .keyLines], login: PRSampleSet.prHubLogin), access: access,
-                worker: worker, defaultsSuite: "stub-worker", isSample: false,
+                worker: worker, isSample: false,
                 usage: UsageAnalytics(hasProject: false, sink: nil, defaults: defaults), transport: transport,
-                listDefaults: defaults, configurationDefaults: resources.configurationDefaults,
-                storageDirectory: resources.directory, network: PRNetwork(isOnline: !offline),
-                alertPermission: resources.alertPermission()
+                storage: resources.storage(), build: .current, alertPermission: resources.alertPermission(),
+                network: PRNetwork(isOnline: !offline)
             )
             resources.isolateAlerts(in: environment)
             if offline {

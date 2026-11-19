@@ -5,30 +5,6 @@ import XCTest
 final class PRHubOfflineUITests: PRHubUITestCase {
     private let banner = "prkit-offline-banner"
 
-    func testOfflineShowsTheSavedPRsUnderTheBannerOnEveryTab() throws {
-        app.launchArguments = ["-PRHubPaired", "-PRHubOffline"]
-        app.launch()
-
-        let bannerLine = app.descendants(matching: .any)[banner]
-        XCTAssertTrue(bannerLine.waitForExistence(timeout: 10), "the offline banner")
-        XCTAssertEqual(bannerLine.label, "Offline — showing saved information")
-        XCTAssertTrue(savedPR.waitForExistence(timeout: 5), "the saved PRs")
-        XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Not up to date'")).firstMatch
-            .exists, "no second line about the same failure")
-        try recordScreenshot("offline-prs")
-
-        app.go(to: .settings)
-        XCTAssertTrue(bannerLine.waitForExistence(timeout: 5), "the banner over Settings too")
-    }
-
-    func testOnlineShowsNoBanner() {
-        app.launchArguments = ["-PRHubPaired"]
-        app.launch()
-
-        XCTAssertTrue(savedPR.waitForExistence(timeout: 10), "the PRs")
-        XCTAssertFalse(app.descendants(matching: .any)[banner].exists, "no offline banner while online")
-    }
-
     /// The real path: the PRs load from a Worker (the app's stand-in) into the mirror, the app is quit, and it opens
     /// again with no network on what it saved: the list, and a PR's page.
     func testWhatLoadedOnlineOpensAgainOfflineAfterARelaunch() throws {
@@ -48,23 +24,6 @@ final class PRHubOfflineUITests: PRHubUITestCase {
         XCTAssertTrue(app.buttons["pr-review-changes"].waitForExistence(timeout: 10), "the saved PR's page")
         XCTAssertFalse(app.staticTexts["Couldn't read this PR"].exists)
         try recordScreenshot("offline-relaunch-pr")
-    }
-
-    /// A PR never read on this device, opened by a link with no network: it says so, not an error.
-    func testAnUnsavedPROpenedOfflineSaysItIsNotSaved() throws {
-        app.launchArguments = ["-PRHubStubWorker", "-PRHubOffline"]
-        app.launch()
-        XCTAssertTrue(app.descendants(matching: .any)[banner].waitForExistence(timeout: 10))
-        var parts = URLComponents()
-        parts.scheme = "prhub-pr"
-        parts.host = "open"
-        parts.queryItems = [URLQueryItem(name: "url", value: "https://github.com/acme/web/pull/412")]
-        try XCUIDevice.shared.system.open(XCTUnwrap(parts.url))
-
-        let notSaved = app.descendants(matching: .any)["pr-not-saved-offline"]
-        XCTAssertTrue(notSaved.waitForExistence(timeout: 10), "the PR's offline state")
-        XCTAssertFalse(app.staticTexts["Couldn't read this PR"].exists)
-        try recordScreenshot("offline-unsaved-pr")
     }
 
     /// A sample PR's row, by its Review button.

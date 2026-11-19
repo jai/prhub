@@ -240,7 +240,7 @@ struct PRNavigator: View {
     var body: some View {
         VStack(spacing: 0) {
             // Files alone when the Worker has no key lines and the host has no way to turn them on.
-            if showsKeyLinesPage {
+            if session.showsKeyLinesPage {
                 Picker("Navigator", selection: $session.navigatorPage) {
                     ForEach(PRNavigatorPage.allCases) { Text($0.rawValue).tag($0) }
                 }
@@ -249,7 +249,7 @@ struct PRNavigator: View {
                 .padding(PRStyle.inset)
                 Divider()
             }
-            switch showsKeyLinesPage ? session.navigatorPage : .files {
+            switch session.shownNavigatorPage {
             case .files:
                 PRFileList(files: files, viewed: session.viewedFiles) { session.show(file: $0) }
                 Divider()
@@ -265,10 +265,6 @@ struct PRNavigator: View {
         .background(Color.groundCard)
         // The panel sets its own width: a wide screen's readable margins are not for it.
         .contentMargins(.horizontal, 0, for: .scrollContent)
-    }
-
-    private var showsKeyLinesPage: Bool {
-        session.offersKeyLines || session.keyLinesHint != nil
     }
 
     private var filesFoot: some View {

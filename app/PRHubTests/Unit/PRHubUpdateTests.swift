@@ -6,7 +6,7 @@ import Testing
 /// Update available (`PRHubUpdate`): a newer build for this build's TestFlight group, at most hourly, and Later.
 @MainActor
 struct PRHubUpdateTests {
-    private let resources = IntegrationResources()
+    private let resources = UnitResources()
     private static let running = AppBuild(version: "1.0", build: "200")
 
     private static func config(

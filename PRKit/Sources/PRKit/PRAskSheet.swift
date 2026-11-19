@@ -9,16 +9,8 @@ struct PRAskSheet: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isWriting: Bool
 
-    /// The chat's, then the question on its way, until the chat has it.
     private var messages: [PRAskChat.Message] {
-        let sent = session.askChat?.messages ?? []
-        guard let question = session.askSend.question,
-              sent.last(where: \.isJai)?.text != question.question
-        else {
-            return sent
-        }
-        let anchor = question.anchor.map { "\($0.path):\($0.line)" }
-        return sent + [PRAskChat.Message(id: "pending", role: "you", text: question.question, anchor: anchor)]
+        session.askMessages
     }
 
     /// Whether Jai was reading the end of the chat when he last scrolled it: a new message then keeps him there.
@@ -28,9 +20,8 @@ struct PRAskSheet: View {
         messages.count(where: \.isJai)
     }
 
-    /// The agent at work on a question it has. A question still on its way says so instead.
     private var isWorking: Bool {
-        session.askSend == .idle && session.askChat?.isWorking == true
+        session.isAskWorking
     }
 
     var body: some View {
@@ -79,25 +70,10 @@ struct PRAskSheet: View {
         messages.enumerated().map { index, message in
             ChatMessage(
                 id: "ask-\(index)", role: message.isJai ? .mine : .theirs, text: message.text,
-                footnote: message.anchor, ticks: ticks(at: index), hasExtras: message.draft?.reviewEvent != nil || message.linear?.isEmpty == false
+                footnote: message.anchor, ticks: session.askTicks(at: index),
+                hasExtras: message.draft?.reviewEvent != nil || message.linear?.isEmpty == false
             )
         }
-    }
-
-    /// How far his question at `index` got: one tick once the Worker has it, two once the agent has it, as working on
-    /// it or answering it shows. None while it is on its way, or when it could not reach the agent.
-    private func ticks(at index: Int) -> DeliveryTicks? {
-        let message = messages[index]
-        guard message.isJai, message.id != "pending" else {
-            return nil
-        }
-        if messages[(index + 1)...].contains(where: { !$0.isJai }) {
-            return .delivered
-        }
-        guard index == messages.count - 1, session.askSend == .idle, session.askChat?.unsentQuestion == nil else {
-            return nil
-        }
-        return isWorking ? .delivered : .sent
     }
 
     /// The review an answer drafted, under it: post it, or add it to his drafts to change first.

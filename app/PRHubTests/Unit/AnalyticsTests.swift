@@ -1,11 +1,12 @@
 import Foundation
 @testable import PRHubCore
+import PRKitTestSupport
 import Testing
 
-/// Analytics preferences and host integration; vendors are replaced with a recording sink.
+/// Analytics preferences and host integration, over settings in memory; vendors are replaced with a recording sink.
 @MainActor
 struct AnalyticsTests {
-    private let resources = IntegrationResources()
+    private let resources = UnitResources()
     /// What the vendor was handed.
     final class RecordingAnalytics: Analytics {
         var events: [AnalyticsEvent] = []
@@ -136,7 +137,7 @@ struct AnalyticsTests {
             endpoint: WorkerEndpoint(fixed: #require(URL(string: "https://worker.example"))),
             pairing: DevicePairing(pair: { _, _ in throw URLError(.badURL) }, save: { _ in }),
             fetchConfig: { _ in throw URLError(.badURL) }, forgetSecret: {}, defaults: resources.defaults(),
-            usage: resources.usage(sink)
+            build: UnitResources.build, usage: resources.usage(sink)
         )
         connection.scanUnavailable(.cameraOff)
         connection.scanUnavailable(.unsupported)

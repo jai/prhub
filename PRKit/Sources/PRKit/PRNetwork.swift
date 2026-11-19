@@ -38,6 +38,11 @@ public final class PRNetwork {
         isOnline = false
     }
 
+    /// The line `prKitOfflineBanner` shows while offline; nil online.
+    public var offlineWords: String? {
+        isOnline ? nil : "Offline — showing saved information"
+    }
+
     func update(_ isUp: Bool) {
         guard !isHeld else {
             return
@@ -62,8 +67,8 @@ struct PROfflineBanner: ViewModifier {
         // A bar, not an inset: what scrolls under it fades by the system's edge effect, and nothing opaque covers
         // anything.
         content.safeAreaBar(edge: .bottom, spacing: 0) {
-            if !network.isOnline {
-                Label("Offline — showing saved information", systemImage: AppIcon.offline.symbol)
+            if let words = network.offlineWords {
+                Label(words, systemImage: AppIcon.offline.symbol)
                     .font(.appCaption)
                     .foregroundStyle(Color.toneWaiting)
                     .frame(maxWidth: .infinity)

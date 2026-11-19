@@ -1,32 +1,16 @@
 import XCTest
 
-/// A PR's page over the sample PRs: its checks, with a job's matrix legs under one line and a shared name told apart by
-/// its workflow; the review bar's accessibility labels at larger text; and a description in GitHub's Markdown. Pictures go to
+/// A PR's page over the sample PRs, where only a screen shows it: the review box above the keyboard, Open in GitHub's
+/// menu, and Ask's long answer across the chat. What the page decides is `PRHubScreenTests`'. Pictures go to
 /// `SCREENSHOTS_DIR` when it is set.
 @MainActor
 final class PRHubPRPageUITests: PRHubUITestCase {
     private let checkout = "Show a retry button when checkout fails"
-    /// The rate limit's row: its title without `[API-88] [SEC-12]`, which show as its ticket lines.
-    private let rateLimit = "Rate-limit the password reset endpoint"
 
     @MainActor override func setUp() async throws {
         try await super.setUp()
         XCUIDevice.shared.appearance = .light
         XCUIDevice.shared.orientation = .portrait
-    }
-
-    /// The PR at a glance on its page, from key lines already on the phone, and a bug's tap is its line in the diff.
-    func testThePageShowsThePRAtAGlanceAndABugOpensItsLine() throws {
-        launch([])
-        openCheckout()
-        XCTAssertTrue(app.descendants(matching: .any)["pr-summary"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Medium risk"].exists && app.staticTexts["1 bug found"].exists)
-        XCTAssertTrue(app.staticTexts["What this does"].exists)
-        XCTAssertTrue(app.staticTexts["Requirements mismatch"].exists, "the ticket's requirements, under the bugs")
-        try picture("summary-on-page")
-        app.buttons["key-lines-summary-bug-src/checkout/CheckoutError.tsx:RIGHT:9"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["key-line-note"].waitForExistence(timeout: 5))
-        try picture("summary-bug-in-diff")
     }
 
     /// The bug bash's keyboard bug (2026-11-10): six lines in the review's box with the keyboard up, and the button
@@ -65,20 +49,6 @@ final class PRHubPRPageUITests: PRHubUITestCase {
         XCTAssertTrue(app.buttons["pr-review-changes"].waitForExistence(timeout: 5), "still on the PR, not in a browser")
     }
 
-    /// The agent at work on his question has it: two ticks under it, as in Agent Pager's threads.
-    func testAskShowsDeliveredWhileTheAgentIsThinking() throws {
-        launch(["-PRHubAskWorking"])
-        openCheckout()
-        app.buttons["pr-ask"].tap()
-        let ticks = app.descendants(matching: .any)["reply-ticks-2"]
-        XCTAssertTrue(ticks.waitForExistence(timeout: 5))
-        XCTAssertTrue(ticks.label.contains("Delivered"))
-        XCTAssertTrue(app.descendants(matching: .any)["pr-ask-working"].exists)
-        XCTAssertFalse(app.descendants(matching: .any)["pr-ask-sending"].exists)
-        XCTAssertFalse(app.descendants(matching: .any)["pr-ask-failed"].exists)
-        try picture("ask-sent-thinking")
-    }
-
     /// An agent's long answer takes most of the chat's width from its leading edge, so its words don't break mid-word
     /// (UI bug 015, seen on a Mac; `AskSheetWidthTests` pictures the sheet there).
     func testALongAnswerTakesTheChatsWidth() throws {
@@ -99,159 +69,7 @@ final class PRHubPRPageUITests: PRHubUITestCase {
         )
     }
 
-    func testAnEmptyAskChatDoesNotClaimAMessageWasSent() {
-        launch()
-        openCheckout()
-        app.buttons["pr-ask"].tap()
-        XCTAssertTrue(app.buttons["sessionReplySend"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.descendants(matching: .any)["reply-ticks-1"].exists)
-        XCTAssertFalse(app.descendants(matching: .any)["reply-ticks-2"].exists)
-    }
-
-    /// One job name in two workflows says its workflow; a job's matrix legs are one line that opens to them.
-    func testTheChecksGroupMatrixLegsAndNameTheirWorkflow() throws {
-        launch()
-        openCheckout()
-        let header = app.buttons["checks-header"]
-        XCTAssertTrue(header.waitForExistence(timeout: 5))
-        header.tap()
-        let group = app.buttons["check-group-visual proof"]
-        XCTAssertTrue(group.waitForExistence(timeout: 3))
-        XCTAssertTrue(group.label.hasPrefix("visual proof, 4 legs"), group.label)
-        XCTAssertTrue(app.buttons["detect-changes, CI"].exists, "a shared name says its workflow")
-        XCTAssertTrue(app.buttons["detect-changes, Preview"].exists)
-        XCTAssertFalse(app.buttons["web 1/4"].exists, "the legs wait under their job")
-        group.tap()
-        XCTAssertTrue(app.buttons["web 1/4"].waitForExistence(timeout: 3), "and open under it")
-        try picture("nav-checks-grouped")
-    }
-
-    /// A description in GitHub's Markdown: its table one grid that scrolls sideways, not a line per cell, and a
-    /// `<details>` fold that opens in place.
-    func testADescriptionDrawsGitHubsMarkdown() throws {
-        launch()
-        openRateLimit()
-        let table = app.scrollViews["markdown-table"]
-        XCTAssertTrue(table.waitForExistence(timeout: 5), "the table is one block")
-        XCTAssertTrue(table.staticTexts["Requests in an hour, per email address"].exists, "its header")
-        XCTAssertTrue(table.staticTexts["6 and over"].exists, "and its rows")
-        let fold = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'markdown-details-'")).firstMatch
-        XCTAssertTrue(fold.waitForExistence(timeout: 3))
-        if !fold.isHittable {
-            app.swipeUp(velocity: .slow)
-        }
-        XCTAssertEqual(fold.value as? String, "closed")
-        try picture("nav-markdown")
-        fold.tap()
-        XCTAssertTrue(waitFor { fold.value as? String == "open" }, "the fold opens in place")
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Each request adds a row'"))
-            .firstMatch.waitForExistence(timeout: 3))
-        try picture("nav-markdown-open")
-    }
-
-    /// The review actions keep their accessible names at a larger text size. The screenshot records their appearance;
-    /// these label assertions do not establish whether the visual layout chose symbols or words.
-    func testTheReviewBarKeepsItsAccessibleActionNamesAtLargerText() throws {
-        launch(["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryXXL"])
-        openCheckout()
-        let approve = app.buttons["pr-review-approve"]
-        XCTAssertTrue(approve.waitForExistence(timeout: 5))
-        if !approve.isHittable {
-            app.swipeUp(velocity: .slow)
-        }
-        XCTAssertEqual(approve.label, "Approve")
-        XCTAssertEqual(app.buttons["pr-review-request-changes"].label, "Request changes")
-        XCTAssertEqual(app.buttons["pr-review-comment"].label, "Comment")
-        try picture("nav-review-bar-xxl")
-    }
-
-    /// The tickets the title names, each with Linear's state and who owns it, and the title without their brackets; a bot's PR names
-    /// the person it was opened for, and says it is a bot's.
-    func testThePageShowsItsTicketsAndWhoItIsFrom() throws {
-        launch()
-        openRateLimit()
-        XCTAssertTrue(app.staticTexts["Rate-limit the password reset endpoint"].waitForExistence(timeout: 5),
-                      "the title leaves out the tickets shown under it")
-        let author = app.descendants(matching: .any)["pr-author"].firstMatch
-        XCTAssertTrue(author.waitForExistence(timeout: 5))
-        XCTAssertTrue(author.label.contains("Mona Lisa via hubot (bot) wants hubot/sample-88 in main"), author.label)
-        let tickets = app.descendants(matching: .any)["pr-tickets"].firstMatch
-        XCTAssertTrue(tickets.exists)
-        for words in ["API-88", "Throttle password reset emails", "Assigned to Mona Lisa", "In Progress", "SEC-12", "Todo"] {
-            XCTAssertTrue(tickets.staticTexts[words].exists, words)
-        }
-        XCTAssertFalse(app.buttons["pr-ticket-connect-linear"].exists, "a self-hosted Worker's Linear is its own")
-        try picture("nav-tickets-author")
-    }
-
-    /// Approve closes its box at once; the toast says Submitting review…, then Approved, then goes. A refused review
-    /// stays on the toast with the reason, and Retry sends it.
-    func testAReviewGoesInTheBackgroundWithAToast() throws {
-        launch(["-PRHubRefuseFirstReview"])
-        openCheckout()
-        let approve = app.buttons["pr-review-approve"]
-        if !approve.isHittable {
-            app.swipeUp(velocity: .slow)
-        }
-        approve.tap()
-        let send = app.buttons["inline-composer-send"]
-        XCTAssertTrue(send.waitForExistence(timeout: 5))
-        XCTAssertLessThan(send.frame.maxX, app.buttons["Cancel"].frame.minX)
-        try picture("nav-page-approve-open")
-        send.tap()
-        XCTAssertTrue(waitFor(timeout: 1) { !send.exists }, "the box closes at once")
-        let words = app.staticTexts["pr-review-toast-words"]
-        XCTAssertTrue(words.waitForExistence(timeout: 2))
-        XCTAssertEqual(words.label, "Submitting review…", "while the review goes, before any answer")
-        try picture("nav-toast-submitting")
-        let retry = app.buttons["pr-review-toast-retry"]
-        XCTAssertTrue(retry.waitForExistence(timeout: 5), "a refusal stays, with Retry")
-        XCTAssertEqual(words.label, "Review not sent. GitHub didn't answer in time.")
-        try picture("nav-toast-failed")
-        retry.tap()
-        XCTAssertTrue(waitFor { words.label == "Submitting review…" }, words.label)
-        XCTAssertTrue(waitFor(timeout: 8) { words.label == "Approved" }, words.label)
-        try picture("nav-toast-approved")
-        XCTAssertTrue(waitFor(timeout: 6) { !words.exists }, "it fades once GitHub has it")
-    }
-
-    func testALinesCommentNowClosesItsBoxAndTheToastFollowsIt() throws {
-        launch()
-        openCheckout()
-        let diff = app.buttons["pr-files-changed"]
-        XCTAssertTrue(diff.waitForExistence(timeout: 5))
-        diff.tap()
-        XCTAssertTrue(app.buttons["file-viewed-0"].waitForExistence(timeout: 5))
-        app.closePanelOverDiff()
-        let line = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH 'diff-line-'")).element(boundBy: 2)
-        XCTAssertTrue(line.waitForExistence(timeout: 5))
-        line.tap()
-        let field = app.descendants(matching: .any)["inline-composer-field"].firstMatch
-        XCTAssertTrue(field.waitForExistence(timeout: 5))
-        field.tap()
-        field.typeText("Nit: name this better")
-        let now = app.buttons["inline-composer-alternate"]
-        XCTAssertTrue(now.waitForExistence(timeout: 2))
-        now.tap()
-        let words = app.staticTexts["pr-review-toast-words"]
-        // Looked for before the box: the samples answer at once and the toast leaves 2 s later
-        // (`ToastStyle.dwell`), which a loaded iPad Simulator can spend on one query.
-        XCTAssertTrue(words.waitForExistence(timeout: 10), "the toast follows the comment")
-        XCTAssertFalse(now.exists, "the box closed at once")
-        // The samples answer at once, so it may already have landed.
-        XCTAssertTrue(["Posting comment…", "Comment posted"].contains(words.label), words.label)
-        try picture("diff-toast-comment")
-        XCTAssertTrue(waitFor(timeout: 8) { words.label == "Comment posted" }, words.label)
-        XCTAssertTrue(waitFor(timeout: 6) { !words.exists }, "it goes once GitHub has it")
-    }
-
     // MARK: - Helpers
-
-    private func openRateLimit() {
-        let row = app.staticTexts[rateLimit]
-        XCTAssertTrue(row.waitForExistence(timeout: 10))
-        row.tap()
-    }
 
     private func launch(_ arguments: [String] = []) {
         app.terminate()

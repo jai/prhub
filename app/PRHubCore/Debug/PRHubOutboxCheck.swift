@@ -31,10 +31,9 @@
             )
             let environment = PRHubEnvironment.offline(
                 config: DeviceConfig(features: [.askAI], login: PRSampleSet.prHubLogin), access: access, worker: worker,
-                defaultsSuite: "outbox-check", isSample: false,
-                usage: UsageAnalytics(hasProject: false, sink: nil, defaults: defaults), outbox: outbox,
-                transport: transport, listDefaults: defaults, configurationDefaults: resources.configurationDefaults,
-                storageDirectory: directory, network: PRNetwork(isOnline: true), alertPermission: resources.alertPermission()
+                isSample: false, usage: UsageAnalytics(hasProject: false, sink: nil, defaults: defaults), outbox: outbox,
+                transport: transport, storage: resources.storage(), build: .current,
+                alertPermission: resources.alertPermission(), network: PRNetwork(isOnline: true)
             )
             resources.isolateAlerts(in: environment)
             outbox.kit = environment.prs
