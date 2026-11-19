@@ -92,9 +92,9 @@ private struct Parser {
             new = newLine
             newLine += 1
         }
-        if kind == .added {
+        if kind == .added, !fileChanges.isEmpty {
             fileChanges[fileChanges.count - 1].added += 1
-        } else if kind == .removed {
+        } else if kind == .removed, !fileChanges.isEmpty {
             fileChanges[fileChanges.count - 1].removed += 1
         }
         lines.append(DiffDocument.Line(

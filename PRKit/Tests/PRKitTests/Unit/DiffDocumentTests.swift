@@ -113,4 +113,10 @@ struct DiffDocumentTests {
     @Test func emptyDiffHasNoLines() {
         #expect(DiffDocument(data: Data()).lines.isEmpty)
     }
+
+    @Test func changedLinesBeforeAnyFileHeaderDoNotCrash() {
+        let document = DiffDocument(data: Data("+stray\n-stray\ndiff --git a/a b/a\n@@ -1 +1 @@\n+y\n".utf8))
+
+        #expect(document.lines.map(\.kind) == [.added, .removed, .file, .hunk, .added])
+    }
 }

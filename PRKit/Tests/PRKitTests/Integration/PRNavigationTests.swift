@@ -165,4 +165,22 @@ struct PRNavigationTests {
         session.toggleViewedOnTopFile(in: files)
         #expect(session.viewedFiles == before)
     }
+
+    @Test func markingAFileViewedTwiceKeepsItViewed() throws {
+        let samples = PRSampleSet(samples: [], mergedReviewed: [], mergedMine: [], answersOnPhone: false)
+        let host = PRKitControllerTests.Host(samples: samples)
+        let kit = PRKitController(host: host, defaults: host.storage.defaults, network: PRNetwork(isOnline: true),
+                                  draftDirectory: host.storage.draftDirectory)
+        let document = DiffDocument(data: Data("diff --git a/a b/a\n@@ -1 +1 @@\n-x\n+y\n".utf8))
+        let detail = try PullRequestDetail.decode(FixtureContractTests.data("detail.json"))
+        let session = PRSession(
+            ref: ref, title: nil, content: PRContent(detail: detail, document: document), tappedAt: 0, model: kit.model
+        )
+        session.setViewed(true, path: "a")
+        session.setViewed(true, path: "a")
+        #expect(session.viewedFiles.contains("a"))
+        session.setViewed(false, path: "a")
+        session.setViewed(false, path: "a")
+        #expect(!session.viewedFiles.contains("a"))
+    }
 }

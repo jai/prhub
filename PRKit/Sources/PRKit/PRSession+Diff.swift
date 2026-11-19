@@ -80,7 +80,12 @@ extension PRSession {
         guard let id = content?.detail.id else {
             return
         }
-        viewedFiles.formSymmetricDifference([path])
+        let wasViewed = viewedFiles.contains(path)
+        if isViewed {
+            viewedFiles.insert(path)
+        } else {
+            viewedFiles.remove(path)
+        }
         notice = nil
         // Jai's `-UXFixtures` samples: nothing is marked anywhere but here.
         if model.samples?.answersOnPhone == false {
@@ -91,7 +96,11 @@ extension PRSession {
                 // Posted or saved to go: the file stays marked either way.
                 _ = try await model.write(.viewed(pullRequest: id, path: path, viewed: isViewed), to: ref)
             } catch {
-                viewedFiles.formSymmetricDifference([path])
+                if wasViewed {
+                    viewedFiles.insert(path)
+                } else {
+                    viewedFiles.remove(path)
+                }
                 notice = .failed(error.localizedDescription)
             }
         }
