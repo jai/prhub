@@ -22,6 +22,8 @@ PRHub's CI follows Jai's personal CI standard ([personal-ci-standard.md](https:/
 ## Clock
 
 The release-clock Worker (jai/ci `worker/release-clock`, its `TARGETS` in `wrangler.jsonc`) starts `generate-release-candidate` every 3 hours (`every: 180`: 00:00, 03:00, … UTC) and `notify-update-available` every hour (minute 0), through `workflow_dispatch`.
+Manual library validation selects `component=prkit` on `generate-release-candidate`; the clock retains the default
+`all`. The other matrix entries skip candidate creation when one component is selected.
 
 ## How a workflow reads
 

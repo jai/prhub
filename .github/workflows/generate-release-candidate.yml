@@ -7,6 +7,13 @@ name: generate-release-candidate
 
 on:
   workflow_dispatch:
+    inputs:
+      component:
+        description: Component to validate; the clock keeps the default all.
+        type: choice
+        required: true
+        default: all
+        options: [all, ios, worker, prkit]
 
 permissions:
   contents: read
@@ -46,7 +53,8 @@ jobs:
           ref: main
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
-      - env:
+      - if: inputs.component == 'all' || inputs.component == matrix.component
+        env:
           COMPONENT: ${{ matrix.component }}
           TAG: ${{ matrix.tag }}
           PATHS: ${{ matrix.paths }}
