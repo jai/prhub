@@ -46,7 +46,7 @@ final class PRKitDiffSidewaysUITests: PRHubUITestCase {
         let before = Positions(app)
         recordScreenshot("diff-sideways-\(name)-1-open")
 
-        drag(from: 0.3, by: 200, holding: 0.5)
+        try drag(from: 0.3, by: 200, holding: 0.5)
         recordScreenshot("diff-sideways-\(name)-2-swiped-right")
         let after = Positions(app)
         XCTAssertEqual(after.line, before.line, "\(name): the code's first line stays at the left edge")
@@ -57,7 +57,7 @@ final class PRKitDiffSidewaysUITests: PRHubUITestCase {
 
     private func headerAndNoteStay(_ name: String, textSize: String?) throws {
         try openKeyLineNote(textSize: textSize)
-        let before = drag(from: 0.6, by: -150, holding: 0.3, bringingUpCode: true)
+        let before = try drag(from: 0.6, by: -150, holding: 0.3, bringingUpCode: true)
         recordScreenshot("diff-sideways-\(name)-3-scrolled-left")
         let after = Positions(app)
         // DiffTableContainer gives each code cell the full canvas width. DiffFileHeader pins the viewed button's
@@ -74,24 +74,28 @@ final class PRKitDiffSidewaysUITests: PRHubUITestCase {
         XCTAssertTrue(after.isNoteInside, "\(name): the note is inside the screen, \(after.note)")
     }
 
-    /// A finger on the first code line under the pinned header, `start` of the way across the diff (from its header's
+    /// A finger on visible code, `start` of the way across the diff (from its header's
     /// path to its viewed mark: an iPad's list may be beside it), moved `distance` sideways.
     @discardableResult
     private func drag(
         from start: CGFloat, by distance: CGFloat, holding: TimeInterval, bringingUpCode: Bool = false
-    ) -> Positions {
+    ) throws -> Positions {
         let lines = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH 'diff-line-'"))
+        let table = app.tables.containing(.cell, identifier: lines.firstMatch.identifier).firstMatch
         var positions = Positions(app)
-        // The topmost line under the header, well above the screen's bottom edge: a sideways drag there switches apps.
-        var below: [CGRect] {
-            lines.allElementsBoundByIndex.map(\.frame)
-                .filter { $0.minY > positions.header.maxY && $0.maxY < positions.screen.maxY * 0.75 }
+        // A later section's header can be hittable while earlier code is still on screen. Choose visible code
+        // directly, away from the bottom system gesture, rather than fall back to an offscreen first row.
+        var below: [(element: XCUIElement, frame: CGRect)] {
+            let viewport = table.frame.intersection(positions.screen)
+            return lines.allElementsBoundByIndex.map { (element: $0, frame: $0.frame) }
+                .filter { $0.frame.minY >= viewport.minY && $0.frame.maxY < positions.screen.maxY * 0.75 }
+                .sorted { $0.frame.minY > $1.frame.minY }
         }
         for _ in 0 ..< 3 where bringingUpCode && below.isEmpty {
-            app.tables.firstMatch.swipeUp(velocity: .slow)
+            table.swipeUp(velocity: .slow)
             positions = Positions(app)
         }
-        let line = below.min { $0.minY < $1.minY } ?? lines.firstMatch.frame
+        let line = try XCTUnwrap(below.first { $0.element.isHittable }?.frame, "visible code for the horizontal drag")
         let left = positions.header.minX
         let finger = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
             .withOffset(CGVector(dx: left + (positions.viewed.maxX - left) * start, dy: line.midY))
