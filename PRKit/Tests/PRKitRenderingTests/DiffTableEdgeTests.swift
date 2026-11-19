@@ -3,6 +3,10 @@ import Foundation
 import SwiftUI
 import Testing
 
+#if os(iOS)
+    import UIKit
+#endif
+
 /// The code stops at its sideways edges: a bounce would pull it off the screen's edge, with the file header cut where
 /// the table ends. A finger's bounce can't be driven from a test, so this holds the setting that stops it, on the
 /// phone and on the Mac; `PRKitDiffSidewaysUITests` and its recording show what the reader sees.
@@ -21,6 +25,29 @@ struct DiffTableEdgeTests {
             #expect(container.horizontalScrollElasticity == .none)
         #endif
     }
+
+    #if os(iOS)
+        @Test(arguments: [true, false])
+        func codePansKeepEdgeBackAndRestoreTheHostsContentGesture(wasEnabled: Bool) throws {
+            let navigation = UINavigationController(rootViewController: UIViewController())
+            navigation.pushViewController(UIViewController(), animated: false)
+            navigation.loadViewIfNeeded()
+            let content = try #require(navigation.interactiveContentPopGestureRecognizer)
+            let edge = try #require(navigation.interactivePopGestureRecognizer)
+            content.isEnabled = wasEnabled
+            let previousDelegate = edge.delegate
+            let keeper = BackSwipeKeeper()
+
+            keeper.keep(on: navigation, over: [UIScrollView()])
+            #expect(!content.isEnabled)
+            #expect(edge.delegate === keeper)
+            #expect(keeper.gestureRecognizerShouldBegin(edge))
+
+            keeper.keep(on: nil, over: [])
+            #expect(content.isEnabled == wasEnabled)
+            #expect(edge.delegate === previousDelegate)
+        }
+    #endif
 
     private var actions: DiffActions {
         DiffActions(

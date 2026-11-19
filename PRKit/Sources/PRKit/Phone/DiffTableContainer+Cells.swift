@@ -170,6 +170,7 @@
     final class BackSwipeKeeper: NSObject, UIGestureRecognizerDelegate {
         private weak var navigation: UINavigationController?
         private weak var previous: UIGestureRecognizerDelegate?
+        private var previousContentPopEnabled: Bool?
         /// The diff's scroll views, which give way to the swipe.
         private var scrollViews: [Weak] = []
 
@@ -183,9 +184,15 @@
                 return
             }
             navigation?.interactivePopGestureRecognizer?.delegate = previous
+            if let previousContentPopEnabled {
+                navigation?.interactiveContentPopGestureRecognizer?.isEnabled = previousContentPopEnabled
+            }
             navigation = next
             previous = next?.interactivePopGestureRecognizer?.delegate
             next?.interactivePopGestureRecognizer?.delegate = self
+            previousContentPopEnabled = next?.interactiveContentPopGestureRecognizer?.isEnabled
+            // A rightward code pan at its left edge stays in the diff. Back still starts at the screen's edge.
+            next?.interactiveContentPopGestureRecognizer?.isEnabled = false
         }
 
         func gestureRecognizerShouldBegin(_: UIGestureRecognizer) -> Bool {
