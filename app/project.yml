@@ -266,6 +266,7 @@ targets:
       - target: PRHub
       - package: PRKit
         product: PRKit
+      - package: DurableNetworking
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jaigovindani.prkit.renderingtests
