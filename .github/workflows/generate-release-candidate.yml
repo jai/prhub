@@ -68,7 +68,10 @@ jobs:
           done
           pattern="^${TAG}[0-9]+\.[0-9]+\.[0-9]+$"
           last=$(git tag --list "${TAG}*" --sort=-v:refname | awk -v p="$pattern" '$0 ~ p { print; exit }')
-          next=$(npx --yes git-cliff@2.14.2 --bumped-version --tag-pattern "$pattern" "${include[@]}")
+          # --unreleased: bump from the newest release tag. Without it, git-cliff drops a release whose commits are all
+          # skipped types (test:, ci:, ...) and, with nothing to bump, prints the release before it: worker-v0.30.0
+          # after worker-v0.30.1, so an RC with a version that was released already.
+          next=$(npx --yes git-cliff@2.14.2 --unreleased --bumped-version --tag-pattern "$pattern" "${include[@]}")
           if [ "$next" = "$last" ]; then
             echo "nothing cut: no feat, fix, perf or breaking change in $COMPONENT since $last"
             exit 0

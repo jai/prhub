@@ -21,7 +21,7 @@ PRHub's CI follows Jai's personal CI standard ([personal-ci-standard.md](https:/
 
 ## Clock
 
-The release-clock Worker (jai/ci) starts `generate-release-candidate` every 3 hours and `notify-update-available` every hour, through `workflow_dispatch`.
+The release-clock Worker (jai/ci `worker/release-clock`, its `TARGETS` in `wrangler.jsonc`) starts `generate-release-candidate` every 3 hours (`every: 180`: 00:00, 03:00, … UTC) and `notify-update-available` every hour (minute 0), through `workflow_dispatch`.
 
 ## How a workflow reads
 
@@ -98,7 +98,7 @@ What each workflow leaves on its machine after it ends:
 Each names what it changes, why, and Jai's approval.
 
 - **`prkit` releases as `v<version>`**, not `prkit-v<version>`. Swift Package Manager reads only `v<version>` tags, and Agent Pager pins PRKit by version. Approval: pending.
-- **The RC is the newest commit of `main` that changes the component** or its CI files, not the head of `main`. git-cliff reads a component's commits by path (`--include-path`), and it does not see a release tag on a commit outside those paths. Approval: pending.
+- **The RC is the newest commit of `main` that changes the component** or its CI files, not the head of `main`. git-cliff reads a component's commits by path (`--include-path`), and it does not see a release tag on a commit outside those paths. Since `generate-release-candidate` passes `--unreleased`, git-cliff bumps from the newest release tag wherever it is, so this deviation may no longer be needed. Approval: pending.
 - **An `ios` release also runs `lint-prkit`, `test-unit-prkit` and `test-integration-prkit`**: the app contains PRKit. Approval: pending.
 - **`lint-ios` has a second job, `build-ios`**, and `make build-ios` is a target Part 1 does not list. Part 1 asks for builds of every shipped target on each push, and has no build workflow. Approval: pending.
 - **`test-ui-ios` also runs the app-hosted rendering plan.** Its checks are UI-layer: they need the app on a Simulator. Folding it in keeps one make target per workflow, and the release still gates it. Approval: pending.
@@ -112,7 +112,7 @@ Each names what it changes, why, and Jai's approval.
 - **UI timing**: Part 1 leaves it unresolved. `test-ui-ios` runs only in `ios` releases, not on pushes.
 - **A screenshots workflow**: should `make screenshots-ios` get one (for example `screenshots-ios`, on the `ios-v` tag), or stay local?
 - **`release/app-latest.test.mjs`**: move it into `test-unit-worker`, or give `release/` a test workflow?
-- **Runners**: the playbook names Borg Cube 03 and the Mac mini; only Cube 03 has PRHub runners.
+- **Runners**: the playbook names Borg Cube 03 and the Mac mini. Since 2026-11-18 the Mac jobs ran on Cube 03, and two `mac` jobs on Cube 04, which the playbook leaves for later. The Mac mini ran none.
 
 ## Not in CI
 
