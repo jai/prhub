@@ -15,7 +15,7 @@ permissions:
 jobs:
   test-ui-ios:
     name: test-ui-ios (${{ matrix.device }})
-    runs-on: [self-hosted, zoomies, mac-desktop]
+    runs-on: macos-26
     timeout-minutes: 90
     strategy:
       fail-fast: false

@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   test-integration-prkit:
-    runs-on: [self-hosted, zoomies, mac]
+    runs-on: macos-26
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5

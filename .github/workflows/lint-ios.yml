@@ -31,7 +31,7 @@ jobs:
       - uses: jdx/mise-action@v5
       - run: make lint-ios
   build-ios:
-    runs-on: [self-hosted, zoomies, mac]
+    runs-on: macos-26
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
