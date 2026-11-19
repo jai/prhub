@@ -94,6 +94,9 @@ Logs: `npx wrangler@4 tail prhub --config ../deploy/hosted/wrangler.jsonc --form
 
 ## Replacing the Claude token
 
+The secret takes several accounts' tokens, separated by commas: `tokenA,tokenB,tokenC`. A run that hits one account's
+limit goes again on the next (`agent_account_spent` in the Worker's log says which).
+
 `CLAUDE_CODE_OAUTH_TOKEN` reaches a container when the container starts, and a running one keeps the token it started
 with. Setting the secret restarts nothing by itself:
 

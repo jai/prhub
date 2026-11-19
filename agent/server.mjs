@@ -23,6 +23,7 @@ import {
   SERVER,
   WEB_TOOLS,
 } from "./read-tools.mjs";
+import { accountEnv } from "./replies.mjs";
 import { authArgs, gitEnv, SAFE_GIT } from "./vet.mjs";
 
 const exec = promisify(execFile);
@@ -30,7 +31,7 @@ const exec = promisify(execFile);
 const PORT = process.env.PORT === "0" ? 0 : Number(process.env.PORT) || 8080;
 
 /** One structured answer: `{system, prompt, model, effort, schema}` in, the parsed output and what it spent out. */
-async function run({ system, prompt, model, effort, schema }) {
+async function run({ system, prompt, model, effort, schema, account }) {
   let result = null;
   for await (const message of query({
     prompt,
@@ -42,6 +43,7 @@ async function run({ system, prompt, model, effort, schema }) {
       settingSources: [],
       maxTurns: 3,
       sessionStore: new InMemorySessionStore(),
+      env: accountEnv(account),
       outputFormat: { type: "json_schema", schema },
     },
   })) {
@@ -123,6 +125,7 @@ async function ask({
   session,
   entries,
   budgetUsd,
+  account,
 }) {
   const unsafe = vetQuestion({ scope, repo, number, head });
   if (unsafe) {
@@ -172,6 +175,7 @@ async function ask({
           }),
         },
         settingSources: [],
+        env: accountEnv(account),
         maxTurns: 60,
         maxBudgetUsd: budgetUsd ?? undefined,
         sessionStore: store,

@@ -11,6 +11,21 @@ export function redact(text, secrets) {
   );
 }
 
+/**
+ * The subscription's tokens: `CLAUDE_CODE_OAUTH_TOKEN` holds one, or several separated by commas or new lines, one per
+ * Claude account. The Worker says which account a run uses (`account`), and moves to the next when one hits its limit.
+ */
+export function subscriptionTokens() {
+  return (process.env.CLAUDE_CODE_OAUTH_TOKEN ?? "").split(/[\s,]+/).filter(Boolean);
+}
+
+/** Claude Code's environment for a run on account `account` (an index, wrapping round): its one token, alone. */
+export function accountEnv(account) {
+  const tokens = subscriptionTokens();
+  const index = Number.isInteger(account) && tokens.length > 0 ? account % tokens.length : 0;
+  return { ...process.env, CLAUDE_CODE_OAUTH_TOKEN: tokens[index] ?? "" };
+}
+
 /** The most characters one tool answer keeps, so one answer can't fill the context. */
 export const KEPT = 60_000;
 
@@ -21,7 +36,7 @@ export function cut(text) {
 
 /** What a tool says back: cut, and with both tokens out of it. */
 export function said(text, token) {
-  return cut(redact(text, [token, process.env.CLAUDE_CODE_OAUTH_TOKEN]));
+  return cut(redact(text, [token, ...subscriptionTokens()]));
 }
 
 /** One MCP tool answer. */

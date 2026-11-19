@@ -336,7 +336,7 @@ var reads as unset.
 | `PR_ALERTS` | var | Visible alerts: `review_requested`, `approved`, `changes_requested`, comma-separated, or `off`. Unset: `review_requested` |
 | `ANTHROPIC_API_KEY` | secret | Key lines, rewrites; Ask's key when `ASK_ANTHROPIC_API_KEY` is unset |
 | `AI_ON_API_KEY` | var | `on`: key lines, rewrites and Ask may run on an API key (the Worker's or a hosted person's). Unset or anything else: on the subscription alone, and an API key turns no AI on |
-| `CLAUDE_CODE_OAUTH_TOKEN` | secret | A Claude subscription's token (`claude setup-token`). With `AGENT` bound, key lines and rewrites run on it ([AI on a subscription](#ai-on-a-subscription)) and win over `ANTHROPIC_API_KEY` |
+| `CLAUDE_CODE_OAUTH_TOKEN` | secret | A Claude subscription's token (`claude setup-token`), or several accounts' tokens separated by commas. With `AGENT` bound, key lines, rewrites and Ask run on it ([AI on a subscription](#ai-on-a-subscription)) and win over `ANTHROPIC_API_KEY`. A run that one account can't make (its usage limit, a token it no longer takes) goes again on the next; the account that answered is where the next run starts |
 | `AGENT` | container binding | `AgentContainer`, the Agent SDK container built from `agent/Dockerfile` |
 | `SUBSCRIPTION_LOGINS` | var | Hosted only: the GitHub logins, comma-separated, whose AI runs on `CLAUDE_CODE_OAUTH_TOKEN`. Unset: nobody's |
 | `METRICKIT` | var | `on`: the phone sends its MetricKit reports ([MetricKit reports](#metrickit-reports)). Unset: off |

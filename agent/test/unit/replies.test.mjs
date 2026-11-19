@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { test, vi } from "vitest";
 import { readOnlyHooks, readToolNames } from "../../gate.mjs";
 import {
+  accountEnv,
   actHandler,
   cut,
   draftReviewHandler,
@@ -70,6 +71,19 @@ test("tool output never carries the subscription token either", () => {
   const text = said("+sk-subscription-value\n+ghs-install\n", "ghs-install");
   assert.doesNotMatch(text, /sk-subscription-value|ghs-install/);
   assert.equal(text, "+[redacted]\n+[redacted]\n");
+});
+
+test("several accounts' tokens: each run gets one alone, wrapping round, and none reaches tool output", () => {
+  vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "sk-one, sk-two\nsk-three");
+  assert.equal(accountEnv(0).CLAUDE_CODE_OAUTH_TOKEN, "sk-one");
+  assert.equal(accountEnv(2).CLAUDE_CODE_OAUTH_TOKEN, "sk-three");
+  assert.equal(accountEnv(4).CLAUDE_CODE_OAUTH_TOKEN, "sk-two");
+  assert.equal(
+    accountEnv(undefined).CLAUDE_CODE_OAUTH_TOKEN,
+    "sk-one",
+    "an older Worker names no account",
+  );
+  assert.equal(said("sk-one sk-two sk-three", null), "[redacted] [redacted] [redacted]");
 });
 
 test("redaction replaces every copy of each secret and skips empty ones", () => {

@@ -1,6 +1,6 @@
 // The server's decisions, apart from its HTTP, git and SDK: what a request may name, what an answer says, and how runs
 // on one directory take turns. No disk, no process, no SDK.
-import { ACTS, LINEAR_ACTS, redact } from "./replies.mjs";
+import { ACTS, LINEAR_ACTS, redact, subscriptionTokens } from "./replies.mjs";
 import { vetRepo } from "./vet.mjs";
 
 /** A request's body: a JSON object, or why it is refused. */
@@ -63,7 +63,7 @@ export function runAnswer(result, model) {
 
 /** `text` with the subscription token and `token` out of it: a defence beside `readOnlyHooks`. */
 export function scrub(text, token) {
-  return redact(text, [process.env.CLAUDE_CODE_OAUTH_TOKEN, token]);
+  return redact(text, [...subscriptionTokens(), token]);
 }
 
 /** One `/ask` answer, every text the agent wrote scrubbed of both tokens. */

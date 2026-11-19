@@ -231,7 +231,7 @@ export async function askOnSubscription(
     });
     const answer = await askContainer<AskAnswer>(
       "/ask",
-      JSON.stringify({
+      {
         system: await services.system(),
         prompt: `${DIFF_NOTE}\n${askPrompt(input, null)}`,
         model: choice.model,
@@ -247,8 +247,8 @@ export async function askOnSubscription(
         session: record.session,
         entries: entries ?? [],
         budgetUsd: services.budgetUsd,
-      }),
-      env.AGENT!,
+      },
+      env,
       undefined,
       askInstance(env),
     );
