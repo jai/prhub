@@ -1,10 +1,12 @@
-# actionlint on the workflow files (make lint-workflows), on each push that changes them.
+# lint-workflows (make lint-workflows): actionlint on the workflow files, on each push to main that changes them.
+# Prepare: mise (actionlint). Lint: make lint-workflows. Clean up: nothing to do; the GitHub-hosted VM is discarded
+# after the job.
 name: lint-workflows
 
 on:
   push:
     branches: [main]
-    paths: [".github/workflows/**"]
+    paths: [".github/workflows/**", ".github/actionlint.yaml"]
 
 permissions:
   contents: read
@@ -13,12 +15,7 @@ jobs:
   lint-workflows:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    env:
-      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v5
       - uses: jdx/mise-action@v5
       - run: make lint-workflows
-      - name: Remove disposable products
-        if: always()
-        run: rm -rf -- .build app/build app/*.xcodeproj worker/node_modules worker/.wrangler agent/node_modules

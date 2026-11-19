@@ -1,10 +1,13 @@
-# PRKit's unit tests (make test-unit-prkit): swift test on PRKitUnitTests. On each push that changes PRKit, and in each ios and prkit release.
+# test-unit-prkit (make test-unit-prkit): swift test on PRKitUnitTests, on a Mac. On each push to main that changes
+# PRKit, and in each ios and prkit release (release.yml).
+# Prepare: the checkout. Test: make test-unit-prkit. Clean up: nothing to do in the job; the ephemeral Zoomies runner
+# deletes its work folder (the checkout and .build) after the job (docs/workflow.md, "Disk use").
 name: test-unit-prkit
 
 on:
   push:
     branches: [main]
-    paths: ["PRKit/**", "Package.swift", "Package.resolved", ".swiftlint.yml", ".swiftformat", "Makefile", ".github/workflows/test-unit-prkit.yml"]
+    paths: ["PRKit/**", "Package.swift", "Package.resolved", "Makefile", ".github/workflows/test-unit-prkit.yml"]
   workflow_call:
 
 permissions:
@@ -14,14 +17,6 @@ jobs:
   test-unit-prkit:
     runs-on: [self-hosted, zoomies, mac]
     timeout-minutes: 10
-    env:
-      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v5
-      - uses: jdx/mise-action@v5
-        with:
-          cache: false
       - run: make test-unit-prkit
-      - name: Remove disposable products
-        if: always()
-        run: rm -rf -- .build app/build app/*.xcodeproj worker/node_modules worker/.wrangler agent/node_modules

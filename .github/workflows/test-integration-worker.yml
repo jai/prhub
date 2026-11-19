@@ -1,10 +1,14 @@
-# The agent/ tests (make test-integration-worker): they start a real git and a local server. On each push that changes the Worker, and in each worker release.
+# test-integration-worker (make test-integration-worker): the Worker's storage and contract tests, its tests in
+# workerd, and the agent's tests with a real git and a local server; outside services are stubbed. On each push to main
+# that changes the Worker, and in each worker release (release.yml).
+# Prepare: Node and the npm dependencies. Test: make test-integration-worker. Clean up: nothing to do; the
+# GitHub-hosted VM is discarded after the job.
 name: test-integration-worker
 
 on:
   push:
     branches: [main]
-    paths: ["worker/**", "agent/**", "deploy/hosted/**", "PRKit/Tests/PRContractFixtures/Fixtures/**", "scripts/ask-trace.sh", "Makefile", ".github/workflows/test-integration-worker.yml"]
+    paths: ["worker/**", "agent/**", "deploy/hosted/**", "PRKit/Tests/PRContractFixtures/Fixtures/**", "Makefile", ".github/workflows/test-integration-worker.yml"]
   workflow_call:
 
 permissions:
@@ -14,19 +18,13 @@ jobs:
   test-integration-worker:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    env:
-      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - uses: jdx/mise-action@v5
-      - name: Install dependencies
+      - name: Install the npm dependencies
         run: |
           npm ci --prefix worker --no-audit --no-fund
           npm ci --prefix agent --no-audit --no-fund
       - run: make test-integration-worker
-      - name: Remove disposable products
-        if: always()
-        run: rm -rf -- .build app/build app/*.xcodeproj worker/node_modules worker/.wrangler agent/node_modules

@@ -72,7 +72,8 @@ Current move: 1, the library (2026-11-10).
 swift test                 # PRKit, on macOS
 make test-unit-ios         # the app's unit tests: swift test, no Simulator
 make test-unit-prkit       # PRKit's unit tests: swift test
-make test-ui-ios           # the UI test plan: the samples flow, and pictures of every screen in app/build/screenshots
+make test-ui-ios           # the app's UI layer: the rendering plan, then the UI plan, on a Simulator
+make screenshots-ios      # a picture of every screen, in app/build/screenshots
 make lint                  # formatters, linters, DESIGN.md's token rules, gitleaks (secrets and private names)
 ```
 

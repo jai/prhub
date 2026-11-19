@@ -1,62 +1,76 @@
 # PRHub's make targets: the ones docs/workflow.md lists, and no others. Each CI workflow runs the target of its name.
 #
+#   make fix FILES="<files>"      each lint tool's own fixes on those files (the pre-commit hook passes the staged ones)
 #   make lint-ios                 SwiftFormat, SwiftLint with the DESIGN.md token rules, the design-token check,
 #                                 shellcheck, gitleaks
 #   make lint-prkit               SwiftFormat, SwiftLint with the DESIGN.md token rules, gitleaks
-#   make lint-worker              oxlint, oxfmt, tsc, shellcheck, gitleaks
+#   make lint-worker              oxfmt, oxlint, tsc, shellcheck, gitleaks (needs `npm ci` in worker/ and agent/)
 #   make lint-workflows           actionlint
+#   make build-ios                compiles the app for the iOS Simulator and the Mac (lint-ios.yml's build job)
 #   make test-unit-ios            swift test on PRHubUnitTests
+#   make test-integration-ios     swift test on PRHubIntegrationTests: app persistence and Keychain
+#   make test-ui-ios              the app-hosted rendering plan, then the UI plan, on one Simulator (SIMULATOR or SIM_NAME)
+#   make screenshots-ios          every screen's picture, in app/build/screenshots; not a test, no workflow runs it
 #   make test-unit-prkit          swift test on PRKitUnitTests
-#   make test-ui-ios              the UI test plan, in parallel on Simulator clones (SIM_NAME or SIMULATOR picks it)
-#   make test-rendering-ios       the app-hosted rendering test plan, on the same Simulator
-#   make screenshots-ios          every screen's picture, in app/build/screenshots; gates nothing
-#   make test-unit-worker         Worker and agent unit tests
-#   make test-integration-ios     app persistence and Keychain tests
-#   make test-integration-prkit   PRKit persistence, contract and font tests
-#   make test-integration-worker  Worker storage/runtime and agent integration tests
+#   make test-integration-prkit   swift test on PRKitIntegrationTests: persistence, contracts, fonts, AppKit rendering
+#   make test-unit-worker         Worker and agent unit tests (needs `npm ci` in worker/ and agent/)
+#   make test-integration-worker  Worker storage and workerd tests, agent tests with real git and a local server
 #   make lint                     all lint targets
 #   make all-tests                all test targets
 #
 # Tools: mise (https://mise.jdx.dev) installs each pinned tool on first use. GNU Make 3.81 (macOS's): no .ONESHELL.
 
 SHELL := /bin/bash
-.PHONY: lint-ios lint-prkit lint-worker lint-workflows test-unit-ios test-unit-prkit test-ui-ios test-rendering-ios screenshots-ios \
-	test-unit-worker test-integration-worker test-integration-ios test-integration-prkit lint all-tests
+.PHONY: fix lint-ios lint-prkit lint-worker lint-workflows build-ios test-unit-ios test-integration-ios test-ui-ios \
+	screenshots-ios test-unit-prkit test-integration-prkit test-unit-worker test-integration-worker lint all-tests
 
 X := mise exec
 ACTIONLINT  := $(X) actionlint@1.7.12 -- actionlint
 SHELLCHECK  := $(X) shellcheck@0.11.0 -- shellcheck
 GITLEAKS    := $(X) gitleaks@8.30.1 -- gitleaks dir --config .gitleaks.toml --no-banner --redact
 SWIFTFORMAT := $(X) swiftformat@0.64.7 -- swiftformat
-SWIFTLINT   := $(X) swiftlint@0.65.1 -- swiftlint lint --strict --quiet
+SWIFTLINT   := $(X) swiftlint@0.65.1 -- swiftlint
 XCODEGEN    := $(X) xcodegen@2.46.0 -- xcodegen
 OXFMT       := npx --yes oxfmt@0.78.0
-OXLINT      := npx --no-install oxlint
+# worker/ has oxlint and its type-aware plugin as dev dependencies; agent/ has no dev dependencies, so it gets the same
+# version from npx.
+OXLINT_WORKER := npx --no-install oxlint
+OXLINT        := npx --yes oxlint@1.93.0
 
-SIM_NAME ?= iPhone 17
-SIMULATOR ?=
-COMMA := ,
-UI_DESTINATION = $(if $(SIMULATOR),id=$(SIMULATOR),platform=iOS Simulator$(COMMA)name=$(SIM_NAME))
+# ---- Fix ------------------------------------------------------------------------------------------------------------
+
+SWIFT_FILES := $(filter %.swift,$(FILES))
+JS_FILES    := $(filter worker/% agent/%,$(filter %.ts %.tsx %.mts %.cts %.js %.mjs %.cjs,$(FILES)))
+
+fix:
+	$(if $(SWIFT_FILES),$(SWIFTFORMAT) --quiet $(SWIFT_FILES))
+	$(if $(SWIFT_FILES),$(SWIFTLINT) --fix --quiet $(SWIFT_FILES))
+	$(if $(JS_FILES),$(OXFMT) $(JS_FILES))
+	$(if $(JS_FILES),$(OXLINT) --fix $(JS_FILES))
+	$(if $(filter DESIGN.md,$(FILES)),$(MAKE) -C app design)
+
+# ---- Lint -----------------------------------------------------------------------------------------------------------
 
 lint-ios:
 	$(SWIFTFORMAT) app --lint
-	$(SWIFTLINT) app/PRHub app/PRHubCore app/PRHubTests app/PRHubUITests app/PRHubRenderingTests app/PRHubScreenshots app/PRHubE2ETests app/PRHubPerformanceTests
+	$(SWIFTLINT) lint --strict --quiet app/PRHub app/PRHubCore app/PRHubTests app/PRHubUITests app/PRHubRenderingTests \
+		app/PRHubScreenshots app/PRHubE2ETests app/PRHubPerformanceTests
 	$(MAKE) -C app design-check
 	$(SHELLCHECK) app/ci_scripts/ci_post_clone.sh
 	$(GITLEAKS) app
 	$(GITLEAKS) DESIGN.md
 
 lint-prkit:
-	$(SWIFTFORMAT) PRKit Package.swift app/PRHubRenderingTests --lint
-	$(SWIFTLINT) PRKit app/PRHubRenderingTests
+	$(SWIFTFORMAT) PRKit Package.swift --lint
+	$(SWIFTLINT) lint --strict --quiet PRKit
 	$(GITLEAKS) PRKit
 
 lint-worker:
 	$(OXFMT) --check worker agent
-	cd worker && $(OXLINT) --deny-warnings
-	cd worker && $(OXLINT) --type-aware --type-check --deny-warnings src
+	cd worker && $(OXLINT_WORKER) --deny-warnings
+	cd worker && $(OXLINT_WORKER) --type-aware --type-check --deny-warnings src
 	npm --prefix worker run typecheck:test
-	cd agent && npx --yes oxlint@1.93.0 --deny-warnings
+	cd agent && $(OXLINT) --deny-warnings
 	$(SHELLCHECK) scripts/ask-trace.sh
 	$(GITLEAKS) worker
 	$(GITLEAKS) agent
@@ -65,34 +79,36 @@ lint-worker:
 lint-workflows:
 	$(ACTIONLINT)
 
+lint: lint-ios lint-prkit lint-worker lint-workflows
+
+# ---- The Xcode project ----------------------------------------------------------------------------------------------
+# app/PRHub.xcodeproj is generated from app/project.yml and gitignored. app/Package.resolved, the app's package pins,
+# goes where Xcode reads them, as Xcode Cloud's app/ci_scripts/ci_post_clone.sh does. Without it, Xcode writes the
+# app's pins (PostHog too) into the root Package.resolved, which belongs to `swift test` on Package.swift.
+
+XCODE_PINS := app/PRHub.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+GENERATE_XCODE_PROJECT := $(XCODEGEN) generate --spec app/project.yml --quiet && mkdir -p $(XCODE_PINS) \
+	&& cp app/Package.resolved $(XCODE_PINS)/Package.resolved
+XCODEBUILD := cd app && xcodebuild -project PRHub.xcodeproj -scheme PRHub -derivedDataPath build/DerivedData -jobs 4
+
+build-ios:
+	$(GENERATE_XCODE_PROJECT)
+	$(XCODEBUILD) build -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO
+	$(XCODEBUILD) build -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO
+
+# ---- Tests ----------------------------------------------------------------------------------------------------------
+
 test-unit-ios:
 	swift test -j 4 --filter PRHubUnitTests
-
-test-unit-prkit:
-	swift test -j 4 --filter PRKitUnitTests
 
 test-integration-ios:
 	swift test -j 4 --filter PRHubIntegrationTests
 
+test-unit-prkit:
+	swift test -j 4 --filter PRKitUnitTests
+
 test-integration-prkit:
 	swift test -j 4 --filter PRKitIntegrationTests
-
-# Each plan writes its results to app/build/results/<plan>.xcresult; $(2) sets the run's environment.
-XCODEBUILD_TEST = cd app && rm -rf build/results/$(1).xcresult && set -o pipefail && $(2) xcodebuild test \
-	-project PRHub.xcodeproj -scheme PRHub -testPlan $(1) -destination '$(UI_DESTINATION)' \
-	-derivedDataPath build/DerivedData -resultBundlePath build/results/$(1).xcresult -jobs 4
-
-# Screens and interactions only a running app can show. A test that fails is run once more.
-test-ui-ios:
-	$(call XCODEBUILD_TEST,PRHubUITests) -parallel-testing-enabled YES -retry-tests-on-failure -test-iterations 2
-
-# Rendering that needs the app host, serial and without retries.
-test-rendering-ios:
-	$(call XCODEBUILD_TEST,PRHubRenderingTests)
-
-screenshots-ios:
-	$(call XCODEBUILD_TEST,PRHubScreenshots,TEST_RUNNER_SCREENSHOTS_DIR=$(CURDIR)/app/build/screenshots) \
-		-parallel-testing-enabled YES
 
 test-unit-worker:
 	npm --prefix worker run test:unit
@@ -102,7 +118,26 @@ test-integration-worker:
 	npm --prefix worker run test:integration
 	npm --prefix agent run test:integration
 
-lint: lint-ios lint-prkit lint-worker lint-workflows
+# The Simulator: SIMULATOR=<udid> (CI creates one a job), or else the one named SIM_NAME.
+SIM_NAME ?= iPhone 17
+SIMULATOR ?=
+COMMA := ,
+SIM_DESTINATION = $(if $(SIMULATOR),id=$(SIMULATOR),platform=iOS Simulator$(COMMA)name=$(SIM_NAME))
+# One test plan on that Simulator; its result bundle is app/build/results/<plan>.xcresult.
+XCODEBUILD_TEST = rm -rf app/build/results/$(1).xcresult && $(XCODEBUILD) test -testPlan $(1) \
+	-destination '$(SIM_DESTINATION)' -resultBundlePath build/results/$(1).xcresult
 
-all-tests: test-unit-ios test-integration-ios test-unit-prkit test-integration-prkit test-ui-ios test-rendering-ios test-unit-worker \
+# The UI layer: rendering that needs the app host (serial, never retried), then the screens and interactions only a
+# running app shows (in parallel on clones of the Simulator; a test that fails runs once more).
+test-ui-ios:
+	$(GENERATE_XCODE_PROJECT)
+	$(call XCODEBUILD_TEST,PRHubRenderingTests)
+	$(call XCODEBUILD_TEST,PRHubUITests) -parallel-testing-enabled YES -retry-tests-on-failure -test-iterations 2
+
+screenshots-ios: export TEST_RUNNER_SCREENSHOTS_DIR := $(CURDIR)/app/build/screenshots
+screenshots-ios:
+	$(GENERATE_XCODE_PROJECT)
+	$(call XCODEBUILD_TEST,PRHubScreenshots) -parallel-testing-enabled YES
+
+all-tests: test-unit-ios test-integration-ios test-ui-ios test-unit-prkit test-integration-prkit test-unit-worker \
 	test-integration-worker

@@ -1,10 +1,13 @@
-# The worker component's lint (make lint-worker): oxlint, oxfmt, tsc, gitleaks. On each push that changes the Worker, and in each worker release.
+# lint-worker (make lint-worker): oxfmt, oxlint, tsc, shellcheck and gitleaks on the Worker and the agent. On each push
+# to main that changes the Worker, and in each worker release (release.yml).
+# Prepare: Node, mise (shellcheck, gitleaks) and the npm dependencies. Lint: make lint-worker. Clean up: nothing to do;
+# the GitHub-hosted VM is discarded after the job.
 name: lint-worker
 
 on:
   push:
     branches: [main]
-    paths: ["worker/**", "agent/**", "deploy/hosted/**", "PRKit/Tests/PRContractFixtures/Fixtures/**", "scripts/ask-trace.sh", "Makefile", ".github/workflows/lint-worker.yml"]
+    paths: ["worker/**", "agent/**", "deploy/hosted/**", "scripts/ask-trace.sh", ".gitleaks.toml", "Makefile", ".github/workflows/lint-worker.yml"]
   workflow_call:
 
 permissions:
@@ -14,19 +17,14 @@ jobs:
   lint-worker:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    env:
-      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: 24
       - uses: jdx/mise-action@v5
-      - name: Install dependencies
+      - name: Install the npm dependencies
         run: |
           npm ci --prefix worker --no-audit --no-fund
           npm ci --prefix agent --no-audit --no-fund
       - run: make lint-worker
-      - name: Remove disposable products
-        if: always()
-        run: rm -rf -- .build app/build app/*.xcodeproj worker/node_modules worker/.wrangler agent/node_modules

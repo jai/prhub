@@ -1,5 +1,5 @@
 # Deploys the Worker `prhub` (docs/hosted-deploy.md) from each worker-v<version> tag, which release.yml makes once the
-# worker's tests passed on that commit The only production path for the hosted Worker:
+# worker's tests passed on that commit. The only production path for the hosted Worker:
 # wrangler deploy with deploy/hosted/wrangler.jsonc, which also builds and pushes the AI container (agent/Dockerfile).
 # The Worker's secrets stay as they are. The account and four vars come from the repo's variables, kept out of this
 # public repo's files.

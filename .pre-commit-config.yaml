@@ -1,58 +1,63 @@
+# PRHub's git hooks (docs/workflow.md, "Hooks"), run by prek. Orca installs them in each new worktree (orca.yaml).
+# Before each commit: `make fix` on the staged files, then `make lint-<component>` for each component with staged
+# files. Before each push: `make test-unit-<component>` for each component the push changes.
+# Like pre-commit, prek sets unstaged changes aside while the hooks run, but not untracked files: a lint of a whole
+# component also reads the untracked files in its folders.
 repos:
   - repo: local
     hooks:
-      # Before the lint, each tool that can fix a file fixes the staged files and adds them back, so a commit stops only
-      # for what no tool can fix (docs/workflow.md, Part 2).
-      - id: fix-swift
-        name: fix Swift (swiftformat, swiftlint --fix)
-        entry: bash -c 'mise exec swiftformat@0.64.7 -- swiftformat --quiet "$@" && mise exec swiftlint@0.65.1 -- swiftlint --fix --quiet "$@" && git add -- "$@"' --
+      # Each lint tool fixes what it can in the staged files, and the fixes go back into the commit. A staged DESIGN.md
+      # regenerates the design tokens (make -C app design), which go into the commit too.
+      - id: fix
+        name: make fix
+        entry: >-
+          bash -c 'make fix FILES="$*" && git add -- "$@" &&
+          if [[ " $* " == *" DESIGN.md "* ]]; then
+          git add -- app/PRHub/Assets.xcassets PRKit/Sources/PRKitDesign/DesignTokens.swift; fi' --
         language: system
         require_serial: true
-        files: '\.swift$'
+        files: '(\.swift|^(worker|agent)/.*\.(ts|tsx|mts|cts|js|mjs|cjs)|^DESIGN\.md)$'
         stages: [pre-commit]
-      - id: fix-js
-        name: fix TypeScript and JavaScript (oxfmt, oxlint --fix)
-        entry: bash -c 'npx --yes oxfmt@0.78.0 "$@" && npx --yes oxlint@1.93.0 --fix "$@" && git add -- "$@"' --
-        language: system
-        require_serial: true
-        files: '^(worker|agent)/.*\.(ts|tsx|mts|js|mjs|cjs)$'
-        stages: [pre-commit]
-      - id: fix-design-tokens
-        name: fix the design tokens (make -C app design)
-        entry: bash -c 'make -s -C app design && git add -- app/PRHub/Assets.xcassets PRKit/Sources/PRKitDesign/DesignTokens.swift'
-        language: system
-        pass_filenames: false
-        files: '^DESIGN\.md$'
-        stages: [pre-commit]
-      # docs/workflow.md: before each commit, the lint of each component with staged files; before each push, the
-      # unit tests of each component the push changes.
       - id: lint-ios
         name: make lint-ios
         entry: make lint-ios
         language: system
         pass_filenames: false
-        files: '^(app/|DESIGN\.md$|\.swiftlint\.yml$|\.swiftformat$)'
+        files: '^(app/|DESIGN\.md$|\.swiftlint\.yml$|\.gitleaks\.toml$)'
         stages: [pre-commit]
       - id: lint-prkit
         name: make lint-prkit
         entry: make lint-prkit
         language: system
         pass_filenames: false
-        files: '^(PRKit/|Package\.(swift|resolved)$|\.swiftlint\.yml$|\.swiftformat$)'
+        files: '^(PRKit/|Package\.(swift|resolved)$|\.swiftlint\.yml$|\.gitleaks\.toml$)'
         stages: [pre-commit]
       - id: lint-worker
         name: make lint-worker
         entry: make lint-worker
         language: system
         pass_filenames: false
-        files: '^(worker/|agent/|deploy/hosted/|scripts/ask-trace\.sh$)'
+        files: '^(worker/|agent/|deploy/hosted/|scripts/ask-trace\.sh$|\.gitleaks\.toml$)'
         stages: [pre-commit]
       - id: lint-workflows
         name: make lint-workflows
         entry: make lint-workflows
         language: system
         pass_filenames: false
-        files: '^\.github/workflows/'
+        files: '^\.github/(workflows/|actionlint\.yaml$)'
+        stages: [pre-commit]
+      # The two work domains are split by quotes, so gitleaks (.gitleaks.toml), which keeps them out of this public
+      # repo, passes this file.
+      - id: block-work-email-author
+        name: the author is not a work address
+        entry: >-
+          sh -c 'case "$(git var GIT_AUTHOR_IDENT)" in
+          *"@e"wa-services.com">"*|*"@f"inn-app.com">"*)
+          echo "This commit is by a work address; this repo takes jai@govindani.com:
+          git config user.email jai@govindani.com" >&2; exit 1;; esac'
+        language: system
+        always_run: true
+        pass_filenames: false
         stages: [pre-commit]
       # SwiftPM checks its packages out with git: in a worktree the hook's GIT_DIR and friends send that checkout to
       # this repo instead ("unable to read tree"). githooks(5): clear them with git rev-parse --local-env-vars.
@@ -77,16 +82,3 @@ repos:
         pass_filenames: false
         files: '^(worker/|agent/|PRKit/Tests/PRContractFixtures/Fixtures/)'
         stages: [pre-push]
-      # The two work domains are split by quotes, so gitleaks (.gitleaks.toml), which keeps them out of this public
-      # repo, passes this file.
-      - id: author
-        name: author is not a work address
-        entry: >-
-          sh -c 'case "$(git var GIT_AUTHOR_IDENT)" in
-          *"@e"wa-services.com">"*|*"@f"inn-app.com">"*)
-          echo "This commit is by a work address; this repo takes jai@govindani.com:
-          git config user.email jai@govindani.com" >&2; exit 1;; esac'
-        language: system
-        always_run: true
-        pass_filenames: false
-        stages: [pre-commit]

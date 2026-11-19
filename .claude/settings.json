@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -I \"$CLAUDE_PROJECT_DIR/.claude/hooks/format_file.py\""
+            "command": "python3 -I \"$CLAUDE_PROJECT_DIR/.claude/hooks/fix-edited-file.py\""
           }
         ]
       }
