@@ -13,6 +13,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: check-lint-prkit-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
+
 jobs:
   lint-prkit:
     # 24.04: SwiftLint's Linux build needs libxml2.so.2, which 26.04 (ubuntu-latest) no longer has.

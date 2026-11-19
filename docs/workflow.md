@@ -87,6 +87,12 @@ Each test workflow runs one test layer of one component. Each push workflow runs
 - **Claude Code**: `.claude/hooks/block-no-verify.py` stops a `git commit` or `git push` with `--no-verify`, `-n` or `SKIP=`. `.claude/hooks/fix-edited-file.py` runs `make fix` on each file an agent edits.
 - Orca installs the git hooks in each new worktree (`orca.yaml`).
 
+## Superseded main checks
+
+Main app and kit checks share a per-workflow, per-ref concurrency group. A newer main push cancels that workflow's
+older pending/running main check, keeping the shared Mac lane from replaying obsolete commits. Reusable checks on
+RC tags have separate groups and never cancel in progress; release serialization still holds through all gates.
+
 ## Disk use
 
 What each workflow leaves on its machine after it ends:
