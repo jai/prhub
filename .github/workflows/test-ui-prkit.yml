@@ -1,9 +1,8 @@
 # test-ui-prkit (make test-ui-prkit): PRKit's UI layer, the app-hosted rendering plan and then the UI plan, on an iPhone
 # and an iPad Simulator. In each prkit and ios release (release.yml), after the cheaper applicable ios and PRKit checks pass.
 # Prepare: mise (XcodeGen) and a Simulator of the job's own. Test: make test-ui-prkit on it, which also generates the
-# project. Keep: the result bundles, for 7 days. Clean up: delete the job's Simulator, its parallel-testing clones and its
-# logs, which live outside the work folder; the ephemeral Zoomies runner deletes the work folder (the checkout,
-# DerivedData, the result bundles) after the job (docs/workflow.md, "Disk use").
+# project. Keep: result bundles only on failure, for 3 days. Clean up: delete the job's Simulator, testing clones
+# and logs. GitHub discards the VM and all remaining job products afterward (docs/workflow.md, "Disk use").
 name: test-ui-prkit
 
 on:
@@ -26,7 +25,6 @@ jobs:
       SIMULATOR_NAME: prkit-ui-${{ github.run_id }}-${{ github.run_attempt }}-${{ strategy.job-index }}
     steps:
       - uses: actions/checkout@v5
-      # No cache restore: the Mac keeps mise's installs between jobs.
       - uses: jdx/mise-action@v5
         with:
           cache: false

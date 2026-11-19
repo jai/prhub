@@ -1,7 +1,6 @@
 # test-unit-ios (make test-unit-ios): swift test on PRHubUnitTests, on a Mac, with no Simulator. On each push to main
 # that changes the app or PRKit (the app contains it), and in each ios release (release.yml).
-# Prepare: the checkout. Test: make test-unit-ios. Clean up: nothing to do in the job; the ephemeral Zoomies runner
-# deletes its work folder (the checkout and .build) after the job (docs/workflow.md, "Disk use").
+# Prepare: the checkout. Test: make test-unit-ios. Clean up: GitHub discards the VM after the job.
 name: test-unit-ios
 
 on:

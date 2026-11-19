@@ -1,8 +1,7 @@
 # lint-ios: the app's lint (make lint-ios) on Linux, and a build of the shipped iPhone and Mac app (make build-ios) on a
 # Mac. On each push to main that changes the app or PRKit (the app contains it), and in each ios release (release.yml).
 # Prepare: Node (the design-token check) and mise (the pinned tools). Lint or build: the make target. Clean up: nothing
-# to do in the jobs. The GitHub-hosted VM is discarded after lint-ios; the ephemeral Zoomies runner deletes its work
-# folder (the checkout, the generated project and DerivedData) after build-ios (docs/workflow.md, "Disk use").
+# to do in the jobs. GitHub discards each VM after the job (docs/workflow.md, "Disk use").
 name: lint-ios
 
 on:
@@ -35,7 +34,6 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
-      # No cache restore: the Mac keeps mise's installs between jobs.
       - uses: jdx/mise-action@v5
         with:
           cache: false

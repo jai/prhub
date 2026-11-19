@@ -1,8 +1,7 @@
 # test-integration-prkit (make test-integration-prkit): swift test on PRKitIntegrationTests, PRKit's persistence,
 # contract fixtures, fonts and AppKit rendering, on a Mac. On each push to main that changes PRKit, and in each ios and
 # prkit release (release.yml).
-# Prepare: the checkout. Test: make test-integration-prkit. Clean up: nothing to do in the job; the ephemeral Zoomies runner
-# deletes its work folder (the checkout and .build) after the job (docs/workflow.md, "Disk use").
+# Prepare: the checkout. Test: make test-integration-prkit. Clean up: GitHub discards the VM after the job.
 name: test-integration-prkit
 
 on:
