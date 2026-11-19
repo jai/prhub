@@ -44,7 +44,7 @@ jobs:
         with:
           name: test-ui-prkit-${{ matrix.device }}
           path: app/build/results
-          retention-days: 3
+          retention-days: 1
           if-no-files-found: ignore
       - name: Delete the job's Simulator and its logs
         if: always()
