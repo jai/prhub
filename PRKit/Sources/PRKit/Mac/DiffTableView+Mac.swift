@@ -198,7 +198,8 @@
         /// A scroll view lays its parts out here, not in `layout()`: on every resize of the window.
         override func tile() {
             super.tile()
-            let width = max(contentView.bounds.width, CGFloat(DiffDocument.columns + 2) * metrics.columnWidth)
+            let codeWidth = CGFloat(DiffDocument.columns + 2) * metrics.columnWidth
+            let width = max(contentView.bounds.width, codeWidth + metrics.gutterWidth(digits: document.lineNumberDigits))
             if let column = table.tableColumns.first, column.width != width {
                 column.width = width
             }

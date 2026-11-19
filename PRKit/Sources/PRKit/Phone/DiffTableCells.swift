@@ -7,19 +7,48 @@
     final class DiffLineCell: UITableViewCell {
         static let identifier = "line"
         let label = UILabel()
+        let oldNumber = UILabel()
+        let newNumber = UILabel()
+        private var numberWidth: CGFloat = 0
 
         override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
             super.init(style: style, reuseIdentifier: reuseIdentifier)
             selectionStyle = .none
             label.lineBreakMode = .byClipping
-            label.frame = contentView.bounds.insetBy(dx: 6, dy: 0)
-            label.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            for number in [oldNumber, newNumber] {
+                number.textAlignment = .right
+                number.textColor = .secondaryLabel
+                contentView.addSubview(number)
+            }
             contentView.addSubview(label)
         }
 
         @available(*, unavailable)
         required init?(coder _: NSCoder) {
             fatalError("not used from a storyboard")
+        }
+
+        func configure(line: DiffDocument.Line, text: String, metrics: DiffMetrics, digits: Int) {
+            for field in [label, oldNumber, newNumber] {
+                field.font = metrics.code
+            }
+            label.text = text
+            oldNumber.text = line.oldLine > 0 ? String(line.oldLine) : ""
+            newNumber.text = line.newLine > 0 ? String(line.newLine) : ""
+            oldNumber.accessibilityLabel = line.oldLine > 0 ? "Old line \(line.oldLine)" : nil
+            newNumber.accessibilityLabel = line.newLine > 0 ? "New line \(line.newLine)" : nil
+            numberWidth = metrics.lineNumberWidth(digits: digits)
+            setNeedsLayout()
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            let step = numberWidth + DiffStyle.lineNumberGap
+            let inset = DiffStyle.lineInset
+            oldNumber.frame = CGRect(x: inset, y: 0, width: numberWidth, height: contentView.bounds.height)
+            newNumber.frame = oldNumber.frame.offsetBy(dx: step, dy: 0)
+            let codeX = inset + step * 2
+            label.frame = CGRect(x: codeX, y: 0, width: max(0, contentView.bounds.width - codeX - inset), height: contentView.bounds.height)
         }
     }
 

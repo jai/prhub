@@ -253,7 +253,8 @@
         /// Runs on every sideways scroll too, which is what keeps the file headers on screen.
         override func layoutSubviews() {
             super.layoutSubviews()
-            let width = max(bounds.width, CGFloat(DiffDocument.columns + 2) * metrics.columnWidth)
+            let codeWidth = CGFloat(DiffDocument.columns + 2) * metrics.columnWidth
+            let width = max(bounds.width, codeWidth + metrics.gutterWidth(digits: document.lineNumberDigits))
             // Without animation: the tab bar leaving grows this view inside the bars' animation, and an animated frame
             // animates the table's bounds, its scroll position included. The rows then freeze under the finger.
             UIView.performWithoutAnimation {

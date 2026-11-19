@@ -34,6 +34,7 @@ struct DiffDocument: Sendable {
     let lines: [Line]
     let files: [String]
     let fileChanges: [FileChange]
+    let lineNumberDigits: Int
 
     init(data: Data) {
         self.data = data
@@ -42,6 +43,8 @@ struct DiffDocument: Sendable {
         lines = parser.lines
         files = parser.files
         fileChanges = parser.fileChanges
+        let largestLine = parser.lines.reduce(0) { max($0, $1.oldLine, $1.newLine) }
+        lineNumberDigits = max(3, String(largestLine).count)
     }
 
     func isClipped(_ line: Line) -> Bool {

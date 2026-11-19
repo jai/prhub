@@ -256,6 +256,11 @@ cut from the front, so the file's name is what shows; the whole path is in the F
 **The diff stops at its sideways edges.** The code stops at its left and right edges, with no bounce, so the file header
 and the threads and notes, which stay where the screen is, are never pulled off it.
 
+**Diff line numbers.** Two quiet, right-aligned columns precede the code: old line, then new line. Added lines have
+only a new number, removed lines only an old one, and context lines have both. Headers and metadata have neither.
+The columns use the diff font and grow to fit the largest line number in the diff, with at least three digits of
+space per column and `Space.sm` after each. Line numbers scroll sideways with their code.
+
 **The diff font.** Code (a diff, a code block, a line quoted in the comment box) is `DiffFont`: one monospaced face and
 a size, chosen in Settings → Diff font and kept on the device. The default is the `code` token, the system's monospaced
 font at 12 pt. The size follows Dynamic Type. The faces other than the system's ship in PRKit with their OFL licences.

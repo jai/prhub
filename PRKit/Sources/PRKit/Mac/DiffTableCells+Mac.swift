@@ -61,13 +61,21 @@
     final class DiffLineView: NSTableCellView {
         static let identifier = NSUserInterfaceItemIdentifier("line")
         let label = NSTextField(labelWithString: "")
+        let oldNumber = NSTextField(labelWithString: "")
+        let newNumber = NSTextField(labelWithString: "")
+        private var numberWidth: CGFloat = 0
 
         override init(frame: NSRect) {
             super.init(frame: frame)
             identifier = Self.identifier
             label.lineBreakMode = .byClipping
             label.cell?.truncatesLastVisibleLine = false
-            label.autoresizingMask = [.width, .height]
+            for number in [oldNumber, newNumber] {
+                number.alignment = .right
+                number.textColor = .secondaryLabelColor
+                number.lineBreakMode = .byClipping
+                addSubview(number)
+            }
             addSubview(label)
         }
 
@@ -76,9 +84,27 @@
             fatalError("not used from a storyboard")
         }
 
+        func configure(line: DiffDocument.Line, text: String, metrics: DiffMetrics, digits: Int) {
+            for field in [label, oldNumber, newNumber] {
+                field.font = metrics.code
+            }
+            label.stringValue = text
+            oldNumber.stringValue = line.oldLine > 0 ? String(line.oldLine) : ""
+            newNumber.stringValue = line.newLine > 0 ? String(line.newLine) : ""
+            oldNumber.setAccessibilityLabel(line.oldLine > 0 ? "Old line \(line.oldLine)" : nil)
+            newNumber.setAccessibilityLabel(line.newLine > 0 ? "New line \(line.newLine)" : nil)
+            numberWidth = metrics.lineNumberWidth(digits: digits)
+            needsLayout = true
+        }
+
         override func layout() {
             super.layout()
-            label.frame = bounds.insetBy(dx: 6, dy: 0)
+            let step = numberWidth + DiffStyle.lineNumberGap
+            let inset = DiffStyle.lineInset
+            oldNumber.frame = NSRect(x: inset, y: 0, width: numberWidth, height: bounds.height)
+            newNumber.frame = oldNumber.frame.offsetBy(dx: step, dy: 0)
+            let codeX = inset + step * 2
+            label.frame = NSRect(x: codeX, y: 0, width: max(0, bounds.width - codeX - inset), height: bounds.height)
         }
     }
 
@@ -202,8 +228,10 @@
             let view = reused ?? DiffLineView()
             let line = document.lines[index]
             let text = document.text(of: line, limit: DiffDocument.columns)
-            view.label.font = metrics.code
-            view.label.stringValue = document.isClipped(line) ? "\(text)⋯" : text
+            view.configure(
+                line: line, text: document.isClipped(line) ? "\(text)⋯" : text,
+                metrics: metrics, digits: document.lineNumberDigits
+            )
             view.setAccessibilityIdentifier("diff-line-\(index)")
             return view
         }

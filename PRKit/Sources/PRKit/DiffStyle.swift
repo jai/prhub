@@ -11,6 +11,8 @@ import SwiftUI
 /// the font is `DiffMetrics`.
 enum DiffStyle {
     static let threadInset: CGFloat = 8
+    static let lineInset: CGFloat = 6
+    static let lineNumberGap = Space.sm
     static let selectedLine = PlatformColor.systemYellow.withAlphaComponent(0.32)
 
     static func background(_ kind: DiffDocument.Kind) -> PlatformColor {
@@ -67,6 +69,14 @@ struct DiffMetrics {
     /// The code's size and the file header's at the text size `scale`: the header a step bigger than the code.
     static func pointSizes(_ font: DiffFont, scale: CGFloat) -> (code: CGFloat, header: CGFloat) {
         (font.size * scale, (font.size + DiffFont.headingStep) * scale)
+    }
+
+    func lineNumberWidth(digits: Int) -> CGFloat {
+        ceil(CGFloat(digits) * columnWidth) + Space.xs
+    }
+
+    func gutterWidth(digits: Int) -> CGFloat {
+        (lineNumberWidth(digits: digits) + DiffStyle.lineNumberGap) * 2
     }
 
     /// The file header's path for `text` in `width`: the header's size when it fits, else smaller, down to the code's

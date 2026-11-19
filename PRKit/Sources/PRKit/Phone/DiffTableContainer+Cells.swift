@@ -9,10 +9,10 @@
             let cell = table.dequeueReusableCell(withIdentifier: DiffLineCell.identifier, for: indexPath)
             let line = document.lines[index]
             let text = document.text(of: line, limit: DiffDocument.columns)
-            if let label = (cell as? DiffLineCell)?.label {
-                label.font = metrics.code
-                label.text = document.isClipped(line) ? "\(text)⋯" : text
-            }
+            (cell as? DiffLineCell)?.configure(
+                line: line, text: document.isClipped(line) ? "\(text)⋯" : text,
+                metrics: metrics, digits: document.lineNumberDigits
+            )
             mark(cell, line: index, at: indexPath)
             cell.accessibilityIdentifier = "diff-line-\(index)"
             return cell
