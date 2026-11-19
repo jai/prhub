@@ -28,6 +28,11 @@ final class IntegrationResources {
         UsageAnalytics(hasProject: false, sink: nil, defaults: defaults())
     }
 
+    /// Alerts the system has not been asked about, and never is.
+    @MainActor func alertPermission(defaults: UserDefaults) -> PRHubAlertPermission {
+        PRHubAlertPermission(center: .init(status: { .notDetermined }, request: { false }), defaults: defaults)
+    }
+
     deinit {
         for domain in domains {
             UserDefaults(suiteName: domain)?.removePersistentDomain(forName: domain)
