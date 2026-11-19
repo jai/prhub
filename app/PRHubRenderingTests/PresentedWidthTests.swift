@@ -29,7 +29,7 @@
                 }
             }
             var samples = PRSampleSet.prHub
-            samples.askChat = PRHubScreenshotEnvironment.askChat(["-PRHubAskAnswered"])
+            samples.askChat = Self.longAnswer
             let environment = try PRHubEnvironment.offline(
                 config: DeviceConfig(features: [.askAI], login: PRSampleSet.prHubLogin), samples: samples,
                 worker: #require(URL(string: "https://rendering.invalid")), isSample: false,
@@ -56,6 +56,26 @@
                 )
             }
         }
+
+        /// A question and the agent's long answer to it, in Markdown with code.
+        private static let longAnswer = PRAskChat(
+            messages: [
+                PRAskChat.Message(id: "question-1", role: "you", text: "Is this change tested?", anchor: nil),
+                PRAskChat.Message(
+                    id: "answer-1", role: "agent",
+                    text: """
+                    Partly. The retry path is covered, but two things are not:
+
+                    - **Idempotency:** `retryPayment` sends the same payment key on every attempt, and \
+                    `PaymentServiceTests.testRetryReusesTheKey` checks it whether or not the flag is set.
+                    - **Reachability:** at this head, `recordOtpVerified` has no caller in `functions/src` outside tests, \
+                    so the recovery screen can never reach it. Either call it from `verifyOtp` or drop it from this PR.
+                    """,
+                    anchor: nil
+                ),
+            ],
+            isWorking: false, activity: nil, problem: nil, costCents: nil
+        )
 
         enum Presentation {
             case sheet, popover

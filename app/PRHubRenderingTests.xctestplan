@@ -11,7 +11,7 @@
     {
       "target": {
         "containerPath": "container:PRHub.xcodeproj",
-        "identifier": "PRHubRenderingTests",
+        "identifier": "2419566A6DE31178C39F4649",
         "name": "PRHubRenderingTests"
       },
       "parallelizable": false

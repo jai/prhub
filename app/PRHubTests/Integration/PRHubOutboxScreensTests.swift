@@ -18,7 +18,7 @@ struct PRHubOutboxScreensTests {
         let directory = resources.directory()
         let staging = resources.directory("staging")
         _ = PRSampleSet.prHub.seed(in: staging, defaults: resources.defaults())
-        let worker = OutboxWorker(reads: PRHubStubWorker.Transport(samples: .prHub, staging: staging, isOffline: false))
+        let worker = OutboxWorker(reads: StandInWorker(samples: .prHub, staging: staging, isOffline: false))
         let changes = AsyncStream<Void>.makeStream()
         let file = directory.appending(path: "outbox.json")
         let access = PRViewerAccess(baseURL: { OutboxWorker.url }, bearer: { "outbox" }, discard: {})
@@ -64,20 +64,22 @@ struct PRHubOutboxScreensTests {
         #expect(try Self.saved(file).count == 2, "both wait in the outbox's file")
 
         await worker.setDown(false)
+        // The outbox saves its file before it signals a change, so the file is checked on each signal.
         try await until(changes.stream) { !outbox.isQueued(.write, about: Self.checkout) &&
-            !outbox.isQueued(.question, about: Self.checkout)
+            !outbox.isQueued(.question, about: Self.checkout) && (try? Self.saved(file).isEmpty) == true
         }
         #expect(await worker.received == ["write", "ask"], "in order, once each")
-        #expect(try Self.saved(file).isEmpty)
         #expect(model.lateRefusal == nil)
 
         await worker.setDown(true)
         _ = try await model.write(.comment(body: "Please refuse this"), to: Self.checkout)
         await worker.setDown(false)
-        try await until(changes.stream) { !outbox.isQueued(.write, about: Self.checkout) }
+        // A refusal is not tried again: it leaves the file.
+        try await until(changes.stream) { !outbox.isQueued(.write, about: Self.checkout) &&
+            (try? Self.saved(file).isEmpty) == true
+        }
         let refusal = try #require(model.lateRefusal, "a refusal after the screen's wait is said on the list")
         #expect(refusal.hasPrefix("GitHub refused") && refusal.contains("Please refuse this"))
-        #expect(try Self.saved(file).isEmpty, "a refusal is not tried again")
     }
 
     /// Waits on the outbox's changes until `done` holds.
@@ -97,12 +99,12 @@ struct PRHubOutboxScreensTests {
 /// down on the test's word. Down, every request fails as with no network, and the outbox's wait lasts until it is up.
 private actor OutboxWorker: HTTPTransport {
     static let url = URL(string: "https://outbox.invalid")!
-    private let reads: PRHubStubWorker.Transport
+    private let reads: StandInWorker
     private var isDown = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
     private(set) var received: [String] = []
 
-    init(reads: PRHubStubWorker.Transport) {
+    init(reads: StandInWorker) {
         self.reads = reads
     }
 

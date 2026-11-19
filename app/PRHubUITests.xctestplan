@@ -6,25 +6,15 @@
       "options": {}
     }
   ],
-  "defaultOptions": {
-    "maximumTestRepetitions": 2,
-    "testRepetitionMode": "retryOnFailure"
-  },
+  "defaultOptions": {},
   "testTargets": [
     {
+      "parallelizable": true,
       "target": {
         "containerPath": "container:PRHub.xcodeproj",
         "identifier": "ECC363D5E63C730E3779F386",
         "name": "PRHubUITests"
       }
-    },
-    {
-      "target": {
-        "containerPath": "container:PRHub.xcodeproj",
-        "identifier": "PRHubRenderingTests",
-        "name": "PRHubRenderingTests"
-      },
-      "parallelizable": false
     }
   ],
   "version": 1

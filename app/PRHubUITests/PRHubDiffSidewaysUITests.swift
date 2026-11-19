@@ -1,8 +1,8 @@
 import XCTest
 
 /// The code scrolls sideways and nothing else does: at the left edge a swipe right moves nothing, and the file header
-/// and a key line's note stay whole and in view wherever the code is. On the sample PRs, at the default text size and
-/// the largest. Pictures go to `SCREENSHOTS_DIR` when set.
+/// and a key line's note stay whole and in view wherever the code is; in the largest text the note stays clear of its
+/// stepper. On the sample PRs, at the default text size and the largest. Pictures go to `SCREENSHOTS_DIR` when set.
 @MainActor
 final class PRHubDiffSidewaysUITests: PRHubUITestCase {
     /// Review alerts already declined: the offer came up over the PR on an iPad and took the tap meant for Review
@@ -33,18 +33,12 @@ final class PRHubDiffSidewaysUITests: PRHubUITestCase {
         try headerAndNoteStay("largest", textSize: Self.largest)
     }
 
-    /// A long path at Jai's text size and the largest: pictures of how much of it the header shows. Whether the whole
-    /// file name fits is `DiffFileHeaderTests`'s: the label's text is the whole path either way.
-    func testALongPathAtTheDefaultTextSize() throws {
-        try longPath("default", textSize: nil)
-    }
-
-    func testALongPathAtXXXLText() throws {
-        try longPath("xxxl", textSize: "UICTContentSizeCategoryXXXL")
-    }
-
-    func testALongPathInTheLargestText() throws {
-        try longPath("largest", textSize: Self.largest)
+    /// In the largest text the note ran down to the stepper (Xcode Cloud's picture, 2026-11-14): 2 pt apart.
+    func testTheNoteIsClearOfTheStepperInTheLargestText() throws {
+        try openKeyLineNote(textSize: Self.largest)
+        let note = app.descendants(matching: .any)["key-line-note"]
+        let stepper = app.buttons["key-line-next"]
+        XCTAssertLessThanOrEqual(note.frame.maxY + 8, stepper.frame.minY, "the note is clear of the stepper")
     }
 
     private func swipeRightAtTheLeftEdge(_ name: String, textSize: String?) throws {
@@ -80,25 +74,6 @@ final class PRHubDiffSidewaysUITests: PRHubUITestCase {
         XCTAssertTrue(after.isNoteInside, "\(name): the note is inside the screen, \(after.note)")
     }
 
-    private func longPath(_ name: String, textSize: String?) throws {
-        app.launch(
-            ["-PRHubPaired", "-PRHubLongDiff"] + Self.noAlertsOffer
-                + (textSize.map { ["-UIPreferredContentSizeCategoryName", $0] } ?? []),
-            appearance: .light
-        )
-        openPR("Give the deploy team access to staging")
-        let diff = app.buttons["pr-files-changed"]
-        XCTAssertTrue(app.reveal(diff), "Files changed, under the PR's summary")
-        diff.tap()
-        XCTAssertTrue(app.buttons["file-header-0"].waitForExistence(timeout: 5))
-        try recordScreenshot("diff-sideways-long-path-\(name)")
-    }
-
-    /// An iPad's regular width: the list beside the PR, and the code maybe narrow enough to fit.
-    private var isWide: Bool {
-        app.windows.firstMatch.horizontalSizeClass == .regular
-    }
-
     /// A finger on the first code line under the pinned header, `start` of the way across the diff (from its header's
     /// path to its viewed mark: an iPad's list may be beside it), moved `distance` sideways.
     @discardableResult
@@ -130,25 +105,6 @@ final class PRHubDiffSidewaysUITests: PRHubUITestCase {
         return positions
     }
 
-    /// A sample PR's row on For review, scrolled to: at the largest text size a row is taller than half the screen.
-    private func openPR(_ title: String) {
-        let row = app.staticTexts[title]
-        // Up to 30 s: right after a launch GitHub's Macs took over 10 s to show the tabs (release run 44207540993).
-        XCTAssertTrue(app.tab(.settings).waitForExistence(timeout: 30))
-        // On a wide screen, in the list's own column: the PR's page is beside it.
-        let list = app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.7))
-        for _ in 0 ..< 25 where !row.exists || (!isWide && !row.isHittable) {
-            if isWide {
-                list.press(forDuration: 0.05, thenDragTo: list.withOffset(CGVector(dx: 0, dy: -300)), withVelocity: .slow,
-                           thenHoldForDuration: 0.1)
-            } else {
-                app.swipeUp(velocity: .slow)
-            }
-        }
-        XCTAssertTrue(row.exists, title)
-        row.tap()
-    }
-
     /// The checkout sample's Files changed, its first key line's note open under its line.
     private func openKeyLineNote(textSize: String?) throws {
         app.launch(
@@ -156,7 +112,7 @@ final class PRHubDiffSidewaysUITests: PRHubUITestCase {
                 + (textSize.map { ["-UIPreferredContentSizeCategoryName", $0] } ?? []),
             appearance: .light
         )
-        openPR("Show a retry button when checkout fails")
+        app.openPR("Show a retry button when checkout fails")
         let review = app.buttons["pr-review-changes"]
         XCTAssertTrue(app.reveal(review), "Review changes, under the PR's summary")
         review.tap()

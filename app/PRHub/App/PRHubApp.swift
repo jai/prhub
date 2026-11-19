@@ -9,8 +9,8 @@ struct PRHubApp: App {
         @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     #endif
 
-    /// `-PRHubPaired` (with `-PRHubNoAI` or `-PRHubSettings`): PRHub over the sample PRs as if paired, for the UI
-    /// tests' screenshots. Debug only.
+    /// A fixture launch (`-PRHubPaired`, `-PRHubHosted`, `-PRHubFirstRun`): PRHub over the sample PRs and a fake
+    /// Worker, for the UI tests, the screenshot captures and Tester Army (`PRHubScreenshotEnvironment`). Debug only.
     @MainActor private static let screenshotEnvironment: PRHubEnvironment? = {
         #if DEBUG
             PRHubScreenshots.environment()
@@ -87,13 +87,6 @@ struct PRHubApp: App {
                         .environment(\.openURL, OpenURLAction { url in
                             url.scheme == PRHubBuild.settingsURL.scheme ? .systemAction : .handled
                         })
-                        .overlay(alignment: .bottomTrailing) {
-                            if ProcessInfo.processInfo.arguments.contains("-PRHubOutboxCheck") {
-                                Text(PRHubOutboxCheck.control.status)
-                                    .accessibilityIdentifier("prhub-ui-fixture-status")
-                                    .allowsHitTesting(false)
-                            }
-                        }
                 } else {
                     content(.shared)
                 }

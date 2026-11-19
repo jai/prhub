@@ -6,31 +6,25 @@
         import UIKit
     #endif
 
-    /// Debug builds only: the launch arguments the UI tests use to put PRHub on screen with no Worker.
+    /// Debug builds only: the launch arguments the UI tests and the screenshot captures use to put PRHub on screen with no
+    /// Worker. Tester Army's modes (e2e/e2e.config.ts) are the same ones.
     /// - `-PRHubFirstRun`: onboarding, as on a new phone, with a pairing that is always refused and a fake hosted Worker:
     ///   Sign in with GitHub signs in as `octocat` at once (`-PRHubSignInDenied`: GitHub says the person cancelled), and the
     ///   list is the samples. The ways in follow the build's flags; `-PRHubSelfHosted YES` (any flag, `PRHubBuild`) changes
     ///   one.
     /// - `-PRHubHosted`: signed in on that fake hosted Worker. With `-PRHubSignedOut` GitHub signed the person out; with
     ///   `-PRHubHostedEmpty` the list is empty; with `-PRHubAnthropicKey` a key is set; with `-PRHubSettings` it opens on
-    ///   Settings; with `-PRHubNoLinear` the PRs come as the Worker sends them before Linear is connected, so a PR's
-    ///   ticket asks to connect it. The App is installed on `octocat`, on two of acme's repos and, suspended, on initech; with
+    ///   Settings. The App is installed on `octocat`, on two of acme's repos and, suspended, on initech; with
     ///   `-PRHubInstallations none` on no account, and with `-PRHubInstallations onReturn` on `octocat` alone until the
     ///   app leaves the foreground (as for GitHub), and on acme too when it comes back.
-    /// - `-PRHubPaired`: the PRs and Settings over the sample PRs as if paired, every AI feature on. With `-PRHubAskWorking`
-    ///   Ask has a question the agent is still on; with `-PRHubAskAnswered` the agent's long answer to it. With `-PRHubNoAI` the
-    ///   Worker has no model key; with `-PRHubSettings` it opens on Settings; with `-PRHubLongDiff` For review starts with a
-    ///   PR whose one file is longer than the screen, for the diff's bars; with `-PRHubOpen <link>` it opens that PR as a
-    ///   link would (`…/pull/N/files` on its diff); with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View;
-    ///   with `-PRHubRefuseFirstReview` the first review sent is refused, so its toast shows Retry, and each review takes
-    ///   3 seconds to answer. With `-PRHubOffline` the device counts as offline, under the offline banner. With
-    ///   `-PRHubNewerBuild <n>` it checks for updates, and the config's `app_latest` names this
-    ///   build's version with a build number `n` higher (0: this build).
+    /// - `-PRHubPaired`: the PRs and Settings over the sample PRs as if paired, every AI feature on. With `-PRHubSettings`
+    ///   it opens on Settings; with `-PRHubLongDiff` For review starts with a PR whose one file is longer than the screen,
+    ///   for the diff's bars; with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View; with
+    ///   `-PRHubNotUpToDate` the list opens under its "Not up to date" line.
     ///
-    /// Each launch starts on empty storage of its own (`PRHubUITestResources`); `-PRHubKeepState` keeps the last
-    /// launch's. `-prkit.diffFont face:size`
-    /// sets one for the run. `-PRHubAppearance dark` (or `light`) sets the run's appearance whatever the Simulator's is: on
-    /// CI's Simulator `XCUIDevice.shared.appearance` left everything light, so every "dark" picture came out light.
+    /// Each launch starts on empty storage of its own (`PRHubUITestResources`). `-prkit.diffFont face:size` sets one for
+    /// the run. `-PRHubAppearance dark` (or `light`) sets the run's appearance whatever the Simulator's is: on CI's
+    /// Simulator `XCUIDevice.shared.appearance` left everything light, so every "dark" picture came out light.
     public enum PRHubScreenshotEnvironment {
         @MainActor public static func environment(
             usage: @MainActor (UserDefaults) -> UsageAnalytics, testFlightGroup: TestFlightGroup
@@ -42,12 +36,6 @@
             if arguments.contains("-PRHubFirstRun") {
                 return fakeHosted(signedIn: false, arguments: arguments, usage: usage, resources: resources)
             }
-            if arguments.contains("-PRHubStubWorker") {
-                return PRHubStubWorker.environment(arguments, resources: resources)
-            }
-            if arguments.contains("-PRHubOutboxCheck") {
-                return PRHubOutboxCheck.environment(resources)
-            }
             if arguments.contains("-PRHubHosted") {
                 let environment = fakeHosted(signedIn: true, arguments: arguments, usage: usage, resources: resources)
                 if arguments.contains("-PRHubSettings") {
@@ -56,82 +44,28 @@
                 return environment
             }
             // `-PRHubPaired`, the one fixture mode left.
-            let features: Set<DeviceFeature> = arguments.contains("-PRHubNoAI")
-                ? [.push] : [.askAI, .keyLines, .rewrite, .push]
-            let samples = pairedSamples(arguments)
-            let newer = UserDefaults.standard.string(forKey: "PRHubNewerBuild").flatMap { Int($0) }
             let environment = PRHubEnvironment.offline(
-                config: DeviceConfig(features: features, login: PRSampleSet.prHubLogin, appLatest: Self.appLatest(newer)),
-                samples: samples,
+                config: DeviceConfig(features: [.askAI, .keyLines, .rewrite, .push], login: PRSampleSet.prHubLogin),
+                samples: pairedSamples(arguments),
                 worker: URL(string: "https://pr-review.octocat.workers.dev")!,
-                isSample: false, usage: usage(resources.defaults), checksUpdates: newer != nil,
-                testFlightGroup: testFlightGroup, storage: resources.storage(), build: .current,
-                alertPermission: resources.alertPermission(), network: PRNetwork(isOnline: true)
+                isSample: false, usage: usage(resources.defaults), testFlightGroup: testFlightGroup,
+                storage: resources.storage(), build: .current, alertPermission: resources.alertPermission(),
+                network: PRNetwork(isOnline: true)
             )
             resources.isolateAlerts(in: environment)
             if arguments.contains("-PRHubSettings") {
                 environment.navigation.selectedTab = .settings
-            }
-            // On the Mac this opens the Feedback window; the phone has the tab only where the Worker serves it.
-            if arguments.contains("-PRHubFeedback") {
-                environment.navigation.selectedTab = .feedback
-            }
-            if let index = arguments.firstIndex(of: "-PRHubOpen"), arguments.indices.contains(index + 1) {
-                environment.prs.open(text: arguments[index + 1])
-            }
-            if arguments.contains("-PRHubOffline") {
-                environment.prs.network.holdOffline()
             }
             return environment
         }
 
         private static func pairedSamples(_ arguments: [String]) -> PRSampleSet {
             var samples: PRSampleSet = arguments.contains("-PRHubLongDiff") ? .prHubLongDiff : .prHub
-            samples.askChat = askChat(arguments)
-            if arguments.contains("-PRHubRefuseFirstReview") {
-                samples.refusesFirstReview = "GitHub didn't answer in time."
-                // Long enough for a loaded test Mac, and a recording, to see each step.
-                samples.reviewDelay = .seconds(3)
-            }
             // The list under its "Not up to date" line.
             if arguments.contains("-PRHubNotUpToDate") {
                 samples.notUpToDate = "1 of 125 PRs could not be downloaded and show their last copy. Refresh to try again."
             }
             return samples
-        }
-
-        /// `-PRHubAskWorking`: a question the agent is on. `-PRHubAskAnswered`: its long answer, in Markdown with code.
-        static func askChat(_ arguments: [String]) -> PRAskChat? {
-            let question = PRAskChat.Message(id: "question-1", role: "you", text: "Is this change tested?", anchor: nil)
-            if arguments.contains("-PRHubAskWorking") {
-                return PRAskChat(messages: [question], isWorking: true, activity: nil, problem: nil, costCents: nil)
-            }
-            guard arguments.contains("-PRHubAskAnswered") else {
-                return nil
-            }
-            let answer = PRAskChat.Message(
-                id: "answer-1", role: "agent",
-                text: """
-                Partly. The retry path is covered, but two things are not:
-
-                - **Idempotency:** `retryPayment` sends the same payment key on every attempt, and \
-                `PaymentServiceTests.testRetryReusesTheKey` checks it whether or not the flag is set.
-                - **Reachability:** at this head, `recordOtpVerified` has no caller in `functions/src` outside tests, \
-                so the recovery screen can never reach it. Either call it from `verifyOtp` or drop it from this PR.
-                """,
-                anchor: nil
-            )
-            return PRAskChat(messages: [question, answer], isWorking: false, activity: nil, problem: nil, costCents: nil)
-        }
-
-        /// `-PRHubNewerBuild <n>`'s: this build's version, its build number plus `n`, for both groups.
-        private static func appLatest(_ newer: Int?) -> DeviceConfig.AppLatest? {
-            guard let newer else {
-                return nil
-            }
-            let running = AppBuild.running
-            let build = AppBuild(version: running.version, build: String((Int(running.build) ?? 0) + newer))
-            return DeviceConfig.AppLatest(internal: build, public: build)
         }
 
         /// The hosted Worker's stand-in: sign-in, sign-out, Delete Account and the Anthropic key answer at once, and the
@@ -143,7 +77,7 @@
             let build = PRHubBuild.current
             let worker = build.hostedURL ?? URL(string: "https://prhub.example.workers.dev")!
             let endpoint = WorkerEndpoint(store: resources.endpointStore)
-            if signedIn, resources.isFresh {
+            if signedIn {
                 try? endpoint.save(worker)
             }
             let defaults = resources.configurationDefaults
@@ -185,11 +119,8 @@
                 fetchConfig: { _ in state.config }, forgetSecret: {}, defaults: defaults, build: build,
                 usage: UsageAnalytics(hasProject: false, sink: nil, defaults: defaults), hosted: hosted
             )
-            var samples: PRSampleSet = arguments.contains("-PRHubHostedEmpty")
+            let samples: PRSampleSet = arguments.contains("-PRHubHostedEmpty")
                 ? PRSampleSet(samples: [], mergedReviewed: [], mergedMine: [], answersOnPhone: true) : .prHub
-            if arguments.contains("-PRHubNoLinear") {
-                samples = samples.withoutLinear
-            }
             let environment = PRHubEnvironment(
                 connection: connection, storage: resources.storage(sampleConfiguration: resources.sampleDefaults),
                 alertPermission: resources.alertPermission(), samples: samples, usage: usage(resources.defaults),
@@ -288,35 +219,6 @@
     }
 
     extension PRSampleSet {
-        /// As the hosted Worker answers an account without Linear (docs/api.md, "Rows and details"): a PR's page has
-        /// the keys its title names, each the key alone, and no row has a ticket.
-        var withoutLinear: PRSampleSet {
-            PRSampleSet(
-                samples: samples.map { sample in
-                    var row = sample.row
-                    row.ticket = nil
-                    row.tickets = []
-                    return Sample(
-                        row: row, detail: Self.unresolved(sample.detail, title: row.title), diff: sample.diff,
-                        keyLines: sample.keyLines
-                    )
-                },
-                mergedReviewed: mergedReviewed, mergedMine: mergedMine, answersOnPhone: answersOnPhone
-            )
-        }
-
-        private static func unresolved(_ detail: String, title: String) -> String {
-            guard var object = (try? JSONSerialization.jsonObject(with: Data(detail.utf8))) as? [String: Any],
-                  let tickets = object["tickets"] as? [[String: Any]]
-            else {
-                return detail
-            }
-            object["tickets"] = tickets.compactMap { $0["key"] as? String }.filter { title.contains("[\($0)]") }
-                .map { ["key": $0, "found": NSNull()] }
-            return (try? JSONSerialization.data(withJSONObject: object)).flatMap { String(data: $0, encoding: .utf8) }
-                ?? detail
-        }
-
         /// The samples, with two more PRs first on For review: one file longer than any phone's screen, and three such files.
         static let prHubLongDiff = PRSampleSet(
             samples: [longDiff, longFiles] + prHub.samples, mergedReviewed: [], mergedMine: [], answersOnPhone: true

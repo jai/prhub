@@ -12,9 +12,9 @@ struct PRHubRelaunchTests {
     private nonisolated static let worker = URL(string: "https://stub-worker.invalid")!
     private static let build = PRHubBuild(hostedURL: nil, signInWithGitHub: false, selfHosted: true, samples: true)
 
-    /// PRHub over `PRHubStubWorker`'s stand-in Worker, answering from the sample PRs, with everything on disk.
+    /// PRHub over the stand-in Worker (`StandInWorker`), answering from the sample PRs, with everything on disk.
     private func launch(directory: URL, defaults: UserDefaults, staging: URL, isOnline: Bool) -> PRHubEnvironment {
-        let transport = PRHubStubWorker.Transport(samples: .prHub, staging: staging, isOffline: !isOnline)
+        let transport = StandInWorker(samples: .prHub, staging: staging, isOffline: !isOnline)
         return PRHubEnvironment.offline(
             config: DeviceConfig(features: [.askAI, .keyLines], login: PRSampleSet.prHubLogin),
             access: PRViewerAccess(baseURL: { Self.worker }, bearer: { "stub" }, discard: {}), worker: Self.worker,

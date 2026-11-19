@@ -1,6 +1,6 @@
 import XCTest
 
-/// A PRHub UI test. Each fixture launch starts on empty storage of its own; `relaunch()` keeps it.
+/// A PRHub UI test. Each fixture launch starts on empty storage of its own.
 @MainActor
 class PRHubUITestCase: XCTestCase {
     let app = XCUIApplication()
@@ -17,13 +17,6 @@ class PRHubUITestCase: XCTestCase {
         XCUIDevice.shared.orientation = originalOrientation
         app.terminate()
         try await super.tearDown()
-    }
-
-    /// Quits and opens the app again on what the last launch left, with `arguments` in place of its own.
-    func relaunch(_ arguments: [String]) {
-        app.terminate()
-        app.launchArguments = arguments + ["-PRHubKeepState"]
-        app.launch()
     }
 
     /// Polls `condition` every 0.1 seconds until it holds or `timeout` passes.
@@ -201,5 +194,33 @@ extension XCUIApplication {
         }
         let tabBar = tabBars.firstMatch
         return (top, tabBar.exists ? tabBar.frame.minY : frame.maxY)
+    }
+}
+
+@MainActor
+extension XCUIApplication {
+    /// An iPad's regular width: the list beside the PR.
+    var isWide: Bool {
+        windows.firstMatch.horizontalSizeClass == .regular
+    }
+
+    /// A sample PR's row on For review, scrolled to and opened: at the largest text size a row is taller than half the
+    /// screen.
+    func openPR(_ title: String) {
+        let row = staticTexts[title]
+        // Up to 30 s: right after a launch GitHub's Macs took over 10 s to show the tabs (release run 44207540993).
+        XCTAssertTrue(tab(.settings).waitForExistence(timeout: 30))
+        // On a wide screen, in the list's own column: the PR's page is beside it.
+        let list = coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.7))
+        for _ in 0 ..< 25 where !row.exists || (!isWide && !row.isHittable) {
+            if isWide {
+                list.press(forDuration: 0.05, thenDragTo: list.withOffset(CGVector(dx: 0, dy: -300)), withVelocity: .slow,
+                           thenHoldForDuration: 0.1)
+            } else {
+                swipeUp(velocity: .slow)
+            }
+        }
+        XCTAssertTrue(row.exists, title)
+        row.tap()
     }
 }

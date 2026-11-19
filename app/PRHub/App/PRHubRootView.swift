@@ -56,11 +56,6 @@ struct PRHubRootView: View {
             wasShowing && !isShowing && connection.isPaired
         }
         .onOpenURL { url in
-            #if DEBUG
-                if PRHubOutboxCheck.control.open(url) {
-                    return
-                }
-            #endif
             if url == PRHubBuild.settingsURL {
                 environment.navigation.selectedTab = .settings
                 return

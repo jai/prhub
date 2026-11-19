@@ -1,0 +1,21 @@
+{
+  "configurations": [
+    {
+      "id": "8E4C2B71-5A3D-4F6E-9C10-2D7B8A1E4F53",
+      "name": "Default",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {},
+  "testTargets": [
+    {
+      "parallelizable": true,
+      "target": {
+        "containerPath": "container:PRHub.xcodeproj",
+        "identifier": "6EFE313A693565DE3DD59575",
+        "name": "PRHubScreenshots"
+      }
+    }
+  ],
+  "version": 1
+}

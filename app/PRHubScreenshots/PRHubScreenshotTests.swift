@@ -1,5 +1,7 @@
 import XCTest
 
+/// Screenshot captures, not tests: nothing here compares a picture with anything. They wait for each screen and keep
+/// its picture, for review and the App Store, and run from `PRHubScreenshots.xctestplan`, never the release gate.
 /// Pictures of every screen in light, dark and the largest accessibility text, over the sample PRs: onboarding, the
 /// list, a PR and its grouped checks, its diff with the panel open and on a key line under the review bar, and Settings; then Sign in with GitHub's screens over the fake hosted Worker:
 /// onboarding with every way in, a refused sign-in, the account's Settings with and without a key, Delete Account,
@@ -213,9 +215,6 @@ final class PRHubScreenshotTests: PRHubUITestCase {
         let note = app.descendants(matching: .any)["key-line-note"]
         XCTAssertTrue(note.waitForExistence(timeout: 5))
         try picture("4-diff-key-line", look)
-        // In the largest text the note ran down to the stepper (Xcode Cloud's picture, 2026-11-14): 2 pt apart.
-        let stepper = app.buttons["key-line-next"]
-        XCTAssertLessThanOrEqual(note.frame.maxY + 8, stepper.frame.minY, "the note is clear of the stepper")
     }
 
     private func settings(_ look: Look) throws {

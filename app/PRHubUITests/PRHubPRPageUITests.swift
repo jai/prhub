@@ -1,7 +1,7 @@
 import XCTest
 
-/// A PR's page over the sample PRs, where only a screen shows it: the review box above the keyboard, Open in GitHub's
-/// menu, and Ask's long answer across the chat. What the page decides is `PRHubScreenTests`'. Pictures go to
+/// A PR's page over the sample PRs, where only a screen shows it: the review box above the keyboard, and Open in GitHub's
+/// menu. What the page decides is `PRHubScreenTests`'; Ask's width is `PresentedWidthTests`'. Pictures go to
 /// `SCREENSHOTS_DIR` when it is set.
 @MainActor
 final class PRHubPRPageUITests: PRHubUITestCase {
@@ -47,26 +47,6 @@ final class PRHubPRPageUITests: PRHubUITestCase {
         try picture("open-in-github-menu")
         app.buttons["pr-link-copy"].tap()
         XCTAssertTrue(app.buttons["pr-review-changes"].waitForExistence(timeout: 5), "still on the PR, not in a browser")
-    }
-
-    /// An agent's long answer takes most of the chat's width from its leading edge, so its words don't break mid-word
-    /// (UI bug 015, seen on a Mac; `AskSheetWidthTests` pictures the sheet there).
-    func testALongAnswerTakesTheChatsWidth() throws {
-        launch(["-PRHubAskAnswered"])
-        openCheckout()
-        app.buttons["pr-ask"].tap()
-        let answer = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'recovery screen'")).firstMatch
-        XCTAssertTrue(answer.waitForExistence(timeout: 5))
-        let field = app.descendants(matching: .any)["sessionReplyField"].firstMatch
-        // The chat's width: from the reply box's leading edge to the send button's trailing one.
-        let width = app.buttons["sessionReplySend"].frame.maxX - field.frame.minX
-        try picture("ask-long-answer")
-        XCTAssertGreaterThan(
-            answer.frame.width, width * 0.6, "the answer is \(Int(answer.frame.width)) pt of \(Int(width))"
-        )
-        XCTAssertLessThan(
-            answer.frame.minX - field.frame.minX, width * 0.1, "the answer starts at the chat's leading edge"
-        )
     }
 
     // MARK: - Helpers

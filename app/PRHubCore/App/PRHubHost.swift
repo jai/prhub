@@ -24,7 +24,7 @@ final class PRHubPRHost: PRKitHost {
         self.usage = usage
     }
 
-    /// A Debug run's stand-in Worker (`PRHubStubWorker`); set before the PR screens are made, which read it once.
+    /// A test's stand-in Worker; set before the PR screens are made, which read it once.
     var transportOverride: (any HTTPTransport)?
 
     var transport: any HTTPTransport {
@@ -141,8 +141,7 @@ final class PRHubPRHost: PRKitHost {
         link: PRHubBuild.appInstallURL
     )
 
-    /// `PRHubOutbox` for a paired or signed-in Worker; none for the samples. A Debug build's `-PRHubOutboxCheck` sets
-    /// its own stand-in.
+    /// `PRHubOutbox` for a paired or signed-in Worker; none for the samples.
     var outbox: (any PRKitOutbox)?
     var apnsEnvironment: String {
         APNSEnvironment.current()

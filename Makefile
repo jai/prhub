@@ -7,7 +7,9 @@
 #   make lint-workflows           actionlint
 #   make test-unit-ios            swift test on PRHubUnitTests
 #   make test-unit-prkit          swift test on PRKitUnitTests
-#   make test-ui-ios              the UI test plan (SIM_NAME picks the Simulator: iPhone 17 by default)
+#   make test-ui-ios              the UI test plan, in parallel on Simulator clones (SIM_NAME or SIMULATOR picks it)
+#   make test-rendering-ios       the app-hosted rendering test plan, on the same Simulator
+#   make screenshots-ios          every screen's picture, in app/build/screenshots; gates nothing
 #   make test-unit-worker         Worker and agent unit tests
 #   make test-integration-ios     app persistence and Keychain tests
 #   make test-integration-prkit   PRKit persistence, contract and font tests
@@ -18,8 +20,8 @@
 # Tools: mise (https://mise.jdx.dev) installs each pinned tool on first use. GNU Make 3.81 (macOS's): no .ONESHELL.
 
 SHELL := /bin/bash
-.PHONY: lint-ios lint-prkit lint-worker lint-workflows test-unit-ios test-unit-prkit test-ui-ios test-unit-worker \
-	test-integration-worker test-integration-ios test-integration-prkit lint all-tests
+.PHONY: lint-ios lint-prkit lint-worker lint-workflows test-unit-ios test-unit-prkit test-ui-ios test-rendering-ios screenshots-ios \
+	test-unit-worker test-integration-worker test-integration-ios test-integration-prkit lint all-tests
 
 X := mise exec
 ACTIONLINT  := $(X) actionlint@1.7.12 -- actionlint
@@ -38,7 +40,7 @@ UI_DESTINATION = $(if $(SIMULATOR),id=$(SIMULATOR),platform=iOS Simulator$(COMMA
 
 lint-ios:
 	$(SWIFTFORMAT) app --lint
-	$(SWIFTLINT) app/PRHub app/PRHubCore app/PRHubTests app/PRHubUITests app/PRHubRenderingTests app/PRHubE2ETests app/PRHubPerformanceTests
+	$(SWIFTLINT) app/PRHub app/PRHubCore app/PRHubTests app/PRHubUITests app/PRHubRenderingTests app/PRHubScreenshots app/PRHubE2ETests app/PRHubPerformanceTests
 	$(MAKE) -C app design-check
 	$(SHELLCHECK) app/ci_scripts/ci_post_clone.sh
 	$(GITLEAKS) app
@@ -75,12 +77,22 @@ test-integration-ios:
 test-integration-prkit:
 	swift test -j 4 --filter PRKitIntegrationTests
 
-# The samples flow and a picture of every screen, in app/build/screenshots.
+# Each plan writes its results to app/build/results/<plan>.xcresult; $(2) sets the run's environment.
+XCODEBUILD_TEST = cd app && rm -rf build/results/$(1).xcresult && set -o pipefail && $(2) xcodebuild test \
+	-project PRHub.xcodeproj -scheme PRHub -testPlan $(1) -destination '$(UI_DESTINATION)' \
+	-derivedDataPath build/DerivedData -resultBundlePath build/results/$(1).xcresult -jobs 4
+
+# Screens and interactions only a running app can show. A test that fails is run once more.
 test-ui-ios:
-	cd app && set -o pipefail && TEST_RUNNER_SCREENSHOTS_DIR=$(CURDIR)/app/build/screenshots xcodebuild test \
-		-project PRHub.xcodeproj -scheme PRHub -testPlan PRHubUITests \
-		-destination '$(UI_DESTINATION)' -derivedDataPath build/DerivedData \
-		-retry-tests-on-failure -test-iterations 2 -jobs 4
+	$(call XCODEBUILD_TEST,PRHubUITests) -parallel-testing-enabled YES -retry-tests-on-failure -test-iterations 2
+
+# Rendering that needs the app host, serial and without retries.
+test-rendering-ios:
+	$(call XCODEBUILD_TEST,PRHubRenderingTests)
+
+screenshots-ios:
+	$(call XCODEBUILD_TEST,PRHubScreenshots,TEST_RUNNER_SCREENSHOTS_DIR=$(CURDIR)/app/build/screenshots) \
+		-parallel-testing-enabled YES
 
 test-unit-worker:
 	npm --prefix worker run test:unit
@@ -92,4 +104,5 @@ test-integration-worker:
 
 lint: lint-ios lint-prkit lint-worker lint-workflows
 
-all-tests: test-unit-ios test-integration-ios test-unit-prkit test-integration-prkit test-ui-ios test-unit-worker test-integration-worker
+all-tests: test-unit-ios test-integration-ios test-unit-prkit test-integration-prkit test-ui-ios test-rendering-ios test-unit-worker \
+	test-integration-worker
