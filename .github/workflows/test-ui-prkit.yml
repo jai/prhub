@@ -41,12 +41,12 @@ jobs:
           xcrun simctl bootstatus "$simulator" -b
       - run: make test-ui-prkit SIMULATOR="$SIMULATOR"
       - name: Keep the result bundles
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v5
         with:
           name: test-ui-prkit-${{ matrix.device }}
           path: app/build/results
-          retention-days: 7
+          retention-days: 3
           if-no-files-found: ignore
       - name: Delete the job's Simulator, its clones and its logs
         if: always()
