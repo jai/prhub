@@ -19,6 +19,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: jdx/mise-action@v5
+        with:
+          cache: false
       - run: make test-integration-prkit
       - name: Remove disposable products
         if: always()

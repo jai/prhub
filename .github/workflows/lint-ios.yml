@@ -33,6 +33,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: jdx/mise-action@v5
+        with:
+          cache: false
       - name: Prepare the project
         run: mise exec xcodegen@2.46.0 -- xcodegen generate --spec app/project.yml --quiet
       - name: Compile shipped iPhone and Mac targets

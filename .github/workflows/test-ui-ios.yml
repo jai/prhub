@@ -22,6 +22,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: jdx/mise-action@v5
+        with:
+          cache: false
       - name: Prepare the project and owned simulator
         env:
           DEVICE: ${{ matrix.device }}
