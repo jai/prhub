@@ -54,16 +54,18 @@ repos:
         pass_filenames: false
         files: '^\.github/workflows/'
         stages: [pre-commit]
+      # SwiftPM checks its packages out with git: in a worktree the hook's GIT_DIR and friends send that checkout to
+      # this repo instead ("unable to read tree"). githooks(5): clear them with git rev-parse --local-env-vars.
       - id: test-unit-ios
         name: make test-unit-ios
-        entry: make test-unit-ios
+        entry: sh -c 'unset $(git rev-parse --local-env-vars); exec make test-unit-ios'
         language: system
         pass_filenames: false
         files: '^(app/|PRKit/|Package\.(swift|resolved)$)'
         stages: [pre-push]
       - id: test-unit-prkit
         name: make test-unit-prkit
-        entry: make test-unit-prkit
+        entry: sh -c 'unset $(git rev-parse --local-env-vars); exec make test-unit-prkit'
         language: system
         pass_filenames: false
         files: '^(PRKit/|Package\.(swift|resolved)$)'
