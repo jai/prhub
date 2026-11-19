@@ -12,8 +12,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { onTestFinished, test } from "vitest";
-import { WRITERS } from "../fixtures/git-arguments.mjs";
-import { gitEnv, readOnlyHooks, readTools, runGit } from "../../read-tools.mjs";
+import { readOnlyHooks, readTools, runGit } from "../../read-tools.mjs";
+import { gitEnv } from "../../vet.mjs";
 
 // Setup Git with the same isolated environment as the tool, independent of the operator's config.
 const gitFree = gitEnv();
@@ -125,12 +125,10 @@ function scopeWithLink() {
   return { root, cwd, call: (args, repo) => (git.handler ?? git.callback)({ args, repo }, {}) };
 }
 
-test("blame's file options and a committed symlink out of the repo are refused before git runs", async () => {
+// blame's file options (-S, --ignore-revs-file) are refused by vetGit: test/unit/vet.test.mjs.
+test("a committed symlink out of the repo is refused before git runs", async () => {
   const { call } = scopeWithLink();
   for (const args of [
-    ["blame", "-S", "link", "--", "a.txt"],
-    ["blame", "--ignore-revs-file=link", "a.txt"],
-    ["blame", "--ignore-revs-f=link", "a.txt"],
     ["blame", "--", "link"],
     ["log", "--", "dir/hosts"],
     ["diff", "link"],
@@ -149,14 +147,11 @@ test("git has an empty stdin, so a command that would read it ends at once", asy
   assert.equal(answer.ok, true);
 });
 
-test("the exploits change no .git/config, and no allowed command does", async () => {
+// The exploits (WRITERS) are refused by vetGit before git runs: test/unit/vet.test.mjs.
+test("no allowed command changes .git/config", async () => {
   const { cwd, call } = scopeWithLink();
   const config = `${cwd}/.git/config`;
   const before = readFileSync(config, "utf8");
-  for (const args of WRITERS) {
-    const answer = await call(args);
-    assert.equal(answer.isError, true, JSON.stringify(args));
-  }
   const allowed = [
     ["log", "--pretty", "-1"],
     ["log", "--oneline", "-n", "5", "--stat"],

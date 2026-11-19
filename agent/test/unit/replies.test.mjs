@@ -35,6 +35,36 @@ test("a repo the token can't reach answers that the reviewer can't access it", a
   assert.equal(fine.isError, false);
 });
 
+test("github_api says where a redirect goes, keeps the PR's own repo out of can't-access, and reports a failed fetch", async () => {
+  const call = githubApiHandler({ token: "ghs-x", prRepo: "acme/api" });
+  vi.stubGlobal(
+    "fetch",
+    async () =>
+      new Response(null, { status: 301, headers: { location: "https://api.github.com/x" } }),
+  );
+  const moved = await call({ path: "/repos/acme/old/pulls" });
+  assert.equal(moved.content[0].text, "HTTP 301\nRedirected to https://api.github.com/x");
+  assert.equal(moved.isError, true);
+  vi.stubGlobal("fetch", async () => new Response("no", { status: 403 }));
+  assert.match(
+    (await call({ path: "/repos/acme/other/pulls" })).content[0].text,
+    /can't access acme\/other/,
+  );
+  assert.doesNotMatch(
+    (await call({ path: "/repos/acme/api/pulls" })).content[0].text,
+    /can't access/,
+  );
+  assert.doesNotMatch((await call({ path: "/user" })).content[0].text, /can't access/);
+  vi.stubGlobal("fetch", async () => {
+    throw new Error("connect refused for ghs-x");
+  });
+  const down = await call({ path: "/repos/acme/api/pulls" });
+  assert.equal(down.isError, true);
+  assert.equal(down.content[0].text, "GitHub could not be reached: connect refused for [redacted]");
+  const refused = await call({ path: "https://evil.example/" });
+  assert.equal(refused.isError, true);
+});
+
 test("tool output never carries the subscription token either", () => {
   vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "sk-subscription-value");
   const text = said("+sk-subscription-value\n+ghs-install\n", "ghs-install");

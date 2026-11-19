@@ -30,9 +30,6 @@ export const reply = (text, token, isError = false) => ({
   isError,
 });
 
-/** The most line comments one draft holds: a review past this is a wall, not a review. */
-export const DRAFT_COMMENTS = 30;
-
 /** The most actions one turn takes on GitHub. */
 export const ACTS = 10;
 

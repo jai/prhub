@@ -16,16 +16,14 @@ import {
   vetQuestion,
 } from "./ask-core.mjs";
 import {
-  authArgs,
-  gitEnv,
   lockConfig,
   readOnlyHooks,
   readToolNames,
   readTools,
-  SAFE_GIT,
   SERVER,
   WEB_TOOLS,
 } from "./read-tools.mjs";
+import { authArgs, gitEnv, SAFE_GIT } from "./vet.mjs";
 
 const exec = promisify(execFile);
 

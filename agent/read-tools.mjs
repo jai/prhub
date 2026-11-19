@@ -6,7 +6,6 @@ import { spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, realpathSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
-import { z } from "zod";
 import {
   cantAccess,
   cloneRefusal,
@@ -18,17 +17,24 @@ import {
 import {
   ACTS,
   actHandler,
-  DRAFT_COMMENTS,
   draftReviewHandler,
   githubApiHandler,
   LINEAR_ACTS,
   linearActHandler,
   reply,
 } from "./replies.mjs";
-import { GIT_READS } from "./vet.mjs";
+import {
+  checkoutTargets,
+  DRAFT_COMMENTS,
+  GIT_READS,
+  gitArgv,
+  gitCommand,
+  gitEnv,
+  INPUTS,
+} from "./vet.mjs";
 
 export { readToolNames, SERVER, WEB_TOOLS } from "./gate.mjs";
-export { ACTS, DRAFT_COMMENTS, LINEAR_ACTS } from "./replies.mjs";
+export { ACTS, LINEAR_ACTS } from "./replies.mjs";
 
 /**
  * The real directory for a git call: `dir` with symlinks followed, inside `scope`, and each argument that names an
@@ -68,58 +74,11 @@ export function readOnlyHooks(cwd, clones, reachable = null, realpath = realOf) 
   return gate(cwd, clones, reachable, realpath);
 }
 
-/**
- * Set on every git command, over anything a repo's config says: no fsmonitor or hook program, no pager or editor, no
- * ssh, and https the one protocol (a blobless clone fetches what it lacks over it).
- */
-export const SAFE_GIT = [
-  "core.fsmonitor=false",
-  "core.hooksPath=/dev/null",
-  "core.pager=cat",
-  "core.editor=false",
-  "core.sshCommand=false",
-  "protocol.allow=never",
-  "protocol.https.allow=always",
-].flatMap((setting) => ["-c", setting]);
-
-/** Put after a read subcommand: no external diff or textconv program, whatever the repo's config names. */
-const NO_PROGRAMS = {
-  log: ["--no-ext-diff", "--no-textconv"],
-  show: ["--no-ext-diff", "--no-textconv"],
-  diff: ["--no-ext-diff", "--no-textconv"],
-  blame: ["--no-textconv"],
-  grep: ["--no-textconv"],
-};
-
-/** A repo's config, read only once git has set it up: a defence beside `SAFE_GIT`, as no read tool writes it. */
+/** A repo's config, read only once git has set it up: a defence beside `SAFE_GIT` (vet.mjs), as no read tool writes it. */
 export function lockConfig(dir) {
   try {
     chmodSync(`${dir}/.git/config`, 0o444);
   } catch {}
-}
-
-/** Git with no config but the repo's own, no pager, no prompt, and none of this process's secrets. */
-export function gitEnv() {
-  return {
-    PATH: process.env.PATH ?? "/usr/bin:/bin",
-    HOME: "/nonexistent",
-    GIT_CONFIG_NOSYSTEM: "1",
-    GIT_CONFIG_GLOBAL: "/dev/null",
-    GIT_TERMINAL_PROMPT: "0",
-    GIT_PAGER: "cat",
-    PAGER: "cat",
-    GIT_OPTIONAL_LOCKS: "0",
-  };
-}
-
-/** The token as one command's header: never on disk, and never in the agent's sight. */
-export function authArgs(token) {
-  return token
-    ? [
-        "-c",
-        `http.extraHeader=Authorization: Basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`,
-      ]
-    : [];
 }
 
 /** Most bytes of output kept from one git command: the rest is dropped and the command stopped. */
@@ -131,7 +90,7 @@ const GIT_OUTPUT_MAX = 8 * 1024 * 1024;
  */
 export function runGit(dir, args, token, timeout = 120_000) {
   return new Promise((done) => {
-    const child = spawn("git", ["-C", dir, ...SAFE_GIT, ...authArgs(token), ...args], {
+    const child = spawn("git", gitArgv(dir, args, token), {
       env: gitEnv(),
       stdio: ["ignore", "pipe", "pipe"],
       timeout,
@@ -187,13 +146,7 @@ export function readTools({
   const git = tool(
     "git",
     `Runs one read-only git command, without a shell: ${[...GIT_READS.keys()].join(", ")}, each with a fixed set of options; a refused option says which ones it takes. \`repo\` (owner/name) picks a repo you cloned with clone_repo; leave it out for the PR's checkout of ${prRepo}.`,
-    {
-      args: z
-        .array(z.string())
-        .min(1)
-        .describe('The subcommand and its arguments, such as ["log", "--oneline", "-20"]'),
-      repo: z.string().optional(),
-    },
+    INPUTS.git,
     async ({ args, repo }) => {
       const refused = gitRefusal(args, repo, reachable);
       if (refused) {
@@ -206,12 +159,7 @@ export function readTools({
       if (real.refused) {
         return reply(real.refused, token, true);
       }
-      const [command, ...rest] = args;
-      const { ok, text } = await runGit(
-        real.dir,
-        [command, ...(NO_PROGRAMS[command] ?? []), ...rest],
-        token,
-      );
+      const { ok, text } = await runGit(real.dir, gitCommand(args), token);
       return reply(text || "(no output)", token, !ok);
     },
   );
@@ -225,7 +173,7 @@ export function readTools({
   const cloneRepo = tool(
     "clone_repo",
     "Clones a GitHub repo, read only, at its default branch or `ref` (a branch, tag or commit), with its branches and tags. Read it with Read, Grep and Glob at the directory it names, or with git and `repo`. Cloning again updates it.",
-    { repo: z.string().describe("owner/name"), ref: z.string().optional() },
+    INPUTS.clone_repo,
     async ({ repo, ref }) => {
       const refused = cloneRefusal(repo, ref, reachable);
       if (refused) {
@@ -259,11 +207,16 @@ export function readTools({
             true,
           );
         }
-        if (ref && /^[0-9a-f]{40}$/.test(ref)) {
-          await runGit(dir, ["fetch", "-q", "--filter=blob:none", "origin", ref], token, 300_000);
+        const { fetch: commit, targets } = checkoutTargets(ref);
+        if (commit) {
+          await runGit(
+            dir,
+            ["fetch", "-q", "--filter=blob:none", "origin", commit],
+            token,
+            300_000,
+          );
         }
-        const wanted = ref === undefined ? ["origin/HEAD"] : [`origin/${ref}`, ref];
-        for (const target of wanted) {
+        for (const target of targets) {
           const moved = await runGit(
             dir,
             ["checkout", "-q", "--force", "--detach", target],
@@ -286,7 +239,7 @@ export function readTools({
   const githubApi = tool(
     "github_api",
     "GETs one path on GitHub's REST API, read only: PRs, reviews, comments, issues, releases, tags, commits, compare, check runs, workflow runs. Pages with ?per_page=100&page=2.",
-    { path: z.string().describe("Such as /repos/owner/name/pulls/1/reviews?per_page=100") },
+    INPUTS.github_api,
     githubApiHandler({ token, prRepo }),
   );
   return createSdkMcpServer({
@@ -304,21 +257,7 @@ function draftReviewTool(onDraft) {
   return tool(
     "draft_review",
     `Drafts a review of this PR for the reviewer to post: a verdict, the review's words, and up to ${DRAFT_COMMENTS} line comments. It posts nothing: the reviewer reads it on their phone and posts it themselves. Call it only when they ask you to write, draft or give a review, approve, or request changes; a later call replaces the draft. Each comment is on a line the PR's diff shows: \`line\` is the new file's line number with side RIGHT, or the old file's with side LEFT for a removed line. GitHub refuses the whole review when one comment is on any other line.`,
-    {
-      event: z.enum(["APPROVE", "REQUEST_CHANGES", "COMMENT"]),
-      body: z.string().max(20_000).describe("The review's own words, in GitHub's Markdown"),
-      comments: z
-        .array(
-          z.object({
-            path: z.string().min(1),
-            line: z.number().int().positive(),
-            side: z.enum(["LEFT", "RIGHT"]),
-            body: z.string().min(1).max(5_000),
-          }),
-        )
-        .max(DRAFT_COMMENTS)
-        .default([]),
-    },
+    INPUTS.draft_review,
     draftReviewHandler(onDraft),
   );
 }
@@ -337,7 +276,7 @@ function actTool(onAct) {
 - {"kind":"merge","method":"merge"|"squash"|"rebase","commit":"<head sha>"}
 - {"kind":"update_branch","commit":"<head sha>"}
 A line comment must be on a line the diff shows.`,
-    { action: z.record(z.string(), z.unknown()).describe("One action, as above") },
+    INPUTS.github_act,
     actHandler(onAct),
   );
 }
@@ -351,13 +290,7 @@ function linearActTool(onLinear) {
   return tool(
     "linear_act",
     `Proposes a comment on one of this PR's Linear tickets, posted as the reviewer once they confirm it on their phone. Only when the reviewer asked for it in their message ("tag Octbot on the ticket", "comment on the ticket"). \`issue\` is a ticket key the PR names, such as ENG-12. Write @Name for each person or agent to mention, as the reviewer named them ("@Octbot"): the Worker finds them in Linear. Up to ${LINEAR_ACTS} a turn.`,
-    {
-      issue: z
-        .string()
-        .regex(/^[A-Za-z][A-Za-z0-9]{0,9}-\d+$/)
-        .describe("The ticket's key, such as ENG-12"),
-      body: z.string().min(1).max(10_000).describe("The comment, in Markdown, with @Name mentions"),
-    },
+    INPUTS.linear_act,
     linearActHandler(onLinear),
   );
 }

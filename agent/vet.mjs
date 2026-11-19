@@ -1,6 +1,8 @@
-// What the agent may ask for, checked without touching anything: git arguments, repo names, refs and GitHub API
-// paths. Each check returns why it refuses, or null.
+// What the agent may ask for, checked without touching anything: the tools' input shapes, git arguments, repo names,
+// refs and GitHub API paths, and the options and environment every git call runs with. Each check returns why it
+// refuses, or null.
 import { isAbsolute } from "node:path";
+import { z } from "zod";
 
 const words = (text) => text.trim().split(/\s+/);
 
@@ -226,3 +228,113 @@ export function vetApiPath(path) {
   }
   return new URL(path, API).origin === API ? null : "Only api.github.com can be read.";
 }
+
+/**
+ * Set on every git command, over anything a repo's config says: no fsmonitor or hook program, no pager or editor, no
+ * ssh, and https the one protocol (a blobless clone fetches what it lacks over it).
+ */
+export const SAFE_GIT = [
+  "core.fsmonitor=false",
+  "core.hooksPath=/dev/null",
+  "core.pager=cat",
+  "core.editor=false",
+  "core.sshCommand=false",
+  "protocol.allow=never",
+  "protocol.https.allow=always",
+].flatMap((setting) => ["-c", setting]);
+
+/** Put after a read subcommand: no external diff or textconv program, whatever the repo's config names. */
+const NO_PROGRAMS = {
+  log: ["--no-ext-diff", "--no-textconv"],
+  show: ["--no-ext-diff", "--no-textconv"],
+  diff: ["--no-ext-diff", "--no-textconv"],
+  blame: ["--no-textconv"],
+  grep: ["--no-textconv"],
+};
+
+/** A vetted read as git runs it: the subcommand, then the options that turn the repo's programs off, then the rest. */
+export function gitCommand(args) {
+  const [command, ...rest] = args;
+  return [command, ...(NO_PROGRAMS[command] ?? []), ...rest];
+}
+
+/** The token as one command's header: never on disk, and never in the agent's sight. */
+export function authArgs(token) {
+  return token
+    ? [
+        "-c",
+        `http.extraHeader=Authorization: Basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`,
+      ]
+    : [];
+}
+
+/** Git's whole argument list in `dir`: the safe settings and the token's header come before anything asked for. */
+export function gitArgv(dir, args, token) {
+  return ["-C", dir, ...SAFE_GIT, ...authArgs(token), ...args];
+}
+
+/** Git with no config but the repo's own, no pager, no prompt, and none of this process's secrets. */
+export function gitEnv() {
+  return {
+    PATH: process.env.PATH ?? "/usr/bin:/bin",
+    HOME: "/nonexistent",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_TERMINAL_PROMPT: "0",
+    GIT_PAGER: "cat",
+    PAGER: "cat",
+    GIT_OPTIONAL_LOCKS: "0",
+  };
+}
+
+/**
+ * Where a clone checks out `ref`: a full commit is fetched by itself first (a branch fetch may not hold it), then tried
+ * as `origin/<ref>` and as written; no ref is the default branch.
+ */
+export function checkoutTargets(ref) {
+  return {
+    fetch: ref && /^[0-9a-f]{40}$/.test(ref) ? ref : null,
+    targets: ref === undefined ? ["origin/HEAD"] : [`origin/${ref}`, ref],
+  };
+}
+
+/** The most line comments one draft holds: a review past this is a wall, not a review. */
+export const DRAFT_COMMENTS = 30;
+
+/** Each tool's input, as the SDK checks it before the tool runs. */
+export const INPUTS = {
+  git: {
+    args: z
+      .array(z.string())
+      .min(1)
+      .describe('The subcommand and its arguments, such as ["log", "--oneline", "-20"]'),
+    repo: z.string().optional(),
+  },
+  clone_repo: { repo: z.string().describe("owner/name"), ref: z.string().optional() },
+  github_api: {
+    path: z.string().describe("Such as /repos/owner/name/pulls/1/reviews?per_page=100"),
+  },
+  draft_review: {
+    event: z.enum(["APPROVE", "REQUEST_CHANGES", "COMMENT"]),
+    body: z.string().max(20_000).describe("The review's own words, in GitHub's Markdown"),
+    comments: z
+      .array(
+        z.object({
+          path: z.string().min(1),
+          line: z.number().int().positive(),
+          side: z.enum(["LEFT", "RIGHT"]),
+          body: z.string().min(1).max(5_000),
+        }),
+      )
+      .max(DRAFT_COMMENTS)
+      .default([]),
+  },
+  github_act: { action: z.record(z.string(), z.unknown()).describe("One action, as above") },
+  linear_act: {
+    issue: z
+      .string()
+      .regex(/^[A-Za-z][A-Za-z0-9]{0,9}-\d+$/)
+      .describe("The ticket's key, such as ENG-12"),
+    body: z.string().min(1).max(10_000).describe("The comment, in Markdown, with @Name mentions"),
+  },
+};
