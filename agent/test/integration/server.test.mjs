@@ -5,7 +5,6 @@ import { once } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
-import { setTimeout as delay } from "node:timers/promises";
 import { onTestFinished, test } from "vitest";
 
 async function started() {
@@ -69,9 +68,11 @@ test("a stop asked for during a request waits for its answer", { timeout: 15_000
   await accepted;
   // The server accepted the request headers; an unfinished body now holds it in flight.
   held.write("{");
+  const leaving = once(server, "message");
   server.kill("SIGTERM");
-  const early = await Promise.race([left, delay(500, "waiting")]);
-  assert.equal(early, "waiting", "it left with a request in flight");
+  const [notice] = await leaving;
+  assert.deepEqual(notice, { type: "leaving", inFlight: 1 });
+  assert.equal(server.exitCode, null, "it left with a request in flight");
   const answered = once(held, "response");
   held.end('"not an object"');
   const [response] = await answered;

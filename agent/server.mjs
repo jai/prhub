@@ -291,6 +291,7 @@ function leaveWhenIdle() {
 for (const signal of ["SIGTERM", "SIGINT"]) {
   process.on(signal, () => {
     leaving = true;
+    process.send?.({ type: "leaving", inFlight });
     leaveWhenIdle();
   });
 }

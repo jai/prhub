@@ -912,11 +912,15 @@ test("hosted, no token for a PR the person can't see, and a clear refusal where 
 });
 
 test("hosted, with the person's GitHub limit used up, only the repos their own token listed lately stand in for it", async () => {
+  // GitHub's limit resets an hour after the test's clock, so the Worker holds it for the whole test.
+  const now = Date.parse("2026-11-01T00:00:00Z");
+  vi.useFakeTimers({ toFake: ["Date"], now });
+  const reset = String(now / 1_000 + 3_600);
   const real = globalThis.fetch;
   globalThis.fetch = (async () =>
     new Response("{}", {
       status: 403,
-      headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": "1794536340" },
+      headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": reset },
     })) as unknown as typeof fetch;
   try {
     const { fetcher } = appGitHub();
