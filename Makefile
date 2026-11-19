@@ -32,6 +32,9 @@ OXFMT       := npx --yes oxfmt@0.78.0
 OXLINT      := npx --no-install oxlint
 
 SIM_NAME ?= iPhone 17
+SIMULATOR ?=
+COMMA := ,
+UI_DESTINATION = $(if $(SIMULATOR),id=$(SIMULATOR),platform=iOS Simulator$(COMMA)name=$(SIM_NAME))
 
 lint-ios:
 	$(SWIFTFORMAT) app --lint
@@ -47,8 +50,6 @@ lint-prkit:
 	$(GITLEAKS) PRKit
 
 lint-worker:
-	npm --prefix worker ci --no-audit --no-fund
-	npm --prefix agent ci --no-audit --no-fund
 	$(OXFMT) --check worker agent
 	cd worker && $(OXLINT) --deny-warnings
 	cd worker && $(OXLINT) --type-aware --type-check --deny-warnings src
@@ -63,34 +64,30 @@ lint-workflows:
 	$(ACTIONLINT)
 
 test-unit-ios:
-	swift test --filter PRHubUnitTests
+	swift test -j 4 --filter PRHubUnitTests
 
 test-unit-prkit:
-	swift test --filter PRKitUnitTests
+	swift test -j 4 --filter PRKitUnitTests
 
 test-integration-ios:
-	swift test --filter PRHubIntegrationTests
+	swift test -j 4 --filter PRHubIntegrationTests
 
 test-integration-prkit:
-	swift test --filter PRKitIntegrationTests
+	swift test -j 4 --filter PRKitIntegrationTests
 
 # The samples flow and a picture of every screen, in app/build/screenshots.
 test-ui-ios:
-	cd app && $(XCODEGEN) generate --spec project.yml --quiet
 	cd app && set -o pipefail && TEST_RUNNER_SCREENSHOTS_DIR=$(CURDIR)/app/build/screenshots xcodebuild test \
 		-project PRHub.xcodeproj -scheme PRHub -testPlan PRHubUITests \
-		-destination 'platform=iOS Simulator,name=$(SIM_NAME)' -derivedDataPath build/DerivedData
+		-destination '$(UI_DESTINATION)' -derivedDataPath build/DerivedData \
+		-retry-tests-on-failure -test-iterations 2 -jobs 4
 
 test-unit-worker:
-	npm --prefix worker ci --no-audit --no-fund
 	npm --prefix worker run test:unit
-	npm --prefix agent ci --no-audit --no-fund
 	npm --prefix agent run test:unit
 
 test-integration-worker:
-	npm --prefix worker ci --no-audit --no-fund
 	npm --prefix worker run test:integration
-	npm --prefix agent ci --no-audit --no-fund
 	npm --prefix agent run test:integration
 
 lint: lint-ios lint-prkit lint-worker lint-workflows

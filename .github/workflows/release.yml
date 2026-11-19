@@ -29,9 +29,6 @@ jobs:
   test-integration-prkit:
     if: startsWith(github.ref_name, 'rc-ios-') || startsWith(github.ref_name, 'rc-prkit-')
     uses: ./.github/workflows/test-integration-prkit.yml
-  test-ui-prkit:
-    if: startsWith(github.ref_name, 'rc-ios-') || startsWith(github.ref_name, 'rc-prkit-')
-    uses: ./.github/workflows/test-ui-prkit.yml
   test-ui-ios:
     if: startsWith(github.ref_name, 'rc-ios-')
     uses: ./.github/workflows/test-ui-ios.yml
@@ -53,7 +50,7 @@ jobs:
     uses: ./.github/workflows/test-integration-worker.yml
 
   release:
-    needs: [lint-ios, test-unit-ios, test-integration-ios, test-ui-ios, test-unit-prkit, test-integration-prkit, test-ui-prkit, lint-prkit, lint-worker, test-unit-worker, test-integration-worker]
+    needs: [lint-ios, test-unit-ios, test-integration-ios, test-ui-ios, test-unit-prkit, test-integration-prkit, lint-prkit, lint-worker, test-unit-worker, test-integration-worker]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

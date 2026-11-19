@@ -12,12 +12,14 @@ permissions:
 
 jobs:
   test-integration-prkit:
-    runs-on: xcode-27
+    runs-on: [self-hosted, zoomies, mac]
     timeout-minutes: 10
     env:
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
-      - run: sudo xcode-select -s /Applications/Xcode_27.2.app
       - uses: actions/checkout@v5
       - uses: jdx/mise-action@v5
       - run: make test-integration-prkit
+      - name: Remove disposable products
+        if: always()
+        run: rm -rf -- .build app/build app/*.xcodeproj worker/node_modules worker/.wrangler agent/node_modules

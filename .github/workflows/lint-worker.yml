@@ -22,4 +22,11 @@ jobs:
         with:
           node-version: 24
       - uses: jdx/mise-action@v5
+      - name: Install dependencies
+        run: |
+          npm ci --prefix worker --no-audit --no-fund
+          npm ci --prefix agent --no-audit --no-fund
       - run: make lint-worker
+      - name: Remove disposable products
+        if: always()
+        run: rm -rf -- .build app/build app/*.xcodeproj worker/node_modules worker/.wrangler agent/node_modules

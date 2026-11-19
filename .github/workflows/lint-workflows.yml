@@ -19,3 +19,6 @@ jobs:
       - uses: actions/checkout@v5
       - uses: jdx/mise-action@v5
       - run: make lint-workflows
+      - name: Remove disposable products
+        if: always()
+        run: rm -rf -- .build app/build app/*.xcodeproj worker/node_modules worker/.wrangler agent/node_modules

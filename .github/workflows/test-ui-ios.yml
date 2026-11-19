@@ -11,7 +11,7 @@ permissions:
 jobs:
   test-ui-ios:
     name: test-ui-ios (${{ matrix.device }})
-    runs-on: xcode-27
+    runs-on: [self-hosted, zoomies, mac-desktop]
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -20,12 +20,20 @@ jobs:
     env:
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
-      - run: sudo xcode-select -s /Applications/Xcode_27.2.app
       - uses: actions/checkout@v5
       - uses: jdx/mise-action@v5
-      - run: make test-ui-ios SIM_NAME="$DEVICE"
+      - name: Prepare the project and owned simulator
         env:
           DEVICE: ${{ matrix.device }}
+        run: |
+          mise exec xcodegen@2.46.0 -- xcodegen generate --spec app/project.yml --quiet
+          runtime=$(xcrun simctl list runtimes -j | jq -r '[.runtimes[] | select(.isAvailable and (.name | startswith("iOS")))] | last | .identifier')
+          simulator=$(xcrun simctl create "prhub-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" "$DEVICE" "$runtime")
+          echo "SIMULATOR=$simulator" >> "$GITHUB_ENV"
+          xcrun simctl boot "$simulator"
+          xcrun simctl bootstatus "$simulator" -b
+      - name: Run the complete native UI plan
+        run: make test-ui-ios SIMULATOR="$SIMULATOR"
       - uses: actions/upload-artifact@v5
         if: always()
         with:
@@ -33,3 +41,11 @@ jobs:
           path: app/build/DerivedData/Logs/Test
           retention-days: 7
           if-no-files-found: ignore
+      - name: Remove disposable products
+        if: always()
+        run: |
+          if [ -n "${SIMULATOR:-}" ]; then
+            xcrun simctl shutdown "$SIMULATOR" || true
+            xcrun simctl delete "$SIMULATOR"
+          fi
+          rm -rf -- .build app/build app/*.xcodeproj worker/node_modules worker/.wrangler agent/node_modules

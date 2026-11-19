@@ -24,3 +24,21 @@ jobs:
           node-version: 24
       - uses: jdx/mise-action@v5
       - run: make lint-ios
+      - name: Remove disposable products
+        if: always()
+        run: rm -rf -- .build app/build app/*.xcodeproj worker/node_modules worker/.wrangler agent/node_modules
+  build:
+    runs-on: [self-hosted, zoomies, mac]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v5
+      - name: Prepare the project
+        run: mise exec xcodegen@2.46.0 -- xcodegen generate --spec app/project.yml --quiet
+      - name: Compile shipped iPhone and Mac targets
+        run: |
+          xcodebuild build -project app/PRHub.xcodeproj -scheme PRHub -destination 'generic/platform=iOS Simulator' -derivedDataPath app/build/iOS -jobs 4 CODE_SIGNING_ALLOWED=NO
+          xcodebuild build -project app/PRHub.xcodeproj -scheme PRHub -destination 'platform=macOS' -derivedDataPath app/build/macOS -jobs 4 CODE_SIGNING_ALLOWED=NO
+      - name: Remove disposable build products
+        if: always()
+        run: rm -rf -- .build app/build app/*.xcodeproj
