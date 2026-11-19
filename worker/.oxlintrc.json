@@ -54,8 +54,8 @@
                 "message": "The Worker runtime is test/integration/runtime only."
               },
               {
-                "group": ["**/support/memory-sql*", "**/support/hosted-world*"],
-                "message": "Integration fakes belong to test/integration/node."
+                "group": ["**/support/memory-sql*"],
+                "message": "SQL tests live in test/integration/node."
               }
             ]
           }

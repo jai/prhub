@@ -4,13 +4,31 @@
 // the PreToolUse hook and again in the tool itself.
 import { spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, realpathSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import { API, GIT_READS, vetApiPath, vetGit, vetRef, vetRepo } from "./vet.mjs";
+import {
+  cantAccess,
+  cloneRefusal,
+  gitRefusal,
+  isInside as isInsideBy,
+  readOnlyHooks as gate,
+  SERVER,
+} from "./gate.mjs";
+import {
+  ACTS,
+  actHandler,
+  DRAFT_COMMENTS,
+  draftReviewHandler,
+  githubApiHandler,
+  LINEAR_ACTS,
+  linearActHandler,
+  reply,
+} from "./replies.mjs";
+import { GIT_READS } from "./vet.mjs";
 
-/** The MCP server's name: its tools are `mcp__prhub__<name>`. */
-export const SERVER = "prhub";
+export { readToolNames, SERVER, WEB_TOOLS } from "./gate.mjs";
+export { ACTS, DRAFT_COMMENTS, LINEAR_ACTS } from "./replies.mjs";
 
 /**
  * The real directory for a git call: `dir` with symlinks followed, inside `scope`, and each argument that names an
@@ -30,10 +48,9 @@ export function realGitDir(dir, scope, args) {
   return { dir: real };
 }
 
-/** Whether `path`, symlinks followed, is inside `root`. A path that does not exist yet is judged as written. */
+/** Whether `path`, symlinks followed on disk, is inside `root`. A path that does not exist yet is judged as written. */
 export function isInside(root, path) {
-  const from = relative(realOf(root), realOf(isAbsolute(path) ? path : resolve(root, path)));
-  return from === "" || (!from.startsWith("..") && !isAbsolute(from));
+  return isInsideBy(root, path, realOf);
 }
 
 /** `path` with symlinks followed as far as it exists; the rest as written. */
@@ -46,120 +63,10 @@ function realOf(path) {
   }
 }
 
-const DENY = (reason) => ({
-  hookSpecificOutput: {
-    hookEventName: "PreToolUse",
-    permissionDecision: "deny",
-    permissionDecisionReason: reason,
-  },
-});
-
-/** Whether `repo` is in `reachable`, the repos this question's token names; null names no limit. GitHub ignores case. */
-export function inGrant(repo, reachable) {
-  return (
-    reachable === null ||
-    reachable === undefined ||
-    reachable.some((one) => one.toLowerCase() === String(repo).toLowerCase())
-  );
+/** The PreToolUse gate (`gate.mjs`), with symlinks followed on disk. */
+export function readOnlyHooks(cwd, clones, reachable = null, realpath = realOf) {
+  return gate(cwd, clones, reachable, realpath);
 }
-
-/**
- * The PreToolUse gate. Read, Grep and Glob stay in `cwd` (the PR's checkout) or `clones`; git, clone_repo and
- * github_api pass their vetting. With `reachable` (hosted: the repos this question's token names), only those clones
- * can be read or made: one cloned while the person could see it is shut once they can't. Anything else is denied.
- */
-/** Claude Code's own web tools, which Ask may use: they fetch pages and search, and run nothing here. */
-export const WEB_TOOLS = ["WebSearch", "WebFetch"];
-
-export function readOnlyHooks(cwd, clones, reachable = null) {
-  const roots = reachable ? [cwd, ...reachable.map((repo) => `${clones}/${repo}`)] : [cwd, clones];
-  // No matcher: every tool comes here. A hook that fails blocks its call rather than letting it through.
-  return [
-    {
-      onFailure: "block",
-      hooks: [
-        async (input) => {
-          const name = input.tool_name;
-          const given = input.tool_input ?? {};
-          if (["Read", "Grep", "Glob"].includes(name)) {
-            const { file_path: file, path, pattern, glob } = given;
-            const target = file ?? path ?? cwd;
-            // A Glob pattern, and Grep's file filter, are paths too: absolute or climbing ones reach outside.
-            const patterns = [name === "Glob" ? pattern : null, glob].filter(
-              (value) => typeof value === "string",
-            );
-            const escapes = patterns.some(
-              (value) =>
-                isAbsolute(value) || value.startsWith("~") || value.split(/[\\/]/).includes(".."),
-            );
-            const inRoot =
-              roots.some((root) => isInside(root, target)) ||
-              (reachable !== null &&
-                isInside(clones, target) &&
-                cloneInGrant(clones, target, reachable));
-            return inRoot && !escapes
-              ? {}
-              : DENY("Only the checkout and the repos you cloned can be read.");
-          }
-          // The web, open by Jai's choice (2026-11-13: "we need feature richness"): WebFetch can put what the agent read in a
-          // URL it fetches, so a prompt in a PR could send code out. The tokens can't go: no tool reads them.
-          if (WEB_TOOLS.includes(name)) {
-            return {};
-          }
-          // A draft for the reviewer's phone: it reaches nothing, and posts nothing.
-          if (
-            [`draft_review`, `github_act`, `linear_act`].some(
-              (one) => name === `mcp__${SERVER}__${one}`,
-            )
-          ) {
-            return {};
-          }
-          const granted = (repo) => (inGrant(repo, reachable) ? null : cantAccess(repo));
-          const reason =
-            name === `mcp__${SERVER}__git`
-              ? (vetGit(given.args) ??
-                (given.repo === undefined ? null : (vetRepo(given.repo) ?? granted(given.repo))))
-              : name === `mcp__${SERVER}__clone_repo`
-                ? (vetRepo(given.repo) ?? vetRef(given.ref) ?? granted(given.repo))
-                : name === `mcp__${SERVER}__github_api`
-                  ? vetApiPath(given.path)
-                  : "Only reading is allowed.";
-          return reason === null ? {} : DENY(reason);
-        },
-      ],
-    },
-  ];
-}
-
-/** Whether a path under `clones` is in a repo of `reachable`, matched without case as GitHub names repos. */
-function cloneInGrant(clones, target, reachable) {
-  const [owner, name] = relative(
-    realOf(clones),
-    realOf(isAbsolute(target) ? target : resolve(clones, target)),
-  ).split(/[\\/]/);
-  return Boolean(owner && name) && inGrant(`${owner}/${name}`, reachable);
-}
-
-/** What a tool says back, cut so one answer can't fill the context, and with both tokens out of it. */
-const KEPT = 60_000;
-
-function said(text, token) {
-  const clean = [token, process.env.CLAUDE_CODE_OAUTH_TOKEN].reduce(
-    (kept, secret) => (secret ? kept.split(secret).join("[redacted]") : kept),
-    String(text),
-  );
-  return clean.length > KEPT ? `${clean.slice(0, KEPT)}\n[cut at ${KEPT} characters]` : clean;
-}
-
-/** What a repo the token can't reach answers: GitHub's 404 says nothing about whether it exists. */
-export function cantAccess(repo) {
-  return `You can't access ${repo}: the reviewer can't see it, or the GitHub App isn't installed on it. Say so; don't guess what it holds.`;
-}
-
-const reply = (text, token, isError = false) => ({
-  content: [{ type: "text", text: said(text, token) }],
-  isError,
-});
 
 /**
  * Set on every git command, over anything a repo's config says: no fsmonitor or hook program, no pager or editor, no
@@ -288,11 +195,7 @@ export function readTools({
       repo: z.string().optional(),
     },
     async ({ args, repo }) => {
-      const refused =
-        vetGit(args) ??
-        (repo === undefined
-          ? null
-          : (vetRepo(repo) ?? (inGrant(repo, reachable) ? null : cantAccess(repo))));
+      const refused = gitRefusal(args, repo, reachable);
       if (refused) {
         return reply(refused, token, true);
       }
@@ -324,8 +227,7 @@ export function readTools({
     "Clones a GitHub repo, read only, at its default branch or `ref` (a branch, tag or commit), with its branches and tags. Read it with Read, Grep and Glob at the directory it names, or with git and `repo`. Cloning again updates it.",
     { repo: z.string().describe("owner/name"), ref: z.string().optional() },
     async ({ repo, ref }) => {
-      const refused =
-        vetRepo(repo) ?? vetRef(ref) ?? (inGrant(repo, reachable) ? null : cantAccess(repo));
+      const refused = cloneRefusal(repo, ref, reachable);
       if (refused) {
         return reply(refused, token, true);
       }
@@ -385,35 +287,7 @@ export function readTools({
     "github_api",
     "GETs one path on GitHub's REST API, read only: PRs, reviews, comments, issues, releases, tags, commits, compare, check runs, workflow runs. Pages with ?per_page=100&page=2.",
     { path: z.string().describe("Such as /repos/owner/name/pulls/1/reviews?per_page=100") },
-    async ({ path }) => {
-      const refused = vetApiPath(path);
-      if (refused) {
-        return reply(refused, token, true);
-      }
-      try {
-        const response = await fetch(new URL(path, API), {
-          method: "GET",
-          redirect: "manual",
-          signal: AbortSignal.timeout(60_000),
-          headers: {
-            Accept: "application/vnd.github+json",
-            Authorization: `Bearer ${token}`,
-            "User-Agent": "prhub-ask",
-            "X-GitHub-Api-Version": "2022-11-28",
-          },
-        });
-        const where = response.headers.get("location");
-        const body = where ? `Redirected to ${where}` : await response.text();
-        const named = /^\/repos\/([^/?]+\/[^/?]+)/.exec(path)?.[1];
-        const denied =
-          (response.status === 404 || response.status === 403) && named && named !== prRepo
-            ? `\n${cantAccess(named)}`
-            : "";
-        return reply(`HTTP ${response.status}\n${body}${denied}`, token, !response.ok);
-      } catch (error) {
-        return reply(`GitHub could not be reached: ${error?.message ?? error}`, token, true);
-      }
-    },
+    githubApiHandler({ token, prRepo }),
   );
   return createSdkMcpServer({
     name: SERVER,
@@ -421,9 +295,6 @@ export function readTools({
     alwaysLoad: true,
   });
 }
-
-/** The most line comments one draft holds: a review past this is a wall, not a review. */
-export const DRAFT_COMMENTS = 30;
 
 /**
  * A review the reviewer asked for, as a draft: it never reaches GitHub from here. `onDraft` keeps the newest, the
@@ -448,19 +319,9 @@ function draftReviewTool(onDraft) {
         .max(DRAFT_COMMENTS)
         .default([]),
     },
-    async ({ event, body, comments }) => {
-      onDraft({ event, body, comments });
-      const lines = comments.length === 1 ? "1 line comment" : `${comments.length} line comments`;
-      return reply(
-        `Drafted: ${event} with ${lines}. Nothing is posted: the reviewer sees the draft under your answer and posts it. Say in one line what the draft does; don't repeat it.`,
-        null,
-      );
-    },
+    draftReviewHandler(onDraft),
   );
 }
-
-/** The most actions one turn takes on GitHub. */
-export const ACTS = 10;
 
 /**
  * Acting on the PR as the reviewer, as they asked: the container has no token that writes, so each action goes to the
@@ -477,18 +338,9 @@ function actTool(onAct) {
 - {"kind":"update_branch","commit":"<head sha>"}
 A line comment must be on a line the diff shows.`,
     { action: z.record(z.string(), z.unknown()).describe("One action, as above") },
-    async ({ action }) => {
-      onAct(action);
-      return reply(
-        "Queued: it goes to GitHub as the reviewer when your turn ends, and the chat shows the result. Don't say it is done yet.",
-        null,
-      );
-    },
+    actHandler(onAct),
   );
 }
-
-/** The most Linear comments one turn proposes. */
-export const LINEAR_ACTS = 3;
 
 /**
  * A comment on one of the PR's Linear tickets, as the reviewer, as they asked: the container has no Linear key, so it
@@ -506,23 +358,6 @@ function linearActTool(onLinear) {
         .describe("The ticket's key, such as ENG-12"),
       body: z.string().min(1).max(10_000).describe("The comment, in Markdown, with @Name mentions"),
     },
-    async ({ issue, body }) => {
-      onLinear({ issue: issue.toUpperCase(), body });
-      return reply(
-        `Proposed: a comment on ${issue.toUpperCase()}. Nothing is posted: the reviewer sees it under your answer and posts it. Say in one line what it asks; don't say it is posted.`,
-        null,
-      );
-    },
+    linearActHandler(onLinear),
   );
-}
-
-/** The tools' names, for `allowedTools`. */
-export function readToolNames(hasToken) {
-  return [
-    "git",
-    ...(hasToken ? ["clone_repo", "github_api"] : []),
-    "draft_review",
-    "github_act",
-    "linear_act",
-  ].map((name) => `mcp__${SERVER}__${name}`);
 }

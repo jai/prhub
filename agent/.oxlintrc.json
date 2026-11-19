@@ -29,12 +29,52 @@
                 "message": "Unit tests start no processes: put the test in test/integration."
               },
               {
+                "name": "@anthropic-ai/claude-agent-sdk",
+                "message": "The SDK starts Claude Code: unit tests import the pure modules."
+              },
+              {
                 "name": "../../read-tools.mjs",
-                "message": "read-tools runs git and the SDK: unit tests import vet.mjs."
+                "message": "read-tools runs git and the SDK: unit tests import vet.mjs, gate.mjs, replies.mjs or ask-core.mjs."
               },
               {
                 "name": "../../server.mjs",
                 "message": "The server is tested as a process in test/integration."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["vet.mjs", "gate.mjs", "replies.mjs", "ask-core.mjs"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "node:fs",
+                "message": "The pure modules touch no disk: unit tests import them."
+              },
+              {
+                "name": "node:fs/promises",
+                "message": "The pure modules touch no disk: unit tests import them."
+              },
+              {
+                "name": "node:child_process",
+                "message": "The pure modules start no processes: unit tests import them."
+              },
+              {
+                "name": "@anthropic-ai/claude-agent-sdk",
+                "message": "The pure modules load no SDK: unit tests import them."
+              },
+              {
+                "name": "./read-tools.mjs",
+                "message": "read-tools runs git and the SDK: the pure modules can't import it."
+              },
+              {
+                "name": "./server.mjs",
+                "message": "The server listens when imported: the pure modules can't import it."
               }
             ]
           }

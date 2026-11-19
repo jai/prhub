@@ -1,5 +1,6 @@
 // The hosted Worker's world for tests: a GitHub that answers like the real one for several people, installations and
-// repos, and the account, installation and index objects over in-memory stores. No Durable Object, no network.
+// repos, and the account, installation and index objects over in-memory stores. No Durable Object, no SQL, no network:
+// the per-IP sign-in limits count in memory unless a test hands in its own counter.
 import assert from "node:assert/strict";
 import {
   AccountCore,
@@ -17,11 +18,10 @@ import {
 } from "../../src/hosted.ts";
 import type { RepoFullName, Sha } from "../../src/ids.ts";
 import { InstallationCore, isInvolved, type ListStore } from "../../src/installation-core.ts";
-import { consumeLimits, createLimitHitsTable, type LimitSql } from "../../src/limit-counter.ts";
+import type { LimitDecision } from "../../src/limit-counter.ts";
 import { gitHubReserveOf, limitsOf } from "../../src/limits.ts";
 import type { OAuthApp } from "../../src/oauth.ts";
 import { parseKeyring, pkceChallengeOf, randomToken } from "../../src/token-crypto.ts";
-import { memorySql } from "./memory-sql.ts";
 
 export const env = (vars: Partial<Env>) => vars as Env;
 export const keyOf = (fill: number) => Buffer.alloc(32, fill).toString("base64");
@@ -269,7 +269,35 @@ export const ASK_RESOURCES: AskResources = {
   credential_id: "cred_test",
 };
 
-export function hostedWorld(vars: Partial<Env> = {}) {
+export type LimitIp = HostedServices["limitIp"];
+
+/**
+ * Per-IP limits counted in memory, as `consumeLimits` counts them: each IP hash's hits per limit inside the window.
+ * Each sign-in request carries a fresh key, so there is no repeat to fold into one hit.
+ */
+export function memoryIpLimits(): LimitIp {
+  const hits = new Map<string, number[]>();
+  return async (ipHash, checks, _key, now): Promise<LimitDecision> => {
+    const live = (name: string, windowMs: number) =>
+      (hits.get(`${ipHash} ${name}`) ?? []).filter((at) => at > now - windowMs);
+    for (const { name, window } of checks) {
+      const counted = live(name, window.windowMs);
+      if (counted.length >= window.count) {
+        return { allowed: false, name, retryAfterMs: counted[0] + window.windowMs - now };
+      }
+    }
+    for (const { name, window } of checks) {
+      hits.set(`${ipHash} ${name}`, [...live(name, window.windowMs), now]);
+    }
+    return { allowed: true };
+  };
+}
+
+/** `limitIp` counts the sign-in routes' per-IP limits: in memory by default, or a test's own counter. */
+export function hostedWorld(
+  vars: Partial<Env> = {},
+  { limitIp = memoryIpLimits() }: { limitIp?: LimitIp } = {},
+) {
   const github = new FakeGitHub();
   const clock = { now: Date.parse("2026-11-07T00:00:00Z") };
   const stores = new Map<string, MapStore>();
@@ -280,7 +308,8 @@ export function hostedWorld(vars: Partial<Env> = {}) {
   const pending = new Map<string, PendingSignIn>();
   const deleted: string[] = [];
   const signedOut: SignedOutReason[] = [];
-  const ipCounts = new Map<string, LimitSql>();
+  /** Every IP hash the sign-in routes counted. */
+  const limitedIps = new Set<string>();
   const forgottenJobs: string[] = [];
   const anthropic = { valid: new Set<string>(), provisioned: [] as string[] };
   const limits = limitsOf({ HOSTED: "on", ...vars });
@@ -354,11 +383,8 @@ export function hostedWorld(vars: Partial<Env> = {}) {
       forgottenJobs.push(userId);
     },
     limitIp: async (ipHash, checks, key, now) => {
-      if (!ipCounts.has(ipHash)) {
-        ipCounts.set(ipHash, memorySql());
-        createLimitHitsTable(ipCounts.get(ipHash) as LimitSql);
-      }
-      return consumeLimits(ipCounts.get(ipHash) as LimitSql, checks, "", key, now);
+      limitedIps.add(ipHash);
+      return limitIp(ipHash, checks, key, now);
     },
     limits,
     anthropic: {
@@ -409,7 +435,7 @@ export function hostedWorld(vars: Partial<Env> = {}) {
     pending,
     deleted,
     signedOut,
-    ipCounts,
+    limitedIps,
     forgottenJobs,
     anthropic,
     services,
@@ -492,4 +518,26 @@ export async function deliver(
   });
   await Promise.all(world.waited.splice(0));
   return answer;
+}
+
+export const ALICE: FakeUser = { id: 1001, login: "alice" };
+export const BOB: FakeUser = { id: 2002, login: "bob" };
+
+/**
+ * Alice works at acme (installation 11), Bob at globex (22), and both at initech (33), where only Alice sees
+ * initech/private. acme/secret is in acme's installation, but Alice cannot see it.
+ */
+export async function twoOrgs(vars: Partial<Env> = {}) {
+  const world = hostedWorld(vars);
+  world.github.installations.set(11, { account: "acme", repos: ["acme/api", "acme/secret"] });
+  world.github.installations.set(22, { account: "globex", repos: ["globex/web"] });
+  world.github.installations.set(33, {
+    account: "initech",
+    repos: ["initech/shared", "initech/private"],
+  });
+  world.github.grant(ALICE, ["acme/api", "initech/shared", "initech/private"]);
+  world.github.grant(BOB, ["globex/web", "initech/shared"]);
+  const alice = await signIn(world, ALICE);
+  const bob = await signIn(world, BOB);
+  return { world, alice, bob };
 }

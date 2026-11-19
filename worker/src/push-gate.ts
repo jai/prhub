@@ -104,7 +104,8 @@ export function releaseAlerts(
   return decision;
 }
 
-function reasonToGo(
+/** Why an alert about `head`, held `heldMs`, goes now, from its PR's row; null while it still waits. */
+export function reasonToGo(
   row: HeldRow,
   head: string,
   wantsKeyLines: boolean,

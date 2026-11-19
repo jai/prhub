@@ -24,7 +24,6 @@ const alert: PrAlert = {
   title: "Add retries",
 };
 const noKeyLines = () => false;
-const keyLinesOnReview = (row: HeldRow) => row.list === "review" && row.diff_state === "ready";
 
 function index(row: Partial<HeldRow> | null) {
   const sql = memorySql();
@@ -60,32 +59,6 @@ test("an alert waits for its diff, then goes once with how long it was held", ()
   assert.deepEqual(sent.release, [{ alert, heldMs: 900, reason: "ready" }]);
   assert.equal(sent.nextAt, null);
   assert.deepEqual(releaseAlerts(sql, NOW + 1_000, noKeyLines).release, [], "sent once");
-});
-
-test("a diff GitHub will not give counts as stored", () => {
-  const { sql } = index({ diff_state: "too_large" });
-  assert.equal(releaseAlerts(sql, NOW, keyLinesOnReview).release[0]?.reason, "ready");
-});
-
-test("with key lines on, an alert waits for them at its head too", () => {
-  const { sql, setRow } = index({ diff_state: "ready" });
-  assert.deepEqual(releaseAlerts(sql, NOW + 2_000, keyLinesOnReview).release, []);
-  setRow({ key_lines_ready: "b".repeat(40) });
-  assert.deepEqual(
-    releaseAlerts(sql, NOW + 3_000, keyLinesOnReview).release,
-    [],
-    "another head's key lines",
-  );
-  setRow({ key_lines_ready: HEAD });
-  assert.equal(releaseAlerts(sql, NOW + 6_000, keyLinesOnReview).release[0]?.heldMs, 6_000);
-});
-
-test("past the bounded wait an alert goes anyway, timed out", () => {
-  const { sql } = index({ diff_state: "pending" });
-  assert.deepEqual(releaseAlerts(sql, NOW + ALERT_HOLD_MAX_MS - 1, noKeyLines).release, []);
-  assert.deepEqual(releaseAlerts(sql, NOW + ALERT_HOLD_MAX_MS, noKeyLines).release, [
-    { alert, heldMs: ALERT_HOLD_MAX_MS, reason: "timed_out" },
-  ]);
 });
 
 test("a head that moved on releases the alert at once; a PR off every list drops it", () => {

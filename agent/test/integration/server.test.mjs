@@ -76,7 +76,7 @@ test("a stop asked for during a request waits for its answer", { timeout: 15_000
   const answered = once(held, "response");
   held.end('"not an object"');
   const [response] = await answered;
-  assert.equal(response.statusCode, 500, "the malformed body gets an error before shutdown");
+  assert.equal(response.statusCode, 400, "the malformed body is refused before shutdown");
   const chunks = [];
   for await (const chunk of response) {
     chunks.push(chunk);

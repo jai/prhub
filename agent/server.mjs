@@ -6,9 +6,17 @@ import { createServer } from "node:http";
 import { promisify } from "node:util";
 import { InMemorySessionStore, query } from "@anthropic-ai/claude-agent-sdk";
 import {
-  ACTS,
+  askAnswer,
+  createLocks,
+  grantedRepos,
+  parseBody,
+  runAnswer,
+  SeededStore,
+  turnKeeper,
+  vetQuestion,
+} from "./ask-core.mjs";
+import {
   authArgs,
-  LINEAR_ACTS,
   gitEnv,
   lockConfig,
   readOnlyHooks,
@@ -18,7 +26,6 @@ import {
   SERVER,
   WEB_TOOLS,
 } from "./read-tools.mjs";
-import { vetRepo } from "./vet.mjs";
 
 const exec = promisify(execFile);
 
@@ -47,24 +54,7 @@ async function run({ system, prompt, model, effort, schema }) {
   if (!result) {
     throw new Error("The agent ended without a result.");
   }
-  const usage = result.usage ?? {};
-  return {
-    subtype: result.subtype,
-    output: result.structured_output ?? null,
-    // Claude Code also calls a small model for its own chores; the answer is the asked model's when it ran.
-    model:
-      model in (result.modelUsage ?? {})
-        ? model
-        : (Object.keys(result.modelUsage ?? {})[0] ?? model),
-    tokens: {
-      input:
-        (usage.input_tokens ?? 0) +
-        (usage.cache_creation_input_tokens ?? 0) +
-        (usage.cache_read_input_tokens ?? 0),
-      output: usage.output_tokens ?? 0,
-    },
-    costUsd: result.total_cost_usd ?? null,
-  };
+  return runAnswer(result, model);
 }
 
 /**
@@ -91,16 +81,7 @@ async function git(step, args, options = {}) {
 }
 
 /** One checkout at a time per directory: a second question on the same PR waits for the first's checkout. */
-const locks = new Map();
-async function locked(dir, work) {
-  const before = locks.get(dir) ?? Promise.resolve();
-  const turn = before.then(work, work);
-  locks.set(
-    dir,
-    turn.catch(() => {}),
-  );
-  return turn;
-}
+const locked = createLocks();
 
 /** PR `number` of `repo` at `head`, in `dir`: one person's own (`scope`) for that PR. The token rides one command's header and is never written to disk. */
 async function checkout(dir, repo, head, token) {
@@ -117,21 +98,6 @@ async function checkout(dir, repo, head, token) {
   return dir;
 }
 
-/** The session's transcript, given whole by the Worker and handed back whole, so R2 keeps it between containers. */
-class SeededStore {
-  constructor(entries) {
-    this.entries = entries ?? [];
-  }
-  async append(key, entries) {
-    if (key.subpath === undefined) {
-      this.entries.push(...entries);
-    }
-  }
-  async load(key) {
-    return key.subpath === undefined && this.entries.length > 0 ? this.entries : null;
-  }
-}
-
 /** The PR's diff beside the code, as a file the read tools reach: git's own objects are compressed past reading. */
 export const DIFF_FILE = ".prhub-pr.diff";
 
@@ -142,17 +108,7 @@ function placeDiff(dir, diff) {
   writeFileSync(`${dir}/.git/info/exclude`, `${DIFF_FILE}\n`);
 }
 
-/** The subscription token and the GitHub token, never in an answer: a defence beside `readOnlyHooks`. */
-function scrub(text, ...more) {
-  return [process.env.CLAUDE_CODE_OAUTH_TOKEN, ...more].reduce(
-    (kept, secret) => (secret && kept ? kept.split(secret).join("[redacted]") : kept),
-    text,
-  );
-}
-
 /** One Ask turn on `repo` at `head`: the answer's text, the session, and its whole transcript for the next turn. */
-const SAFE = { scope: /^[\w-]{1,64}$/, repo: /^[\w.-]+\/[\w.-]+$/, head: /^[0-9a-f]{40}$/ };
-
 async function ask({
   system,
   prompt,
@@ -170,19 +126,12 @@ async function ask({
   entries,
   budgetUsd,
 }) {
-  if (
-    !SAFE.scope.test(scope) ||
-    !SAFE.repo.test(repo) ||
-    repo.includes("..") ||
-    !Number.isInteger(number) ||
-    !SAFE.head.test(head)
-  ) {
-    throw new Error("The question names no PR this container can check out.");
+  const unsafe = vetQuestion({ scope, repo, number, head });
+  if (unsafe) {
+    throw new Error(unsafe);
   }
   // Hosted, the repos this question's token names: the only clones the agent may read. Null on a Worker of one's own.
-  const granted = Array.isArray(reachable)
-    ? reachable.filter((one) => vetRepo(one) === null)
-    : null;
+  const granted = grantedRepos(reachable);
   const dir = `${WORK}/${scope}/${repo}/${number}`;
   // This person's other repos, cloned by clone_repo. GitHub owners never start with a dot, so no PR's checkout is here.
   const home = `${WORK}/${scope}`;
@@ -195,12 +144,9 @@ async function ask({
     const reads = readOnly === true ? token : null;
     const allowed = [...ASK_TOOLS, ...readToolNames(reads !== null)];
     const store = new SeededStore(session ? entries : []);
-    // The newest review the agent drafted this turn (`draft_review`): it goes to the Worker, never to GitHub.
-    let draft = null;
-    // What the reviewer asked the agent to do on GitHub (`github_act`): the Worker does it, as them.
-    const actions = [];
-    // Comments the reviewer asked for on the PR's Linear tickets (`linear_act`): proposals they confirm on the phone.
-    const linear = [];
+    // The newest review the agent drafted (`draft_review`), what the reviewer asked it to do on GitHub (`github_act`),
+    // and comments for the PR's Linear tickets (`linear_act`): all go to the Worker, never to GitHub or Linear from here.
+    const { kept, onDraft, onAct, onLinear } = turnKeeper();
     let result = null;
     let tools = [];
     for await (const message of query({
@@ -222,15 +168,9 @@ async function ask({
             token: reads,
             locked,
             reachable: granted,
-            onDraft: (made) => {
-              draft = made;
-            },
-            onAct: (action) => {
-              if (actions.length < ACTS) actions.push(action);
-            },
-            onLinear: (comment) => {
-              if (linear.length < LINEAR_ACTS) linear.push(comment);
-            },
+            onDraft,
+            onAct,
+            onLinear,
           }),
         },
         settingSources: [],
@@ -251,26 +191,7 @@ async function ask({
     if (!result) {
       throw new Error("The agent ended without a result.");
     }
-    return {
-      subtype: result.subtype,
-      // The tools the turn began with, for the Worker's log: what the agent could use, not what it says it could.
-      tools,
-      text: typeof result.result === "string" ? scrub(result.result, token) : null,
-      draft: draft && {
-        ...draft,
-        body: scrub(draft.body, token),
-        comments: draft.comments.map((one) => ({ ...one, body: scrub(one.body, token) })),
-      },
-      actions,
-      linear: linear.map((one) => ({ ...one, body: scrub(one.body, token) })),
-      session: result.session_id,
-      entries: store.entries,
-      model:
-        model in (result.modelUsage ?? {})
-          ? model
-          : (Object.keys(result.modelUsage ?? {})[0] ?? model),
-      costUsd: result.total_cost_usd ?? null,
-    };
+    return askAnswer({ result, tools, ...kept, entries: store.entries, model, token });
   });
 }
 
@@ -314,12 +235,18 @@ const server = createServer(async (request, response) => {
     inFlight--;
     leaveWhenIdle();
   });
-  let body = "";
+  let text = "";
   for await (const chunk of request) {
-    body += chunk;
+    text += chunk;
+  }
+  const { body, error } = parseBody(text);
+  if (error) {
+    response.statusCode = 400;
+    response.end(JSON.stringify({ error }));
+    return;
   }
   try {
-    response.end(JSON.stringify(await route(JSON.parse(body))));
+    response.end(JSON.stringify(await route(body)));
   } catch (error) {
     response.statusCode = 500;
     response.end(JSON.stringify({ error: String(error instanceof Error ? error.message : error) }));

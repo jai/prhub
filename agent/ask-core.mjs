@@ -1,0 +1,134 @@
+// The server's decisions, apart from its HTTP, git and SDK: what a request may name, what an answer says, and how runs
+// on one directory take turns. No disk, no process, no SDK.
+import { ACTS, LINEAR_ACTS, redact } from "./replies.mjs";
+import { vetRepo } from "./vet.mjs";
+
+/** A request's body: a JSON object, or why it is refused. */
+export function parseBody(text) {
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return { error: "The body is not JSON." };
+  }
+  return body !== null && typeof body === "object" && !Array.isArray(body)
+    ? { body }
+    : { error: "The body is not a JSON object." };
+}
+
+const SAFE = { scope: /^[\w-]{1,64}$/, repo: /^[\w.-]+\/[\w.-]+$/, head: /^[0-9a-f]{40}$/ };
+
+/** Why a question names no PR this container can check out, or null. */
+export function vetQuestion({ scope, repo, number, head }) {
+  return typeof scope === "string" &&
+    SAFE.scope.test(scope) &&
+    typeof repo === "string" &&
+    SAFE.repo.test(repo) &&
+    !repo.includes("..") &&
+    Number.isInteger(number) &&
+    typeof head === "string" &&
+    SAFE.head.test(head)
+    ? null
+    : "The question names no PR this container can check out.";
+}
+
+/** Hosted, the repos this question's token names that are repo names; null on a Worker of one's own. */
+export function grantedRepos(reachable) {
+  return Array.isArray(reachable) ? reachable.filter((one) => vetRepo(one) === null) : null;
+}
+
+/** The model that answered: the asked one when it ran, as Claude Code also calls a small model for its own chores. */
+export function answeringModel(model, modelUsage) {
+  const used = modelUsage ?? {};
+  return model in used ? model : (Object.keys(used)[0] ?? model);
+}
+
+/** One `/run` result: its subtype, the parsed output, the model, the tokens spent, and the cost. */
+export function runAnswer(result, model) {
+  const usage = result.usage ?? {};
+  return {
+    subtype: result.subtype,
+    output: result.structured_output ?? null,
+    model: answeringModel(model, result.modelUsage),
+    tokens: {
+      input:
+        (usage.input_tokens ?? 0) +
+        (usage.cache_creation_input_tokens ?? 0) +
+        (usage.cache_read_input_tokens ?? 0),
+      output: usage.output_tokens ?? 0,
+    },
+    costUsd: result.total_cost_usd ?? null,
+  };
+}
+
+/** `text` with the subscription token and `token` out of it: a defence beside `readOnlyHooks`. */
+export function scrub(text, token) {
+  return redact(text, [process.env.CLAUDE_CODE_OAUTH_TOKEN, token]);
+}
+
+/** One `/ask` answer, every text the agent wrote scrubbed of both tokens. */
+export function askAnswer({ result, tools, draft, actions, linear, entries, model, token }) {
+  return {
+    subtype: result.subtype,
+    // The tools the turn began with, for the Worker's log: what the agent could use, not what it says it could.
+    tools,
+    text: typeof result.result === "string" ? scrub(result.result, token) : null,
+    draft: draft && {
+      ...draft,
+      body: scrub(draft.body, token),
+      comments: draft.comments.map((one) => ({ ...one, body: scrub(one.body, token) })),
+    },
+    actions,
+    linear: linear.map((one) => ({ ...one, body: scrub(one.body, token) })),
+    session: result.session_id,
+    entries,
+    model: answeringModel(model, result.modelUsage),
+    costUsd: result.total_cost_usd ?? null,
+  };
+}
+
+/** What one turn hands the Worker: the newest draft, and actions and Linear comments up to their caps. */
+export function turnKeeper() {
+  const kept = { draft: null, actions: [], linear: [] };
+  return {
+    kept,
+    onDraft: (made) => {
+      kept.draft = made;
+    },
+    onAct: (action) => {
+      if (kept.actions.length < ACTS) kept.actions.push(action);
+    },
+    onLinear: (comment) => {
+      if (kept.linear.length < LINEAR_ACTS) kept.linear.push(comment);
+    },
+  };
+}
+
+/** One run at a time per key: a second waits for the first, whether the first succeeds or fails. */
+export function createLocks() {
+  const locks = new Map();
+  return function locked(key, work) {
+    const before = locks.get(key) ?? Promise.resolve();
+    const turn = before.then(work, work);
+    locks.set(
+      key,
+      turn.catch(() => {}),
+    );
+    return turn;
+  };
+}
+
+/** The session's transcript, given whole by the Worker and handed back whole, so R2 keeps it between containers. */
+export class SeededStore {
+  constructor(entries) {
+    this.entries = entries ?? [];
+  }
+  async append(key, entries) {
+    if (key.subpath === undefined) {
+      this.entries.push(...entries);
+    }
+  }
+  async load(key) {
+    return key.subpath === undefined && this.entries.length > 0 ? this.entries : null;
+  }
+}

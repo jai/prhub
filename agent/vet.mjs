@@ -126,7 +126,7 @@ const NEVER =
   /^(?:--output|-o|--ext-diff|--textconv|--open-files-in-pager|-O|--exec|--upload-pack|--config|-c|--git-dir|--work-tree|--namespace)/;
 
 /** A path argument as given: none absolute, from home, or climbing. */
-function outsidePath(arg) {
+export function outsidePath(arg) {
   return isAbsolute(arg) || arg.startsWith("~") || arg.split(/[\\/]/).includes("..");
 }
 

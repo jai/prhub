@@ -1,6 +1,7 @@
+// Ask's queue on real SQLite (`ask-queue.ts`): a question stored and answered at once, then handed to the agent one at a
+// time.
 import assert from "node:assert/strict";
 import { afterEach, test } from "vitest";
-import type { AskChat } from "../../../src/ask-chat.ts";
 import {
   acceptAsk,
   askView,
@@ -8,9 +9,8 @@ import {
   createAskTables,
   drainAsks,
   queueAsk,
-  rememberChat,
 } from "../../../src/ask-queue.ts";
-import { ANSWERED, PR, question } from "../../support/ask-queue-values.ts";
+import { PR, question } from "../../support/ask-queue-values.ts";
 import { closeMemorySql, memorySql } from "../../support/memory-sql.ts";
 
 afterEach(closeMemorySql);
@@ -48,30 +48,6 @@ function intake(sql = queue(), claim: "go" | "busy" | "done" = "go") {
   return { answer, calls, sql };
 }
 
-test("a question is answered 202 once it is stored, with the chat so far and the question at its end, working", async () => {
-  const { answer, calls, sql } = intake();
-  rememberChat(sql, PR, ANSWERED, 500);
-  const response = await acceptAsk(
-    answer,
-    question("ref-1", "Is it tested?"),
-    "ask:acme/api#7:ref-1",
-  );
-  assert.equal(response.status, 202);
-  const chat = (await response.json()) as AskChat;
-  assert.deepEqual(
-    chat.messages.map((message) => message.text),
-    ["What does it change?", "The retry.", "Is it tested?"],
-  );
-  assert.equal(chat.isWorking, true);
-  assert.equal(chat.problem, null);
-  assert.deepEqual(calls, [
-    "claim ask:acme/api#7:ref-1",
-    "limited",
-    "queue ref-1",
-    "finish ask:acme/api#7:ref-1 true",
-  ]);
-});
-
 test("a stored question answers before its unfinished handover completes", async () => {
   const { answer, sql } = intake();
   const response = await acceptAsk(answer, question("ref-1", "Is it tested?"), null);
@@ -92,31 +68,6 @@ test("a stored question answers before its unfinished handover completes", async
   await slow;
   assert.equal(handedOver, true);
   assert.deepEqual(askView(sql, PR).queued, []);
-});
-
-test("a repeat of the same question is the one already stored: nothing is queued twice", async () => {
-  const { answer, calls, sql } = intake(queue(), "done");
-  queueAsk(sql, question("ref-1", "Is it tested?"));
-  const response = await acceptAsk(
-    answer,
-    question("ref-1", "Is it tested?"),
-    "ask:acme/api#7:ref-1",
-  );
-  assert.equal(response.status, 202);
-  assert.deepEqual(calls, ["claim ask:acme/api#7:ref-1", "read"]);
-  assert.equal(askView(sql, PR).queued.length, 1);
-});
-
-test("a copy already being stored is busy, and a refused one leaves no receipt", async () => {
-  assert.equal(
-    (await acceptAsk(intake(queue(), "busy").answer, question("r", "q"), "ask:x:r")).status,
-    503,
-  );
-  const refused = intake();
-  refused.answer.limited = async () => new Response(null, { status: 429 });
-  assert.equal((await acceptAsk(refused.answer, question("r", "q"), "ask:x:r")).status, 429);
-  assert.deepEqual(refused.calls, ["claim ask:x:r", "finish ask:x:r false"]);
-  assert.deepEqual(askView(refused.sql, PR).queued, []);
 });
 
 test("questions go to the agent one at a time, oldest first, and a failed one stays with why", async () => {

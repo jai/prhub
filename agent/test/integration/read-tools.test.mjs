@@ -1,4 +1,4 @@
-// Ask's read tools: the hook lets reads through and denies writes, pushes, other methods and paths outside.
+// Ask's read tools on disk: real git in temporary folders, and the hook following real symlinks.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
@@ -13,14 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { onTestFinished, test } from "vitest";
 import { WRITERS } from "../fixtures/git-arguments.mjs";
-import {
-  LINEAR_ACTS,
-  gitEnv,
-  readOnlyHooks,
-  readToolNames,
-  readTools,
-  runGit,
-} from "../../read-tools.mjs";
+import { gitEnv, readOnlyHooks, readTools, runGit } from "../../read-tools.mjs";
 
 // Setup Git with the same isolated environment as the tool, independent of the operator's config.
 const gitFree = gitEnv();
@@ -36,7 +29,7 @@ async function decide(hooks, tool_name, tool_input) {
   return output.hookSpecificOutput?.permissionDecision ?? "allow";
 }
 
-test("the hook allows reads in the checkout and the clones, and denies everything else", async () => {
+test("the hook follows symlinks on disk: reads stay in the checkout and the clones", async () => {
   const root = temporaryRoot();
   const cwd = `${root}/acme/api/7`;
   const clones = `${root}/.clones`;
@@ -53,42 +46,11 @@ test("the hook allows reads in the checkout and the clones, and denies everythin
     await decide(hooks, "Grep", { pattern: "x", path: `${clones}/acme/actions` }),
     "allow",
   );
-  assert.equal(
-    await decide(hooks, "mcp__prhub__git", { args: ["log", "-5"], repo: "acme/actions" }),
-    "allow",
-  );
-  assert.equal(
-    await decide(hooks, "mcp__prhub__clone_repo", { repo: "acme/actions", ref: "v2" }),
-    "allow",
-  );
-  assert.equal(
-    await decide(hooks, "mcp__prhub__github_api", { path: "/repos/acme/api/pulls/7/comments" }),
-    "allow",
-  );
   assert.equal(await decide(hooks, "Read", { file_path: "/proc/self/environ" }), "deny");
   assert.equal(
     await decide(hooks, "Read", { file_path: `${cwd}/out/passwd` }),
     "deny",
     "a symlink out is outside",
-  );
-  assert.equal(await decide(hooks, "Glob", { pattern: "/etc/*" }), "deny");
-  assert.equal(
-    await decide(hooks, "mcp__prhub__git", { args: ["push", "origin", "HEAD"] }),
-    "deny",
-  );
-  assert.equal(
-    await decide(hooks, "mcp__prhub__github_api", { path: "https://evil.example/" }),
-    "deny",
-  );
-  assert.equal(await decide(hooks, "Bash", { command: "cat /proc/self/environ" }), "deny");
-  assert.equal(await decide(hooks, "Write", { file_path: `${cwd}/a` }), "deny");
-  assert.equal(
-    await decide(hooks, "WebSearch", { query: "grafana alert rule query_type" }),
-    "allow",
-  );
-  assert.equal(
-    await decide(hooks, "WebFetch", { url: "https://grafana.com/docs/", prompt: "summarise" }),
-    "allow",
   );
 });
 
@@ -116,6 +78,9 @@ test("the git tool runs a read in the checkout, refuses a write itself, and keep
     undefined,
     "no API without a read-only token",
   );
+  for (const name of ["draft_review", "github_act", "linear_act"]) {
+    assert.ok(server.instance._registeredTools[name], `${name} is offered without a token`);
+  }
   const call = (args) => (git.handler ?? git.callback)(args, {});
   const log = await call({ args: ["log", "--format=%s"] });
   assert.equal(log.content[0].text.trim(), "first");
@@ -134,36 +99,6 @@ test("the git tool runs a read in the checkout, refuses a write itself, and keep
     withToken.instance._registeredTools.git.callback
   )({ args: ["show", "HEAD:a.txt"] }, {});
   assert.equal(show.content[0].text.trim(), "[redacted]");
-});
-
-test("a repo the token can't reach answers that the reviewer can't access it", async () => {
-  const real = globalThis.fetch;
-  globalThis.fetch = async (url) =>
-    new Response('{"message":"Not Found"}', {
-      status: String(url).includes("/secret") ? 404 : 200,
-    });
-  try {
-    const server = readTools({
-      prDir: tmpdir(),
-      prRepo: "acme/api",
-      clones: tmpdir(),
-      scope: tmpdir(),
-      token: "fake-install-token",
-      locked: (_, f) => f(),
-    });
-    const api = server.instance._registeredTools.github_api;
-    const call = (path) => (api.handler ?? api.callback)({ path }, {});
-    const denied = await call("/repos/acme/secret/releases/latest");
-    assert.equal(denied.isError, true);
-    assert.match(
-      denied.content[0].text,
-      /can't access acme\/secret: the reviewer can't see it, or the GitHub App isn't installed/,
-    );
-    const fine = await call("/repos/acme/actions/releases/latest");
-    assert.equal(fine.isError, false);
-  } finally {
-    globalThis.fetch = real;
-  }
 });
 
 /** A scope with the PR's checkout, a committed file and a committed symlink out, and the git tool on it. */
@@ -212,71 +147,6 @@ test("git has an empty stdin, so a command that would read it ends at once", asy
   const { cwd } = scopeWithLink();
   const answer = await runGit(cwd, ["shortlog"], null, 10_000);
   assert.equal(answer.ok, true);
-});
-
-test("hosted, a clone outside this question's grant can't be read, gitted or made", async () => {
-  const root = temporaryRoot();
-  const cwd = `${root}/acme/api/7`;
-  const clones = `${root}/.clones`;
-  mkdirSync(cwd, { recursive: true });
-  mkdirSync(`${clones}/acme/actions`, { recursive: true });
-  mkdirSync(`${clones}/acme/old`, { recursive: true });
-  const hooks = readOnlyHooks(cwd, clones, ["acme/api", "Acme/Actions"]);
-  assert.equal(
-    await decide(hooks, "Read", { file_path: `${clones}/acme/actions/action.yml` }),
-    "allow",
-  );
-  assert.equal(
-    await decide(hooks, "Read", { file_path: `${clones}/acme/old/secret.yml` }),
-    "deny",
-    "access since lost",
-  );
-  assert.equal(
-    await decide(hooks, "Grep", { pattern: "x", path: clones }),
-    "deny",
-    "not the clones as a whole",
-  );
-  assert.equal(await decide(hooks, "mcp__prhub__git", { args: ["log"], repo: "acme/old" }), "deny");
-  assert.equal(await decide(hooks, "mcp__prhub__clone_repo", { repo: "acme/old" }), "deny");
-  assert.equal(await decide(hooks, "mcp__prhub__clone_repo", { repo: "acme/actions" }), "allow");
-  const server = readTools({
-    prDir: cwd,
-    prRepo: "acme/api",
-    clones,
-    scope: root,
-    token: "fake-install-token",
-    locked: (_, f) => f(),
-    reachable: ["acme/api"],
-  });
-  const tools = server.instance._registeredTools;
-  const gitOld = await (tools.git.handler ?? tools.git.callback)(
-    { args: ["log"], repo: "acme/old" },
-    {},
-  );
-  assert.match(gitOld.content[0].text, /can't access acme\/old/);
-  const cloneOld = await (tools.clone_repo.handler ?? tools.clone_repo.callback)(
-    { repo: "acme/old" },
-    {},
-  );
-  assert.match(cloneOld.content[0].text, /can't access acme\/old/);
-});
-
-test("tool output never carries the subscription token either", async () => {
-  const { cwd, call } = scopeWithLink();
-  const saved = process.env.CLAUDE_CODE_OAUTH_TOKEN;
-  process.env.CLAUDE_CODE_OAUTH_TOKEN = "sk-subscription-value";
-  try {
-    writeFileSync(`${cwd}/a.txt`, "sk-subscription-value\n");
-    const answer = await call(["diff"]);
-    assert.doesNotMatch(answer.content[0].text, /sk-subscription-value/);
-    assert.match(answer.content[0].text, /\[redacted\]/);
-  } finally {
-    if (saved === undefined) {
-      delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
-    } else {
-      process.env.CLAUDE_CODE_OAUTH_TOKEN = saved;
-    }
-  }
 });
 
 test("the exploits change no .git/config, and no allowed command does", async () => {
@@ -339,97 +209,4 @@ test("a repo config that names a program runs nothing: every git call overrides 
     { code: "ENOENT" },
     "no program from the repo's config ran",
   );
-});
-
-test("draft_review keeps the draft for the Worker, posts nothing, and the hook lets it through", async () => {
-  let kept = null;
-  const server = readTools({
-    prDir: tmpdir(),
-    prRepo: "acme/api",
-    clones: tmpdir(),
-    scope: tmpdir(),
-    token: null,
-    locked: (_, f) => f(),
-    onDraft: (draft) => {
-      kept = draft;
-    },
-  });
-  const tool = server.instance._registeredTools.draft_review;
-  assert.ok(tool, "offered without a token too");
-  const draft = {
-    event: "REQUEST_CHANGES",
-    body: "Retry loses the error.",
-    comments: [{ path: "src/a.ts", line: 12, side: "RIGHT", body: "Keep the cause." }],
-  };
-  const said = await (tool.handler ?? tool.callback)(draft, {});
-  assert.deepEqual(kept, draft);
-  assert.match(said.content[0].text, /Nothing is posted/);
-  const [
-    {
-      hooks: [hook],
-    },
-  ] = readOnlyHooks(tmpdir(), tmpdir());
-  assert.deepEqual(await hook({ tool_name: "mcp__prhub__draft_review", tool_input: draft }), {});
-  assert.ok(readToolNames(false).includes("mcp__prhub__draft_review"));
-});
-
-test("github_act hands the action to the Worker and acts on nothing itself", async () => {
-  const acts = [];
-  const server = readTools({
-    prDir: tmpdir(),
-    prRepo: "acme/api",
-    clones: tmpdir(),
-    scope: tmpdir(),
-    token: null,
-    locked: (_, f) => f(),
-    onAct: (action) => acts.push(action),
-  });
-  const tool = server.instance._registeredTools.github_act;
-  const action = {
-    kind: "review",
-    event: "APPROVE",
-    body: "",
-    commit: "a".repeat(40),
-    comments: [],
-  };
-  const said = await (tool.handler ?? tool.callback)({ action }, {});
-  assert.deepEqual(acts, [action]);
-  assert.match(said.content[0].text, /Queued/);
-  const [
-    {
-      hooks: [hook],
-    },
-  ] = readOnlyHooks(tmpdir(), tmpdir());
-  assert.deepEqual(await hook({ tool_name: "mcp__prhub__github_act", tool_input: { action } }), {});
-});
-
-test("linear_act proposes a comment for the reviewer to post, holds no Linear key, and posts nothing", async () => {
-  const proposed = [];
-  const server = readTools({
-    prDir: tmpdir(),
-    prRepo: "acme/api",
-    clones: tmpdir(),
-    scope: tmpdir(),
-    token: null,
-    locked: (_, f) => f(),
-    onLinear: (comment) => proposed.push(comment),
-  });
-  const tool = server.instance._registeredTools.linear_act;
-  const said = await (tool.handler ?? tool.callback)(
-    { issue: "eng-12", body: "@Octbot rename the flag" },
-    {},
-  );
-  assert.deepEqual(proposed, [{ issue: "ENG-12", body: "@Octbot rename the flag" }]);
-  assert.match(said.content[0].text, /Nothing is posted/);
-  const [
-    {
-      hooks: [hook],
-    },
-  ] = readOnlyHooks(tmpdir(), tmpdir());
-  assert.deepEqual(
-    await hook({ tool_name: "mcp__prhub__linear_act", tool_input: { issue: "ENG-12", body: "x" } }),
-    {},
-  );
-  assert.ok(readToolNames(false).includes("mcp__prhub__linear_act"));
-  assert.equal(LINEAR_ACTS, 3);
 });
