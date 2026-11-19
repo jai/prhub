@@ -90,17 +90,14 @@ Each test workflow runs one test layer of one component. Each push workflow runs
 ## Superseded main checks
 
 Main app and kit checks share a per-workflow, per-ref concurrency group. A newer main push cancels that workflow's
-older pending/running main check, keeping the shared Mac lane from replaying obsolete commits. Reusable checks on
+older pending/running main check, keeping the hosted Mac slots from replaying obsolete commits. Reusable checks on
 RC tags have separate groups and never cancel in progress; release serialization still holds through all gates.
 
 ## Disk use
 
-What each workflow leaves on its machine after it ends:
+All jobs use GitHub-hosted runners: native Swift and UI checks use `macos-26`, and Linux checks and release metadata use hosted Ubuntu. GitHub discards each job's VM, including the checkout, build products, tool/download caches and any simulator left by an interrupted cleanup.
 
-- **Hosted workflows** (all lints but `build-ios`, the worker tests, the release and deploy jobs, the clock workflows): net zero. GitHub discards the VM.
-- **`build-ios`, `test-unit-ios`, `test-integration-ios`, `test-unit-prkit`, `test-integration-prkit`**: the checkout, `.build`, the generated project and DerivedData (with its package checkouts) are all in `_work`, which Zoomies deletes with the runner. Not net zero: SwiftPM's download cache (`~/Library/Caches/org.swift.swiftpm`) and mise's installs of the pinned tools (`~/.local/share/mise`). Both are shared by every job on the Mac and grow only when a pinned version changes. Deleting them in a job would slow every later job and race the jobs running beside it.
-- **`test-ui-ios` and `test-ui-prkit`**: as above, plus the job's Simulator. The job deletes the Simulator, the parallel-testing clones a cancelled run leaves in `~/Library/Developer/XCTestDevices`, and the Simulator's logs. On failure, result bundles go to a GitHub artifact for 3 days; successful jobs upload no test evidence. Not net zero: if the runner dies before the cleanup step, its Simulator (named `prhub-ui-<run id>-<attempt>-<job index>` or `prkit-ui-<run id>-<attempt>-<job index>`) stays.
-- **Mitigation for what stays**: jai/ci's floor on the host already measures free disk, sweeps idle DerivedData and pauses the runners below 150 GB free. If the shared caches or leftover `prhub-ui-*` or `prkit-ui-*` Simulators ever matter, add them to the floor's idle sweep (jai/ci `hosts/borg-cube-03/host.json`) instead of cleaning in this repo's jobs.
+UI jobs still delete their own simulator and testing clones in their cleanup step. On failure, original result bundles and diagnostics go to a GitHub artifact for three days; successful jobs upload no test evidence.
 
 ## Deviations from Part 1
 
