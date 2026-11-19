@@ -25,22 +25,24 @@ follow [deploy/AGENTS.md](../deploy/AGENTS.md), the deployment guide.
 ```sh
 npm ci
 npm test                    # All unit and integration tests
-npm run test:unit           # Code-only Node tests, with in-memory dependency stubs
-npm run test:integration    # Local SQLite/fixture tests, then workerd tests
+npm run test:unit           # Vitest "unit" project: plain Node, no storage, network blocked
+npm run test:integration    # Vitest "integration-node" (SQLite, fixtures) and "integration-runtime" (workerd)
 npm run typecheck
-npm run typecheck:test      # Test fixtures, runtime tests and Vitest configuration
+npm run typecheck:test      # Unit and Node integration tests; runtime tests with the workerd test types
 ```
 
-Tests live in `test/unit/` and `test/integration/`, with shared builders in `test/support/`.
-Unit tests do not open storage or make network requests. `test/integration/node/` covers SQL
-with a fresh in-memory SQLite database per fixture and reads the shared PRKit contract files.
-`test/integration/runtime/` uses Cloudflare's official Vitest plugin to run the production
-Worker entrypoint and Durable Object classes in workerd, with local SQLite and R2 bindings.
-It checks initialization, persisted receipts and events, HTTP authentication, and alarm cleanup.
-Unexpected outbound requests fail through MSW; no Cloudflare account or deployment is needed.
-Run those integration groups separately with `npm run test:integration:node` and
-`npm run test:integration:runtime`. Runtime bindings are declared in `vitest.config.ts`;
-they do not load the deployment configuration or launch agent containers.
+`vitest.config.ts` defines the three projects; each runs its files in a random order. Tests live in `test/unit/` and
+`test/integration/`, with shared builders in `test/support/`.
+
+- `test/unit/`: plain Node. `cloudflare:*` can't load, oxlint refuses `node:fs`, `node:child_process`, `node:sqlite`
+  and the integration fakes there, and `test/support/no-network.ts` fails any request a test didn't stub.
+- `test/integration/node/`: SQL with a fresh in-memory SQLite database per fixture, and the shared PRKit contract
+  files. The network is blocked the same way.
+- `test/integration/runtime/`: Cloudflare's Vitest plugin runs the production Worker entrypoint and Durable Object
+  classes in workerd, with local SQLite and R2 bindings and no Cloudflare account. Unexpected outbound requests fail
+  through MSW.
+
+Run one project with `npx vitest run --project <name>`.
 
 After a deliberate change to what the Worker sends, `UPDATE_FIXTURES=1 npm test` rewrites `PRKit/Tests/PRContractFixtures/Fixtures/`, which
 PRKit's tests decode; commit both. `deploy/setup.sh` renders `deploy/wrangler.template.jsonc` into

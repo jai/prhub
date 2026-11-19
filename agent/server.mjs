@@ -16,9 +16,9 @@ import {
   readTools,
   SAFE_GIT,
   SERVER,
-  vetRepo,
   WEB_TOOLS,
 } from "./read-tools.mjs";
+import { vetRepo } from "./vet.mjs";
 
 const exec = promisify(execFile);
 

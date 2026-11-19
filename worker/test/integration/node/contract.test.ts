@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
-import { afterEach, test } from "node:test";
+import { afterEach, test } from "vitest";
 import { closeMemorySql } from "../../support/memory-sql.ts";
 import { URL } from "node:url";
 import { type RepoFullName, type Sha } from "../../../src/ids.ts";

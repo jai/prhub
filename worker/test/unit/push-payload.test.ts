@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import type { PrAlert } from "../../src/alerts.ts";
 import { alertMessage } from "../../src/alerts.ts";
 import type { RepoFullName } from "../../src/ids.ts";

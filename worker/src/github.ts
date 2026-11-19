@@ -1,5 +1,5 @@
 import { type Env, githubLogin, isSet } from "./env.ts";
-import { renewAfterUnauthorized } from "./hosted.ts";
+import { renewAfterUnauthorized } from "./account-of.ts";
 import { gitHubReserveOf, limitsOf } from "./limits.ts";
 import { backoffOf, heldBackoff, holdBackoff, observe, stops, waitAnswer } from "./rate-limit.ts";
 import { eachGroup, readGroups, searchGroups } from "./read-app.ts";

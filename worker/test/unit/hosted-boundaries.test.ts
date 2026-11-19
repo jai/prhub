@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { aiStoreKey } from "../../src/ai-run.ts";
 import { askRecordKey } from "../../src/ask-chat.ts";
 import { aiJobs, type Env, prIndex, scopedKey } from "../../src/env.ts";

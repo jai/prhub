@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/workers-types", "node", "@cloudflare/vitest-plugin/types"]
+  },
+  "include": ["src", "test/integration/runtime", "test/support", "vitest.config.ts"]
+}

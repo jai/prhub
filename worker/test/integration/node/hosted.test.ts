@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { afterEach, test } from "node:test";
+import { afterEach, test } from "vitest";
 import { closeMemorySql } from "../../support/memory-sql.ts";
 import { NO_AI, REFRESH_MARGIN_MS, userIdOf } from "../../../src/account-core.ts";
 import { authenticate, hostedAccountConfig } from "../../../src/hosted.ts";

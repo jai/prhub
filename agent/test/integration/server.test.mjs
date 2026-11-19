@@ -6,11 +6,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
-import test from "node:test";
+import { onTestFinished, test } from "vitest";
 
-async function started(t) {
+async function started() {
   const root = mkdtempSync(`${tmpdir()}/prhub-agent-server-`);
-  const server = spawn(process.execPath, [new URL("server.mjs", import.meta.url).pathname], {
+  const server = spawn(process.execPath, [new URL("../../server.mjs", import.meta.url).pathname], {
     cwd: root,
     env: { PATH: process.env.PATH, HOME: root, TMPDIR: root, PORT: "0" },
     stdio: ["ignore", "ignore", "pipe", "ipc"],
@@ -21,7 +21,7 @@ async function started(t) {
   });
   const left = once(server, "exit");
   const closed = once(server, "close");
-  t.after(async () => {
+  onTestFinished(async () => {
     if (server.exitCode === null && server.signalCode === null) {
       server.kill("SIGKILL");
     }
@@ -45,15 +45,15 @@ async function started(t) {
 }
 
 // The signal handler distinguishes the container's intentional exit from a default signal death.
-test("an idle server leaves on SIGTERM, by its own exit", { timeout: 15_000 }, async (t) => {
-  const { server, left } = await started(t);
+test("an idle server leaves on SIGTERM, by its own exit", { timeout: 15_000 }, async () => {
+  const { server, left } = await started();
   server.kill("SIGTERM");
   const [code, signal] = await left;
   assert.deepEqual({ code, signal }, { code: 0, signal: null });
 });
 
-test("a stop asked for during a request waits for its answer", { timeout: 15_000 }, async (t) => {
-  const { server, port, left } = await started(t);
+test("a stop asked for during a request waits for its answer", { timeout: 15_000 }, async () => {
+  const { server, port, left } = await started();
   const held = request({
     host: "127.0.0.1",
     port,
@@ -63,7 +63,7 @@ test("a stop asked for during a request waits for its answer", { timeout: 15_000
   });
   // once() rejects active waits on errors; this listener also handles cancellation during cleanup.
   held.on("error", () => {});
-  t.after(() => held.destroy());
+  onTestFinished(() => held.destroy());
   const accepted = once(held, "continue");
   held.flushHeaders();
   await accepted;

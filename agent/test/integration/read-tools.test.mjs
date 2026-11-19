@@ -11,8 +11,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { beforeEach, test } from "node:test";
-import { WRITERS } from "./test-fixtures/git-arguments.mjs";
+import { onTestFinished, test } from "vitest";
+import { WRITERS } from "../fixtures/git-arguments.mjs";
 import {
   LINEAR_ACTS,
   gitEnv,
@@ -20,31 +20,24 @@ import {
   readToolNames,
   readTools,
   runGit,
-} from "./read-tools.mjs";
+} from "../../read-tools.mjs";
 
 // Setup Git with the same isolated environment as the tool, independent of the operator's config.
 const gitFree = gitEnv();
 
-function temporaryRoot(t) {
+function temporaryRoot() {
   const root = mkdtempSync(`${tmpdir()}/ask-`);
-  t.after(() => rmSync(root, { recursive: true, force: true }));
+  onTestFinished(() => rmSync(root, { recursive: true, force: true }));
   return root;
 }
-
-beforeEach((t) => {
-  const send = t.mock.method(globalThis, "fetch", async () => {
-    throw new Error("Unexpected outbound request in an agent test");
-  });
-  t.after(() => assert.equal(send.mock.callCount(), 0, "no unstubbed network request"));
-});
 
 async function decide(hooks, tool_name, tool_input) {
   const output = await hooks[0].hooks[0]({ tool_name, tool_input });
   return output.hookSpecificOutput?.permissionDecision ?? "allow";
 }
 
-test("the hook allows reads in the checkout and the clones, and denies everything else", async (t) => {
-  const root = temporaryRoot(t);
+test("the hook allows reads in the checkout and the clones, and denies everything else", async () => {
+  const root = temporaryRoot();
   const cwd = `${root}/acme/api/7`;
   const clones = `${root}/.clones`;
   mkdirSync(cwd, { recursive: true });
@@ -99,8 +92,8 @@ test("the hook allows reads in the checkout and the clones, and denies everythin
   );
 });
 
-test("the git tool runs a read in the checkout, refuses a write itself, and keeps no token in what it says", async (t) => {
-  const root = temporaryRoot(t);
+test("the git tool runs a read in the checkout, refuses a write itself, and keeps no token in what it says", async () => {
+  const root = temporaryRoot();
   const cwd = `${root}/acme/api/7`;
   mkdirSync(cwd, { recursive: true });
   const run = (...args) => execFileSync("git", ["-C", cwd, ...args], { env: gitFree });
@@ -174,8 +167,8 @@ test("a repo the token can't reach answers that the reviewer can't access it", a
 });
 
 /** A scope with the PR's checkout, a committed file and a committed symlink out, and the git tool on it. */
-function scopeWithLink(t) {
-  const root = temporaryRoot(t);
+function scopeWithLink() {
+  const root = temporaryRoot();
   const cwd = `${root}/acme/api/7`;
   mkdirSync(cwd, { recursive: true });
   const run = (...args) => execFileSync("git", ["-C", cwd, ...args], { env: gitFree });
@@ -197,8 +190,8 @@ function scopeWithLink(t) {
   return { root, cwd, call: (args, repo) => (git.handler ?? git.callback)({ args, repo }, {}) };
 }
 
-test("blame's file options and a committed symlink out of the repo are refused before git runs", async (t) => {
-  const { call } = scopeWithLink(t);
+test("blame's file options and a committed symlink out of the repo are refused before git runs", async () => {
+  const { call } = scopeWithLink();
   for (const args of [
     ["blame", "-S", "link", "--", "a.txt"],
     ["blame", "--ignore-revs-file=link", "a.txt"],
@@ -215,14 +208,14 @@ test("blame's file options and a committed symlink out of the repo are refused b
   assert.equal(fine.isError, false);
 });
 
-test("git has an empty stdin, so a command that would read it ends at once", async (t) => {
-  const { cwd } = scopeWithLink(t);
+test("git has an empty stdin, so a command that would read it ends at once", async () => {
+  const { cwd } = scopeWithLink();
   const answer = await runGit(cwd, ["shortlog"], null, 10_000);
   assert.equal(answer.ok, true);
 });
 
-test("hosted, a clone outside this question's grant can't be read, gitted or made", async (t) => {
-  const root = temporaryRoot(t);
+test("hosted, a clone outside this question's grant can't be read, gitted or made", async () => {
+  const root = temporaryRoot();
   const cwd = `${root}/acme/api/7`;
   const clones = `${root}/.clones`;
   mkdirSync(cwd, { recursive: true });
@@ -268,8 +261,8 @@ test("hosted, a clone outside this question's grant can't be read, gitted or mad
   assert.match(cloneOld.content[0].text, /can't access acme\/old/);
 });
 
-test("tool output never carries the subscription token either", async (t) => {
-  const { cwd, call } = scopeWithLink(t);
+test("tool output never carries the subscription token either", async () => {
+  const { cwd, call } = scopeWithLink();
   const saved = process.env.CLAUDE_CODE_OAUTH_TOKEN;
   process.env.CLAUDE_CODE_OAUTH_TOKEN = "sk-subscription-value";
   try {
@@ -286,8 +279,8 @@ test("tool output never carries the subscription token either", async (t) => {
   }
 });
 
-test("the exploits change no .git/config, and no allowed command does", async (t) => {
-  const { cwd, call } = scopeWithLink(t);
+test("the exploits change no .git/config, and no allowed command does", async () => {
+  const { cwd, call } = scopeWithLink();
   const config = `${cwd}/.git/config`;
   const before = readFileSync(config, "utf8");
   for (const args of WRITERS) {
@@ -320,8 +313,8 @@ test("the exploits change no .git/config, and no allowed command does", async (t
   }
 });
 
-test("a repo config that names a program runs nothing: every git call overrides it", async (t) => {
-  const { cwd, call } = scopeWithLink(t);
+test("a repo config that names a program runs nothing: every git call overrides it", async () => {
+  const { cwd, call } = scopeWithLink();
   const marker = `${cwd}/../ran`;
   writeFileSync(
     `${cwd}/.git/config`,

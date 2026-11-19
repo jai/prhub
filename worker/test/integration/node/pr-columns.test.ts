@@ -1,6 +1,6 @@
 // The PR index's table catches up from any older shape, including one that has key_lines_ready but no queue columns.
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, test } from "vitest";
 import { addMissingColumns } from "../../../src/pr-columns.ts";
 import { closeMemorySql, memorySql } from "../../support/memory-sql.ts";
 

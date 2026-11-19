@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, test } from "vitest";
 import { repoOf, type Sha } from "../../../src/ids.ts";
 import { runAiJob } from "../../../src/ai-run.ts";
 import type { Env } from "../../../src/env.ts";

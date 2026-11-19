@@ -2,7 +2,7 @@
 // Anthropic keys, rate limits, and Ask's installation tokens.
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import { afterEach, test } from "node:test";
+import { afterEach, test, vi } from "vitest";
 import { closeMemorySql } from "../../support/memory-sql.ts";
 import {
   askGrant,
@@ -564,7 +564,7 @@ test("installation_reads_now_per_minute set to off leaves no gap between fresh r
   assert.equal(installationReads(world), reads + 2);
 });
 
-test("a read GitHub doesn't answer in time leaves the config as the Worker holds it", async (context) => {
+test("a read GitHub doesn't answer in time leaves the config as the Worker holds it", async () => {
   const world = hostedWorld();
   world.github.installations.set(11, { account: "acme", repos: ["acme/api"] });
   world.github.grant(ALICE, ["acme/api"]);
@@ -572,14 +572,14 @@ test("a read GitHub doesn't answer in time leaves the config as the Worker holds
   const fetch = world.services.fetch;
   world.services.fetch = (input, init) =>
     String(input).includes("/user/installations") ? new Promise(() => {}) : fetch(input, init);
-  context.mock.timers.enable({ apis: ["setTimeout"] });
+  vi.useFakeTimers({ toFake: ["setTimeout"] });
   const request = new Request(`${ORIGIN}/device/config?fresh=1`, bearer(alice));
   const auth = await authenticate(request, world.workerEnv, world.services);
   assert.ok("env" in auth);
   world.clock.now += 10_000;
   const answer = configInstallations(request, auth.session, world.services, () => {});
   await new Promise((resolve) => setImmediate(resolve));
-  context.mock.timers.tick(8_000);
+  vi.advanceTimersByTime(8_000);
   assert.deepEqual(
     (await answer)?.map((entry) => entry.account),
     ["acme"],

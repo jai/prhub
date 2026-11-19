@@ -1,6 +1,6 @@
 // Checks-only GitHub request/response handling.
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, test } from "vitest";
 import { readChecks } from "../../src/github.ts";
 import { env, ref, stubGitHub } from "../support/read-cost-responses.ts";
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { deviceConfig } from "../../src/config.ts";
 import type { Env } from "../../src/env.ts";
 import { userEnv } from "../../src/hosted.ts";

@@ -1,6 +1,6 @@
 // Linear mention matching and request/response adapters.
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, test } from "vitest";
 import {
   canComment,
   postToLinear,

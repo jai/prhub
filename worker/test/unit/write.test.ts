@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { gitHubReason, parseWrite, refusalWords, toggleTask } from "../../src/write-input.ts";
 
 test("an approval needs no words, every other write does", () => {

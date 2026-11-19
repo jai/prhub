@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { repoOf, shaOf } from "../../src/ids.ts";
 import { chatOf } from "../../src/ask-chat.ts";
 import { deviceConfig } from "../../src/config.ts";

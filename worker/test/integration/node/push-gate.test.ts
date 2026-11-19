@@ -1,6 +1,6 @@
 // The push gate on real SQLite: an alert goes once its PR's files are stored at its head, or after the bounded wait.
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, test } from "vitest";
 import type { PrAlert } from "../../../src/alerts.ts";
 import type { RepoFullName } from "../../../src/ids.ts";
 import {

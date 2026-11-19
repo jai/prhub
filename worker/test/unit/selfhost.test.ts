@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { BUILT_IN_GUIDE, guideSource } from "../../src/ai.ts";
 import { pagerOutcome, pushMode, sendViaPager } from "../../src/apns.ts";
 import { deviceConfig } from "../../src/config.ts";

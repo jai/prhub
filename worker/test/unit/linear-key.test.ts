@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { checkLinearKey } from "../../src/tickets.ts";
 
 const key = "lin_api_synthetic012345678901234567890";

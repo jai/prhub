@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { prId, repoOf } from "../../src/ids.ts";
 import { reviewWeek } from "../../src/github.ts";
 import { parseRefs, stateOf, statesFrom, statesQuery } from "../../src/pr-states.ts";

@@ -55,8 +55,8 @@ import { busyAnswer, clientRefOf } from "./write-receipts";
 import { feedbackTokenRoute } from "./feedback-token.ts";
 
 import { Installation, IpLimit, SignIn, UserAccount } from "./account";
+import { accountOf } from "./account-of.ts";
 import {
-  accountOf,
   authenticate,
   configInstallations,
   hostedAccountConfig,

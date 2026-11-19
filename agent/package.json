@@ -3,12 +3,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "npm run test:unit && npm run test:integration",
-    "test:unit": "node --test read-tools.unit.test.mjs",
-    "test:integration": "node --test read-tools.integration.test.mjs server.test.mjs"
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.322",
     "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "undici": "^7.30.1",
+    "vitest": "^4.1.12"
   }
 }

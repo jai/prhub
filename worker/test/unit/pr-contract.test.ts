@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { pullRequest, reviewWeek } from "../../src/github.ts";
 import { stateOf } from "../../src/pr-states.ts";
 import { prNode } from "../support/pr-node.ts";

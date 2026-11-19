@@ -1,6 +1,6 @@
 // Ask prompt, access and queued-message transformations.
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { type RepoFullName, type Sha } from "../../src/ids.ts";
 import { askGitHubReach, rateLimitWords } from "../../src/app-token.ts";
 import { withQueued } from "../../src/ask-queue.ts";

@@ -3,15 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "npm run test:unit && npm run test:integration",
+    "test": "vitest run",
     "pair": "node scripts/pair.mjs",
     "ask-agent": "node --experimental-strip-types scripts/ask-agent.mts",
     "typecheck": "tsc -p tsconfig.json",
-    "typecheck:test": "tsc -p tsconfig.test.json",
-    "test:unit": "node --test test/unit/*.test.ts",
-    "test:integration": "npm run test:integration:node && npm run test:integration:runtime",
-    "test:integration:node": "node --test test/integration/node/*.test.ts",
-    "test:integration:runtime": "vitest run"
+    "typecheck:test": "tsc -p tsconfig.test.json && tsc -p tsconfig.runtime.json",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration-node --project integration-runtime"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
@@ -28,6 +26,7 @@
     "oxlint": "^1.93.0",
     "oxlint-tsgolint": "^7.0.2007",
     "typescript": "^7.0.2",
+    "undici": "^7.30.1",
     "vitest": "^4.1.12",
     "wrangler": "^4.156.0"
   }

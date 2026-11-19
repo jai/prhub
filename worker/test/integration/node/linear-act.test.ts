@@ -1,6 +1,6 @@
 // Ask proposals through chat persistence, Linear posting, receipts and session refresh.
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, test } from "vitest";
 import { linearPostedNow, postAskLinear } from "../../../src/ask-linear.ts";
 import {
   askOnSubscription,

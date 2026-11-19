@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { ASK_HANDOVER_MS, NOT_HANDED_OVER, withQueued } from "../../src/ask-queue.ts";
 import { ANSWERED, question } from "../support/ask-queue-values.ts";
 

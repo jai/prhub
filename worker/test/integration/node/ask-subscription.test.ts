@@ -1,6 +1,6 @@
 // Ask turns through the agent adapter, persisted chat and transcript, and follow-up actions.
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, vi } from "vitest";
 import { repoOf, type RepoFullName, type Sha } from "../../../src/ids.ts";
 import type { AskInput } from "../../../src/ask-chat.ts";
 import { AskFailure } from "../../../src/ask-trace.ts";
@@ -234,8 +234,8 @@ test("a GitHub refusal says so with its status, and a turn re-run after a deploy
   assert.equal(w.record().problem, null);
 });
 
-test("a blip while minting GitHub's token gets one more try", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("a blip while minting GitHub's token gets one more try", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout"] });
   const w = world([
     {
       subtype: "success",
@@ -267,9 +267,9 @@ test("a blip while minting GitHub's token gets one more try", async (t) => {
   );
   await new Promise(setImmediate);
   assert.equal(tries, 1);
-  t.mock.timers.tick(1_999);
+  vi.advanceTimersByTime(1_999);
   assert.equal(tries, 1);
-  t.mock.timers.tick(1);
+  vi.advanceTimersByTime(1);
   await pending;
   assert.equal(tries, 2);
   assert.equal(w.record().problem, null);

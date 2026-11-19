@@ -5,6 +5,45 @@
     "correctness": "error"
   },
   "rules": {
-    "no-control-regex": "off"
+    "no-control-regex": "off",
+    "no-undef": "error"
+  },
+  "overrides": [
+    {
+      "files": ["test/unit/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "node:fs",
+                "message": "Unit tests touch no disk: put the test in test/integration."
+              },
+              {
+                "name": "node:fs/promises",
+                "message": "Unit tests touch no disk: put the test in test/integration."
+              },
+              {
+                "name": "node:child_process",
+                "message": "Unit tests start no processes: put the test in test/integration."
+              },
+              {
+                "name": "../../read-tools.mjs",
+                "message": "read-tools runs git and the SDK: unit tests import vet.mjs."
+              },
+              {
+                "name": "../../server.mjs",
+                "message": "The server is tested as a process in test/integration."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "env": {
+    "node": true,
+    "es2024": true
   }
 }

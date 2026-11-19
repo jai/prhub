@@ -73,7 +73,7 @@ repos:
         entry: make test-unit-worker
         language: system
         pass_filenames: false
-        files: '^(worker/|PRKit/Tests/PRContractFixtures/Fixtures/)'
+        files: '^(worker/|agent/|PRKit/Tests/PRContractFixtures/Fixtures/)'
         stages: [pre-push]
       # The two work domains are split by quotes, so gitleaks (.gitleaks.toml), which keeps them out of this public
       # repo, passes this file.

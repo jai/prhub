@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { vetApiPath, vetGit, vetRepo, vetRef } from "./read-tools.mjs";
-import { WRITERS } from "./test-fixtures/git-arguments.mjs";
+import { test } from "vitest";
+import { vetApiPath, vetGit, vetRepo, vetRef } from "../../vet.mjs";
+import { WRITERS } from "../fixtures/git-arguments.mjs";
 
 test("git reads pass", () => {
   for (const args of [

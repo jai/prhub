@@ -23,6 +23,44 @@
         "no-constant-binary-expression": "off",
         "unicorn/no-useless-spread": "off"
       }
+    },
+    {
+      "files": ["test/unit/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "node:fs",
+                "message": "Unit tests touch no disk: put the test in test/integration/node."
+              },
+              {
+                "name": "node:fs/promises",
+                "message": "Unit tests touch no disk: put the test in test/integration/node."
+              },
+              {
+                "name": "node:child_process",
+                "message": "Unit tests start no processes."
+              },
+              {
+                "name": "node:sqlite",
+                "message": "SQL tests live in test/integration/node."
+              }
+            ],
+            "patterns": [
+              {
+                "regex": "^cloudflare:",
+                "message": "The Worker runtime is test/integration/runtime only."
+              },
+              {
+                "group": ["**/support/memory-sql*", "**/support/hosted-world*"],
+                "message": "Integration fakes belong to test/integration/node."
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

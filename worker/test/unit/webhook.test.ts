@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { parseDelivery, verifySignature } from "../../src/webhook.ts";
 
 const encoder = new TextEncoder();

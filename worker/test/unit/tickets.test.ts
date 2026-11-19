@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, test } from "vitest";
 import type { Env } from "../../src/env.ts";
 import { pullRequest } from "../../src/github.ts";
 import { botAuthorsOf, isBotAuthor, requestedByOf } from "../../src/requester.ts";

@@ -5,7 +5,6 @@ import { linearKeyRoute } from "./linear-key.ts";
  * Off unless `HOSTED` is `on`; a self-hosted Worker never reaches anything here.
  */
 import type {
-  AccountCore,
   AskResources,
   SessionInfo,
   SignedOutReason,
@@ -15,6 +14,7 @@ import type {
 import { isAnthropicKeyShape, NO_AI, userIdOf } from "./account-core.ts";
 import { bodyOf, parseFinishInput, parseSender } from "./boundary.ts";
 import { askQueueName, type Env, isSet } from "./env.ts";
+import { type AccountApi, accountOf, userObjectName } from "./account-of.ts";
 import type { Fingerprint, RepoFullName, Sha } from "./ids.ts";
 import {
   type InstallationAccount,
@@ -178,26 +178,6 @@ export interface AnthropicApi {
   provisionAsk(key: string, login: string): Promise<AskResources>;
 }
 
-export type AccountApi = Pick<
-  AccountCore,
-  | "signIn"
-  | "finish"
-  | "session"
-  | "accessToken"
-  | "tokenAfterUnauthorized"
-  | "signOutEverywhere"
-  | "signOut"
-  | "deleteAccount"
-  | "setAnthropicKey"
-  | "setLinearKey"
-  | "linearCannotComment"
-  | "installationIds"
-  | "claimInstallationSync"
-  | "setInstallations"
-  | "installationAccounts"
-  | "installationSyncedAt"
->;
-
 /** The part of a person's `PrIndex` the hosted routes and installations touch. */
 export interface UserIndexApi {
   bindUser(userId: number): unknown;
@@ -223,19 +203,10 @@ export interface PendingSignIn {
   expires_at: number;
 }
 
-export function userObjectName(userId: string): string {
-  return `user:${userId}`;
-}
-
 /** A person's PR index, named as their account is. */
 export function userIndex(env: Env, userId: string): DurableObjectStub & UserIndexApi {
   const stub = env.PR_INDEX.get(env.PR_INDEX.idFromName(userObjectName(userId)));
   return stub as unknown as DurableObjectStub & UserIndexApi;
-}
-
-export function accountOf(env: Env, userId: string): AccountApi {
-  const namespace = env.USER_ACCOUNTS as DurableObjectNamespace;
-  return namespace.get(namespace.idFromName(userObjectName(userId))) as unknown as AccountApi;
 }
 
 /** An installation's object, named `installation:<id>`. */
@@ -331,24 +302,6 @@ async function deletePrefix(bucket: R2Bucket, prefix: string): Promise<void> {
     }
     cursor = listed.truncated ? listed.cursor : undefined;
   } while (cursor);
-}
-
-/**
- * GitHub answered 401 to a person's token: the account refreshes it (once, whatever else asks at the same time) and
- * the request goes again with the new one. Null when there is none: the person is signed out, or GitHub is away.
- */
-export async function renewAfterUnauthorized(env: Env): Promise<string | null> {
-  if (!isSet(env.SIGNED_IN_USER_ID) || env.USER_ACCOUNTS === undefined) {
-    return null;
-  }
-  const answer = await accountOf(env, env.SIGNED_IN_USER_ID).tokenAfterUnauthorized(
-    env.GITHUB_TOKEN,
-  );
-  if (answer.kind !== "ok") {
-    return null;
-  }
-  env.GITHUB_TOKEN = answer.token;
-  return answer.token;
 }
 
 /** For a person's `PrIndex` working on its own (alarm, poll): the Worker as it acts for them, or null when it can't. */

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { claimOf, clientRefOf, SENDING_FOR_MS } from "../../src/write-receipts.ts";
 
 test("a write with no receipt goes, a sent one is done, and one being sent waits", () => {

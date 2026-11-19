@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, test } from "vitest";
 import { isRevisionOf, parseSha, revisionOf, type Sha } from "../../src/ids.ts";
 import { FAILURE_KEPT_MS, isStaleFailure } from "../../src/ai-run.ts";
 import { runOnSubscription } from "../../src/agent-container.ts";

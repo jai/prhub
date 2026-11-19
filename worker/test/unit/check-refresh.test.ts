@@ -1,6 +1,6 @@
 // A checks-only read laid over a held full read (`check-refresh.ts`) says what a full read of the PR would.
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { patchedRead } from "../../src/check-refresh.ts";
 import { detailVersionOf, pullRequest, reviewWeek } from "../../src/github.ts";
 import { POLICY_TTL_MS } from "../../src/policy-github.ts";

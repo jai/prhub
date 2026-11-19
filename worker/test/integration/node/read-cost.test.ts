@@ -1,6 +1,6 @@
 // Full PR reads through policy evaluation and membership caching.
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, test, vi } from "vitest";
 import { readPullRequests } from "../../../src/github.ts";
 import { memoryCache } from "../../../src/policy-github.ts";
 import { env, ref, stubGitHub } from "../../support/read-cost-responses.ts";
@@ -11,8 +11,8 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-test("a full read of one dirty PR costs a GraphQL query plus .policy.yml and a membership on a cold cache", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-11-16T09:00:00Z") });
+test("a full read of one dirty PR costs a GraphQL query plus .policy.yml and a membership on a cold cache", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-11-16T09:00:00Z") });
   const calls = stubGitHub();
   const cache = memoryCache();
   const read = await readPullRequests([ref(7)], env, new Set(), noTickets, cache);
@@ -31,8 +31,8 @@ test("a full read of one dirty PR costs a GraphQL query plus .policy.yml and a m
   );
 });
 
-test("past their TTLs the answers are asked again with their ETags, and GitHub's 304s cost nothing", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-11-16T09:00:00Z") });
+test("past their TTLs the answers are asked again with their ETags, and GitHub's 304s cost nothing", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-11-16T09:00:00Z") });
   const calls = stubGitHub();
   const cache = memoryCache();
   await readPullRequests([ref(7)], env, new Set(), noTickets, cache);

@@ -71,6 +71,28 @@ disabled_rules:
   - void_function_in_ternary
 
 custom_rules:
+  # Unit tests run in the process only: nothing on disk, in preferences, in the Keychain or on the network, and no real
+  # time. A test that needs one belongs in Integration, or the code under test takes a seam (a store, a transport, a
+  # clock). Integration and UI tests may use these.
+  unit_test_no_outside_resources:
+    included: '.*/(PRKit/Tests/PRKitTests/Unit|app/PRHubTests/Unit)/.*\.swift'
+    regex: '\b(FileManager|UserDefaults|NSUbiquitousKeyValueStore|URLSession\w*|AppNetwork|NetworkStatus|NotificationCenter|UNUserNotificationCenter|ProcessInfo|NSTemporaryDirectory|temporaryDirectory|SecItem\w*)\b|\bBundle\.(main|module)\b|\b(WorkerURLStore|DeviceSecretStore|WorkerEndpoint)\s*\('
+    excluded_match_kinds: [comment, doccomment, string]
+    message: "A unit test touches nothing outside the process: inject a fake, or move the test to Integration."
+    severity: error
+  unit_test_no_real_time:
+    included: '.*/(PRKit/Tests/PRKitTests/Unit|app/PRHubTests/Unit)/.*\.swift'
+    regex: '\b(Thread\.sleep|Task\.sleep|usleep|Timer|RunLoop|CFAbsoluteTimeGetCurrent)\b|\basyncAfter\(|\bDate\(\)|\bDate\.now\b|\b(Continuous|Suspending)Clock\(\)'
+    excluded_match_kinds: [comment, doccomment, string]
+    message: "A unit test never waits on the clock: inject `now:` or a Clock and advance it."
+    severity: error
+  # The parent config's no_direct_networking allows the live transports; no test below the UI layer builds them.
+  test_no_live_transport:
+    included: '.*/(PRKit/Tests|app/PRHubTests|app/PRHubRenderingTests)/.*\.swift'
+    regex: '\b(URLSessionTransport|URLSessionStreamingTransport|AppNetwork)\b'
+    excluded_match_kinds: [comment, doccomment, string]
+    message: "Tests use UnexpectedTransport or a scripted Worker, never the live transport."
+    severity: error
   # A value held in @State survives SwiftUI reusing the view, so one seeded from an argument can end up beside a different
   # argument: that showed one PR under another's title. PR screens read from `PRSession`.
   pr_state_seeded_from_arguments:

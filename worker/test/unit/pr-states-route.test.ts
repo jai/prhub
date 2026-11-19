@@ -1,6 +1,6 @@
 // POST /prs/states is read by the PR index (its own cache of .policy.yml and memberships), and says what it spent.
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { prId, repoOf } from "../../src/ids.ts";
 import type { Env } from "../../src/env.ts";
 import { readStates, statesRoute } from "../../src/pr-states.ts";

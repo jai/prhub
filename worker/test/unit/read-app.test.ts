@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import { test } from "node:test";
+import { test } from "vitest";
 import { installationToken, TOKEN_MARGIN_MS } from "../../src/read-app.ts";
 
 const { privateKey } = generateKeyPairSync("rsa", {

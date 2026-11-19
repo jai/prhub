@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import { afterEach, test } from "node:test";
+import { afterEach, test, vi } from "vitest";
 import type { Env } from "../../../src/env.ts";
 import { readChecks, readPullRequests, searchListings } from "../../../src/github.ts";
 import { prId, repoOf } from "../../../src/ids.ts";
@@ -133,8 +133,8 @@ const listing = (repo: string, number: number) => ({
   commits: { nodes: [] },
 });
 
-test("each installation reads its owner's PRs; the rest, and the viewer's own fields, go as the owner", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-11-16T09:00:00Z") });
+test("each installation reads its owner's PRs; the rest, and the viewer's own fields, go as the owner", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-11-16T09:00:00Z") });
   const calls = gitHub(nodes);
   const read = await readPullRequests(REFS, env(), new Set(), async () => new Map());
   assert.deepEqual(detailReads(calls), ["inst-11:acme", "inst-12:octocat", "owner:other,partly"]);
@@ -164,8 +164,8 @@ test("each installation reads its owner's PRs; the rest, and the viewer's own fi
   );
 });
 
-test("the owners without an installation read with GITHUB_READ_TOKEN when it is set", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-11-16T09:00:00Z") });
+test("the owners without an installation read with GITHUB_READ_TOKEN when it is set", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-11-16T09:00:00Z") });
   const calls = gitHub(nodes);
   await readPullRequests(
     REFS,
@@ -176,15 +176,15 @@ test("the owners without an installation read with GITHUB_READ_TOKEN when it is 
   assert.deepEqual(detailReads(calls), ["inst-11:acme", "inst-12:octocat", "reader:other,partly"]);
 });
 
-test("an installation GitHub won't give a token reads as before", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-11-16T09:00:00Z") });
+test("an installation GitHub won't give a token reads as before", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-11-16T09:00:00Z") });
   const calls = gitHub(nodes, [12]);
   await readPullRequests(REFS, env(), new Set(), async () => new Map());
   assert.deepEqual(detailReads(calls), ["inst-11:acme", "owner:octocat,other,partly"]);
 });
 
-test("each installation searches, the owner's token searches the other owners, and the answers merge", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-11-16T09:00:00Z") });
+test("each installation searches, the owner's token searches the other owners, and the answers merge", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-11-16T09:00:00Z") });
   const calls = gitHub((_query, token, q) => {
     const found =
       token === "inst-11" && q.includes("author:jai")
@@ -212,8 +212,8 @@ test("each installation searches, the owner's token searches the other owners, a
   );
 });
 
-test("unset, and on the hosted Worker, the read App is never asked and every read goes as before", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-11-16T09:00:00Z") });
+test("unset, and on the hosted Worker, the read App is never asked and every read goes as before", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-11-16T09:00:00Z") });
   for (const vars of [
     { GITHUB_READ_APP_ID: undefined },
     { SIGNED_IN_USER_ID: "1" },

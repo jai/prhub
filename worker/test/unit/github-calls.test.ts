@@ -1,6 +1,6 @@
 // A PR's screen says what it cost GitHub, so the apps' share of the token's hour can be measured.
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import type { Env } from "../../src/env.ts";
 import { counted } from "../../src/github-calls.ts";
 

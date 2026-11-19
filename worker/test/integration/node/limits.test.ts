@@ -1,7 +1,7 @@
 // The limits: their config (`limits.ts`), the counter (`limit-counter.ts`) on real SQLite, the routes' side
 // (`limit-enforcement.ts`), retention (`retention.ts`), and what the hosted account does with lifetimes and key rotation.
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, test, vi } from "vitest";
 import { prId, repoOf } from "../../../src/ids.ts";
 import { AccountCore } from "../../../src/account-core.ts";
 import type { Env } from "../../../src/env.ts";
@@ -134,8 +134,8 @@ function countingEnv(vars: Partial<Env>) {
   return { env: { PR_INDEX: namespace, ...vars } as unknown as Env, recorded };
 }
 
-test("past a person's write limit the answer is 429 limit_reached with the limit and retry_after", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: NOW });
+test("past a person's write limit the answer is 429 limit_reached with the limit and retry_after", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: NOW });
   const { env } = countingEnv({ LIMIT_WRITES_PER_MINUTE: "1" });
   const names = [LimitName.WritesPerMinute, LimitName.WritesPerHour];
   assert.equal(await personLimitAnswer(env, names, "write:acme/api#7:one"), null);
@@ -155,8 +155,8 @@ test("past a person's write limit the answer is 429 limit_reached with the limit
   assert.equal(error.retry_after > 0 && error.retry_after <= 60, true);
 });
 
-test("a self-hosted Worker counts pairing attempts per IP", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: NOW });
+test("a self-hosted Worker counts pairing attempts per IP", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: NOW });
   const { env } = countingEnv({ LIMIT_PAIRING_ATTEMPTS_PER_IP_PER_HOUR: "2" });
   const pair = (ip: string) =>
     new Request("https://worker.example/device/pair", { headers: { "CF-Connecting-IP": ip } });
