@@ -1,12 +1,12 @@
 import Foundation
 @testable import PRKit
+import PRKitTestSupport
 import Synchronization
 import Testing
 
 /// Key lines checked off as reviewed: at once on screen, kept by the Worker so another device shows them, at one head.
 @MainActor
 struct PRKeyLineReviewTests {
-    private let storage = TestStorage()
     /// The Worker's `key-lines-reviewed` route, as docs/api.md has it, or a Worker that refuses or lacks it.
     final class Worker: Sendable {
         enum Mode { case keeps, refuses, lacksRoute, offline }
@@ -86,24 +86,17 @@ struct PRKeyLineReviewTests {
     ],"context":100,"leftOut":[]}
     """
 
-    /// `directory`: the mirror's folder, shared by two sessions as by two launches.
-    private func session(detail: String? = nil, in directory: URL? = nil) async throws -> PRSession {
+    /// The PR at `head` on a device of its own, unless it shares `storage` with another session, as two launches do.
+    private func session(head: String = "h", storage: PRKitStorage = .inMemory()) async throws -> PRSession {
         let worker = worker
         let access = PRViewerAccess(baseURL: { URL(string: "https://worker.test")! }, bearer: { "t" }, discard: {})
         let client = PRViewerClient(access: access) { try await worker.exchange($0) }
-        let directory = directory ?? storage.directory.appending(path: UUID().uuidString)
-        let model = PRsModel(client: client, directory: directory, defaults: storage.defaults,
-                             network: PRNetwork(isOnline: true), draftDirectory: storage.draftDirectory)
-        var data = try FixtureContractTests.data("detail.json")
-        if let detail {
-            var object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
-            object["head"] = detail
-            data = try JSONSerialization.data(withJSONObject: object)
-        }
+        let model = PRsModel(client: client, storage: storage, network: PRNetwork(isOnline: true))
+        let detail = try PullRequestDetail.decode(Data(PRTestPayload.detail(head: head).utf8))
         let keyLines = try JSONDecoder().decode(PRKeyLines.self, from: Data(Self.lines.utf8))
-        let session = try PRSession(
-            ref: ref, title: nil, content: PRContent(detail: PullRequestDetail.decode(data), document: nil),
-            keyLines: keyLines, tappedAt: 0, model: model
+        let session = PRSession(
+            ref: ref, title: nil, content: PRContent(detail: detail, document: nil), keyLines: keyLines, tappedAt: 0,
+            model: model
         )
         session.setContextLines(PRKeyLines.defaultContext)
         await session.loadKeyLines()
@@ -160,20 +153,20 @@ struct PRKeyLineReviewTests {
         await older.loadReviewedKeyLines()
         #expect(older.reviewedKeyLineCount == 1)
 
-        let newer = try await session(detail: String(repeating: "c", count: 40))
+        let newer = try await session(head: String(repeating: "c", count: 40))
         await newer.loadReviewedKeyLines()
         #expect(newer.reviewedKeyLineCount == 0, "a new commit starts the review again")
     }
 
     @Test func ticksReadOnlineShowOfflineOnTheNextLaunch() async throws {
-        let directory = storage.directory.appending(path: UUID().uuidString)
-        let online = try await session(in: directory)
+        let storage = PRKitStorage.inMemory()
+        let online = try await session(storage: storage)
         try worker.seed(["a.swift:RIGHT:1"], at: head(of: online))
         await online.loadReviewedKeyLines()
         #expect(online.reviewedKeyLineCount == 1)
 
         worker.set(.offline)
-        let relaunched = try await session(in: directory)
+        let relaunched = try await session(storage: storage)
         await relaunched.loadReviewedKeyLines()
         #expect(relaunched.reviewedKeyLineCount == 1, "the kept ticks, with no network")
     }
@@ -207,17 +200,13 @@ struct PRKeyLinesSummaryTests {
     /// A PR's page shows its summary from key lines the session already holds, at whatever context, and asks for none:
     /// on an API key, asking is what makes them.
     @MainActor @Test func aPRsPageHasItsSummaryFromKeyLinesAlreadyHeldAndAsksForNone() throws {
-        let storage = TestStorage()
-        defer { withExtendedLifetime(storage) {} }
         let asked = Mutex(0)
         let access = PRViewerAccess(baseURL: { URL(string: "https://worker.test")! }, bearer: { "t" }, discard: {})
         let client = PRViewerClient(access: access) { _ in
             asked.withLock { $0 += 1 }
             throw URLError(.notConnectedToInternet)
         }
-        let directory = storage.directory
-        let model = PRsModel(client: client, directory: directory, defaults: storage.defaults,
-                             network: PRNetwork(isOnline: true), draftDirectory: storage.draftDirectory)
+        let model = PRsModel(client: client, storage: .inMemory(), network: PRNetwork(isOnline: true))
         let json = #"""
         {"items": [], "context": 10, "leftOut": [],
          "summary": {"risk": "low", "riskWhy": "", "points": ["One"], "bugs": []}}

@@ -92,24 +92,24 @@ let package = Package(
             path: "app/PRHubTests/Integration"
         ),
         .testTarget(
-            name: "PRKitRenderingTests",
-            dependencies: ["PRKit", "PRKitDesign"],
-            path: "PRKit/Tests/PRKitRenderingTests"
-        ),
-        .testTarget(
             name: "PRKitUnitTests",
             dependencies: [
-                "PRKit", "PRKitCore", "PRKitTestSupport", .product(name: "DurableNetworking", package: "durable-networking"),
+                "PRKit", "PRKitCore", "FeatureKit", "PRKitTestSupport",
+                .product(name: "DurableNetworking", package: "durable-networking"),
             ],
             path: "PRKit/Tests/PRKitTests/Unit"
         ),
+        // Local storage, bundled resources and the diff's real fonts. PRKitRenderingTests' font and AppKit checks run here
+        // on the Mac; the iOS rendering target (app/project.yml) compiles the same folder with its UIKit checks.
         .testTarget(
             name: "PRKitIntegrationTests",
             dependencies: [
-                "PRContractFixtures", "PRKit", "PRKitTestSupport", "FeatureKit",
+                "PRContractFixtures", "PRKit", "PRKitDesign", "PRKitTestSupport", "FeatureKit",
                 .product(name: "DurableNetworking", package: "durable-networking"),
             ],
-            path: "PRKit/Tests/PRKitTests/Integration"
+            path: "PRKit/Tests",
+            exclude: ["PRContractFixtures", "PRKitTestSupport", "PRKitTests/Unit"],
+            sources: ["PRKitTests/Integration", "PRKitRenderingTests"]
         ),
     ]
 )

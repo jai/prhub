@@ -22,6 +22,14 @@ public enum PRMirrorLocation {
         container: (String) -> URL? = { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0) },
         own: Library = .app
     ) -> URL {
+        let library = library(appGroup: appGroup, container: container, own: own)
+        let kept = library.support.appending(path: folderName, directoryHint: .isDirectory)
+        moveFromCaches([library.caches, own.caches], to: kept)
+        return kept
+    }
+
+    /// The folders `directory` uses, touching none of them: the app group's container's when it has one, else `own`.
+    static func library(appGroup: String?, container: (String) -> URL?, own: Library) -> Library {
         let group = appGroup.flatMap { group -> URL? in
             guard let url = container(group) else {
                 if isFirstMiss(of: group) {
@@ -31,16 +39,13 @@ public enum PRMirrorLocation {
             }
             return url.appending(path: "Library", directoryHint: .isDirectory)
         }
-        let library = group.map {
+        return group.map {
             Library(caches: $0.appending(path: "Caches"), support: $0.appending(path: "Application Support"))
         } ?? own
-        let kept = library.support.appending(path: folderName, directoryHint: .isDirectory)
-        moveFromCaches([library.caches, own.caches], to: kept)
-        return kept
     }
 
     /// A caches folder and the Application Support folder beside it.
-    public struct Library: Sendable {
+    public struct Library: Equatable, Sendable {
         public var caches: URL
         public var support: URL
 
@@ -240,28 +245,31 @@ public struct PRPushPrefetchLog: Sendable {
     public static let fileName = "push-prefetch.json"
     /// A phone that never opens the app keeps no more than this.
     static let kept = 50
-    let file: URL
+    let store: any PRFileStore
+
+    public init(store: any PRFileStore) {
+        self.store = store
+    }
 
     public init(directory: URL) {
-        file = directory.appending(path: Self.fileName)
+        self.init(store: PRDiskFileStore(directory: directory))
     }
 
     public func append(_ entry: Entry) {
         let entries = (read() + [entry]).suffix(Self.kept)
-        try? FileManager.default.createDirectory(
-            at: file.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
-        try? JSONEncoder().encode(Array(entries)).write(to: file, options: .atomic)
+        if let data = try? JSONEncoder().encode(Array(entries)) {
+            try? store.write(data, to: Self.fileName)
+        }
     }
 
     /// Every entry kept, and none after.
     public func drain() -> [Entry] {
         let entries = read()
-        try? FileManager.default.removeItem(at: file)
+        store.remove(Self.fileName)
         return entries
     }
 
     private func read() -> [Entry] {
-        (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode([Entry].self, from: $0) } ?? []
+        store.read(Self.fileName).flatMap { try? JSONDecoder().decode([Entry].self, from: $0) } ?? []
     }
 }

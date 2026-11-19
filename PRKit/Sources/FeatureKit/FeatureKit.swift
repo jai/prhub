@@ -8,10 +8,11 @@ import PRKitCore
 
 /// FeedbackKit's connection through a `PRViewerClient`: its bearer, its deadline, and refusals in the Worker's words.
 /// With `kept`, each read's last good answer stays on the device and answers that read while there is no network: the
-/// Feedback screen opens on its chats offline, under the host's offline banner.
+/// Feedback screen opens on its chats offline, under the host's offline banner. On the phone `kept` is a `ReadStore`; a
+/// unit test passes one in memory.
 struct PRViewerFeedbackConnection: FeedbackConnection {
     let viewer: PRViewerClient
-    var kept: ReadStore?
+    var kept: (any PRKeptStore)?
 
     func read<Answer: Decodable & Sendable>(_ path: String, as type: Answer.Type) async throws -> Answer {
         guard let kept else {

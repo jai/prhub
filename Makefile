@@ -10,8 +10,7 @@
 #   make test-ui-ios              the UI test plan (SIM_NAME picks the Simulator: iPhone 17 by default)
 #   make test-unit-worker         Worker and agent unit tests
 #   make test-integration-ios     app persistence and Keychain tests
-#   make test-integration-prkit   PRKit persistence and contract tests
-#   make test-ui-prkit            native Mac rendering tests
+#   make test-integration-prkit   PRKit persistence, contract and font tests
 #   make test-integration-worker  Worker storage/runtime and agent integration tests
 #   make lint                     all lint targets
 #   make all-tests                all test targets
@@ -20,7 +19,7 @@
 
 SHELL := /bin/bash
 .PHONY: lint-ios lint-prkit lint-worker lint-workflows test-unit-ios test-unit-prkit test-ui-ios test-unit-worker \
-	test-integration-worker test-integration-ios test-integration-prkit test-ui-prkit lint all-tests
+	test-integration-worker test-integration-ios test-integration-prkit lint all-tests
 
 X := mise exec
 ACTIONLINT  := $(X) actionlint@1.7.12 -- actionlint
@@ -75,10 +74,6 @@ test-integration-ios:
 test-integration-prkit:
 	swift test --filter PRKitIntegrationTests
 
-# Native Mac rendering checks keep AppKit/font coverage out of the unit suites.
-test-ui-prkit:
-	swift test --filter PRKitRenderingTests
-
 # The samples flow and a picture of every screen, in app/build/screenshots.
 test-ui-ios:
 	cd app && $(XCODEGEN) generate --spec project.yml --quiet
@@ -100,4 +95,4 @@ test-integration-worker:
 
 lint: lint-ios lint-prkit lint-worker lint-workflows
 
-all-tests: test-unit-ios test-integration-ios test-unit-prkit test-integration-prkit test-ui-ios test-ui-prkit test-unit-worker test-integration-worker
+all-tests: test-unit-ios test-integration-ios test-unit-prkit test-integration-prkit test-ui-ios test-unit-worker test-integration-worker

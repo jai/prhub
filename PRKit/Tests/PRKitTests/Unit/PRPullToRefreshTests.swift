@@ -1,12 +1,12 @@
 import Foundation
 @testable import PRKit
+import PRKitTestSupport
 import Synchronization
 import Testing
 
 /// A pull on a PR's page: the PR as GitHub has it now, over the copy on screen.
 @MainActor
 struct PRPullToRefreshTests {
-    private let storage = TestStorage()
     private let ref = PullRequestRef(repo: "acme/api", number: 7)
     private static let lines = """
     {"items":[{"path":"a.swift","line":1,"side":"RIGHT","kind":"risk","why":"one"}],"context":100,"leftOut":[]}
@@ -43,22 +43,15 @@ struct PRPullToRefreshTests {
 
     private let worker = Worker()
 
-    private func detail(head: String, title: String) throws -> Data {
-        var object = try #require(
-            try JSONSerialization.jsonObject(with: FixtureContractTests.data("detail.json")) as? [String: Any]
-        )
-        object["head"] = head
-        object["title"] = title
-        return try JSONSerialization.data(withJSONObject: object)
+    private func detail(head: String, title: String) -> Data {
+        Data(PRTestPayload.detail(head: head, title: title).utf8)
     }
 
     private func session() throws -> PRSession {
         let worker = worker
         let access = PRViewerAccess(baseURL: { URL(string: "https://worker.test")! }, bearer: { "t" }, discard: {})
         let client = PRViewerClient(access: access) { try await worker.exchange($0) }
-        let directory = storage.directory
-        let model = PRsModel(client: client, directory: directory, defaults: storage.defaults,
-                             network: PRNetwork(isOnline: true), draftDirectory: storage.draftDirectory)
+        let model = PRsModel(client: client, storage: .inMemory(), network: PRNetwork(isOnline: true))
         let keyLines = try JSONDecoder().decode(PRKeyLines.self, from: Data(Self.lines.utf8))
         return try PRSession(
             ref: ref, title: nil,
@@ -70,7 +63,7 @@ struct PRPullToRefreshTests {
     @Test func aPullShowsThePRAsGitHubHasItNowAndDropsTheOlderCommitsKeyLines() async throws {
         let session = try session()
         #expect(session.heldKeyLines != nil)
-        try worker.serve(detail(head: "new", title: "After"))
+        worker.serve(detail(head: "new", title: "After"))
         await session.pullToRefresh()
         #expect(session.content?.detail.head == "new" && session.title == "After")
         #expect(session.heldKeyLines == nil, "key lines of the older commit")
@@ -79,7 +72,7 @@ struct PRPullToRefreshTests {
 
     @Test func aPullAtTheSameCommitKeepsItsKeyLines() async throws {
         let session = try session()
-        try worker.serve(detail(head: "old", title: "Retitled"))
+        worker.serve(detail(head: "old", title: "Retitled"))
         await session.pullToRefresh()
         #expect(session.title == "Retitled" && session.heldKeyLines != nil)
     }

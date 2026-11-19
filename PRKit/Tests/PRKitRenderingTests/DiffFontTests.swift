@@ -41,12 +41,6 @@ struct DiffFontTests {
         }
     }
 
-    @Test func textSizeScalesTheCodeAndTheHeader() {
-        let large = DiffMetrics(.standard, scale: 1.5)
-        #expect(large.code.pointSize == 18)
-        #expect(large.headerPath.pointSize == 21)
-    }
-
     #if os(iOS)
         @Test(arguments: [CGFloat(9), 12, 20])
         func theViewedMarkIsATapTargetAtEverySize(size: CGFloat) {

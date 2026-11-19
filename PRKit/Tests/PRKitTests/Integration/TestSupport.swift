@@ -50,17 +50,3 @@ final class TestPreferences {
         defaults.removePersistentDomain(forName: name)
     }
 }
-
-/// Waits for an observable state, failing the test instead of hanging or proceeding after a blind delay.
-@MainActor
-func waitUntil(
-    _ message: String, timeout: Duration = .seconds(5),
-    sourceLocation: SourceLocation = #_sourceLocation,
-    _ condition: () -> Bool
-) async throws {
-    let deadline = ContinuousClock.now + timeout
-    while !condition() {
-        try #require(ContinuousClock.now < deadline, Comment(rawValue: message), sourceLocation: sourceLocation)
-        try await Task.sleep(for: .milliseconds(5))
-    }
-}

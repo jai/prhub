@@ -129,12 +129,21 @@ public extension Font {
         }
 
         public static func scale(in defaults: UserDefaults) -> Double {
-            let stored = defaults.double(forKey: key)
-            return scales.contains(stored) ? stored : standard
+            scale(stored: defaults.double(forKey: key))
+        }
+
+        /// `stored` when it is one of `scales`, else `standard`.
+        public static func scale(stored: Double) -> Double {
+            scales.contains(stored) ? stored : standard
         }
 
         public static func points(_ style: Font.TextStyle, defaults: UserDefaults = .standard) -> CGFloat {
-            (DesignTokens.macStyles[style]?.size ?? 14) * scale(in: defaults)
+            points(style, scale: scale(in: defaults))
+        }
+
+        /// `style`'s Mac size at `scale`.
+        public static func points(_ style: Font.TextStyle, scale: Double) -> CGFloat {
+            (DesignTokens.macStyles[style]?.size ?? 14) * scale
         }
 
         /// For what is sized beside the text in iPhone points (an avatar, a mark): the Mac's body over the iPhone's, times
@@ -144,9 +153,14 @@ public extension Font {
         }
 
         public static func layoutScale(in defaults: UserDefaults) -> Double {
+            layoutScale(scale: scale(in: defaults))
+        }
+
+        /// `layoutScale` at the text size `scale`.
+        public static func layoutScale(scale: Double) -> Double {
             let mac = DesignTokens.macStyles[.body]?.size ?? 14
             let phone = DesignTokens.styles[.body]?.size ?? 17
-            return scale(in: defaults) * Double(mac / phone)
+            return scale * Double(mac / phone)
         }
 
         /// For code, whose size is the diff font's in iPhone points: the Mac's code size over the iPhone's, times the scale.

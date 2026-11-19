@@ -48,8 +48,7 @@ struct DiffMetrics {
     init(_ font: DiffFont, scale: CGFloat) {
         self.font = font
         self.scale = scale
-        let codeSize = font.size * scale
-        let headerSize = (font.size + DiffFont.headingStep) * scale
+        let (codeSize, headerSize) = Self.pointSizes(font, scale: scale)
         code = font.platformFont(points: codeSize)
         headerPath = font.platformFont(points: headerSize, isBold: true)
         headerChange = .monospacedDigitSystemFont(ofSize: headerSize, weight: .medium)
@@ -63,6 +62,11 @@ struct DiffMetrics {
         columnWidth = ("M" as NSString).size(withAttributes: [.font: code]).width
         viewedSymbolSize = (headerSize * 1.05).rounded()
         chevronSymbolSize = (headerSize * 0.8).rounded()
+    }
+
+    /// The code's size and the file header's at the text size `scale`: the header a step bigger than the code.
+    static func pointSizes(_ font: DiffFont, scale: CGFloat) -> (code: CGFloat, header: CGFloat) {
+        (font.size * scale, (font.size + DiffFont.headingStep) * scale)
     }
 
     /// The file header's path for `text` in `width`: the header's size when it fits, else smaller, down to the code's

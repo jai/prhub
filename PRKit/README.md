@@ -98,6 +98,6 @@ good revision until a pull.
 
 ## Tests
 
-`make test-unit-prkit` runs code-only `PRKitUnitTests` on macOS. `make test-integration-prkit` runs `PRKitIntegrationTests` with local storage and bundled contract fixtures. The Worker checks those same payloads in `PRKit/Tests/PRContractFixtures/Fixtures/`; missing resources fail the tests.
+`make test-unit-prkit` runs code-only `PRKitUnitTests` on macOS, with the stores in memory (`PRKitTestSupport`). `make test-integration-prkit` runs `PRKitIntegrationTests` with local storage, bundled contract fixtures and the diff's bundled fonts. The Worker checks those same payloads in `PRKit/Tests/PRContractFixtures/Fixtures/`; missing resources fail the tests.
 
-`make test-ui-prkit` runs `PRKitRenderingTests` natively on macOS through SwiftPM, without an app host. The iOS UI plan compiles the same rendering sources alongside UIKit-only checks in its app-hosted target, on iPhone and iPad. UI and rendering checks run on release candidates; unit and integration checks also run on pushes.
+The font and AppKit checks in `PRKit/Tests/PRKitRenderingTests` are part of `PRKitIntegrationTests` on macOS. The iOS UI plan compiles the same folder alongside UIKit-only checks in its app-hosted target, on iPhone and iPad, on release candidates. Unit and integration checks run on pushes.

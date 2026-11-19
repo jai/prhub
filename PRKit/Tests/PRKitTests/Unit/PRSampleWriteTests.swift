@@ -9,7 +9,6 @@ import Testing
 /// the write was said to be posted and then dropped.
 @MainActor
 struct PRSampleWriteTests {
-    private let storage = TestStorage()
     private let ref = PullRequestRef(repo: "acme/web", number: 7)
 
     private static let detail = """
@@ -33,10 +32,8 @@ struct PRSampleWriteTests {
             samples: [.init(row: row, detail: Self.detail, diff: "", keyLines: nil)], mergedReviewed: [],
             mergedMine: [], answersOnPhone: true
         )
-        let directory = storage.directory
         let client = PRViewerClient(access: .offline, transport: UnexpectedTransport())
-        let model = PRsModel(client: client, samples: samples, directory: directory, defaults: storage.defaults,
-                             network: PRNetwork(isOnline: true), draftDirectory: storage.draftDirectory)
+        let model = PRsModel(client: client, samples: samples, storage: .inMemory(), network: PRNetwork(isOnline: true))
         model.featureSource = {
             var configuration = PRKitConfiguration.everything
             configuration.login = "octocat"

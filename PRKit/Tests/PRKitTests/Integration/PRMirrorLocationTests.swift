@@ -2,8 +2,8 @@ import Foundation
 @testable import PRKitCore
 import Testing
 
-/// Where the mirror lives (`PRMirrorLocation`): Application Support in the app group's container, else the app's own;
-/// a mirror left in an earlier build's caches moves there once.
+/// Where the mirror lives (`PRMirrorLocation`): a mirror left in an earlier build's caches moves to Application Support
+/// once, on disk. `PRKitUnitTests`' suite of this name checks which folders it picks.
 struct PRMirrorLocationTests {
     private let storage = TestStorage()
     private var root: URL {
@@ -14,21 +14,6 @@ struct PRMirrorLocationTests {
         PRMirrorLocation.Library(
             caches: root.appending(path: "own/Caches"), support: root.appending(path: "own/Application Support")
         )
-    }
-
-    @Test func aGroupWithNoContainerFallsBackToTheAppsOwnAndIsSaidOnce() {
-        let group = "group.test.\(UUID().uuidString)"
-        let directory = PRMirrorLocation.directory(appGroup: group, container: { _ in nil }, own: own)
-        #expect(directory == PRMirrorLocation.directory(appGroup: nil, own: own))
-        #expect(directory == own.support.appending(path: "pr-viewer", directoryHint: .isDirectory))
-        #expect(!PRMirrorLocation.isFirstMiss(of: group), "the first miss was said already")
-    }
-
-    @Test func aGroupWithAContainerHoldsTheMirrorInItsApplicationSupport() {
-        let container = root.appending(path: "Group Containers/g", directoryHint: .isDirectory)
-        let directory = PRMirrorLocation.directory(appGroup: "g", container: { _ in container }, own: own)
-        let expected = container.appending(path: "Library/Application Support/pr-viewer", directoryHint: .isDirectory)
-        #expect(directory == expected)
     }
 
     @Test func aMirrorInTheGroupsCachesMovesOnceAndIsLeftOutOfBackups() throws {

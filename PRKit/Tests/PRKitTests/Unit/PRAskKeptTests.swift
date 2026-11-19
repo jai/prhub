@@ -1,15 +1,14 @@
 import Foundation
 @testable import PRKit
 @testable import PRKitCore
+import PRKitTestSupport
 import Testing
 
-/// A PR's Ask chat keeps its last good answer: the sheet opens on it, offline too, after a relaunch.
+/// A PR's Ask chat keeps its last good answer: the sheet opens on it, offline too, after a relaunch. A relaunch is a
+/// second model over the first one's storage.
 @MainActor
 struct PRAskKeptTests {
-    private let storage = TestStorage()
-    private var directory: URL {
-        storage.directory
-    }
+    private let storage = PRKitStorage.inMemory()
 
     private let ref = PullRequestRef(repo: "acme/web", number: 7)
     private nonisolated static let chat = Data("""
@@ -29,20 +28,17 @@ struct PRAskKeptTests {
     }
 
     @Test func aChatReadOnlineIsThereOfflineAfterARelaunch() async throws {
-        let online = PRsModel(client: client(offline: false), directory: directory, defaults: storage.defaults, network: PRNetwork(isOnline: true),
-                              draftDirectory: storage.draftDirectory)
+        let online = PRsModel(client: client(offline: false), storage: storage, network: PRNetwork(isOnline: true))
         _ = try await online.askChat(ref)
 
-        let relaunched = PRsModel(client: client(offline: true), directory: directory, defaults: storage.defaults, network: PRNetwork(isOnline: true),
-                                  draftDirectory: storage.draftDirectory)
+        let relaunched = PRsModel(client: client(offline: true), storage: storage, network: PRNetwork(isOnline: true))
         #expect(relaunched.keptAskChat(ref)?.messages.map(\.id) == ["q1", "a1"])
         await #expect(throws: URLError.self) { try await relaunched.askChat(ref) }
         #expect(relaunched.keptAskChat(ref)?.messages.count == 2, "a failed read leaves the kept chat")
     }
 
     @Test func anotherPRHasNoKeptChat() async throws {
-        let model = PRsModel(client: client(offline: false), directory: directory, defaults: storage.defaults, network: PRNetwork(isOnline: true),
-                             draftDirectory: storage.draftDirectory)
+        let model = PRsModel(client: client(offline: false), storage: storage, network: PRNetwork(isOnline: true))
         _ = try await model.askChat(ref)
         #expect(model.keptAskChat(PullRequestRef(repo: "acme/web", number: 8)) == nil)
     }

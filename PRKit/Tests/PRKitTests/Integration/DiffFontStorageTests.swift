@@ -21,13 +21,6 @@ struct DiffFontStorageTests {
         #expect(AppStorage(diffFontIn: defaults).wrappedValue == DiffFont(face: .jetBrainsMono, size: 15))
     }
 
-    @Test(arguments: ["", "menlo", "menlo:", "comicSans:12", "menlo:big", "menlo:8", "menlo:21", "menlo:12:1"])
-    func aBadStoredValueReadsAsTheDefault(stored: String) {
-        let defaults = preferences.defaults
-        defaults.set(stored, forKey: DiffFont.storageKey)
-        #expect(AppStorage(diffFontIn: defaults).wrappedValue == .standard)
-    }
-
     @Test func aStoredValueOfAnotherTypeReadsAsTheDefault() {
         let defaults = preferences.defaults
         defaults.set(14, forKey: DiffFont.storageKey)

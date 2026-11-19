@@ -146,4 +146,39 @@ struct PRNavigationTests {
         session.stepFile(by: -1, in: files)
         #expect(session.topFile == 2 && session.jump?.path == "c")
     }
+
+    /// A loaded PR in a sample set that keeps nothing, so marking a file viewed stays on the screen.
+    private func loadedSession(diff text: String) throws -> PRSession {
+        let samples = PRSampleSet(samples: [], mergedReviewed: [], mergedMine: [], answersOnPhone: false)
+        let model = PRsModel(
+            client: PRViewerClient(access: .offline, transport: UnexpectedTransport()), samples: samples,
+            storage: .inMemory(), network: PRNetwork(isOnline: true)
+        )
+        let detail = try PullRequestDetail.decode(Data(PRTestPayload.detail(id: "PR_7").utf8))
+        return PRSession(
+            ref: ref, title: nil, content: PRContent(detail: detail, document: DiffDocument(data: Data(text.utf8))),
+            tappedAt: 0, model: model
+        )
+    }
+
+    @Test func viewedFromTheKeyboardMarksTheFileOnTop() throws {
+        let text = "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-x\n+y\n"
+        let session = try loadedSession(diff: text)
+        let files = DiffRows(document: DiffDocument(data: Data(text.utf8)), threads: []).files
+        let before = session.viewedFiles
+        session.toggleViewedOnTopFile(in: files)
+        #expect(session.viewedFiles == before.union(["a"]))
+        session.toggleViewedOnTopFile(in: files)
+        #expect(session.viewedFiles == before)
+    }
+
+    @Test func markingAFileViewedTwiceKeepsItViewed() throws {
+        let session = try loadedSession(diff: "diff --git a/a b/a\n@@ -1 +1 @@\n-x\n+y\n")
+        session.setViewed(true, path: "a")
+        session.setViewed(true, path: "a")
+        #expect(session.viewedFiles.contains("a"))
+        session.setViewed(false, path: "a")
+        session.setViewed(false, path: "a")
+        #expect(!session.viewedFiles.contains("a"))
+    }
 }
