@@ -83,6 +83,10 @@ final class PRsModel {
     /// The model's clock: the answer wait, the Ask sheet's reads (`followAsk`) and the review toast's dwell are waited
     /// out on it. A test passes its own, which moves only when the test moves it.
     @ObservationIgnored var sleep: @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    /// The time a background wake's deadline is measured against (`keepAlerts`), and how each alert's prefetch is
+    /// held to its share of it. A test passes its own clock and a deadline that spends it.
+    @ObservationIgnored var now: @Sendable () -> ContinuousClock.Instant = { .now }
+    @ObservationIgnored var prefetchDeadline: PRPushPrefetch.Deadline = PRPushPrefetch.realDeadline
     /// Whether the device has a network now (`PRNetwork`), which the host's offline banner shows too.
     let network: PRNetwork
     /// Whether the device has a network: what a question left in the outbox says while it waits. A test sets its own.

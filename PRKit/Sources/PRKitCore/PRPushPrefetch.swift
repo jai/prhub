@@ -103,12 +103,20 @@ public struct PRPushPrefetch: Sendable {
         case failed
     }
 
+    /// Runs a download until its deadline, else throws `DeadlineExceeded`.
+    public typealias Deadline = @Sendable (Duration, @escaping @Sendable () async throws -> Outcome) async throws -> Outcome
+
+    /// DurableNetworking's `withDeadline`, on the real clock.
+    public static let realDeadline: Deadline = { try await withDeadline($0, operation: $1) }
+
     let client: PRViewerClient
     let files: any PRFileStore
+    let deadline: Deadline
 
-    public init(client: PRViewerClient, files: any PRFileStore) {
+    public init(client: PRViewerClient, files: any PRFileStore, deadline: @escaping Deadline = realDeadline) {
         self.client = client
         self.files = files
+        self.deadline = deadline
     }
 
     public init(client: PRViewerClient, directory: URL) {
@@ -127,7 +135,7 @@ public struct PRPushPrefetch: Sendable {
             return .alreadyLocal
         }
         do {
-            let outcome = try await withDeadline(deadline) { try await download(row) }
+            let outcome = try await self.deadline(deadline) { try await download(row) }
             if outcome == .landed {
                 PRAlertedFiles(store: files).note(Self.files(of: row))
             }

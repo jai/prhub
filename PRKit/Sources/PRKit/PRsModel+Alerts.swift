@@ -18,12 +18,11 @@ extension PRsModel {
         guard samples == nil else {
             return []
         }
-        let prefetch = PRPushPrefetch(client: client, files: mirror.files)
-        let clock = ContinuousClock()
-        let end = clock.now + deadline
+        let prefetch = PRPushPrefetch(client: client, files: mirror.files, deadline: prefetchDeadline)
+        let end = now() + deadline
         var outcomes: [PRPushPrefetch.Outcome] = []
         for row in rows.prefix(Self.keptAlerts) {
-            let left = end - clock.now
+            let left = end - now()
             guard left > .zero, !Task.isCancelled else {
                 break
             }
