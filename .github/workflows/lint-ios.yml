@@ -30,7 +30,7 @@ jobs:
       - uses: jdx/mise-action@v5
       - run: make lint-ios
   build-ios:
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5

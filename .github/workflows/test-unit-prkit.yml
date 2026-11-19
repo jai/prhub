@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   test-unit-prkit:
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
