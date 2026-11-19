@@ -52,11 +52,10 @@ extension PRMirror {
                     log.say("PR mirror: \(name) not downloaded after \(tries) tries: \(why)")
                     return .failed
                 }
-                let jitter = Double.random(in: 0.5 ... 1.0)
                 backingOff.insert(name)
                 defer { backingOff.remove(name) }
                 do {
-                    try await Task.sleep(for: wait * jitter)
+                    try await policy.sleep(wait * policy.jitter())
                 } catch {
                     return .cancelled
                 }

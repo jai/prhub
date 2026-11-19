@@ -172,7 +172,7 @@ extension PRsModel {
         update(id) { $0.phase = .done }
         toast.settle(.done, detail)
         Task {
-            try? await Task.sleep(for: ToastStyle.dwell)
+            try? await self.sleep(ToastStyle.dwell)
             if reviewToast?.id == id {
                 dismissReviewToast()
             }

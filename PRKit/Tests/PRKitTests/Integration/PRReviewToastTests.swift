@@ -9,19 +9,33 @@ struct PRReviewToastTests {
     private typealias Host = PROutboxJobTests.Host
     private let ref = PullRequestRef(repo: "acme/toast-\(UUID().uuidString.prefix(8))", number: 7)
     private let approve = PRWrite.review(.approve, body: "", commit: "c", comments: [])
+    /// The model's clock: the answer wait and the toast's dwell end only when a test moves it on.
+    private let clock = TestClock()
     private static let detail = Data("""
     {"url":"u","head":"h","base":"main","headBranch":"b","author":null,"isAuthor":false,"body":"","additions":0,
     "deletions":0,"changedFiles":0,"reviewDecision":null,"mergeState":"CLEAN","labels":[],"checks":[],
     "comments":{"nodes":[]},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]},"title":null}
     """.utf8)
 
-    private func kit(wait: Duration = .milliseconds(50), isOnline: Bool = true) -> (PRKitController, Host) {
+    private func kit(wait: Duration = .seconds(15), isOnline: Bool = true) -> (PRKitController, Host) {
         let host = Host()
         let kit = PRKitController(host: host, defaults: host.storage.defaults, network: PRNetwork(isOnline: isOnline),
                                   draftDirectory: host.storage.draftDirectory)
         kit.model.answerWait = wait
+        let clock = clock
+        kit.model.sleep = { try await clock.sleep(for: $0) }
         kit.model.isOnline = { isOnline }
         return (kit, host)
+    }
+
+    /// The answer wait passes with no answer.
+    private func passTheWait(_ kit: PRKitController) async throws {
+        try await clock.advance(by: kit.model.answerWait, afterSleepers: 1)
+    }
+
+    /// A landed toast's dwell passes.
+    private func passTheDwell() async throws {
+        try await clock.advance(by: ToastStyle.dwell, afterSleepers: 1)
     }
 
     private func submit(
@@ -43,6 +57,7 @@ struct PRReviewToastTests {
         #expect(kit.model.reviewToast?.phase == .done)
         #expect(kit.model.reviewToast?.words == "Approved")
         #expect(kit.model.reviewToast?.tone == .toneGood)
+        try await passTheDwell()
         try await waitUntil("landed toast dismissed") { kit.model.reviewToast == nil }
         #expect(kit.model.reviewToast == nil, "it fades once GitHub has it")
     }
@@ -50,17 +65,20 @@ struct PRReviewToastTests {
     @Test func anAnswerAfterTheWaitStillLandsTheToast() async throws {
         let (kit, host) = kit()
         let sending = submit(kit, approve)
+        try await passTheWait(kit)
         await sending.value
         #expect(kit.model.waiting.isEmpty, "the initial answer wait has ended")
         #expect(kit.model.reviewToast?.phase == .sending, "past the wait it is still sending, never red")
         kit.outboxAnswered(id: host.held.jobs[0].id, data: Self.detail)
         #expect(kit.model.reviewToast?.phase == .done)
+        try await passTheDwell()
         try await waitUntil("late landed toast dismissed") { kit.model.reviewToast == nil }
     }
 
-    @Test func offlineItSaysItGoesWhenOnline() async {
+    @Test func offlineItSaysItGoesWhenOnline() async throws {
         let (kit, _) = kit(isOnline: false)
         let sending = submit(kit, approve)
+        try await passTheWait(kit)
         await sending.value
         #expect(kit.model.reviewToast?.phase == .waitingForNetwork)
         #expect(kit.model.reviewToast?.words == "Saved on this phone. It goes when you're online.")
@@ -72,6 +90,7 @@ struct PRReviewToastTests {
         let draft = PRDraftComment(id: UUID(), path: "a.swift", line: 3, side: .right, body: "Why?")
         var settled: [PRReviewToast.Phase] = []
         let sending = submit(kit, .review(.approve, body: "", commit: "c", comments: [draft]), drafts: [draft]) { settled.append($0) }
+        try await passTheWait(kit)
         await sending.value
         #expect(kit.model.waiting.isEmpty, "the initial answer wait has ended")
         kit.outboxRefused(id: host.held.jobs[0].id, kind: .write, reason: "Pull request is locked")
@@ -91,6 +110,7 @@ struct PRReviewToastTests {
         await retry.value
         #expect(kit.model.reviewToast?.phase == .done)
         #expect(settled == [.failed("Pull request is locked"), .sending, .done])
+        try await passTheDwell()
         try await waitUntil("retried toast dismissed") { kit.model.reviewToast == nil }
     }
 

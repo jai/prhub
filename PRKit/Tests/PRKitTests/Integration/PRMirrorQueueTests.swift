@@ -25,9 +25,9 @@ struct PRMirrorQueueTests {
         return PRViewerClient(access: access) { try await worker.answer($0) }
     }
 
-    /// Quick retries, so a test that fails a file several times takes a moment.
+    /// Retries whose waits pass at once, with no jitter, so a test that fails a file several times waits on no clock.
     private static let quick = PRMirror.RetryPolicy(
-        first: .milliseconds(10), longest: .milliseconds(40), attempts: 3, deadline: .seconds(5), keepsUnlisted: .zero
+        attempts: 3, deadline: .seconds(5), keepsUnlisted: .zero, jitter: { 1 }, sleep: { _ in try Task.checkCancellation() }
     )
 
     /// A test's own mirror folder: another suite's sync prunes the shared one.

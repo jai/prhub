@@ -195,7 +195,7 @@ extension PRSession {
                 return
             }
             failures = askError == nil ? 0 : failures + 1
-            try? await Task.sleep(for: Self.askPollWait(afterFailures: failures))
+            try? await model.sleep(Self.askPollWait(afterFailures: failures))
         }
     }
 }

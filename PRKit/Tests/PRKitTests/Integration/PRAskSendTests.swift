@@ -52,23 +52,37 @@ struct PRAskSendTests {
     }
 
     private let ref = PullRequestRef(repo: "acme/api", number: 7)
+    /// The model's clock: the answer wait ends only when a test moves it on.
+    private let clock = TestClock()
     private let question = PRAskQuestion(question: "Is it tested?", head: String(repeating: "a", count: 40), anchor: nil)
     private let chat = PRAskChat(
         messages: [.init(id: "m1", role: "you", text: "Is it tested?", anchor: nil)],
         isWorking: true, activity: nil, problem: nil, costCents: nil
     )
 
-    private func kit(wait: Duration = .milliseconds(100)) -> (PRKitController, Host) {
+    private func kit(wait: Duration = .seconds(15)) -> (PRKitController, Host) {
         let host = Host()
         let kit = PRKitController(host: host, defaults: host.storage.defaults, network: PRNetwork(isOnline: true),
                                   draftDirectory: host.storage.draftDirectory)
         kit.model.answerWait = wait
+        let clock = clock
+        kit.model.sleep = { try await clock.sleep(for: $0) }
         return (kit, host)
+    }
+
+    /// What `send` comes to when no answer comes within the answer wait.
+    private func pastTheWait<T: Sendable>(
+        _ kit: PRKitController, _ send: @escaping @MainActor () async throws -> T
+    ) async throws -> T {
+        let sending = Task { try await send() }
+        try await clock.advance(by: kit.model.answerWait, afterSleepers: 1)
+        return try await sending.value
     }
 
     @Test func aSlowAnswerOnlineIsStillSendingNotAnError() async throws {
         let (kit, _) = kit()
-        let outcome = try await kit.model.ask(question, about: ref)
+        let (question, ref) = (question, ref)
+        let outcome = try await pastTheWait(kit) { try await kit.model.ask(question, about: ref) }
         #expect(outcome == .queued)
         #expect(PRAskSend.after(.success(outcome), of: question, isOnline: true) == .sending(question))
     }
@@ -103,7 +117,8 @@ struct PRAskSendTests {
 
     @Test func followingAQueuedQuestionShowsNoError() async throws {
         let (kit, host) = kit()
-        _ = try await kit.model.ask(question, about: ref)
+        let (question, ref) = (question, ref)
+        _ = try await pastTheWait(kit) { try await kit.model.ask(question, about: ref) }
         kit.model.isOnline = { false }
         let session = kit.model.session(for: ref)
         session.askSend = .sending(question)
@@ -113,6 +128,7 @@ struct PRAskSendTests {
         #expect(session.askSend == .waitingForNetwork(question))
         #expect(session.askError == nil)
         host.held.isHolding = false
+        try await clock.advance(by: PRSession.askPollInterval, afterSleepers: 1)
         await following.value
         #expect(session.askSend == .idle)
         #expect(session.askError == nil)
@@ -134,12 +150,13 @@ struct PRAskSendTests {
         let (kit, host) = kit()
         let session = try loadedSession(kit)
         session.explainPR()
+        try await clock.advance(by: kit.model.answerWait, afterSleepers: 1)
         try await waitUntil("Explain PR reports its outcome") { !host.events.isEmpty }
         session.askDraft = "Is it tested?"
-        await session.sendAsk()
+        try await pastTheWait(kit) { await session.sendAsk() }
         session.askAnchor = PRAskQuestion.Anchor(path: "a.swift", line: 3, side: "RIGHT", code: nil)
         session.askDraft = "Why this line?"
-        await session.sendAsk()
+        try await pastTheWait(kit) { await session.sendAsk() }
         #expect(host.events == [
             .askSent(.explainPR, .queued), .askSent(.typed, .queued), .askSent(.typedLine, .queued),
         ])

@@ -77,6 +77,11 @@ final class PRsModel {
     var queued: [String: PROutboxJob] = [:]
     /// How long a screen waits for GitHub's answer before the write carries on without it.
     var answerWait: Duration = .seconds(15)
+    /// The screen waiting on each id in `waiting`: woken by its answer, the end of `answerWait` or its cancellation.
+    @ObservationIgnored var answerWaits: [String: CheckedContinuation<Void, Never>] = [:]
+    /// The model's clock: the answer wait, the Ask sheet's reads (`followAsk`) and the review toast's dwell are waited
+    /// out on it. A test passes its own, which moves only when the test moves it.
+    @ObservationIgnored var sleep: @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     /// Whether the device has a network now (`PRNetwork`), which the host's offline banner shows too.
     let network: PRNetwork
     /// Whether the device has a network: what a question left in the outbox says while it waits. A test sets its own.

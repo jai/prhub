@@ -58,19 +58,32 @@ struct PROutboxJobTests {
     }
 
     private let ref = PullRequestRef(repo: "acme/api", number: 7)
+    /// The model's clock: the answer wait ends only when a test moves it on.
+    private let clock = TestClock()
     private static let detail = Data("""
     {"url":"u","head":"h","base":"main","headBranch":"b","author":null,"isAuthor":false,"body":"","additions":0,
     "deletions":0,"changedFiles":0,"reviewDecision":null,"mergeState":"CLEAN","labels":[],"checks":[],
     "comments":{"nodes":[]},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]},"title":null}
     """.utf8)
 
-    private func kit(wait: Duration = .milliseconds(50), isOnline: Bool = true) -> (PRKitController, Host) {
+    private func kit(wait: Duration = .seconds(15), isOnline: Bool = true) -> (PRKitController, Host) {
         let host = Host()
         let kit = PRKitController(host: host, defaults: host.storage.defaults, network: PRNetwork(isOnline: true),
                                   draftDirectory: host.storage.draftDirectory)
         kit.model.answerWait = wait
+        let clock = clock
+        kit.model.sleep = { try await clock.sleep(for: $0) }
         kit.model.isOnline = { isOnline }
         return (kit, host)
+    }
+
+    /// What `send` comes to when no answer comes within the answer wait.
+    private func pastTheWait<T: Sendable>(
+        _ kit: PRKitController, _ send: @escaping @MainActor () async throws -> T
+    ) async throws -> T {
+        let sending = Task { try await send() }
+        try await clock.advance(by: kit.model.answerWait, afterSleepers: 1)
+        return try await sending.value
     }
 
     private func firstJob(_ kit: PRKitController, _ host: Host) async throws -> String {
@@ -285,20 +298,25 @@ struct PROutboxJobTests {
 
     @Test func aSlowWriteOnlineIsSendingAndSaysSoInTheWaitingTone() async throws {
         let (kit, _) = kit()
-        let outcome = try await kit.model.write(.comment(body: "Ship it."), to: ref)
+        let ref = ref
+        let outcome = try await pastTheWait(kit) { try await kit.model.write(.comment(body: "Ship it."), to: ref) }
         guard case .queued(.sending) = outcome else {
             Issue.record("expected sending, got \(outcome)")
             return
         }
         let session = kit.model.session(for: ref)
-        try await session.setResolved(true, thread: Self.thread())
+        let thread = try Self.thread()
+        try await pastTheWait(kit) { try await session.setResolved(true, thread: thread) }
         #expect(session.notice == .queued(noun: "Resolving the thread", .sending))
         #expect(session.notice?.tone == .toneWaiting)
     }
 
     @Test func aWriteOfflineWaitsForTheNetwork() async throws {
         let (kit, _) = kit(isOnline: false)
-        let outcome = try await kit.model.write(.review(.approve, body: "", commit: "c", comments: []), to: ref)
+        let ref = ref
+        let outcome = try await pastTheWait(kit) {
+            try await kit.model.write(.review(.approve, body: "", commit: "c", comments: []), to: ref)
+        }
         guard case .queued(.waitingForNetwork) = outcome else {
             Issue.record("expected waiting for the network, got \(outcome)")
             return
@@ -317,7 +335,8 @@ struct PROutboxJobTests {
 
     @Test func aLateRefusalOfAWriteQuotesItAsGitHubs() async throws {
         let (kit, host) = kit()
-        _ = try await kit.model.write(.comment(body: "Ship it."), to: ref)
+        let ref = ref
+        _ = try await pastTheWait(kit) { try await kit.model.write(.comment(body: "Ship it."), to: ref) }
         kit.outboxRefused(id: host.held.jobs[0].id, kind: .write, reason: "Pull request is locked")
         let words = "GitHub refused your comment “Ship it.” on acme/api#7: Pull request is locked"
         #expect(kit.model.lateRefusal == words)
@@ -327,7 +346,8 @@ struct PROutboxJobTests {
     @Test func aLateRefusalOfAQuestionIsNeverGitHubs() async throws {
         let (kit, host) = kit()
         let question = PRAskQuestion(question: "Is it tested?", head: String(repeating: "a", count: 40), anchor: nil)
-        #expect(try await kit.model.ask(question, about: ref) == .queued)
+        let ref = ref
+        #expect(try await pastTheWait(kit) { try await kit.model.ask(question, about: ref) } == .queued)
         #expect(kit.model.hasQueuedQuestion(about: ref))
         kit.outboxRefused(id: host.held.jobs[0].id, kind: .question, reason: "Spending limit reached.")
         let words = "Your question “Is it tested?” to the AI on acme/api#7 couldn't be sent: Spending limit reached."
@@ -338,7 +358,8 @@ struct PROutboxJobTests {
 
     @Test func aLateAnswerIsDroppedNotKeptForAScreenThatWentAway() async throws {
         let (kit, host) = kit()
-        _ = try await kit.model.write(.comment(body: "Ship it."), to: ref)
+        let ref = ref
+        _ = try await pastTheWait(kit) { try await kit.model.write(.comment(body: "Ship it."), to: ref) }
         kit.outboxAnswered(id: host.held.jobs[0].id, data: Self.detail)
         kit.outboxRefused(id: host.held.jobs[0].id, kind: .write, reason: "late")
         #expect(kit.model.lateRefusal == "GitHub refused a write: late", "the job's record went with its answer")
@@ -346,7 +367,10 @@ struct PROutboxJobTests {
 
     @Test func aViewedMarkSavedForLaterSaysNothing() async throws {
         let (kit, _) = kit()
-        let outcome = try await kit.model.write(.viewed(pullRequest: "p", path: "f", viewed: true), to: ref)
+        let ref = ref
+        let outcome = try await pastTheWait(kit) {
+            try await kit.model.write(.viewed(pullRequest: "p", path: "f", viewed: true), to: ref)
+        }
         guard case .queued = outcome else {
             Issue.record("a Viewed mark is queued")
             return
@@ -363,7 +387,7 @@ struct PROutboxJobTests {
     }
 
     @Test func cancellingAnOutboxWaitStopsWaitingAndKeepsTheQueuedJob() async throws {
-        let (kit, host) = kit(wait: .milliseconds(200))
+        let (kit, host) = kit()
         let sent = Task { try await kit.model.write(.comment(body: "Ship it."), to: ref) }
         _ = try await firstJob(kit, host)
         sent.cancel()

@@ -135,27 +135,36 @@ extension PRsModel {
     }
 
     /// The outbox's answer if it comes within `answerWait`; else the job goes on without the screen. A refusal in time
-    /// is thrown.
+    /// is thrown. The screen sleeps until the answer, the end of the wait on the model's clock, or its cancellation,
+    /// whichever comes first.
     private func answer(to id: String) async throws -> PROutboxAnswer {
         defer { waiting.remove(id) }
-        let clock = ContinuousClock()
-        let end = clock.now + answerWait
-        // Looked for once more after the last wait: an answer that came during it would otherwise be held and lost.
-        while true {
-            if let outcome = outcomes.removeValue(forKey: id) {
-                queued[id] = nil
-                return try .answered(outcome.get())
+        if outcomes[id] == nil, !Task.isCancelled {
+            let (wait, sleep) = (answerWait, sleep)
+            // Cancelled once the screen has woken, when waking it again does nothing.
+            let timer = Task { [weak self] in
+                try? await sleep(wait)
+                self?.wakeAnswerWait(id)
             }
-            try Task.checkCancellation()
-            guard clock.now < end else {
-                return .stillGoing
+            await withTaskCancellationHandler {
+                await withCheckedContinuation { answerWaits[id] = $0 }
+            } onCancel: {
+                Task { @MainActor [weak self] in self?.wakeAnswerWait(id) }
             }
-            do {
-                try await Task.sleep(nanoseconds: 50_000_000)
-            } catch is CancellationError {
-                // Consume an answer already delivered before cancelling the screen's wait.
-            }
+            timer.cancel()
         }
+        // Looked for before cancellation is: an answer that came with the end of the wait or the cancellation would
+        // otherwise be held and lost.
+        if let outcome = outcomes.removeValue(forKey: id) {
+            queued[id] = nil
+            return try .answered(outcome.get())
+        }
+        try Task.checkCancellation()
+        return .stillGoing
+    }
+
+    private func wakeAnswerWait(_ id: String) {
+        answerWaits.removeValue(forKey: id)?.resume()
     }
 
     /// The Worker's answer to an outbox item, for the screen waiting on it.
@@ -169,6 +178,7 @@ extension PRsModel {
             return
         }
         outcomes[id] = .success(data)
+        wakeAnswerWait(id)
     }
 
     /// A refusal in time is the screen's to show. A later one would otherwise be lost: it says what the job was, in
@@ -179,6 +189,7 @@ extension PRsModel {
         }
         if waiting.contains(id) {
             outcomes[id] = .failure(.refused(why))
+            wakeAnswerWait(id)
             return
         }
         if case let .write(write, ref) = queued[id], reviewRefused(job: id, reason: why) {

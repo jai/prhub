@@ -36,6 +36,10 @@ actor PRMirror {
         /// How long prune leaves a file no list names, such as an alert's PR fetched before the list named it: longer
         /// than an alert waits to be tapped and synced.
         var keepsUnlisted: Duration = .seconds(30 * 60)
+        /// What each wait between tries is multiplied by, in `0.5...1`. A test passes a constant.
+        var jitter: @Sendable () -> Double = { .random(in: 0.5 ... 1.0) }
+        /// Waits between tries. A test's passes at once.
+        var sleep: @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     }
 
     nonisolated let directory: URL
