@@ -57,6 +57,29 @@ struct PRMirrorTests {
         #expect(path.isEmpty)
     }
 
+    /// A review sent from the diff leaves the diff and its PR: the PRs tab's list, or the screen another tab opened the
+    /// PR from (Jai's feedback, build 305).
+    @MainActor @Test func aReviewSentFromTheDiffLeavesTheDiffAndItsPR() {
+        var path = NavigationPath(["list item", "pr", "diff"])
+        let binding = Binding(get: { path }, set: { path = $0 })
+        PRStack.path(binding, backGoesToRoot: false).leaveDiff()
+        #expect(path.count == 1)
+
+        path = NavigationPath(["pr", "diff"])
+        PRStack.path(binding, backGoesToRoot: true).leaveDiff()
+        #expect(path.isEmpty)
+    }
+
+    @Test func aDescriptionThatOpensOnAHeadingGivesItToTheButtonsRow() throws {
+        let opening = try #require(PRMarkdown.leadingHeading("## Checklist\n\n- ☑︎ I have provided a description"))
+        #expect(opening.heading == "Checklist")
+        #expect(opening.rest == "- ☑︎ I have provided a description")
+        #expect(PRMarkdown.leadingHeading("### C# notes ##\r\nmore")?.heading == "C# notes")
+        #expect(PRMarkdown.leadingHeading("# Only")?.rest == "")
+        #expect(PRMarkdown.leadingHeading("Production alerts\n## Later") == nil)
+        #expect(PRMarkdown.leadingHeading("#hashtag") == nil)
+    }
+
     @Test func aReviewWaitingOnJaisOwnChangeRequestComesFirst() {
         let row = { (number: Int, list: String, review: String?) in
             PullRequestRow(

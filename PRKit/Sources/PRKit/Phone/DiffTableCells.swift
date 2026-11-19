@@ -53,11 +53,17 @@
     }
 
     /// A file's header: it sticks to the top while its file scrolls, and a tap folds the file. The table is wider than the
-    /// screen, so `bar` is held to the visible width and moved back as the table scrolls sideways.
+    /// screen, so `bar` is held to the visible width and moved back as the table scrolls sideways. A path too long for
+    /// its room scrolls sideways in it, opening on the file's name at its end (Jai's feedback, build 305).
     final class DiffFileHeader: UITableViewHeaderFooterView {
         static let identifier = "file"
         private let bar = UIView()
         private let chevron = UIImageView(image: UIImage(systemName: "chevron.down"))
+        /// The path's room: the header's button for accessibility, holding the scroll the path moves in. A scroll view
+        /// is always a scroll view to XCUITest and VoiceOver, never a button, and a scrolled label's frame runs off the
+        /// screen.
+        private let pathRoom = UIView()
+        private let pathScroll = UIScrollView()
         private let path = UILabel()
         private let change = UILabel()
         private let viewed = UIButton(type: .system)
@@ -75,17 +81,23 @@
             chevron.tintColor = .secondaryLabel
             // Drawn at its symbol size, never scaled to its box: turned, the box would hand it the row's height.
             chevron.contentMode = .center
-            path.lineBreakMode = .byTruncatingHead
+            path.lineBreakMode = .byClipping
+            pathScroll.showsHorizontalScrollIndicator = false
+            pathScroll.showsVerticalScrollIndicator = false
+            pathScroll.alwaysBounceVertical = false
+            pathScroll.scrollsToTop = false
+            pathScroll.addSubview(path)
+            pathRoom.addSubview(pathScroll)
             change.textAlignment = .right
             viewed.addTarget(self, action: #selector(viewedTapped), for: .touchUpInside)
-            for view in [chevron, path, change, viewed] {
+            for view in [chevron, pathRoom, change, viewed] {
                 bar.addSubview(view)
             }
             contentView.addSubview(bar)
             addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
-            path.isAccessibilityElement = true
-            path.accessibilityTraits = .button
-            accessibilityElements = [path, viewed]
+            pathRoom.isAccessibilityElement = true
+            pathRoom.accessibilityTraits = .button
+            accessibilityElements = [pathRoom, viewed]
         }
 
         @available(*, unavailable)
@@ -109,7 +121,8 @@
                 string: " −\(file.change.removed)", attributes: [.foregroundColor: UIColor.systemRed]
             ))
             change.attributedText = text
-            path.accessibilityIdentifier = "file-header-\(section)"
+            pathRoom.accessibilityLabel = file.path
+            pathRoom.accessibilityIdentifier = "file-header-\(section)"
             viewed.accessibilityIdentifier = "file-viewed-\(section)"
             setViewed(isViewed)
             setCollapsed(isCollapsed, animated: false)
@@ -128,7 +141,7 @@
         }
 
         func setCollapsed(_ isCollapsed: Bool, animated: Bool) {
-            path.accessibilityValue = isCollapsed ? "collapsed" : "open"
+            pathRoom.accessibilityValue = isCollapsed ? "collapsed" : "open"
             let turn = { self.chevron.transform = CGAffineTransform(rotationAngle: isCollapsed ? -.pi / 2 : 0) }
             if animated {
                 UIView.animate(withDuration: 0.28, animations: turn)
@@ -154,10 +167,16 @@
             viewed.frame = CGRect(x: width - metrics.viewedTarget, y: 0, width: metrics.viewedTarget, height: height)
             change.frame = CGRect(x: viewed.frame.minX - changeWidth, y: 0, width: changeWidth, height: height)
             let pathX = Space.sm + chevronWidth + Space.sm
-            path.frame = CGRect(x: pathX, y: 0, width: change.frame.minX - pathX - Space.md, height: height)
-            if fittedWidth != path.bounds.width {
-                fittedWidth = path.bounds.width
-                path.font = metrics.headerPath(fitting: path.text ?? "", in: path.bounds.width)
+            let room = max(0, change.frame.minX - pathX - Space.md)
+            pathRoom.frame = CGRect(x: pathX, y: 0, width: room, height: height)
+            pathScroll.frame = pathRoom.bounds
+            if fittedWidth != room {
+                fittedWidth = room
+                path.font = metrics.headerPath(fitting: path.text ?? "", in: room)
+                let width = max(room, ceil(path.sizeThatFits(CGSize(width: .greatestFiniteMagnitude, height: height)).width))
+                path.frame = CGRect(x: 0, y: 0, width: width, height: height)
+                pathScroll.contentSize = path.frame.size
+                pathScroll.contentOffset = CGPoint(x: width - room, y: 0)
             }
         }
 

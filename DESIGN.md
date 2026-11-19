@@ -250,8 +250,9 @@ content's size: when the content grows or shrinks, the heading moves with it. "C
 (footnote) is one; the diff's file header is the other: `DiffFont`'s face, bold, 2 pt over the code, at any diff font
 and text size. Its chevron is the same size folded or open, and its viewed mark is about the path's size and grows with
 it, in a tap target of 44 pt at least, the header row's height, that never
-moves the path or the counts. A path too long for its row shrinks first, down to the code's size and no smaller, then is
-cut from the front, so the file's name is what shows; the whole path is in the Files panel.
+moves the path or the counts. A path too long for its row shrinks first, down to the code's size and no smaller, then
+scrolls sideways in its room, opening at its end, so the file's name is what shows and the folders are a swipe away;
+the whole path is also in the Files panel.
 
 **The diff stops at its sideways edges.** The code stops at its left and right edges, with no bounce, so the file header
 and the threads and notes, which stay where the screen is, are never pulled off it.
@@ -451,9 +452,10 @@ antiPatterns:
 
 ```text
 name: PRReviewToastView
-purpose: A review on its way after its box closed. It follows the review to GitHub's answer, over whatever is open.
+purpose: A review on its way after its box closed. It follows the review to GitHub's answer, over whatever is open,
+  under the nav bar.
 parts:
-  box:    { holds: "groundCard, Radius.md, hairline, ToastStyle's shadow, ToastStyle.maxWidth at most", place: "top, centred, Space.lg from the sides" }
+  box:    { holds: "groundCard, Radius.md, hairline, ToastStyle's shadow, ToastStyle.maxWidth at most", place: "top of each screen's safe area, just under the nav bar, centred, Space.lg from the sides" }
   mark:   { holds: "a spinner while sending; AppIcon.done toneGood, .offline toneWaiting, .problem toneBad" }
   words:  { font: appFootnote semibold, lines: 3, holds: "Submitting review… (Posting comment…), Approved, Changes requested, Comment posted, Saved on this phone…, Review not sent. <why>" }
   bar:    { holds: "ToastStyle.progressHeight along its foot: the tint easing to ToastStyle.progressWhileSending while it goes, toneGood and full once landed", only: "sending, done" }
@@ -463,11 +465,14 @@ states: [sending, waitingForNetwork, done, failed]
 rules:
   - The box it came from closes at once, read-only while it goes. The review goes through the host's outbox, so it
     survives the app leaving the foreground; a late answer or refusal still reaches the toast.
-  - It slides down from ToastStyle.travel above, past the top of the screen, and back up the same way, fading
+  - It slides down from ToastStyle.travel above, from under the nav bar, and back up the same way, fading
     (AppMotion.fold); its words, mark and bar change in place (AppMotion.swap). Done stays ToastStyle.dwell, then goes.
     A line's Comment now and a reply go through it too, and it shows over a PR pushed on any tab. Failed stays until Retry or close, and gives the line comments back to the PR.
-  - Opaque, never glass: over the nav bar, glass let the title's words show through its own. One at a time; a new
-    review replaces it.
+  - Opaque, never glass: glass let the title's words show through its own. One at a time; a new review replaces it.
+  - Never over the nav bar: there it covered Back (Jai's feedback, build 305). Each screen of a PR stack, the list's
+    included, draws it under its own bar.
+  - A review sent from the diff's review bar leaves the diff and its PR for the list, where the toast follows it. A
+    line's Comment now stays on the diff.
   - Success and failure each have their .sensoryFeedback.
 antiPatterns:
   - A notice under the review bar for a review the toast is following.
@@ -605,8 +610,9 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
   heading's colour is its icon's tone.
 - **A description's actions:** Explain (`AppIcon.explainPR`, which asks Ask AI to sum up and explain the whole PR;
   only where Ask AI is on), Rewrite (`.rewriteDescription`) and Edit (`.editDescription`), as
-  `PRButtonStyle(.secondary, iconOnly: true)` buttons `Space.lg` apart, in a row of their own at the top of the
-  description's card with a divider under it: never over the words, where a tap meant for the text lands on one.
+  `PRButtonStyle(.secondary, iconOnly: true)` buttons `Space.lg` apart, in a row at the top of the description's card
+  with a divider under it: never over the words, where a tap meant for the text lands on one. A description that opens
+  on a heading has that heading at the row's start, in its Markdown heading font, and no divider.
   Rewrite and Edit each ask first in a confirmation dialog; Explain opens the chat at once.
 - **A PR's link:** a long press on a PR's row, and on Open in GitHub in a PR's bar (a click and hold on the Mac),
   offers Copy link; the bar's also offers Share. A tap on Open in GitHub still opens it.

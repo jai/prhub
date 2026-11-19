@@ -29,7 +29,8 @@ final class PRKitNavigationUITests: PRHubUITestCase {
         backToThePRThenTheList()
     }
 
-    /// The diff sends a review the way the PR's page does: the bar under the code, its box in the bar's place.
+    /// The diff sends a review the way the PR's page does: the bar under the code, its box in the bar's place. Sent, it
+    /// leaves the diff and its PR for the list, where the toast follows it under the nav bar (Jai's feedback, build 305).
     func testTheDiffHasTheReviewBarAndSendsAReview() throws {
         launch()
         openCheckout()
@@ -53,12 +54,16 @@ final class PRKitNavigationUITests: PRHubUITestCase {
         try picture("nav-diff-approve-open")
         XCTAssertFalse(app.buttons["pr-review-approve"].exists, "the box takes the bar's place")
         send.tap()
-        XCTAssertTrue(app.descendants(matching: .any)["pr-notice"].waitForExistence(timeout: 5), "the review went")
-        XCTAssertTrue(waitFor { !send.exists }, "and its box closed")
-        XCTAssertTrue(waitFor { approve.exists && approve.label == "Approved" }, "the bar shows your review")
-        XCTAssertTrue(approve.isSelected)
-        XCTAssertFalse(app.buttons["pr-review-request-changes"].isSelected)
-        try picture("nav-diff-review-bar-approved")
+        XCTAssertTrue(waitFor { !app.buttons["diff-files"].exists }, "the review leaves the diff")
+        XCTAssertTrue(app.staticTexts[checkout].waitForExistence(timeout: 5), "for the list")
+        XCTAssertFalse(app.buttons["pr-review-changes"].exists, "not the PR")
+        let toast = app.descendants(matching: .any)["pr-review-toast"]
+        XCTAssertTrue(toast.waitForExistence(timeout: 5), "the toast follows the review on the list")
+        let bar = app.navigationBars.firstMatch
+        XCTAssertGreaterThanOrEqual(toast.frame.minY, bar.frame.maxY - 1, "under the nav bar, never over Back")
+        let words = app.descendants(matching: .any)["pr-review-toast-words"]
+        XCTAssertTrue(waitFor(timeout: 10) { words.label == "Approved" }, "and says it landed")
+        try picture("nav-diff-review-sent-list")
     }
 
     func testSwipingARowRightOffersReviewChanges() throws {

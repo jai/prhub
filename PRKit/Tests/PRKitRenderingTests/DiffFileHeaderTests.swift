@@ -7,8 +7,9 @@ import Testing
     import AppKit
 #endif
 
-/// The file header's path at big text sizes: it shrinks before it is cut, never below the code's size, and is cut from
-/// the front, so the file's name is what shows. The fit is the phone's and the Mac's; the label is the phone's.
+/// The file header's path at big text sizes: it shrinks before it is cut, never below the code's size, and on the phone
+/// a path still too long scrolls sideways, opening on its end, so the file's name is what shows. The fit is the phone's
+/// and the Mac's; the label is the phone's.
 @MainActor
 struct DiffFileHeaderTests {
     private static let longPath = "zero-trust/cloudflare/access/deploy_memberships.tf"
@@ -33,29 +34,58 @@ struct DiffFileHeaderTests {
 
     @Test func aPathTooLongEvenAtTheCodesSizeStopsThere() {
         let font = metrics.headerPath(fitting: Self.longPath, in: 100)
-        #expect(font.pointSize == metrics.code.pointSize, "as small as it goes; the label cuts it from the front")
+        #expect(font.pointSize == metrics.code.pointSize, "as small as it goes; the rest scrolls")
     }
 
     #if os(iOS)
         /// On an iPhone 17's width, at Jai's size: the header's label shows the long path's whole file name.
         @Test func atJaisSizeTheHeaderShowsTheLongPathsFileName() throws {
+            let (path, room, _) = try header(for: Self.longPath, width: 402)
+            let name = "…" + (Self.longPath as NSString).lastPathComponent
+            #expect(width(of: name, in: metrics.headerPath) > room.bounds.width, "the case this is for: cut on main")
+            #expect(width(of: name, in: path.font) <= room.bounds.width)
+        }
+
+        /// A path too long for the header even at the code's size scrolls in its room, whole, opening on its end (Jai's
+        /// feedback, build 305: the name was cut and nothing showed the rest).
+        @Test func aPathTooLongForTheHeaderScrollsWholeFromItsEnd() throws {
+            let long = "infrastructure/terraform/modules/zero-trust/cloudflare/access/policies/deploy_memberships.tf"
+            let (path, room, header) = try header(for: long, width: 402)
+            #expect(path.text == long)
+            #expect(path.lineBreakMode == .byClipping)
+            #expect(path.bounds.width >= width(of: long, in: path.font), "nothing cut")
+            #expect(room.contentSize.width > room.bounds.width, "it scrolls")
+            #expect(room.contentOffset.x + room.bounds.width == room.contentSize.width, "opens on the file's name")
+            let button = try #require(room.superview)
+            #expect(button.isDescendant(of: header))
+            #expect(button.accessibilityIdentifier == "file-header-0" && button.accessibilityLabel == long)
+            #expect(button.accessibilityTraits.contains(.button))
+        }
+
+        /// A path that fits stays put: nothing to scroll.
+        @Test func aPathThatFitsDoesNotScroll() throws {
+            let (_, room, _) = try header(for: "src/cart/store.ts", width: 402)
+            #expect(room.contentOffset.x == 0 && room.contentSize.width == room.bounds.width)
+        }
+
+        /// The header is returned too: it alone holds the path's room.
+        private func header(for path: String, width: CGFloat) throws -> (UILabel, UIScrollView, DiffFileHeader) {
             let metrics = DiffMetrics(
                 .standard, traits: UITraitCollection(preferredContentSizeCategory: .extraExtraExtraLarge)
             )
             let header = DiffFileHeader(reuseIdentifier: DiffFileHeader.identifier)
-            let file = DiffRows.File(path: Self.longPath, change: .init(added: 150, removed: 0), rows: [])
+            let file = DiffRows.File(path: path, change: .init(added: 150, removed: 0), rows: [])
             header.configure(file, section: 0, isCollapsed: false, isViewed: false, metrics: metrics)
-            header.pin(toVisibleWidth: 402, offsetX: 0)
-            let path = try #require(labels(in: header).first { $0.accessibilityIdentifier == "file-header-0" })
-            let name = "…" + (Self.longPath as NSString).lastPathComponent
-            #expect(width(of: name, in: metrics.headerPath) > path.bounds.width, "the case this is for: cut on main")
-            #expect(width(of: name, in: path.font) <= path.bounds.width)
-            #expect(path.lineBreakMode == .byTruncatingHead)
+            header.pin(toVisibleWidth: width, offsetX: 0)
+            let room = try #require(scrollViews(in: header).first)
+            let label = try #require(room.subviews.compactMap { $0 as? UILabel }.first)
+            return (label, room, header)
         }
 
-        private func labels(in view: UIView) -> [UILabel] {
-            view.subviews.flatMap { ($0 as? UILabel).map { [$0] } ?? labels(in: $0) }
+        private func scrollViews(in view: UIView) -> [UIScrollView] {
+            view.subviews.flatMap { ($0 as? UIScrollView).map { [$0] } ?? scrollViews(in: $0) }
         }
+
     #endif
 
     private func bold(_ size: CGFloat) -> PlatformFont {

@@ -157,12 +157,18 @@ struct PRDescriptionView: View {
                 .id(Self.descriptionEditor)
                 .transition(.fold)
             } else {
+                let text = detail.body.isEmpty ? "No description." : PRMarkdown.clean(detail.body)
+                let opening = PRMarkdown.leadingHeading(text)
                 VStack(alignment: .leading, spacing: Space.sm) {
-                    descriptionActions
-                    Divider()
-                    let text = detail.body.isEmpty ? "No description." : PRMarkdown.clean(detail.body)
-                    PRCommentText(text) { index, checked in
-                        Task { await session.setCheckbox(index, checked: checked) }
+                    descriptionActions(heading: opening?.heading)
+                    if opening == nil {
+                        Divider()
+                    }
+                    let body = opening?.rest ?? text
+                    if !body.isEmpty {
+                        PRCommentText(body) { index, checked in
+                            Task { await session.setCheckbox(index, checked: checked) }
+                        }
                     }
                 }
             }
@@ -171,11 +177,20 @@ struct PRDescriptionView: View {
         .prCard()
     }
 
-    /// Explain, Rewrite and Edit, in a row of their own above the words, apart from them and from each other, so a tap
-    /// meant for the text never lands on one. Rewrite and Edit ask first.
-    private var descriptionActions: some View {
+    /// Explain, Rewrite and Edit, in a row above the words, apart from them and from each other, so a tap meant for the
+    /// text never lands on one. A description that opens on a heading has it at the row's start, where the row's empty
+    /// room was (Jai's feedback, build 305). Rewrite and Edit ask first.
+    private func descriptionActions(heading: String?) -> some View {
         HStack(spacing: Space.lg) {
-            Spacer(minLength: 0)
+            if let heading {
+                Text((try? AttributedString(markdown: heading)) ?? AttributedString(heading))
+                    .font(.appFootnote.weight(.semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("pr-description-heading")
+            } else {
+                Spacer(minLength: 0)
+            }
             if session.offersAsk {
                 Button("Explain this PR", systemImage: AppIcon.explainPR.symbol) { session.explainPR() }
                     .accessibilityIdentifier("pr-explain")

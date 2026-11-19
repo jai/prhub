@@ -28,6 +28,9 @@ struct PRStack {
     let back: () -> Void
     /// Back from a PR, on the Mac: the PRs tab's returns to the list, another tab's goes one step.
     let backFromPullRequest: () -> Void
+    /// Off a diff and its PR together, once its review is sent: the PRs tab's returns to the list, another tab's to the
+    /// screen the PR was opened from (Jai's feedback, build 305).
+    let leaveDiff: () -> Void
 }
 
 extension PRStack {
@@ -51,6 +54,14 @@ extension PRStack {
                 } else {
                     back()
                 }
+            },
+            leaveDiff: {
+                if backGoesToRoot {
+                    path.wrappedValue = NavigationPath()
+                } else {
+                    // A diff is always pushed over its PR.
+                    path.wrappedValue.removeLast(min(2, path.wrappedValue.count))
+                }
             }
         )
     }
@@ -60,7 +71,8 @@ extension PRStack {
         PRStack(
             show: { routes.wrappedValue += $0 },
             back: { _ = routes.wrappedValue.popLast() },
-            backFromPullRequest: { routes.wrappedValue = [] }
+            backFromPullRequest: { routes.wrappedValue = [] },
+            leaveDiff: { routes.wrappedValue = [] }
         )
     }
 
@@ -69,7 +81,8 @@ extension PRStack {
         PRStack(
             show: { next in withAnimation(AppMotion.swap) { routes.wrappedValue = next } },
             back: { routes.wrappedValue = [] },
-            backFromPullRequest: { routes.wrappedValue = [] }
+            backFromPullRequest: { routes.wrappedValue = [] },
+            leaveDiff: { routes.wrappedValue = [] }
         )
     }
 }
@@ -105,8 +118,6 @@ struct PullRequestOpener {
 
 extension EnvironmentValues {
     @Entry var pullRequestOpener: PullRequestOpener?
-    /// The PRs tab draws the review toast over all of itself; a PR pushed on another tab's stack draws its own.
-    @Entry var showsReviewToastAbove = false
 }
 
 /// Goes on a `NavigationStack`, not inside it: pushed screens take their environment from the stack. A PR link in any of
@@ -135,7 +146,6 @@ struct PullRequestLinks: ViewModifier {
 struct PullRequestDestination: ViewModifier {
     /// Handed on by name: on the Mac a pushed screen doesn't get what is set on its stack.
     @Environment(\.pullRequestOpener) private var opener
-    @Environment(\.showsReviewToastAbove) private var toastAbove
 
     func body(content: Content) -> some View {
         content.navigationDestination(for: PRRoute.self) { route in
@@ -145,13 +155,8 @@ struct PullRequestDestination: ViewModifier {
                 case let .diff(session): PRDiffScreen(session: session)
                 }
             }
-            .overlay(alignment: .top) {
-                if !toastAbove {
-                    PRReviewToastView(model: route.session.model)
-                }
-            }
+            .reviewToast(route.session.model)
             .environment(\.pullRequestOpener, opener)
-            .environment(\.showsReviewToastAbove, toastAbove)
             .pushedOnMac()
         }
     }

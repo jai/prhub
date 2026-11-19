@@ -156,6 +156,8 @@ struct PRReviewComposer: View {
     /// Under the diff the box takes the bar's place, so it says what goes with the review; on the page the bar above
     /// it already does.
     var showsPending = true
+    /// After the review has gone to the toast, once the box has closed.
+    var sent: () -> Void = {}
     let close: () -> Void
     /// Sent: the box is read-only while it closes.
     @State private var isSent = false
@@ -180,6 +182,7 @@ struct PRReviewComposer: View {
             isSent = true
             session.discardText(for: action.target)
             close()
+            sent()
         } cancel: {
             session.discardText(for: action.target)
             close()

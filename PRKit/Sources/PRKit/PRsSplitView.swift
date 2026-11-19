@@ -30,6 +30,7 @@
                             )
                         }
                     }
+                    .reviewToast(model)
                     .showsPullRequests()
                 }
                 .readableContentWidth()

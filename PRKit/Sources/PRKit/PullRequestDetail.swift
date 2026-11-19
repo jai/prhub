@@ -250,6 +250,19 @@ public enum PRMarkdown {
 
     /// GitHub's Markdown as `MarkdownText` reads it: no HTML comments, a badge's image dropped for its link, `<img>` as
     /// a Markdown image, other web-only tags gone, and tasks as ☐ and ☑︎.
+    /// A cleaned description that opens on an ATX heading (`## Checklist`): the heading's words and the text after it, so
+    /// the heading can share its row with the description's buttons (Jai's feedback, build 305). `nil` when the text
+    /// opens on anything else. The rest keeps every task, so a checkbox's index is the same in it as in the whole.
+    public static func leadingHeading(_ text: String) -> (heading: String, rest: String)? {
+        // GitHub's bodies end lines in "\r\n", which Swift counts as one Character, not a "\n".
+        let lines = text.split(maxSplits: 1, omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+        guard let first = lines.first, let match = first.wholeMatch(of: /#{1,6}[ \t]+(.+?)[ \t#]*/) else {
+            return nil
+        }
+        let rest = lines.count > 1 ? lines[1].trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        return (String(match.1), rest)
+    }
+
     public static func clean(_ source: String) -> String {
         var text = source.replacing(/(?i)<img\b[^>]*>/) { tag in
             let attributes = String(tag.output)

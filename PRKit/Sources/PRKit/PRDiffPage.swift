@@ -13,6 +13,7 @@ struct PRDiffPage: View {
     /// What the review bar opened, while its box is open.
     @State private var reviewAction: PRReviewAction?
     @Environment(\.openURL) private var openURL
+    @Environment(\.pullRequestOpener) private var opener
     #if os(iOS)
         @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
@@ -90,8 +91,13 @@ struct PRDiffPage: View {
                 if session.composingLine != nil {
                     composer
                 } else if let reviewAction {
-                    PRReviewComposer(session: session, action: reviewAction) { closeReview() }
-                        .bottomStrip()
+                    // A review sent from the diff is the end of the PR: back to the list, where the toast follows
+                    // it (Jai's feedback, build 305).
+                    PRReviewComposer(
+                        session: session, action: reviewAction, sent: { opener?.stack.leaveDiff() },
+                        close: { closeReview() }
+                    )
+                    .bottomStrip()
                 } else if !session.barsHidden, let detail = session.content?.detail {
                     PRReviewActions(session: session, isAuthor: detail.isAuthor, action: $reviewAction)
                         .bottomStrip()

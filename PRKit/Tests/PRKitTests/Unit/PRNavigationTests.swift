@@ -100,6 +100,15 @@ struct PRNavigationTests {
         #expect(routes.isEmpty)
     }
 
+    @Test func aReviewSentFromTheDiffGoesBackToTheList() {
+        var routes: [PRRoute] = []
+        let stack = PRStack.routes(Binding(get: { routes }, set: { routes = $0 }))
+        PullRequestOpener(model: kit.model, stack: stack).review(ref)
+        #expect(routes.count == 2)
+        stack.leaveDiff()
+        #expect(routes.isEmpty)
+    }
+
     @Test func theWideListReplacesThePROnShowAndTheDetailStacksOverIt() {
         let navigation = kit.navigation
         let list = PRStack.replacing(Binding(get: { navigation.routes }, set: { navigation.routes = $0 }))

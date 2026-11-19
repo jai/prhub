@@ -205,9 +205,17 @@ extension PRsModel {
     }
 }
 
-/// The review's toast at the top of the screen, over whatever is open: it slides down from above the screen, changes its
-/// words in place while a bar along its foot fills, and slides back up once GitHub has the review. A failure stays, with
-/// the reason, Retry and a way to put it away.
+extension View {
+    /// The review's toast on each screen of a PR stack, the list's included: just under the nav bar, never over it, so
+    /// Back stays in reach while a review goes (Jai's feedback, build 305).
+    func reviewToast(_ model: PRsModel) -> some View {
+        overlay(alignment: .top) { PRReviewToastView(model: model) }
+    }
+}
+
+/// The review's toast at the top of the screen, under the nav bar, over whatever is open: it slides down from under the
+/// bar, changes its words in place while a bar along its foot fills, and slides back up once GitHub has the review. A
+/// failure stays, with the reason, Retry and a way to put it away.
 struct PRReviewToastView: View {
     let model: PRsModel
 

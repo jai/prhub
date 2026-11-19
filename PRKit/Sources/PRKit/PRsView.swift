@@ -15,8 +15,6 @@ struct PRsView: View {
 
     var body: some View {
         layout
-            .environment(\.showsReviewToastAbove, true)
-            .overlay(alignment: .top) { PRReviewToastView(model: model) }
             .background {
                 if let session = navigation.diffOnShow {
                     PRDiffShortcuts(session: session)
@@ -65,6 +63,7 @@ struct PRsView: View {
 
     private var stackRoot: some View {
         PRsList(model: model, selected: nil)
+            .reviewToast(model)
             .returnedToOnMac(atRoot: navigation.routes.isEmpty)
             .showsPullRequests()
     }
