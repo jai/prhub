@@ -170,3 +170,5 @@ These workflows do not follow the `lint-`, `test-` and `deploy-` names in the Wo
 ## Job resource ownership
 
 Prepare dependencies before executing checks. Upload original result bundles before `always()` cleanup removes this checkout’s SwiftPM builds, generated projects, derived data and Node products. UI jobs own their simulators. Shared toolchain/download caches remain host-managed; seven-day result retention and bounded host caches are the deliberate disk-use limits.
+
+RC checks start with lint and unit jobs. Integration depends on its component’s unit gate; full iOS UI depends on the app and PRKit’s cheaper gates. This prevents a long UI run from taking the native slot before unit failures are known.

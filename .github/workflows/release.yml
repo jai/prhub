@@ -24,12 +24,15 @@ jobs:
     if: startsWith(github.ref_name, 'rc-ios-')
     uses: ./.github/workflows/test-unit-ios.yml
   test-integration-ios:
+    needs: [test-unit-ios]
     if: startsWith(github.ref_name, 'rc-ios-')
     uses: ./.github/workflows/test-integration-ios.yml
   test-integration-prkit:
+    needs: [test-unit-prkit]
     if: startsWith(github.ref_name, 'rc-ios-') || startsWith(github.ref_name, 'rc-prkit-')
     uses: ./.github/workflows/test-integration-prkit.yml
   test-ui-ios:
+    needs: [lint-ios, test-unit-ios, test-integration-ios, test-unit-prkit, test-integration-prkit]
     if: startsWith(github.ref_name, 'rc-ios-')
     uses: ./.github/workflows/test-ui-ios.yml
   # The app contains PRKit: an ios release runs PRKit's tests too (docs/workflow.md, Part 2).
@@ -46,6 +49,7 @@ jobs:
     if: startsWith(github.ref_name, 'rc-worker-')
     uses: ./.github/workflows/test-unit-worker.yml
   test-integration-worker:
+    needs: [test-unit-worker]
     if: startsWith(github.ref_name, 'rc-worker-')
     uses: ./.github/workflows/test-integration-worker.yml
 
