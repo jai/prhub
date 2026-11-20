@@ -31,6 +31,19 @@ class PRHubUITestCase: XCTestCase {
         return true
     }
 
+    /// Types `text` into `field`, tapping it again while it has no keyboard focus: on CI's Simulator a first tap
+    /// sometimes left the keyboard elsewhere and `typeText` failed ("Neither element nor any descendant has keyboard
+    /// focus").
+    func type(_ text: String, into field: XCUIElement) {
+        let focused = { (field.value(forKey: "hasKeyboardFocus") as? Bool) == true }
+        for _ in 0 ..< 3 where !focused() {
+            field.tap()
+            _ = waitFor(timeout: 3, focused)
+        }
+        XCTAssertTrue(focused(), "the field has the keyboard")
+        field.typeText(text)
+    }
+
     /// A picture of the screen, kept in the test's result bundle.
     func recordScreenshot(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
@@ -58,7 +71,8 @@ extension XCUIApplication {
     /// Goes to `place` by its tab.
     func go(to place: PRHubPlace) {
         let item = tab(place)
-        XCTAssertTrue(item.waitForExistence(timeout: 5), "the \(place) tab")
+        // A first launch on CI's Simulator took longer than 5 seconds to show its tabs.
+        XCTAssertTrue(item.waitForExistence(timeout: 15), "the \(place) tab")
         item.tap()
     }
 

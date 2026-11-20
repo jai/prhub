@@ -26,8 +26,7 @@ final class PRHubHostedUITests: PRHubUITestCase {
 
         let field = app.secureTextFields["prhub-anthropic-key-field"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
-        field.tap()
-        field.typeText("key-0123456789abcdefghij")
+        type("key-0123456789abcdefghij", into: field)
         app.buttons["prhub-anthropic-key-save"].tap()
         let keySet = app.descendants(matching: .any)["prhub-anthropic-key-set"]
         XCTAssertTrue(keySet.waitForExistence(timeout: 5))
