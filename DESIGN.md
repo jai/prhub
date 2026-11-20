@@ -434,7 +434,7 @@ parts:
   ref:     { holds: "repo#N", font: appCaption quiet }
   byline:  { holds: "PRAvatar and '<who> wants <branch> in <base>'", font: appCaption quiet }
   tickets: { holds: "ObjectReferenceLines of TicketLine, awaitsLinear false", optional: true }
-  labels:  { holds: "an AI trash StatusChip in toneBad when the summary found the description reads as AI slop, then a StatusChip per label", scrolls sideways, optional: true }
+  labels:  { holds: "an AI trash StatusChip in toneBad when the summary found the description reads as AI slop, then a StatusChip per label in its GitHub colour, darkened on light and lightened on dark until it reads at 4.5:1 (GitHubLabelColor)", scrolls sideways, optional: true }
 rules:
   - Who: the author's profile name, else their login. A bot's PR says "(bot)" after the bot's login, and leads with
     the person it was opened for when the Worker found one: "Mona Lisa via hubot (bot)". The face is that person's.

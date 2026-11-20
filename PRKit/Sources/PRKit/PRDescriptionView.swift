@@ -16,6 +16,8 @@ struct PRDescriptionView: View {
     /// Edit and Rewrite each ask first: a stray tap on either replaced the page with a box (Jai's feedback, build 300).
     @State private var isConfirmingEdit = false
     @State private var isConfirmingRewrite = false
+    /// A label's colour moves toward readable on this page's ground.
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage("prConversationNewestFirst") private var newestFirst = true
     private static let descriptionEditor = "description-editor"
 
@@ -146,7 +148,12 @@ struct PRDescriptionView: View {
                         StatusChip(text: "AI trash", tint: Color.toneBad)
                             .accessibilityIdentifier("pr-ai-slop")
                     }
-                    ForEach(detail.labels) { StatusChip(text: $0.name, tint: Color(githubHex: $0.color)) }
+                    ForEach(detail.labels) { label in
+                        StatusChip(
+                            text: label.name,
+                            tint: GitHubLabelColor(hex: label.color).readable(dark: colorScheme == .dark).color
+                        )
+                    }
                 }
             }
         }
@@ -301,16 +308,5 @@ struct PRDescriptionView: View {
         case "COMMENTED": StatusChip(text: "Reviewed", tint: Color.inkQuiet)
         default: nil
         }
-    }
-}
-
-private extension Color {
-    /// GitHub's label colours: six hex digits, no `#`.
-    init(githubHex hex: String) {
-        let value = UInt32(hex, radix: 16) ?? 0x808080
-        self.init(
-            red: Double((value >> 16) & 0xFF) / 255, green: Double((value >> 8) & 0xFF) / 255,
-            blue: Double(value & 0xFF) / 255
-        )
     }
 }
