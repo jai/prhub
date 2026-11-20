@@ -387,7 +387,8 @@ struct PRMirrorTests {
         "reviewThreads":{"nodes":[]},"title":null}
         """
         let detail = try PullRequestDetail.decode(Data(json.utf8))
-        #expect(detail.conversation.map(\.id) == ["ok", "c"])
+        #expect(detail.conversation(newestFirst: false).map(\.id) == ["ok", "c"])
+        #expect(detail.conversation(newestFirst: true).map(\.id) == ["c", "ok"])
     }
 
     @Test func aRowIsDrawnAsAListsOpenPullRequest() {

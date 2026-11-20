@@ -2,7 +2,8 @@ import PRKitCore
 import PRKitDesign
 import SwiftUI
 
-/// Title, labels and status at the top, the actions under them, then the description and every comment in order.
+/// Title, labels and status at the top, the actions under them, then the description and every comment, newest first
+/// unless the conversation's toggle says oldest.
 struct PRDescriptionView: View {
     let session: PRSession
     let detail: PullRequestDetail
@@ -15,6 +16,7 @@ struct PRDescriptionView: View {
     /// Edit and Rewrite each ask first: a stray tap on either replaced the page with a box (Jai's feedback, build 300).
     @State private var isConfirmingEdit = false
     @State private var isConfirmingRewrite = false
+    @AppStorage("prConversationNewestFirst") private var newestFirst = true
     private static let descriptionEditor = "description-editor"
 
     private var folds: FoldSet {
@@ -68,17 +70,36 @@ struct PRDescriptionView: View {
                 PRReviewActions(session: session, isAuthor: detail.isAuthor, action: $action)
                 composer
                 description
-                let entries = detail.conversation
+                let entries = detail.conversation(newestFirst: newestFirst)
                 if !entries.isEmpty {
-                    Text("Conversation · \(entries.count)")
-                        .font(.appSubheadline.weight(.semibold))
-                        .padding(.top, Space.sm)
+                    conversationHeading(count: entries.count)
                 }
                 ForEach(entries) { entry($0) }
             }
             .padding()
         }
         .background(Color.groundPage)
+    }
+
+    /// "Conversation" and its count, with the order it is in: a tap flips it, and the phone keeps the choice.
+    private func conversationHeading(count: Int) -> some View {
+        HStack(spacing: Space.sm) {
+            Text("Conversation · \(count)")
+                .font(.appSubheadline.weight(.semibold))
+            Spacer(minLength: Space.sm)
+            Button {
+                withAnimation(AppMotion.fold) { newestFirst.toggle() }
+            } label: {
+                IconText(newestFirst ? "Newest first" : "Oldest first", icon: .commentOrder)
+                    .font(.appCaption)
+                    .foregroundStyle(.secondary)
+                    .frame(minHeight: PRStyle.rowHeight)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("pr-conversation-order")
+        }
+        .padding(.top, Space.sm)
     }
 
     private var header: some View {

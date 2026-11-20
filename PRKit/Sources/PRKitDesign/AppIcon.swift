@@ -115,6 +115,8 @@ public enum AppIcon: String {
     case alertSent = "bell"
     case messageSent = "message"
     case conversation = "text.bubble"
+    /// The conversation's order, newest or oldest first.
+    case commentOrder = "arrow.up.arrow.down"
     case compose = "square.and.pencil"
     case openPullRequest = "arrow.triangle.pull"
     case reviewChanges = "plus.forwardslash.minus"

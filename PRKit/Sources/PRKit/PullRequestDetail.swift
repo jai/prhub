@@ -208,10 +208,12 @@ public struct PullRequestDetail: Decodable, Sendable {
         }
     }
 
-    public var conversation: [Entry] {
+    /// Newest first is GitHub's own order; the toggle over the conversation flips it (Jai's feedback, build 305).
+    public func conversation(newestFirst: Bool) -> [Entry] {
         let spoken = comments.nodes.map(Entry.comment)
         let reviewed = reviews.nodes.filter { !($0.state == "COMMENTED" && $0.body.isEmpty) }.map(Entry.review)
-        return (spoken + reviewed + reviewThreads.nodes.map(Entry.thread)).sorted { $0.date < $1.date }
+        let oldestFirst = (spoken + reviewed + reviewThreads.nodes.map(Entry.thread)).sorted { $0.date < $1.date }
+        return newestFirst ? oldestFirst.reversed() : oldestFirst
     }
 }
 
