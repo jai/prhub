@@ -19,7 +19,8 @@
     ///   app leaves the foreground (as for GitHub), and on acme too when it comes back.
     /// - `-PRHubPaired`: the PRs and Settings over the sample PRs as if paired, every AI feature on. With `-PRHubSettings`
     ///   it opens on Settings; with `-PRHubLongDiff` For review starts with a PR whose one file is longer than the screen,
-    ///   for the diff's bars; with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View.
+    ///   for the diff's bars; with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View; with
+    ///   `-PRHubSlowReview` a review takes 10 seconds to land, so a UI test still finds its toast after a navigation.
     ///
     /// Each launch starts on empty storage of its own (`PRHubUITestResources`). `-prkit.diffFont face:size` sets one for
     /// the run. `-PRHubAppearance dark` (or `light`) sets the run's appearance whatever the Simulator's is: on CI's
@@ -59,7 +60,11 @@
         }
 
         private static func pairedSamples(_ arguments: [String]) -> PRSampleSet {
-            arguments.contains("-PRHubLongDiff") ? .prHubLongDiff : .prHub
+            var samples: PRSampleSet = arguments.contains("-PRHubLongDiff") ? .prHubLongDiff : .prHub
+            if arguments.contains("-PRHubSlowReview") {
+                samples.reviewDelay = .seconds(10)
+            }
+            return samples
         }
 
         /// The hosted Worker's stand-in: sign-in, sign-out, Delete Account and the Anthropic key answer at once, and the

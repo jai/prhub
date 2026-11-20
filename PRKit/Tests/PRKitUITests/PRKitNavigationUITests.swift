@@ -32,7 +32,9 @@ final class PRKitNavigationUITests: PRHubUITestCase {
     /// The diff sends a review the way the PR's page does: the bar under the code, its box in the bar's place. Sent, it
     /// leaves the diff and its PR for the list, where the toast follows it under the nav bar (Jai's feedback, build 305).
     func testTheDiffHasTheReviewBarAndSendsAReview() throws {
-        launch()
+        // A sample review lands in 0.9 s and its toast leaves 2 s later: on CI that was gone before the list's checks
+        // reached it.
+        launch(["-PRHubSlowReview"])
         openCheckout()
         app.buttons["pr-files-changed"].tap()
         XCTAssertTrue(app.buttons["diff-files"].waitForExistence(timeout: 5))
@@ -62,7 +64,7 @@ final class PRKitNavigationUITests: PRHubUITestCase {
         let bar = app.navigationBars.firstMatch
         XCTAssertGreaterThanOrEqual(toast.frame.minY, bar.frame.maxY - 1, "under the nav bar, never over Back")
         let words = app.descendants(matching: .any)["pr-review-toast-words"]
-        XCTAssertTrue(waitFor(timeout: 10) { words.label == "Approved" }, "and says it landed")
+        XCTAssertTrue(waitFor(timeout: 20) { words.label == "Approved" }, "and says it landed")
         try picture("nav-diff-review-sent-list")
     }
 
