@@ -252,7 +252,7 @@
             uiView.isScrollEnabled = context.environment.isScrollEnabled
             uiView.table.isScrollEnabled = context.environment.isScrollEnabled
             uiView.update(font: font)
-            uiView.update(rows: rows)
+            uiView.update(document: document, rows: rows)
             uiView.update(viewed: viewed)
             uiView.update(topInset: topInset)
             uiView.update(composing: composing)

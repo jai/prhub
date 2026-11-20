@@ -26,6 +26,46 @@ struct DiffTableEdgeTests {
         #endif
     }
 
+    /// A sync while the diff is open brings a longer diff: the table draws the new one, never the old one's lines at
+    /// the new one's indexes (build 306's crash while scrolling).
+    @Test func aNewDiffReplacesTheOneTheTableDraws() {
+        let container = container(showing: diff(lines: 3))
+        let longer = diff(lines: 40)
+        container.update(document: longer, rows: DiffRows(document: longer, threads: []))
+
+        #expect(container.document.lines.count == longer.lines.count)
+        #if os(iOS)
+            for (section, file) in container.rows.files.enumerated() {
+                for row in file.rows.indices {
+                    _ = container.tableView(container.table, cellForRowAt: IndexPath(row: row, section: section))
+                }
+            }
+        #endif
+    }
+
+    /// A shorter diff drops the box whose line it no longer has.
+    @Test func aShorterDiffClosesTheBoxOnALineItLacks() {
+        let longer = diff(lines: 40)
+        let container = container(showing: longer)
+        container.composing = longer.lines.count - 1
+        let shorter = diff(lines: 3)
+        container.update(document: shorter, rows: DiffRows(document: shorter, threads: []))
+
+        #expect(container.composing == nil)
+    }
+
+    private func container(showing document: DiffDocument) -> DiffTableContainer {
+        DiffTableContainer(
+            document: document, rows: DiffRows(document: document, threads: []), viewed: [], font: .standard,
+            onContent: {}, actions: actions
+        )
+    }
+
+    private func diff(lines count: Int) -> DiffDocument {
+        let added = (1 ... count).map { "+line \($0)\n" }.joined()
+        return DiffDocument(data: Data("diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -0,0 +1,\(count) @@\n\(added)".utf8))
+    }
+
     #if os(iOS)
         @Test(arguments: [true, false])
         func codePansKeepEdgeBackAndRestoreTheHostsContentGesture(wasEnabled: Bool) throws {

@@ -14,7 +14,8 @@
         private static let controlsClearance: CGFloat = 60
 
         let table = ReportingTableView()
-        let document: DiffDocument
+        /// Taken with each new `rows`: a sync brings a new diff, and rows of it index lines this one may not have.
+        private(set) var document: DiffDocument
         var rows: DiffRows
         private var viewed: Set<String>
         private(set) var metrics: DiffMetrics
@@ -113,13 +114,18 @@
             table.sectionHeaderHeight = metrics.fileHeaderHeight
         }
 
-        /// After a post: the new threads fade in, with the scroll position kept.
-        func update(rows: DiffRows) {
+        /// After a post or a sync: the new threads, or the new diff, fade in, with the scroll position kept.
+        func update(document: DiffDocument, rows: DiffRows) {
             guard rows.stamp != self.rows.stamp else {
                 return
             }
+            self.document = document
             self.rows = rows
             if let composing, path(ofLine: composing) == nil {
+                // The new diff may be shorter: the box's line is gone, so nothing may look it up before it closes.
+                if !document.lines.indices.contains(composing) {
+                    self.composing = nil
+                }
                 closeComposer()
             }
             UIView.transition(with: table, duration: 0.25, options: .transitionCrossDissolve) {
@@ -291,6 +297,9 @@
         }
 
         private func path(ofLine index: Int) -> IndexPath? {
+            guard document.lines.indices.contains(index), rows.files.indices.contains(document.lines[index].file) else {
+                return nil
+            }
             let section = document.lines[index].file
             return rows.files[section].rows.firstIndex(of: .line(index)).map { IndexPath(row: $0, section: section) }
         }

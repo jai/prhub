@@ -27,7 +27,7 @@
 
         func updateNSView(_ nsView: DiffTableContainer, context _: Context) {
             nsView.update(font: font)
-            nsView.update(rows: rows)
+            nsView.update(document: document, rows: rows)
             nsView.update(viewed: viewed)
             nsView.update(composing: composing)
             nsView.update(jump: jump)
@@ -42,7 +42,8 @@
         }
 
         let table = ClickableTableView()
-        let document: DiffDocument
+        /// Taken with each new `rows`: a sync brings a new diff, and rows of it index lines this one may not have.
+        private(set) var document: DiffDocument
         var rows: DiffRows
         var viewed: Set<String>
         private(set) var metrics: DiffMetrics
@@ -119,13 +120,18 @@
             tile()
         }
 
-        /// After a post: the new threads fade in, with the scroll position kept.
-        func update(rows: DiffRows) {
+        /// After a post or a sync: the new threads, or the new diff, fade in, with the scroll position kept.
+        func update(document: DiffDocument, rows: DiffRows) {
             guard rows.stamp != self.rows.stamp else {
                 return
             }
+            self.document = document
             self.rows = rows
             if let composing, path(ofLine: composing) == nil {
+                // The new diff may be shorter: the box's line is gone, so nothing may look it up before it closes.
+                if !document.lines.indices.contains(composing) {
+                    self.composing = nil
+                }
                 closeComposer()
             }
             let ids = Set(rows.threads.map(\.id) + rows.drafts.map(\.id.uuidString) + (rows.note.map { [$0.id] } ?? []))
@@ -255,6 +261,9 @@
         }
 
         func path(ofLine index: Int) -> IndexPath? {
+            guard document.lines.indices.contains(index), rows.files.indices.contains(document.lines[index].file) else {
+                return nil
+            }
             let section = document.lines[index].file
             return rows.files[section].rows.firstIndex(of: .line(index)).map { IndexPath(item: $0, section: section) }
         }
