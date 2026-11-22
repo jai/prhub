@@ -23,6 +23,14 @@ extension PRSession {
         }
     }
 
+    /// The sheet went away. With the agent still at work, or a question still on its way, the model keeps reading the
+    /// chat, so the toolbar and the bar say when it answers.
+    func askSheetClosed() {
+        if isAskWorking || isSendingAsk || askSend.isOnItsWay {
+            model.followAskAway(ref)
+        }
+    }
+
     /// The chat about a key line, asked to explain it, with its code and why it was picked.
     func explain(_ item: PRKeyLines.Item, in document: DiffDocument) {
         let isOld = item.side == PRDiffSide.left.rawValue
@@ -181,6 +189,7 @@ extension PRSession {
                     askError = nil
                 }
                 reportAnswerFailure(in: chat)
+                model.askSheetRead(ref, chat: chat, isOnItsWay: isSendingAsk || askSend.isOnItsWay)
             } catch {
                 withAnimation(AppMotion.swap) { askError = PRAskReadProblem(error) }
             }

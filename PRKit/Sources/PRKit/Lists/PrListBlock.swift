@@ -20,6 +20,7 @@ public struct PrListBlock: View {
     @Environment(\.pullRequestOpener) private var opener
     @Environment(\.rowSwipeActions) private var swipeActions
     @Environment(\.openURL) private var openURL
+    @Environment(\.askLines) private var askLines
 
     public init(
         item: PRListItem, id: String, sentAt: Date, now: Date, format: ThreadTimeFormat = ThreadTimeFormat(),
@@ -49,7 +50,14 @@ public struct PrListBlock: View {
     }
 
     private var hasFoot: Bool {
-        !item.pullRequests.isEmpty && !item.tickets.isEmpty
+        !item.pullRequests.isEmpty && (!item.tickets.isEmpty || !askActivities.isEmpty)
+    }
+
+    /// The live Ask AI chats of the block's PRs, in their order: each a line on the rail, above the tickets.
+    private var askActivities: [PRAskActivity] {
+        item.pullRequests.compactMap { pullRequest in
+            PrListLinks.openable(pullRequest.url).flatMap(PRLink.init(url:)).flatMap { askLines.activities[$0.ref] }
+        }
     }
 
     public var body: some View {
@@ -69,12 +77,17 @@ public struct PrListBlock: View {
                     .opacity(opacity)
             }
             if hasFoot {
+                ForEach(askActivities, id: \.ref) { activity in
+                    askLine(activity)
+                        .transition(.fold)
+                }
                 ForEach(Array(item.tickets.enumerated()), id: \.offset) { _, ticket in
                     ticketLine(ticket)
                         .opacity(opacity)
                 }
             }
         }
+        .animation(AppMotion.fold, value: askActivities.map(\.ref))
         .padding(.horizontal, Space.lg)
         .padding(.top, Space.md)
         .padding(.bottom, hasFoot ? 0 : Space.md)
@@ -242,6 +255,13 @@ public struct PrListBlock: View {
             }
             .contentShape(.rect)
         }
+    }
+
+    /// The PR's chat at work or answered, on the rail as a ticket is: the whole line opens the PR with its chat.
+    private func askLine(_ activity: PRAskActivity) -> some View {
+        PRAskLine(activity: activity) { askLines.open(activity.ref) }
+            .anchorPreference(key: TicketLineBounds.self, value: .bounds) { [$0] }
+            .padding(.leading, textColumn + PrListGrid.ticketStep)
     }
 
     /// The key, the title in what room is left, and where the ticket stands. The whole line opens Linear.

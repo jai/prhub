@@ -167,8 +167,7 @@ private extension View {
             .toolbar {
                 if session.content != nil, session.offersAsk {
                     ToolbarItem(placement: .primaryAction) {
-                        Button("Ask AI", systemImage: "bubble.left.and.text.bubble.right") { session.openAsk() }
-                            .accessibilityIdentifier("pr-ask")
+                        PRAskToolbarButton(session: session)
                     }
                 }
                 if let url = session.content.flatMap({ URL(string: $0.detail.url) }) {
@@ -219,3 +218,41 @@ private extension View {
         }
     }
 #endif
+
+/// Ask AI in a PR's toolbar. While this PR's chat works it is the accent's prominent glass, its symbol pulsing; once the
+/// agent has answered with the sheet away it carries a badge until the chat is opened (Jai's feedback: a dismissed chat
+/// left no sign it was live).
+private struct PRAskToolbarButton: View {
+    let session: PRSession
+
+    private var phase: PRAskActivity.Phase? {
+        session.model.askActivities[session.ref]?.phase
+    }
+
+    var body: some View {
+        let phase = phase
+        let isWorking = session.model.askActivities[session.ref]?.isWorking == true
+        Group {
+            if isWorking {
+                button
+                    .buttonStyle(.glassProminent)
+                    .tint(.accentColor)
+            } else {
+                button
+            }
+        }
+        .badge(phase == .answered ? Text(verbatim: "1") : nil)
+        .accessibilityValue(phase == .answered ? "Answer ready" : isWorking ? "Working" : "")
+        .accessibilityIdentifier("pr-ask")
+    }
+
+    private var button: some View {
+        Button { session.openAsk() } label: {
+            Label("Ask AI", systemImage: AppIcon.awaitingReply.symbol)
+                .symbolEffect(
+                    .variableColor.iterative, options: .repeating,
+                    isActive: session.model.askActivities[session.ref]?.isWorking == true
+                )
+        }
+    }
+}

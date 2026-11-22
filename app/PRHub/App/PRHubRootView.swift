@@ -179,6 +179,7 @@ private struct PRHubTabs: View {
                 }
                 .accessibilityIdentifier(PRHubTab.settings.identifier)
             }
+            .askStatusBar(environment.prs, isShowing: navigation.selectedTab == .prs)
             .background(TabBarIdentifiers(identifiers: tabs.map(\.identifier)))
             // A Worker that stops serving Feedback under it: the PRs instead.
             .onChange(of: tabs, initial: true) { _, tabs in
@@ -192,6 +193,19 @@ private struct PRHubTabs: View {
 
 private extension View {
     #if os(iOS)
+        /// A PR's live Ask AI chat in the tab bar's bottom accessory, on that PR's pages only (Jai's pick): a spinner
+        /// and what the agent is doing, then Answer ready. Before iOS 26.1 an accessory can't be taken away, so there
+        /// the toolbar's Ask AI button says it alone.
+        @ViewBuilder func askStatusBar(_ kit: PRKitController, isShowing: Bool) -> some View {
+            if #available(iOS 26.1, *) {
+                tabViewBottomAccessory(isEnabled: isShowing && kit.hasAskActivityOnScreen) {
+                    PRAskStatusBar(kit)
+                }
+            } else {
+                self
+            }
+        }
+
         /// A Debug run's `-PRHubCompactWidth`: a narrow Split View's size class, which a UI test can't make with the
         /// window. Set on the window, so the screens a stack pushes have it too.
         func compactWidthForUITests() -> some View {

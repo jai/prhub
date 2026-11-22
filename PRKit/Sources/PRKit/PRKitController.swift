@@ -165,6 +165,8 @@ final class PRNavigation {
     var routes: [PRRoute] = []
     /// A PR opened from a link or an alert anywhere in the app: the PRs tab shows it, then sets this back to `nil`.
     var pending: PRPendingOpen?
+    /// The live chat's bar was tapped: its PR opens with the Ask sheet over it (`openAskActivity`).
+    var opensAskOnArrival: PullRequestRef?
     #if os(macOS)
         /// What `macPath` last took off the stack, nearest first: a `TabStack` coming back to the tab empties the path,
         /// then sets what it had open again.

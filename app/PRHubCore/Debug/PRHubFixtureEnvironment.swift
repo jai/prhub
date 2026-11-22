@@ -53,10 +53,24 @@
                 network: PRNetwork(isOnline: true)
             )
             resources.isolateAlerts(in: environment)
+            askStatus(arguments, in: environment)
             if arguments.contains("-PRHubSettings") {
                 environment.navigation.selectedTab = .settings
             }
             return environment
+        }
+
+        /// `-PRHubAskState working|answered`: a live Ask AI chat on acme/web#412, as if its sheet had been closed.
+        @MainActor private static func askStatus(_ arguments: [String], in environment: PRHubEnvironment) {
+            let value = { (name: String) in
+                arguments.firstIndex(of: name).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
+            }
+            let ref = PullRequestRef(repo: "acme/web", number: 412)
+            switch value("-PRHubAskState") {
+            case "working": environment.prs.showAskActivity(on: ref, answered: false)
+            case "answered": environment.prs.showAskActivity(on: ref, answered: true)
+            default: break
+            }
         }
 
         private static func pairedSamples(_ arguments: [String]) -> PRSampleSet {

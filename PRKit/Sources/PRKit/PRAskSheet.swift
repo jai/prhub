@@ -60,7 +60,11 @@ struct PRAskSheet: View {
         .presentedScrollMargins()
         .askSheetSize()
         // Only when there is nothing yet: words from a line's box are already on their way.
-        .onAppear { isWriting = messages.isEmpty && session.askDraft.isEmpty && session.askSend == .idle }
+        .onAppear {
+            isWriting = messages.isEmpty && session.askDraft.isEmpty && session.askSend == .idle
+            session.model.askSheetOpened(session.ref)
+        }
+        .onDisappear { session.askSheetClosed() }
     }
 
     /// The chat as every chat draws it (`ChatView`); a question about a line names the line under it, and his

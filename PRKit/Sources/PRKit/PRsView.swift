@@ -15,6 +15,10 @@ struct PRsView: View {
 
     var body: some View {
         layout
+            .environment(\.askLines, PRAskLines(activities: model.askActivities) { [navigation] ref in
+                navigation.opensAskOnArrival = ref
+                navigation.pending = PRPendingOpen(link: PRLink(ref: ref), source: .list, pushed: nil)
+            })
             .background {
                 if let session = navigation.diffOnShow {
                     PRDiffShortcuts(session: session)
@@ -72,6 +76,10 @@ struct PRsView: View {
     private func open(_ pending: PRPendingOpen) {
         let session = model.session(for: pending.link.ref, pushed: pending.pushed, source: pending.source)
         navigation.routes = PRRoute.opening(session, showsDiff: pending.link.showsDiff)
+        if navigation.opensAskOnArrival == pending.link.ref {
+            navigation.opensAskOnArrival = nil
+            session.openAsk()
+        }
     }
 
     /// A benchmark or UI test's launch: the row, on its diff when `-prPage Diff` asks.

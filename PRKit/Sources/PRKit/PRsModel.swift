@@ -65,6 +65,10 @@ final class PRsModel {
     var lateRefusal: String?
     /// The review on its way from a box that has closed (`PRReviewToast`).
     var reviewToast: PRReviewToast?
+    /// Each PR's Ask AI chat still going, or answered and unread, after its sheet went away (`PRAskActivity`).
+    var askActivities: [PullRequestRef: PRAskActivity] = [:]
+    /// Reads each of those chats while its sheet is away (`followAskAway`).
+    @ObservationIgnored var askAwayFollows: [PullRequestRef: Task<Void, Never>] = [:]
     /// A sample set's one refused review has been refused (`PRSampleSet.refusesFirstReview`).
     var sampleReviewRefused = false
     /// Outbox answers by item id, until the screen that is waiting on one takes it.

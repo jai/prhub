@@ -163,6 +163,7 @@ all of them are in scope. A new screen adds a row here and a step in `PRHubScree
 | PR description | PRs → a PR: its title, who it is from, its tickets, then status, review and conversation | `PRScreen`, `PRDescriptionView`, `ObjectReferenceLines`, `PRChangesCard`, `PRStatusCard`, `PRReviewActions`, `.prCard()`, `PRCommentText`, `PRThreadCard` |
 | Review in the background | PRs → a PR → Approve, Request changes or Comment → send: the box closes, the toast follows the review | `PRReviewComposer`, `PRReviewToastView` |
 | Ask AI | PRs → a PR → the toolbar, a line's comment box, or a key line's Explain | `PRAskSheet`, `ChatView`, `SessionComposer` |
+| Ask AI at work | a chat going on, or answered, after its sheet closed: the PR's Ask AI tinted (a badge once answered), a bar above the tabs on that PR's pages, a line on its row in the list; any number of PRs at once | `PRAskToolbarButton`, `PRAskStatusBar`, `PRAskLine`, `PRAskActivity` |
 | PR diff | PRs → a PR → Review changes, or Files changed | `PRDiffScreen`, `DiffTableView`, `PRDiffPage`, `PRNavigator`, `PRReviewActions` |
 | Settings | Settings; signed in: account, GitHub access, Anthropic key, Sign out, Delete account | `PRHubSettingsView`, `PRPageBlock`, `PRValueLine`, `AnthropicKeySection`, `DeleteAccountSheet` |
 | GitHub access | Settings, signed in: each account the PRHub App is installed on (its repositories, Suspended), each opening its settings on GitHub, then Add another account; read again on every foreground | `GitHubAccessBlock`, `GitHubInstallationLine`, `PRAvatar`, `StatusChip` |
@@ -334,6 +335,7 @@ The shared parts. Use these; extend one rather than writing a near-copy. Each is
 | `PRCommentText`, `MarkdownText` | what people and agents write, in GitHub's Markdown: one renderer for descriptions, comments and chat | AgentChatKit `MarkdownText.swift` (`PRCommentText`: PRKit) |
 | `PRButtonStyle` | every button on a row or screen, its icon and words included | PRKit `PRParts.swift` |
 | `PRReviewActions`, `PRReviewBar`, `PRReviewComposer` | a review: Approve, Request changes and Comment as one bar, and the box each opens, on a PR's page and under its diff | PRKit `PRReviewActions.swift` |
+| `PRAskStatusBar`, `PRAskLine` | a PR's Ask AI chat at work or answered while its sheet is away: the bar in the tab bar's bottom accessory on that PR's pages, and the line on its row's rail; each a spinner and the agent's words, or a green tick and Answer ready | PRKit `PRAskActivity.swift` |
 | `PRReviewToastView` | a review on its way after its box closed: Submitting, then what landed, or why it didn't with Retry | PRKit `PRReviewToast.swift` |
 | `.prField(isFocused:)` | every field you type in | PRKit `PRParts.swift` |
 | `InlineComposer` | writing on a PR, in place | PRKit `PRParts.swift` |
@@ -637,6 +639,27 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
   return at the top, when there is nothing to scroll, when a file folds or opens, on a tap of the status bar or below
   the last line, and when the diff comes back on screen. The edge swipe goes back to the PR while they are gone.
   `DiffBars` is the rule.
+
+### Ask AI at work
+
+```text
+name: PRAskActivity
+purpose: A PR's Ask AI chat still going, or answered and unread, once its sheet has closed (Jai's feedback, build 306:
+  a dismissed chat left no sign it was live). One per PR, any number at once, kept while the app runs.
+parts:
+  button: { holds: "the PR's Ask AI: the accent's prominent glass, its symbol pulsing, while the agent works; a badge once it answered; plain otherwise", place: "the PR's and its diff's toolbar" }
+  bar:    { holds: "PRAskStatusMark, the agent's words (appFootnote semibold) or Answer ready, Ask AI (appCaption quiet)", place: "the tab bar's bottom accessory, while a PR whose chat is live is on top of the PRs tab; nowhere else", only: "iOS 26.1 and up" }
+  line:   { holds: "PRAskStatusMark in the state column's width, the words (appCaption semibold), Ask AI (appCaption quiet)", place: "its PR row's rail, above the tickets, 44 pt tall at least" }
+  mark:   { holds: "a small spinner while it works; AppIcon.done toneGood once it answered" }
+rules:
+  - The bar and the line open the chat: the bar over the PR on screen, the line by opening its PR with the sheet over it.
+  - The model reads a chat whose sheet closed while it worked, as the sheet did, until it answers. Opening the chat
+    reads the answer, and every mark goes.
+  - Its words change in place (AppMotion.swap); the line folds in and out (AppMotion.fold).
+antiPatterns:
+  - A bar for another PR's chat: each PR's chat shows on its own pages and its own row.
+  - Red or amber for a chat at work: working is the spinner, answered is green.
+```
 
 ## Do's and Don'ts
 
