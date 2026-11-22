@@ -27,6 +27,8 @@ const issue = (key: string, state = "In Progress"): Ticket => ({
   state_type: "started",
   state_color: "#f2c94c",
   assignee: "Alex Doe",
+  assignee_avatar: null,
+  delegate: null,
   found: true,
 });
 

@@ -1,11 +1,12 @@
 import type { Env } from "./env.ts";
+import type { Ticket } from "./tickets.ts";
 
 /** Who asked a bot for its PR, and where the Worker read it. A login where one is known; a name where only that is. */
 export interface RequestedBy {
   login: string | null;
   name: string | null;
   avatarUrl: string | null;
-  source: "co_author" | "body" | "assignee";
+  source: "co_author" | "body" | "linear" | "assignee";
 }
 
 interface Person {
@@ -106,4 +107,47 @@ function assignee(node: RequesterNode, bots: ReadonlySet<string>): RequestedBy |
 
 function avatarOf(login: string): string {
   return `https://github.com/${login}.png?size=80`;
+}
+
+/** What `withTicketOwner` reads and sets on a PR's detail once Linear has answered for its tickets. */
+export interface OwnedDetail {
+  author: { login: string; name?: string | null } | null;
+  isAuthor: boolean;
+  authorIsBot: boolean;
+  requestedBy: RequestedBy | null;
+  tickets: readonly Ticket[];
+}
+
+/**
+ * A bot's PR is for its Linear ticket's assignee, unless its description names someone ("Requested by"). A PR whose
+ * ticket Linear delegated to an agent is that agent's, opened by an account GitHub calls a user (an agent's machine
+ * account), unless the viewer or the assignee opened it: its author is a bot and the assignee asked for it.
+ */
+export function withTicketOwner<Detail extends OwnedDetail>(detail: Detail): Detail {
+  const owned = detail.tickets.find((ticket) => ticket.found === true && ticket.assignee);
+  if (!owned?.assignee) {
+    return detail;
+  }
+  const owner: RequestedBy = {
+    login: null,
+    name: owned.assignee,
+    avatarUrl: owned.assignee_avatar,
+    source: "linear",
+  };
+  if (detail.authorIsBot) {
+    return detail.requestedBy?.source === "body" ? detail : { ...detail, requestedBy: owner };
+  }
+  const delegated = detail.tickets.some(
+    (ticket) => ticket.found === true && ticket.delegate && ticket.assignee === owned.assignee,
+  );
+  const authorName = detail.author?.name?.trim().toLowerCase();
+  if (
+    !delegated ||
+    !detail.author ||
+    detail.isAuthor ||
+    authorName === owned.assignee.trim().toLowerCase()
+  ) {
+    return detail;
+  }
+  return { ...detail, authorIsBot: true, requestedBy: owner };
 }

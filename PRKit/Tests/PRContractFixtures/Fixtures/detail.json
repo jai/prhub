@@ -23,6 +23,8 @@
       "state_type": null,
       "state_color": null,
       "assignee": null,
+      "assignee_avatar": null,
+      "delegate": null,
       "found": null
     }
   ],

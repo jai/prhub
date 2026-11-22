@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { Env } from "../../src/env.ts";
 import { pullRequest } from "../../src/github.ts";
-import { botAuthorsOf, isBotAuthor, requestedByOf } from "../../src/requester.ts";
+import { botAuthorsOf, isBotAuthor, requestedByOf, withTicketOwner } from "../../src/requester.ts";
 import {
   type Ticket,
   allKeys,
@@ -95,6 +95,10 @@ test("Linear's answer fills each ticket; a key it has no issue for is Not found,
     lookups.every((issue) => issue.fields.some((field) => field.name === "assignee")),
     "Linear is asked who owns each ticket",
   );
+  assert.ok(
+    lookups.every((issue) => issue.fields.some((field) => field.name === "delegate")),
+    "Linear is asked which agent each ticket is delegated to",
+  );
   assert.deepEqual(resolvedTickets(keys, issues), [
     {
       key: "ENG-1",
@@ -104,6 +108,8 @@ test("Linear's answer fills each ticket; a key it has no issue for is Not found,
       state_type: "started",
       state_color: "#f2c94c",
       assignee: "Alex Doe",
+      assignee_avatar: null,
+      delegate: null,
       found: true,
     },
     { ...unresolved("ENG-404"), found: false },
@@ -234,4 +240,71 @@ test("a detail says whether its author is a bot, who asked for it, and the ticke
   const bot = pullRequest(botNode as never, "jai", true, null, null, bots);
   assert.equal(bot.detail.authorIsBot, true);
   assert.equal(bot.detail.requestedBy?.login, "alex");
+});
+
+// An agent's machine account opened it on the branch of the agent's Linear session, for ENG-3414, which is Alex's
+// and delegated to the agent. GitHub calls the account a user and no BOT_AUTHORS names it, so the PR's page said
+// "agent-atlas wants …" with no one behind it.
+test("an agent's PR on a delegated Linear ticket is the ticket assignee's, through the bot", async () => {
+  stubFetch(() =>
+    Response.json({
+      data: {
+        t0: {
+          identifier: "ENG-3414",
+          title: "Skip tests on release-only PRs",
+          url: "https://linear.app/acme/issue/ENG-3414",
+          state: { name: "In Review", type: "started", color: "#0f783c" },
+          assignee: { name: "Alex Doe", avatarUrl: "https://avatars.example/alex" },
+          delegate: { name: "Atlas" },
+        },
+      },
+    }),
+  );
+  const keys = ticketKeysOf(
+    "ci: Skip checks on release-only PRs [ENG-3414]",
+    "linear-agent/eng-3414-fe57de41",
+  );
+  const tickets = resolvedTickets(
+    keys,
+    await lookUpTickets(allKeys(keys), { LINEAR_API_KEY: "key" } as Env),
+  );
+  const pr = pullRequest(
+    prNode({
+      author: { __typename: "User", login: "agent-atlas", avatarUrl: "https://avatars.example/a" },
+      headRefName: "linear-agent/eng-3414-fe57de41",
+      viewerDidAuthor: false,
+    }) as never,
+    "jai",
+    true,
+    null,
+    null,
+    new Set(),
+  );
+  assert.equal(pr.detail.authorIsBot, false);
+  const owned = withTicketOwner({ ...pr.detail, tickets });
+  assert.equal(owned.authorIsBot, true);
+  assert.deepEqual(owned.requestedBy, {
+    login: null,
+    name: "Alex Doe",
+    avatarUrl: "https://avatars.example/alex",
+    source: "linear",
+  });
+  // The viewer's own PR, or the assignee's, on that ticket is a person's.
+  assert.equal(withTicketOwner({ ...pr.detail, isAuthor: true, tickets }).authorIsBot, false);
+  const byAlex = { ...pr.detail, author: { login: "alex", name: "Alex Doe" }, tickets };
+  assert.equal(withTicketOwner(byAlex).requestedBy, null);
+  // Not delegated: a person's PR stays theirs.
+  const mine = tickets.map((ticket) => ({ ...ticket, delegate: null }));
+  assert.equal(withTicketOwner({ ...pr.detail, tickets: mine }).authorIsBot, false);
+  // A known bot's PR names the ticket's assignee over a co-author, but a "Requested by" line wins.
+  const bot = { ...pr.detail, authorIsBot: true, tickets: mine };
+  const coAuthor = {
+    login: "artdoe",
+    name: "Art Doe",
+    avatarUrl: null,
+    source: "co_author" as const,
+  };
+  assert.equal(withTicketOwner({ ...bot, requestedBy: coAuthor }).requestedBy?.name, "Alex Doe");
+  const asked = { login: "octocat", name: null, avatarUrl: null, source: "body" as const };
+  assert.equal(withTicketOwner({ ...bot, requestedBy: asked }).requestedBy, asked);
 });

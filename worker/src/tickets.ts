@@ -17,6 +17,10 @@ export interface Ticket {
   state_color: string | null;
   /** Who the issue is assigned to in Linear: their name, null when no one is or Linear has not answered. */
   assignee: string | null;
+  /** The assignee's picture in Linear; null as `assignee` is, or when they have none. */
+  assignee_avatar: string | null;
+  /** The agent the issue is delegated to in Linear (Linear delegates only to agents): its name, else null. */
+  delegate: string | null;
   found: boolean | null;
 }
 
@@ -87,6 +91,8 @@ export function unresolved(key: string): Ticket {
     state_type: null,
     state_color: null,
     assignee: null,
+    assignee_avatar: null,
+    delegate: null,
     found: null,
   };
 }
@@ -96,7 +102,8 @@ interface Issue {
   title: string;
   url: string;
   state: { name: string; type: string; color: string } | null;
-  assignee: { name: string } | null;
+  assignee: { name: string; avatarUrl?: string | null } | null;
+  delegate?: { name: string } | null;
 }
 
 export interface LinearAnswer<Data> {
@@ -170,7 +177,7 @@ export async function lookUpTickets(keys: string[], env: Env): Promise<Map<strin
   }
   const fields = keys.map(
     (key, index) =>
-      `t${index}: issue(id: ${JSON.stringify(key)}) { identifier title url state { name type color } assignee { name } }`,
+      `t${index}: issue(id: ${JSON.stringify(key)}) { identifier title url state { name type color } assignee { name avatarUrl } delegate { name } }`,
   );
   const answer = await askLinear<Record<string, Issue | null>>(
     `query { ${fields.join("\n")} }`,
@@ -196,6 +203,8 @@ export async function lookUpTickets(keys: string[], env: Env): Promise<Map<strin
         state_type: issue.state?.type ?? null,
         state_color: issue.state?.color ?? null,
         assignee: issue.assignee?.name ?? null,
+        assignee_avatar: issue.assignee?.avatarUrl ?? null,
+        delegate: issue.delegate?.name ?? null,
         found: true,
       });
     } else if (missing.has(`t${index}`)) {

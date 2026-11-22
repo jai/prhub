@@ -283,13 +283,14 @@ checked on every run: [`row.json`](../PRKit/Tests/PRContractFixtures/Fixtures/ro
   then those its branch name names (`eng-1686-retry`, `alex/core-12`), then those its description links as Linear
   does (a magic word such as `Fixes`, `Closes` or `Part of` before keys or issue URLs, or a `linear.app/…/issue/KEY`
   URL), each once, in a list ticket's shape: `key`, `url`, `title`, `state`, `state_type`, `state_color`, `assignee`
-  (the name of the person Linear assigns it to, null for no one), `found`. With
+  (the name of the person Linear assigns it to, null for no one), `assignee_avatar` (their picture in Linear, else
+  null), `delegate` (the name of the agent Linear delegates it to, else null), `found`. With
   `LINEAR_API_KEY` the Worker asks Linear when it reads the PR: a title's key Linear has no issue for is
   `found: false`, and a key only the branch or description names shows only once Linear has it. Without the key, or
   when Linear does not answer, `found` is null and only the title's keys show.
   On the hosted Worker the key is the account's own (`account.linear_key` in `/device/config`): until it connects
   Linear, the app draws such a key as "Connect Linear to see this ticket", which opens Settings. A ticket stored
-  before `assignee` was sent reads as `assignee: null` until Linear is asked again within the hour.
+  before `assignee`, `assignee_avatar` or `delegate` was sent reads as null until Linear is asked again within the hour.
 - A `GET /prs` row's `tickets` are every ticket its title names that Linear has (`found: true`), in the title's order;
   with none from the title, the first its branch or description names that Linear has; in the same shape. Its
   `ticket` is the first of them, for an app older than `tickets`. Empty and null without a Linear connection or while Linear does not answer. Hosted accounts use their own key only. The index
@@ -297,10 +298,13 @@ checked on every run: [`row.json`](../PRKit/Tests/PRContractFixtures/Fixtures/ro
   keys that are older (50 at most), and a PR whose ticket changed is read again. Merged rows have no `ticket` or `tickets`.
 
 - `author.name` is the name on a user's profile. `authorIsBot` is true for a GitHub App, a `[bot]` login or an account
-  `BOT_AUTHORS` names. On a bot's PR, `requestedBy` is the human it was opened for, first found: a `Co-authored-by`
-  trailer on its last 20 commits that is no coding agent, a "Requested by" line in its body (`@login` or a name), else
-  its first assignee that is no bot. It is `{login, name, avatarUrl, source}`, `source` being `co_author`, `body` or
-  `assignee`, and null on a person's own PR or when nothing is recorded.
+  `BOT_AUTHORS` names, and for an agent's PR: one whose Linear ticket is delegated to an agent (`delegate`) and has an
+  assignee, opened by neither the viewer nor an account whose profile name is the assignee's. On a bot's PR,
+  `requestedBy` is the human it was opened for, first found: a "Requested by" line in its body (`@login` or a name),
+  its first Linear ticket's assignee (`login` null, `avatarUrl` Linear's), a `Co-authored-by` trailer on its last 20
+  commits that is no coding agent, else its first assignee that is no bot. It is `{login, name, avatarUrl, source}`,
+  `source` being `body`, `linear`, `co_author` or `assignee`, and null on a person's own PR or when nothing is
+  recorded.
 
 ### `POST /prs/states`
 

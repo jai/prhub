@@ -17,7 +17,13 @@ import {
 } from "./ids.ts";
 import { type GitHubCache, peopleOf } from "./policy-github.ts";
 import { PEOPLE_FIELDS, type PeopleDecision, type PeopleNode } from "./policy-people.ts";
-import { botAuthorsOf, isBotAuthor, type RequestedBy, requestedByOf } from "./requester.ts";
+import {
+  botAuthorsOf,
+  isBotAuthor,
+  type RequestedBy,
+  requestedByOf,
+  withTicketOwner,
+} from "./requester.ts";
 import {
   allKeys,
   lookUpTickets,
@@ -125,9 +131,15 @@ export interface Detail {
   headBranch: string;
   author: (Author & { __typename: string; name?: string | null }) | null;
   isAuthor: boolean;
-  /** The author is a bot (`isBotAuthor`): a GitHub App, a `[bot]` login, or an account `BOT_AUTHORS` names. */
+  /**
+   * The author is a bot (`isBotAuthor`): a GitHub App, a `[bot]` login, or an account `BOT_AUTHORS` names; or the PR
+   * is an agent's on a Linear ticket delegated to it (`withTicketOwner`).
+   */
   authorIsBot: boolean;
-  /** The human a bot opened it for, where one is recorded (`requestedByOf`); null for a person's own PR. */
+  /**
+   * The human a bot opened it for, where one is recorded (`requestedByOf`), its Linear ticket's assignee first
+   * (`withTicketOwner`); null for a person's own PR.
+   */
   requestedBy: RequestedBy | null;
   /** The Linear issues its title (in brackets), branch and description name, as Linear has them (`resolvedTickets`). */
   tickets: Ticket[];
@@ -1249,7 +1261,10 @@ async function readOwnedPullRequests(
   const issues = keys.length > 0 ? await lookUp(keys) : new Map<string, Ticket>();
   for (const pr of read) {
     if (pr) {
-      pr.detail.tickets = resolvedTickets(pr.ticketKeys, issues);
+      pr.detail = withTicketOwner({
+        ...pr.detail,
+        tickets: resolvedTickets(pr.ticketKeys, issues),
+      });
       pr.tickets = rowTickets(pr.ticketKeys, pr.detail.tickets);
       pr.ticket = pr.tickets[0] ?? null;
     }

@@ -175,7 +175,12 @@ test("a ticket stored before Linear's assignee was asked for still reads, with n
     state_color: "#f2c94c",
     found: true,
   };
-  assert.deepEqual(parseStoredTicket(JSON.stringify(stored)), { ...stored, assignee: null });
+  assert.deepEqual(parseStoredTicket(JSON.stringify(stored)), {
+    ...stored,
+    assignee: null,
+    assignee_avatar: null,
+    delegate: null,
+  });
   assert.equal(
     parseStoredTicket(JSON.stringify({ ...stored, assignee: "Alex Doe" }))?.assignee,
     "Alex Doe",

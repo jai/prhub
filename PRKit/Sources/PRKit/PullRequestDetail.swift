@@ -28,7 +28,7 @@ public struct PullRequestDetail: Decodable, Sendable {
         public let login: String?
         public let name: String?
         public let avatarUrl: String?
-        /// `co_author`, `body` or `assignee`: where the Worker read it.
+        /// `body`, `linear`, `co_author` or `assignee`: where the Worker read it.
         public let source: String
     }
 
