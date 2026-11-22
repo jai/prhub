@@ -105,7 +105,6 @@ public enum AppIcon: String {
     case offline = "wifi.slash"
     /// What does the work is not taking any: a feature request's builder Mac.
     case paused = "pause.circle.fill"
-    case delivered = "checkmark.circle"
     case toolCall = "wrench.and.screwdriver"
     case resets = "arrow.counterclockwise"
     case share = "square.and.arrow.up"

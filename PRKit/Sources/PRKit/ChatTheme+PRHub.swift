@@ -14,7 +14,6 @@ public extension ChatTheme {
             symbols.toolCall = AppIcon.toolCall.symbol
             symbols.copy = AppIcon.copy.symbol
             symbols.askAI = AppIcon.askAI.symbol
-            symbols.delivered = AppIcon.delivered.symbol
             symbols.close = AppIcon.close.symbol
             symbols.problem = AppIcon.problem.symbol
             symbols.attach = AppIcon.attach.symbol
