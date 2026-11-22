@@ -10,7 +10,7 @@ import { type LiveRead, serveVersioned, storeDiff, VERSION_METADATA } from "../.
 import { fakeAgent } from "../support/agent-container.ts";
 import { stubFetch } from "../support/fake-fetch.ts";
 import { type MemoryR2, memoryR2 } from "../support/memory-r2.ts";
-import { pullRequestRest } from "../support/pr-node.ts";
+import { finnPrBody, pullRequestRest } from "../support/pr-node.ts";
 import { type AiJob, aiKey } from "../../src/models.ts";
 
 const OLD = "a".repeat(40) as Sha;
@@ -288,4 +288,43 @@ test("on the subscription, key lines come from the Agent SDK container, never th
   assert.deepEqual(summary.bugs, [], "a bug at a line the diff doesn't show is dropped");
   assert.deepEqual(summary.slop, { isSlop: false, tells: [] }, "no tells when it isn't slop");
   assert.deepEqual(others(), [], "the API was never asked");
+});
+
+test("key lines ask about the author's words alone: the AI trace below them is never judged as slop", async () => {
+  const body = finnPrBody("This PR makes holiday sync robust and seamless.");
+  stubFetch(
+    (asked) =>
+      pullRequestRest(asked, NEW, "alex/retry", body) ?? new Response("not here", { status: 500 }),
+  );
+  const { binding: agent, sent: asked } = fakeAgent<{ prompt: string }>(() => ({
+    subtype: "success",
+    output: { items: [], summary: SUMMARY },
+    model: "claude-sonnet-5-5",
+    tokens: { input: 10, output: 2 },
+    costUsd: 0.01,
+  }));
+  const job: AiJob = {
+    kind: "key_lines",
+    repo: repoOf("acme/app"),
+    number: 7,
+    head: NEW,
+    context: 0,
+  };
+  await runAiJob(
+    job,
+    { GITHUB_TOKEN: "t", CLAUDE_CODE_OAUTH_TOKEN: "oat", AGENT: agent } as Env,
+    memoryR2() as never,
+  );
+  assert.equal(asked.length, 1);
+  const { prompt } = asked[0];
+  assert.match(
+    prompt,
+    /<description>\n## Description\n\nThis PR makes holiday sync robust and seamless\./,
+  );
+  assert.doesNotMatch(prompt, /I have provided a clear description/, "no checklist");
+  assert.doesNotMatch(
+    prompt,
+    /AI Assistance|Workflow trace|💬 Prompt|🛠️ Built|AGENTS\.repo\.md/,
+    "no AI trace",
+  );
 });

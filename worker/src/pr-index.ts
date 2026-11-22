@@ -129,7 +129,7 @@ const KEPT_EVENTS = 5_000;
 /** An alert's key outlives any re-request worth hushing; a month of them is a few hundred rows. */
 const ALERTS_KEPT_MS = 30 * 86_400_000;
 /** Raise with `aiKey`'s key lines name (`models.ts`): each index then forgets which key lines it had made. */
-const KEY_LINES_VERSION = 4;
+const KEY_LINES_VERSION = 5;
 const KEY_LINES_PER_PASS = 5;
 /** Key lines a pass makes for open PRs not waiting on Jai's review, when the token's hour has room. */
 const OTHER_KEY_LINES_PER_PASS = 1;
@@ -208,7 +208,8 @@ export class PrIndex extends DurableObject<Env> {
     createMarkTables(this.sql);
     createGitHubCacheTable(this.sql);
     addMissingColumns(this.sql);
-    // Key lines answers moved to `key-lines-v4` (with the AI slop check): every PR's are made again, at the queue's pace.
+    // Key lines answers moved to `key-lines-v5` (the AI slop check reads only the author's words, not the AI trace):
+    // every PR's are made again, at the queue's pace.
     if (this.meta("key_lines_version") < KEY_LINES_VERSION) {
       this.sql.exec(
         "UPDATE pull_requests SET key_lines_queued = NULL, key_lines_ready = NULL, key_lines_tried_at = NULL",

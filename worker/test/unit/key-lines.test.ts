@@ -8,7 +8,9 @@ import {
   type KeyLine,
   parseDiff,
   replaceDescription,
+  writtenDescription,
 } from "../../src/key-lines.ts";
+import { finnPrBody } from "../support/pr-node.ts";
 
 const diff = `diff --git a/src/a.ts b/src/a.ts
 index 1..2 100644
@@ -101,4 +103,39 @@ test("a rewrite replaces the Description section and nothing else", () => {
     "## Checklist\n- [x] one\n\n## Description\nNew words\n\n## AI Assistance\nkept",
   );
   assert.equal(replaceDescription("plain body", "New words"), "New words");
+});
+
+const PLAIN =
+  "Statements from the new bank layout parse again: the parser reads the moved date column.";
+const SLOP = "This PR makes the parser robust and seamless, a comprehensive fix for every layout.";
+
+test("the AI slop check reads only the author's words: not the checklist, not the AI trace", () => {
+  const written = writtenDescription(finnPrBody(PLAIN));
+  assert.ok(written.startsWith("## Description"), "the checklist's checkboxes are left out");
+  assert.doesNotMatch(written, /I have provided|- \[x\]/);
+  assert.match(written, /the parser reads the moved date column/);
+  assert.match(written, /### Plan/, "headings in the author's part are kept as they are");
+  assert.doesNotMatch(
+    written,
+    /AI Assistance|Workflow trace|💬|🛠️|✅|AGENTS\.repo\.md/,
+    "the AI trace is left out",
+  );
+});
+
+test("slop in the author's words still reaches the check", () => {
+  assert.match(
+    writtenDescription(finnPrBody(SLOP)),
+    /This PR makes the parser robust and seamless/,
+  );
+});
+
+test("a body without the template is all the author's words, and a trace alone leaves nothing", () => {
+  assert.equal(
+    writtenDescription("Fixes the retry.\n\n- [ ] a list of the author's"),
+    "Fixes the retry.\n\n- [ ] a list of the author's",
+  );
+  assert.equal(
+    writtenDescription("## AI Assistance\n\n### Workflow trace\n\n- 💬 Prompt: fix it"),
+    "",
+  );
 });

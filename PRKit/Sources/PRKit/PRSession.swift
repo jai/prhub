@@ -552,8 +552,8 @@ extension PRSession {
             return
         }
         // Read before at this commit and context, on this device: offline too.
-        // v4: answers with the AI slop check; one kept before it is asked for again.
-        let key = InboxKey("key-lines-v4-\(ref.repo)/\(ref.number)/\(head)/\(context)")
+        // v5: the AI slop check reads the author's words without the AI trace; one kept before it is asked for again.
+        let key = InboxKey("key-lines-v5-\(ref.repo)/\(ref.number)/\(head)/\(context)")
         if !retry, let saved = model.kept(key, as: PRKeyLines.self) {
             keyLinesByContext[context] = saved
             keyLines = .ready(saved)

@@ -32,6 +32,7 @@ export function pullRequestRest(
   asked: Asked,
   head: string,
   branch = "alex/retry",
+  body = "",
 ): Response | null {
   if (asked.url !== PR_URL) {
     return null;
@@ -40,7 +41,7 @@ export function pullRequestRest(
     ? new Response("diff --git a/x b/x\n")
     : Response.json({
         title: "Sync holidays",
-        body: "",
+        body,
         head: { sha: head, ref: branch },
         base: { ref: "main" },
       });
@@ -148,4 +149,34 @@ export function prNode(overrides: Record<string, unknown> = {}) {
     viewerLatestReviewRequest: { id: "RR_1" },
     ...overrides,
   };
+}
+
+/**
+ * A PR body shaped like those the FINN pull request template makes: the checklist, the author's description, a bot's
+ * plan links, then the AI Assistance section with its emoji workflow trace. `description` is the author's words.
+ */
+export function finnPrBody(description: string): string {
+  return `## Checklist
+- [x] I have provided a clear description of the work in this PR (what and why)
+- [x] I have linked a ticket to this PR (e.g., "feat: Add foo [[TICKET-123](https://linear.app/company/issue/TICKET-123/some-description)]")
+
+## Description
+
+${description}
+
+<!-- finnbot:plan:start -->
+### Plan
+
+[Read implementation plan](https://github.com/acme/app/blob/main/.finn/plan.md)
+<!-- finnbot:plan:end -->
+
+## AI Assistance
+
+### Workflow trace
+
+- 💬 Prompt: ACME-12 (Sync public holidays nightly), delegated to the agent in Linear
+- 🛠️ Built: I removed the unrelated \`AGENTS.repo.md\` changes from the PR in one commit
+- 🔁 Adjusted: None
+- ✅ Verified: \`npm test\`: all passed.
+`;
 }

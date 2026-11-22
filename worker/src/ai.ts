@@ -13,6 +13,7 @@ import {
   type KeyLine,
   parseDiff,
   replaceDescription,
+  writtenDescription,
 } from "./key-lines.ts";
 import { type AiFeature, costCents, type Effort, MODEL_SPECS, type ModelChoice } from "./models.ts";
 import { allKeys, askLinear, ticketKeysOf } from "./tickets.ts";
@@ -430,7 +431,7 @@ export async function generateKeyLines(
     : KeyLinesAnswerWithoutTicket;
   const { answer, run } = await ask(
     ticket ? KEY_LINES_SYSTEM + REQUIREMENTS_SYSTEM : KEY_LINES_SYSTEM,
-    `<title>${pull.title}</title>\n<description>\n${pull.body}\n</description>\n${ticket}${input}`,
+    `<title>${pull.title}</title>\n<description>\n${writtenDescription(pull.body)}\n</description>\n${ticket}${input}`,
     schema,
     choice,
     env,

@@ -176,3 +176,20 @@ export function replaceDescription(body: string, description: string): string {
   const next = /^## /m.exec(rest);
   return `${body.slice(0, start)}${description.trim()}\n\n${next ? rest.slice(next.index) : ""}`.trimEnd();
 }
+
+/**
+ * The part of a PR body its author writes: after the template's `## Checklist` checkboxes and before its
+ * `## AI Assistance` section. That section is the agent's workflow trace, AI-written by design, so it is never judged as
+ * AI slop. Headings in between are kept as they are.
+ */
+export function writtenDescription(body: string): string {
+  const trace = /^#{1,6}[ \t]+AI Assistance\b/im.exec(body);
+  const above = trace ? body.slice(0, trace.index) : body;
+  const checklist = /^##[ \t]+Checklist\b[^\n]*\n/im.exec(above);
+  if (!checklist) {
+    return above.trim();
+  }
+  const rest = above.slice(checklist.index + checklist[0].length);
+  const next = /^#{1,2}[ \t]/m.exec(rest);
+  return `${above.slice(0, checklist.index)}${next ? rest.slice(next.index) : ""}`.trim();
+}
