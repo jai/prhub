@@ -12,6 +12,9 @@ struct PRHubMacWindow: View {
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
 
+    /// How often an open window reads the PRs again by itself.
+    static let refreshInterval: Duration = .seconds(300)
+
     var body: some View {
         PRKitRoot(environment.prs)
             .font(.appBody)
@@ -31,7 +34,7 @@ struct PRHubMacWindow: View {
             // No push reaches the Mac, so it keeps itself fresh while the window is open.
             .task {
                 while !environment.isSample, !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(120))
+                    try? await Task.sleep(for: Self.refreshInterval)
                     await environment.prs.refresh(.foreground)
                 }
             }
