@@ -1,8 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
 import { aiStoreKey, runAiJob } from "./ai-run";
 import { ask, AskRefused } from "./ask";
+import { AskChanges } from "./ask-changes";
 import type { AskChat } from "./ask-chat";
 import {
+  askPr,
   askView,
   type AskView,
   createAskTables,
@@ -35,6 +37,7 @@ const JOBS_AT_ONCE = 2;
  */
 export class AiJobs extends DurableObject<Env> {
   private readonly sql = this.ctx.storage.sql;
+  private readonly changes = new AskChanges();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -49,6 +52,7 @@ export class AiJobs extends DurableObject<Env> {
         await this.ctx.storage.put("user_id", userId);
       }
       queueAsk(this.sql, question);
+      this.changes.changed(pr);
       if ((await this.ctx.storage.getAlarm()) === null) {
         await this.ctx.storage.setAlarm(Date.now());
       }
@@ -60,6 +64,15 @@ export class AiJobs extends DurableObject<Env> {
   async readAsks(pr: string, chat: AskChat): Promise<QueuedAsk[]> {
     rememberChat(this.sql, pr, chat, Date.now());
     return askView(this.sql, pr).queued;
+  }
+
+  /** The chat's version and what the agent is doing, for a held read (`ask-held.ts`). */
+  askNow(pr: string): { version: number; activity: string | null } {
+    return this.changes.now(pr);
+  }
+
+  async awaitAsk(pr: string, seen: number, ms: number): Promise<void> {
+    await this.changes.wait(pr, seen, ms);
   }
 
   /** `userId` is the hosted person whose jobs these are; null on a self-hosted Worker. */
@@ -101,7 +114,11 @@ export class AiJobs extends DurableObject<Env> {
   }
 
   override async alarm(): Promise<void> {
-    await drainAsks(this.sql, (question) => this.handOver(question));
+    await drainAsks(
+      this.sql,
+      (question) => this.handOver(question),
+      ({ repo, number }) => this.changes.doing(askPr(repo, number), null),
+    );
     const rows = this.sql
       .exec<{ key: string; job: string }>("SELECT key, job FROM jobs LIMIT ?", JOBS_AT_ONCE)
       .toArray();
@@ -126,7 +143,16 @@ export class AiJobs extends DurableObject<Env> {
       return "Sign in again to ask.";
     }
     try {
-      await ask(question.repo, question.number, question.input, question.choice, env, question.id);
+      const pr = askPr(question.repo, question.number);
+      await ask(
+        question.repo,
+        question.number,
+        question.input,
+        question.choice,
+        env,
+        question.id,
+        (activity) => this.changes.doing(pr, activity),
+      );
       return null;
     } catch (error) {
       if (error instanceof AskRefused) {

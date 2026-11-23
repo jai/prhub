@@ -3,6 +3,7 @@ import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "c
 import { expect, test } from "vitest";
 import type { PendingSignIn } from "../../../src/hosted.ts";
 import { LimitName, limitsOf, rateWindowOf } from "../../../src/limits.ts";
+import { question } from "../../support/ask-queue-values.ts";
 import { authorization } from "./values.ts";
 
 test("the real PR index initializes its schema and keeps write receipts across eviction", async () => {
@@ -85,4 +86,16 @@ test("an IP limit's alarm clears expired storage and leaves the object able to c
   expect(await counter.consume(checks, "after-expiry", now + window!.windowMs)).toEqual({
     allowed: true,
   });
+});
+
+test("a question queued in the real ask queue ends a held read's wait on its PR", async () => {
+  const pr = "acme/api#7";
+  const queue = env.AI_JOBS.get(env.AI_JOBS.idFromName("held-ask"));
+  const { version, activity } = await queue.askNow(pr);
+  expect(activity).toBeNull();
+  const waited = queue.awaitAsk(pr, version, 30_000);
+  await queue.queueAsk(question("held", "Is it tested?"), pr, null);
+  await waited;
+  expect((await queue.askNow(pr)).version).not.toBe(version);
+  await runInDurableObject(queue, (_object, state) => state.storage.deleteAlarm());
 });

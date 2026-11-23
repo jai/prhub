@@ -6,11 +6,14 @@ import { createServer } from "node:http";
 import { promisify } from "node:util";
 import { InMemorySessionStore, query } from "@anthropic-ai/claude-agent-sdk";
 import {
+  activityOf,
   askAnswer,
   createLocks,
+  DIFF_FILE,
   grantedRepos,
   parseBody,
   runAnswer,
+  scrub,
   SeededStore,
   turnKeeper,
   vetQuestion,
@@ -98,9 +101,6 @@ async function checkout(dir, repo, head, token) {
   return dir;
 }
 
-/** The PR's diff beside the code, as a file the read tools reach: git's own objects are compressed past reading. */
-export const DIFF_FILE = ".prhub-pr.diff";
-
 function placeDiff(dir, diff) {
   // A PR can commit this name as a symlink: whatever is there goes first, and the write makes a new file only.
   rmSync(`${dir}/${DIFF_FILE}`, { force: true, recursive: true });
@@ -109,24 +109,27 @@ function placeDiff(dir, diff) {
 }
 
 /** One Ask turn on `repo` at `head`: the answer's text, the session, and its whole transcript for the next turn. */
-async function ask({
-  system,
-  prompt,
-  model,
-  effort,
-  scope,
-  repo,
-  number,
-  head,
-  token,
-  readOnly,
-  reachable,
-  diff,
-  session,
-  entries,
-  budgetUsd,
-  account,
-}) {
+async function ask(
+  {
+    system,
+    prompt,
+    model,
+    effort,
+    scope,
+    repo,
+    number,
+    head,
+    token,
+    readOnly,
+    reachable,
+    diff,
+    session,
+    entries,
+    budgetUsd,
+    account,
+  },
+  doing,
+) {
   const unsafe = vetQuestion({ scope, repo, number, head });
   if (unsafe) {
     throw new Error(unsafe);
@@ -183,6 +186,10 @@ async function ask({
         resume: session ?? undefined,
       },
     })) {
+      const activity = activityOf(message);
+      if (activity !== null) {
+        doing(activity);
+      }
       if (message.type === "system" && message.subtype === "init") {
         tools = message.tools ?? [];
       }
@@ -247,10 +254,25 @@ const server = createServer(async (request, response) => {
     response.end(JSON.stringify({ error }));
     return;
   }
+  // Asked for progress, the answer is the last of its lines, and what the agent is doing comes before it.
+  const inLines = body.progress === true;
+  let last = null;
+  const doing = (activity) => {
+    const line = scrub(activity, body.token);
+    if (inLines && line !== last) {
+      last = line;
+      response.write(`${JSON.stringify({ activity: line })}\n`);
+    }
+  };
+  if (inLines) {
+    response.setHeader("content-type", "application/x-ndjson");
+  }
   try {
-    response.end(JSON.stringify(await route(body)));
+    response.end(JSON.stringify(await route(body, doing)));
   } catch (error) {
-    response.statusCode = 500;
+    if (!response.headersSent) {
+      response.statusCode = 500;
+    }
     response.end(JSON.stringify({ error: String(error instanceof Error ? error.message : error) }));
   }
 });

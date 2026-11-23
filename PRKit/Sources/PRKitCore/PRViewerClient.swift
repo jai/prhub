@@ -242,15 +242,37 @@ public struct PRViewerClient: Sendable {
 
     /// The conversation on this PR with its AI agent; empty until the first question.
     public func askChat(_ ref: PullRequestRef) async throws -> PRAskChat {
-        try await askChatAnswer(ref).chat
+        let path = "prs/\(ref.repo)/\(ref.number)/ask"
+        return try await decode(PRAskChat.self, from: get(path: path), path: path)
     }
 
-    /// `askChat`, with the Worker's answer as it came, for a screen that keeps the last one on the device.
-    public func askChatAnswer(_ ref: PullRequestRef) async throws -> (chat: PRAskChat, data: Data) {
-        let path = "prs/\(ref.repo)/\(ref.number)/ask"
-        let data = try await get(path: path)
-        return try (decode(PRAskChat.self, from: data, path: path), data)
+    /// The chat as it was read, with the Worker's answer as it came, for a screen that keeps the last one on the device.
+    public struct AskRead: Sendable {
+        public let chat: PRAskChat
+        public let data: Data
+        /// What the next read waits for a change from; nil from a Worker that can't hold a read, which is polled.
+        public let version: String?
     }
+
+    /// `askChat`. With `version`, the last read's, the Worker holds the read while the chat stays as it was, up to
+    /// `askHeldSeconds`: nil then, with nothing new.
+    public func readAsk(_ ref: PullRequestRef, after version: String? = nil) async throws -> AskRead? {
+        let path = "prs/\(ref.repo)/\(ref.number)/ask"
+        let query = version.map { ["version": $0, "wait": String(Self.askHeldSeconds)] } ?? [:]
+        let (data, response) = try await fetch(authorized(path: path, query: query), path: path)
+        try await check(response, body: data, path: path)
+        let answer = response as? HTTPURLResponse
+        if version != nil, answer?.statusCode == 204 {
+            return nil
+        }
+        return try AskRead(
+            chat: decode(PRAskChat.self, from: data, path: path), data: data,
+            version: answer?.value(forHTTPHeaderField: "Ask-Version")
+        )
+    }
+
+    /// The Worker's own longest hold (`ask-held.ts`): under the 15 seconds the apps' transports give a request.
+    static let askHeldSeconds = 10
 
     /// Once: a retry after a timeout could ask twice. The agent's answer comes through `askChat`.
     public func ask(_ question: PRAskQuestion, about ref: PullRequestRef) async throws -> PRAskChat {

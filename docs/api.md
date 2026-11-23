@@ -441,6 +441,13 @@ couldn't be reached. Try again."); one still waiting after 2 minutes says "The q
 again." The next question to that PR replaces a failed one. A copy with the same `client_ref` answers the chat again
 and stores nothing.
 
+**Following an answer.** On a subscription `GET …/ask` answers with `Ask-Version`, a tag of the chat as sent. With
+`?version=<that>&wait=<seconds>` the Worker holds the read while the chat is working and unchanged, 10 seconds at most
+(the apps give a request 15), and answers `200` the moment it changes or `204` when it has not. `activity` is what the
+agent is doing now ("Reading retry.ts"), told by the container as the turn runs (`progress` on its `/ask`). The ask
+queue's object holds the read (`ask-changes.ts`), as every question and turn passes through it. An answer without
+`Ask-Version` (an older Worker, or Ask on an API key) is polled every 2 seconds, as before.
+
 **Drafted reviews.** Asked to write a review, approve or request changes, the subscription's agent calls `draft_review`
 (`agent/read-tools.mjs`), which posts nothing. Its answer's message then carries `draft`: `{event: "APPROVE" |
 "REQUEST_CHANGES" | "COMMENT", body, comments: [{path, line, side: "LEFT" | "RIGHT", body}]}`, at most 30 comments.

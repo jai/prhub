@@ -85,9 +85,11 @@ function queuedOf(row: { ask: string; error: string | null }): QueuedAsk {
 export async function drainAsks(
   sql: LimitSql,
   handOver: (ask: QueuedAsk) => Promise<string | null>,
+  finished: (ask: QueuedAsk) => void = () => {},
 ): Promise<void> {
   for (let ask = nextAsk(sql); ask; ask = nextAsk(sql)) {
     finishAsk(sql, ask.id, await handOver(ask));
+    finished(ask);
   }
 }
 

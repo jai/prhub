@@ -85,3 +85,19 @@ test("a stop asked for during a request waits for its answer", { timeout: 15_000
   const [code, signal] = await left;
   assert.deepEqual({ code, signal }, { code: 0, signal: null });
 });
+
+test(
+  "asked for progress, the server answers in lines, an error too",
+  { timeout: 15_000 },
+  async () => {
+    const { port } = await started();
+    const asked = (body) =>
+      fetch(`http://127.0.0.1:${port}/ask`, { method: "POST", body: JSON.stringify(body) });
+    const lines = await asked({ progress: true });
+    assert.equal(lines.headers.get("content-type"), "application/x-ndjson");
+    assert.equal(typeof (await lines.json()).error, "string");
+    const plain = await asked({});
+    assert.equal(plain.headers.get("content-type"), "application/json");
+    assert.equal(typeof (await plain.json()).error, "string");
+  },
+);

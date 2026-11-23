@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
 import {
+  activityOf,
   askAnswer,
   createLocks,
   grantedRepos,
@@ -153,4 +154,31 @@ test("the seeded store hands back the Worker's transcript and keeps only the mai
   assert.deepEqual(store.entries, [{ n: 1 }, { n: 2 }]);
   assert.equal(await store.load({ subpath: "agent-1" }), null);
   assert.equal(await new SeededStore(undefined).load({}), null);
+});
+
+test("what the agent is doing comes from the tool it uses, and names a file alone", () => {
+  const using = (name, input) => ({
+    type: "assistant",
+    message: {
+      content: [
+        { type: "text", text: "…" },
+        { type: "tool_use", name, input },
+      ],
+    },
+  });
+  assert.equal(
+    activityOf(using("Read", { file_path: "/home/agent/work/u/a/b/7/src/retry.ts" })),
+    "Reading retry.ts",
+  );
+  assert.equal(activityOf(using("Read", { file_path: "/w/.prhub-pr.diff" })), "Reading the diff");
+  assert.equal(activityOf(using("Grep", { pattern: "secret" })), "Searching the code");
+  assert.equal(activityOf(using("WebFetch", { url: "https://x.test/?q=1" })), "Reading the web");
+  assert.equal(activityOf(using("mcp__repo__git", { args: ["log"] })), "Reading the repo");
+  for (const quiet of [
+    { type: "result" },
+    { type: "assistant" },
+    { type: "assistant", message: { content: [{ type: "text", text: "Yes." }] } },
+  ]) {
+    assert.equal(activityOf(quiet), null);
+  }
 });

@@ -180,6 +180,7 @@ export async function ask(
   choice: ModelChoice,
   env: Env,
   turn?: string,
+  doing?: (activity: string) => void,
 ): Promise<void> {
   if (onSubscription(env)) {
     const grant = () =>
@@ -203,6 +204,7 @@ export async function ask(
       diff: () => prDiff(repo, number, input.head, env),
       budgetUsd: askBudgetOf(limitsOf(env)) / 100,
       turn,
+      doing,
       // As the person, with their own sign-in: the way the app's own buttons write.
       act: async (action) => {
         const refused = await writeToGitHub(repo, number, action, env);

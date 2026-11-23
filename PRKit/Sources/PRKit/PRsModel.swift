@@ -447,14 +447,18 @@ final class PRsModel {
         return try await client.postAskLinear(message: message, index: index, about: ref)
     }
 
-    func askChat(_ ref: PullRequestRef) async throws -> PRAskChat {
+    /// The chat, and what `follow` follows it on: the version a held read waits from. With the version of a chat still
+    /// at work, the Worker answers when the chat changes; nil when it has not.
+    func readAsk(_ ref: PullRequestRef, after version: String? = nil) async throws -> (chat: PRAskChat, version: String?)? {
         if let samples {
-            return samples.askChat
-                ?? PRAskChat(messages: [], isWorking: false, activity: nil, problem: nil, costCents: nil)
+            let empty = PRAskChat(messages: [], isWorking: false, activity: nil, problem: nil, costCents: nil)
+            return (samples.askChat ?? empty, nil)
         }
-        let (chat, data) = try await client.askChatAnswer(ref)
-        try? kept.save(KeptAnswer(data: data, savedAt: .now), for: Self.askKey(ref))
-        return chat
+        guard let read = try await client.readAsk(ref, after: version) else {
+            return nil
+        }
+        try? kept.save(KeptAnswer(data: read.data, savedAt: .now), for: Self.askKey(ref))
+        return (read.chat, read.chat.isWorking ? read.version : nil)
     }
 
     /// The chat on this PR as last read, on this device: what the sheet shows before the Worker answers, and offline.

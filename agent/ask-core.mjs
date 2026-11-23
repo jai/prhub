@@ -87,6 +87,23 @@ export function askAnswer({ result, tools, draft, actions, linear, entries, mode
   };
 }
 
+/** What the agent is doing, in a few words for the chat, from one SDK message; null when it says nothing new. */
+export function activityOf(message) {
+  if (message.type !== "assistant") return null;
+  const use = (message.message?.content ?? []).findLast((block) => block.type === "tool_use");
+  if (!use) return null;
+  if (use.name === "Read" && typeof use.input?.file_path === "string") {
+    const name = use.input.file_path.split("/").pop();
+    return name === DIFF_FILE ? "Reading the diff" : `Reading ${name}`;
+  }
+  if (use.name === "Grep" || use.name === "Glob") return "Searching the code";
+  if (use.name === "WebSearch" || use.name === "WebFetch") return "Reading the web";
+  return "Reading the repo";
+}
+
+/** The PR's diff beside the code, as a file the read tools reach: git's own objects are compressed past reading. */
+export const DIFF_FILE = ".prhub-pr.diff";
+
 /** What one turn hands the Worker: the newest draft, and actions and Linear comments up to their caps. */
 export function turnKeeper() {
   const kept = { draft: null, actions: [], linear: [] };

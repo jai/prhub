@@ -5,12 +5,18 @@ import SwiftUI
 
 extension PRSession {
     static let askPollInterval: Duration = .seconds(2)
+    /// Between reads the Worker holds: it answers when the chat changes, and an agent's steps can follow in a burst.
+    static let askHeldPause: Duration = .seconds(1)
     /// The longest wait between reads that keep failing: offline, a read every 2 seconds would keep the radio up.
     static let askPollLongest: Duration = .seconds(30)
 
-    /// The wait before the next read: 2 seconds, doubled for each read in a row that failed, at most 30.
-    static func askPollWait(afterFailures failures: Int) -> Duration {
-        min(askPollInterval * (1 << min(failures, 5)), askPollLongest)
+    /// The wait before the next read: 2 seconds, doubled for each read in a row that failed, at most 30. A second when
+    /// the Worker holds it until the chat changes.
+    static func askPollWait(afterFailures failures: Int, isHeld: Bool = false) -> Duration {
+        guard !isHeld || failures > 0 else {
+            return askHeldPause
+        }
+        return min(askPollInterval * (1 << min(failures, 5)), askPollLongest)
     }
 
     /// The chat, about a line when there is one. Words already written go at once, as asked from `origin`.
@@ -172,25 +178,31 @@ extension PRSession {
         model.onEvent(.askAnswerFailed)
     }
 
-    /// While the sheet shows: the conversation, every 2 seconds while the agent works or a question is on its way, and
-    /// once otherwise; a read that keeps failing is tried less often (`askPollWait`). A question in the outbox is on its
-    /// way, not an error.
+    /// While the sheet shows: the conversation, until the agent has answered. While it works, the Worker holds each read
+    /// until the chat changes; one that can't is read every 2 seconds, as is the chat while a question is on its way. A
+    /// read that keeps failing is tried less often (`askPollWait`). A question in the outbox is on its way, not an error.
     func followAsk() async {
         var failures = 0
+        var version: String?
         // The chat as last read shows at once; the Worker's answer replaces it.
         if askChat == nil {
             askChat = model.keptAskChat(ref)
         }
         while !Task.isCancelled {
             do {
-                let chat = try await model.askChat(ref)
-                withAnimation(AppMotion.swap) {
-                    askChat = chat
-                    askError = nil
+                if let read = try await model.readAsk(ref, after: version) {
+                    version = read.version
+                    withAnimation(AppMotion.swap) {
+                        askChat = read.chat
+                        askError = nil
+                    }
+                    reportAnswerFailure(in: read.chat)
+                } else if askError != nil {
+                    withAnimation(AppMotion.swap) { askError = nil }
                 }
-                reportAnswerFailure(in: chat)
-                model.askSheetRead(ref, chat: chat, isOnItsWay: isSendingAsk || askSend.isOnItsWay)
+                model.askSheetRead(ref, chat: askChat, isOnItsWay: isSendingAsk || askSend.isOnItsWay)
             } catch {
+                version = nil
                 withAnimation(AppMotion.swap) { askError = PRAskReadProblem(error) }
             }
             if !isSendingAsk {
@@ -204,7 +216,10 @@ extension PRSession {
                 return
             }
             failures = askError == nil ? 0 : failures + 1
-            try? await model.sleep(Self.askPollWait(afterFailures: failures))
+            if isSendingAsk || askSend.isOnItsWay {
+                version = nil
+            }
+            try? await model.sleep(Self.askPollWait(afterFailures: failures, isHeld: version != nil))
         }
     }
 }

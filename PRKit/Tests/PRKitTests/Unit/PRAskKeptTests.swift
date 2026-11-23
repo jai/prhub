@@ -29,17 +29,17 @@ struct PRAskKeptTests {
 
     @Test func aChatReadOnlineIsThereOfflineAfterARelaunch() async throws {
         let online = PRsModel(client: client(offline: false), storage: storage, network: PRNetwork(isOnline: true))
-        _ = try await online.askChat(ref)
+        _ = try await online.readAsk(ref)
 
         let relaunched = PRsModel(client: client(offline: true), storage: storage, network: PRNetwork(isOnline: true))
         #expect(relaunched.keptAskChat(ref)?.messages.map(\.id) == ["q1", "a1"])
-        await #expect(throws: URLError.self) { try await relaunched.askChat(ref) }
+        await #expect(throws: URLError.self) { try await relaunched.readAsk(ref) }
         #expect(relaunched.keptAskChat(ref)?.messages.count == 2, "a failed read leaves the kept chat")
     }
 
     @Test func anotherPRHasNoKeptChat() async throws {
         let model = PRsModel(client: client(offline: false), storage: storage, network: PRNetwork(isOnline: true))
-        _ = try await model.askChat(ref)
+        _ = try await model.readAsk(ref)
         #expect(model.keptAskChat(PullRequestRef(repo: "acme/web", number: 8)) == nil)
     }
 }

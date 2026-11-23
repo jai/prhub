@@ -68,6 +68,7 @@ export async function askContainer<Answer extends { error?: string }>(
   env: Pick<Env, "AGENT" | "CLAUDE_CODE_OAUTH_TOKEN">,
   wait: (ms: number) => Promise<void> = pause,
   instance = "ai",
+  doing?: (activity: string) => void,
 ): Promise<Answer> {
   const accounts = Math.max(1, subscriptionAccounts(env));
   const first = currentAccount % accounts;
@@ -76,10 +77,11 @@ export async function askContainer<Answer extends { error?: string }>(
     const account = (first + tried) % accounts;
     answer = await onContainer<Answer>(
       path,
-      JSON.stringify({ ...body, account }),
+      JSON.stringify({ ...body, account, ...(doing ? { progress: true } : {}) }),
       env.AGENT!,
       wait,
       instance,
+      doing,
     );
     if (!answer.error || !ACCOUNT_SPENT.test(answer.error)) {
       currentAccount = account;
@@ -96,6 +98,50 @@ export async function askContainer<Answer extends { error?: string }>(
   return answer;
 }
 
+const ACTIVITY_LENGTH = 80;
+
+/**
+ * The answer's text. A container asked for `progress` answers in lines (`application/x-ndjson`): `{"activity"}` as the
+ * agent works, the answer last. One from before that answers the JSON alone.
+ */
+export async function answerText(
+  response: Response,
+  doing?: (activity: string) => void,
+): Promise<string> {
+  if (!response.headers.get("content-type")?.startsWith("application/x-ndjson") || !response.body) {
+    return response.text();
+  }
+  let rest = "";
+  const hear = (line: string) => {
+    const said = activityIn(line);
+    if (said === null) {
+      return false;
+    }
+    doing?.(said);
+    return true;
+  };
+  for await (const chunk of response.body.pipeThrough(new TextDecoderStream())) {
+    const lines = (rest + chunk).split("\n");
+    rest = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!hear(line)) {
+        return line;
+      }
+    }
+  }
+  return hear(rest) ? "" : rest;
+}
+
+/** A line's activity; null for the answer's own line. */
+function activityIn(line: string): string | null {
+  try {
+    const { activity } = JSON.parse(line) as { activity?: unknown };
+    return typeof activity === "string" ? scrubbed(activity).slice(0, ACTIVITY_LENGTH) : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * One run's JSON answer. Cloudflare's own words when no instance is ready, and a run whose Claude Code was stopped
  * under it (exit 143), go again after a pause, up to `CONTAINER_TRIES` tries.
@@ -106,6 +152,7 @@ async function onContainer<Answer extends { error?: string }>(
   agent: NonNullable<Env["AGENT"]>,
   wait: (ms: number) => Promise<void>,
   instance: string,
+  doing?: (activity: string) => void,
 ): Promise<Answer> {
   let failure = "";
   for (let tryNumber = 1; tryNumber <= CONTAINER_TRIES; tryNumber++) {
@@ -117,7 +164,7 @@ async function onContainer<Answer extends { error?: string }>(
         headers: { "content-type": "application/json" },
         body,
       });
-      text = await response.text();
+      text = await answerText(response, doing);
     } catch (error) {
       // The container went away mid-run, as a deploy replaces it: the run goes again in a new one.
       failure = String(error instanceof Error ? error.message : error);

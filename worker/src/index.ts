@@ -4,13 +4,14 @@ import { statesRoute } from "./pr-states";
 import { AiJobs, type AiJob } from "./ai-jobs";
 import { appLatest } from "./app-latest";
 import { askChat } from "./ask";
+import { heldAsk } from "./ask-held";
 import { postAskLinear } from "./ask-linear";
 import { acceptAsk, askPr, withQueued } from "./ask-queue";
 import { bodyOf, parseAskInput, parseKeyLineMark } from "./boundary";
 import { eventRoute, registerRoute, unpairRoute } from "./devices";
 import { metricsRoute } from "./metrickit.ts";
 import { aiConfigOf, askConfigured, deviceConfig, featureKitConfigured } from "./config";
-import { makesAnswers } from "./agent-container";
+import { makesAnswers, onSubscription } from "./agent-container";
 import { askEvent } from "./ask-trace";
 import { counted } from "./github-calls";
 import { AgentContainer } from "./agent-container-object";
@@ -391,8 +392,20 @@ async function askRoute(
   const pr = askPr(repo, number);
   if (request.method !== "POST") {
     try {
-      const chat = await askChat(repo, number, env);
-      return Response.json(withQueued(chat, await askQueue(env).readAsks(pr, chat), Date.now()));
+      const read = async () => {
+        const chat = await askChat(repo, number, env);
+        return withQueued(chat, await askQueue(env).readAsks(pr, chat), Date.now());
+      };
+      // Only a turn on the subscription runs in the queue's object, which then knows when the chat changes.
+      if (!onSubscription(env)) {
+        return Response.json(await read());
+      }
+      return await heldAsk(new URL(request.url), {
+        now: async () => askQueue(env).askNow(pr),
+        chat: read,
+        wait: async (seen, ms) => askQueue(env).awaitAsk(pr, seen, ms),
+        clock: Date.now,
+      });
     } catch (error) {
       console.error("ask chat failed", error);
       return Response.json({ error: "The AI couldn't be reached. Try again." }, { status: 502 });

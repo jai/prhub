@@ -32,6 +32,9 @@ export function askInstance(env: Pick<Env, "SIGNED_IN_USER_ID">): string {
   return `ask:${env.SIGNED_IN_USER_ID ?? "self"}`;
 }
 
+/** What a turn is doing until the agent says. */
+const READING = "Reading the repo";
+
 /** A turn that has run this long is taken as lost: the job that ran it ended without saying so. */
 export const TURN_LOST_MS = 20 * 60_000;
 
@@ -87,7 +90,7 @@ export function subscriptionChat(
   return {
     messages: record.messages.map((message) => withCards(message, posted)),
     isWorking,
-    activity: isWorking ? "Reading the repo" : null,
+    activity: isWorking ? READING : null,
     problem: lost ? "The agent stopped before it answered. Ask again." : record.problem,
     costCents: null,
     model: record.model,
@@ -154,6 +157,8 @@ export async function askOnSubscription(
     now?: () => number;
     /** The turn's id, the question's own: its `ask_event` lines and its failure line carry it. */
     turn?: string;
+    /** Told what the agent is doing as it does it, for the chat's activity line. */
+    doing?: (activity: string) => void;
     /** Does one action on GitHub as the reviewer: null when GitHub took it, else why not. */
     act?: (action: unknown) => Promise<string | null>;
     /** The container's proposed Linear comments as cards: issues the PR names, mentions found in Linear. */
@@ -214,6 +219,7 @@ export async function askOnSubscription(
     model: known?.model ?? null,
   };
   await env.DIFFS.put(key, JSON.stringify(record));
+  services.doing?.(READING);
   let token: string | null = null;
   try {
     const entries = record.session
@@ -251,6 +257,7 @@ export async function askOnSubscription(
       env,
       undefined,
       askInstance(env),
+      services.doing,
     );
     if (answer.error) {
       throw new AskFailure(MODEL_TROUBLE.test(answer.error) ? "model" : "container", answer.error);

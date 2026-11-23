@@ -38,19 +38,25 @@ extension PRsModel {
         askAwayFollows[ref]?.cancel()
         askAwayFollows[ref] = Task { [weak self] in
             var failures = 0
+            var version: String?
             while !Task.isCancelled {
                 guard let self else {
                     return
                 }
                 do {
-                    let chat = try await askChat(ref)
+                    let read = try await readAsk(ref, after: version)
                     failures = 0
                     guard !Task.isCancelled else {
                         return
                     }
+                    guard let chat = read?.chat else {
+                        try? await sleep(PRSession.askPollWait(afterFailures: 0, isHeld: true))
+                        continue
+                    }
+                    version = read?.version
                     let phase = chat.isWorking ? PRAskActivity.Phase.working(chat.activity ?? "Thinking") : .answered
                     let next = PRAskActivity(ref: ref, phase: phase)
-                    // Read every 2 s: the PR list is drawn again only when the line says something else.
+                    // Read again and again: the PR list is drawn again only when the line says something else.
                     if askActivities[ref] != next {
                         withAnimation(AppMotion.swap) { askActivities[ref] = next }
                     }
@@ -60,8 +66,9 @@ extension PRsModel {
                     }
                 } catch {
                     failures += 1
+                    version = nil
                 }
-                try? await sleep(PRSession.askPollWait(afterFailures: failures))
+                try? await sleep(PRSession.askPollWait(afterFailures: failures, isHeld: version != nil))
             }
         }
     }
