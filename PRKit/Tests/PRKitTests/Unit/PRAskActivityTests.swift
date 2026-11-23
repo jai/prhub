@@ -2,6 +2,7 @@ import DurableNetworking
 import Foundation
 @testable import PRKit
 import PRKitTestSupport
+import Synchronization
 import Testing
 
 /// A PR's Ask AI chat after its sheet closes: followed until it answers, the answer unread until the chat opens again,
@@ -60,6 +61,19 @@ struct PRAskActivityTests {
         #expect(kit.model.askActivities[ref]?.words == "Reading the repo…")
         try await clock.advance(by: PRSession.askPollInterval, afterSleepers: 1)
         #expect(kit.model.askAwayFollows[ref] != nil, "still read while it works")
+        kit.model.askSheetOpened(ref)
+    }
+
+    @Test func aReadThatSaysTheSameLeavesTheListAsItIs() async throws {
+        let kit = kit(chat(isWorking: true))
+        kit.model.followAskAway(ref)
+        try await settle("working") { kit.model.askActivities[ref]?.phase == .working("Reading the repo") }
+        let isRedrawn = Mutex(false)
+        withObservationTracking { _ = kit.model.askActivities } onChange: { isRedrawn.withLock { $0 = true } }
+        try await clock.advance(by: PRSession.askPollInterval, afterSleepers: 1)
+        // The second read is over once it waits for the third.
+        try await clock.advance(by: PRSession.askPollInterval, afterSleepers: 1)
+        #expect(!isRedrawn.withLock { $0 })
         kit.model.askSheetOpened(ref)
     }
 

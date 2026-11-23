@@ -49,7 +49,11 @@ extension PRsModel {
                         return
                     }
                     let phase = chat.isWorking ? PRAskActivity.Phase.working(chat.activity ?? "Thinking") : .answered
-                    withAnimation(AppMotion.swap) { askActivities[ref] = PRAskActivity(ref: ref, phase: phase) }
+                    let next = PRAskActivity(ref: ref, phase: phase)
+                    // Read every 2 s: the PR list is drawn again only when the line says something else.
+                    if askActivities[ref] != next {
+                        withAnimation(AppMotion.swap) { askActivities[ref] = next }
+                    }
                     if !chat.isWorking {
                         askAwayFollows[ref] = nil
                         return
