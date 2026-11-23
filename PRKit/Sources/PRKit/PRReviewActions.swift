@@ -133,6 +133,8 @@ struct PRReviewBar: View {
 struct PRReviewActions: View {
     let session: PRSession
     let isAuthor: Bool
+    /// The page says it under its status instead, by Merge.
+    var showsNotice = true
     @Binding var action: PRReviewAction?
 
     var body: some View {
@@ -141,7 +143,7 @@ struct PRReviewActions: View {
             PRReviewBar(isAuthor: isAuthor, yourReview: session.yourReview) { next in
                 withAnimation(AppMotion.fold) { action = action == next ? nil : next }
             }
-            if let notice = session.notice {
+            if showsNotice, let notice = session.notice {
                 PRNoticeText(notice: notice)
             }
         }

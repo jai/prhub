@@ -2,8 +2,9 @@ import PRKitCore
 import PRKitDesign
 import SwiftUI
 
-/// Title, labels and status at the top, the actions under them, then the description and every comment, newest first
-/// unless the conversation's toggle says oldest.
+/// Title and labels at the top, then the way into the diff and the review buttons, above the fold on a phone; under them
+/// the PR at a glance, its status, the description and every comment, newest first unless the conversation's toggle says
+/// oldest.
 struct PRDescriptionView: View {
     let session: PRSession
     let detail: PullRequestDetail
@@ -60,6 +61,11 @@ struct PRDescriptionView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Space.md) {
                 header
+                // Before anything that can be long: the summary and the status pushed them off a phone's first screen
+                // (Jai's feedback, 2026-11-23).
+                PRChangesCard(detail: detail, showDiff: showDiff, reviewChanges: reviewChanges)
+                PRReviewActions(session: session, isAuthor: detail.isAuthor, showsNotice: false, action: $action)
+                composer
                 if let summary = session.summary {
                     // A bug's tap is its line in the diff, as in Key lines.
                     PRKeyLinesSummaryCard(summary: summary, onPage: true) { bug in
@@ -67,10 +73,11 @@ struct PRDescriptionView: View {
                         showDiff()
                     }
                 }
-                PRChangesCard(detail: detail, showDiff: showDiff, reviewChanges: reviewChanges)
                 PRStatusCard(session: session, detail: detail, folds: folds)
-                PRReviewActions(session: session, isAuthor: detail.isAuthor, action: $action)
-                composer
+                // By Merge and the description, whose writes it answers for: a review's own answer is its toast.
+                if let notice = session.notice {
+                    PRNoticeText(notice: notice)
+                }
                 description
                 let entries = detail.conversation(newestFirst: newestFirst)
                 if !entries.isEmpty {

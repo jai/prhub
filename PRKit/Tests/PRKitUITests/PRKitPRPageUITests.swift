@@ -36,6 +36,45 @@ final class PRKitPRPageUITests: PRHubUITestCase {
         XCTAssertLessThanOrEqual(send.frame.maxY, keyboard.frame.minY, "the send button overlaps the keyboard")
     }
 
+    /// The way into the diff and the review buttons come before the PR at a glance and the description, all on screen
+    /// as the page opens (Jai's feedback, 2026-11-23: they sat under the summary, below the fold).
+    func testTheReviewButtonsAreAboveTheFoldAndBeforeTheDescription() throws {
+        launch()
+        openCheckout()
+        let buttons = [
+            "pr-files-changed", "pr-review-changes", "pr-review-approve", "pr-review-request-changes", "pr-review-comment",
+        ].map { app.buttons[$0] }
+        app.waitForStill(buttons[0])
+        try picture("pr-page-top")
+        for button in buttons {
+            XCTAssertTrue(app.isClearOfBars(button), "\(button) is on screen without scrolling")
+        }
+        XCTAssertLessThanOrEqual(buttons[0].frame.maxY, buttons[2].frame.minY, "Files changed, then the review buttons")
+        let actionsEnd = try XCTUnwrap(buttons.map(\.frame.maxY).max())
+        let summary = app.descendants(matching: .any)["pr-summary"].firstMatch
+        XCTAssertTrue(summary.exists)
+        XCTAssertLessThanOrEqual(actionsEnd, summary.frame.minY, "the PR at a glance is under them")
+
+        // The page is lazy: the description is made as it comes near, so it is measured against what is still drawn.
+        let checks = app.buttons["checks-header"]
+        XCTAssertTrue(app.reveal(checks))
+        for button in buttons where button.exists {
+            XCTAssertLessThan(button.frame.maxY, checks.frame.minY, "the status is under them")
+        }
+        let description = app.buttons["pr-edit-description"]
+        for _ in 0 ..< 5 where !description.exists {
+            app.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(description.exists)
+        for button in buttons where button.exists {
+            XCTAssertLessThan(button.frame.maxY, description.frame.minY, "the description is under them")
+        }
+        if checks.exists {
+            XCTAssertLessThan(checks.frame.maxY, description.frame.minY, "the status is still over the description")
+        }
+        try picture("pr-page-description")
+    }
+
     /// A long press on Open in GitHub offers the PR's link, to copy or to share.
     func testALongPressOnOpenInGitHubOffersThePRsLink() throws {
         launch([])

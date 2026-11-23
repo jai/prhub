@@ -160,7 +160,7 @@ all of them are in scope. A new screen adds a row here and a step in `PRHubScree
 | PR list | PRs | `PRsView`, `PRsList`, `PrListBlock`, `PRSectionTitle`, `PRSwipeRow` |
 | Review shortcut | PRs → a row's Review button, its swipe right, or its long-press menu | `PrListBlock`, `PRSwipeRow`, `PullRequestOpener` |
 | PR filter | PRs → Filter | `PRFilterPanel`, `PRSectionTitle` |
-| PR description | PRs → a PR: its title, who it is from, its tickets, then status, review and conversation | `PRScreen`, `PRDescriptionView`, `ObjectReferenceLines`, `PRChangesCard`, `PRStatusCard`, `PRReviewActions`, `.prCard()`, `PRCommentText`, `PRThreadCard` |
+| PR description | PRs → a PR: its title, who it is from, its tickets, then the way into its diff and the review buttons, the PR at a glance, status, description and conversation | `PRScreen`, `PRDescriptionView`, `ObjectReferenceLines`, `PRChangesCard`, `PRReviewActions`, `PRKeyLinesSummaryCard`, `PRStatusCard`, `.prCard()`, `PRCommentText`, `PRThreadCard` |
 | Review in the background | PRs → a PR → Approve, Request changes or Comment → send: the box closes, the toast follows the review | `PRReviewComposer`, `PRReviewToastView` |
 | Ask AI | PRs → a PR → the toolbar, a line's comment box, or a key line's Explain | `PRAskSheet`, `ChatView`, `SessionComposer` |
 | Ask AI at work | a chat going on, or answered, after its sheet closed: the PR's Ask AI tinted (a badge once answered), a bar above the tabs on that PR's pages, a line on its row in the list; any number of PRs at once | `PRAskToolbarButton`, `PRAskStatusBar`, `PRAskLine`, `PRAskActivity` |
@@ -575,6 +575,9 @@ rules:
   - Your standing review (Approved, Changes requested) is chosen: its icon and what you did ("Approved"), with
     `.isSelected`. It shows the moment you send it, ahead of the Worker. A tap opens its box again.
   - What a button opens (PRReviewComposer) opens in place: under the bar on the page, in the bar's place under the diff.
+  - On the page it sits under `PRChangesCard`, both straight after the header: above the fold on a phone, before the PR
+    at a glance, the status and the description.
+  - What GitHub said (`PRNoticeText`) is under the bar on the diff, and under the status on the page, by Merge.
   - Under the diff it leaves with the bars as you read down, and returns with them.
 antiPatterns:
   - A second way to send a review. The diff and the page share this one.
@@ -597,8 +600,8 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
   reviewed / Reviewed on the right, as `PRButtonStyle(.secondary)` buttons. The note stays on screen while the code
   scrolls sideways, as threads and file headers do.
 - **A PR at a glance:** `PRKeyLinesSummaryCard`, above the key lines on `groundFill`, and on a PR's page under its
-  header as one of the page's cards (`prCard`), when the PR's key lines are already on the phone: the page never asks
-  for them. Up to five parts, `Space.md` apart:
+  review buttons as one of the page's cards (`prCard`), when the PR's key lines are already on the phone: the page never
+  asks for them. Up to five parts, `Space.md` apart:
   its risk and why, the bugs found (each a tap to its line), whether it meets its Linear ticket, whether its
   description reads as AI slop, and what it does. Each
   part has a heading, an icon and words through `IconText`'s line, `appSubheadline` semibold: the risk's
