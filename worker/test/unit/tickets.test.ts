@@ -110,6 +110,7 @@ test("Linear's answer fills each ticket; a key it has no issue for is Not found,
       assignee: "Alex Doe",
       assignee_avatar: null,
       delegate: null,
+      delegate_avatar: null,
       found: true,
     },
     { ...unresolved("ENG-404"), found: false },
@@ -255,7 +256,7 @@ test("an agent's PR on a delegated Linear ticket is the ticket assignee's, throu
           url: "https://linear.app/acme/issue/ENG-3414",
           state: { name: "In Review", type: "started", color: "#0f783c" },
           assignee: { name: "Alex Doe", avatarUrl: "https://avatars.example/alex" },
-          delegate: { name: "Atlas" },
+          delegate: { name: "Atlas", avatarUrl: "https://avatars.example/atlas" },
         },
       },
     }),
@@ -280,6 +281,9 @@ test("an agent's PR on a delegated Linear ticket is the ticket assignee's, throu
     null,
     new Set(),
   );
+  // The agent as Linear has it, for the page to show: not its GitHub account's name or picture.
+  assert.equal(tickets[0].delegate, "Atlas");
+  assert.equal(tickets[0].delegate_avatar, "https://avatars.example/atlas");
   assert.equal(pr.detail.authorIsBot, false);
   const owned = withTicketOwner({ ...pr.detail, tickets });
   assert.equal(owned.authorIsBot, true);

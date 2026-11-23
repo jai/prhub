@@ -284,13 +284,14 @@ checked on every run: [`row.json`](../PRKit/Tests/PRContractFixtures/Fixtures/ro
   does (a magic word such as `Fixes`, `Closes` or `Part of` before keys or issue URLs, or a `linear.app/…/issue/KEY`
   URL), each once, in a list ticket's shape: `key`, `url`, `title`, `state`, `state_type`, `state_color`, `assignee`
   (the name of the person Linear assigns it to, null for no one), `assignee_avatar` (their picture in Linear, else
-  null), `delegate` (the name of the agent Linear delegates it to, else null), `found`. With
+  null), `delegate` (the name of the agent Linear delegates it to, else null), `delegate_avatar` (its picture in
+  Linear, else null), `found`. With
   `LINEAR_API_KEY` the Worker asks Linear when it reads the PR: a title's key Linear has no issue for is
   `found: false`, and a key only the branch or description names shows only once Linear has it. Without the key, or
   when Linear does not answer, `found` is null and only the title's keys show.
   On the hosted Worker the key is the account's own (`account.linear_key` in `/device/config`): until it connects
   Linear, the app draws such a key as "Connect Linear to see this ticket", which opens Settings. A ticket stored
-  before `assignee`, `assignee_avatar` or `delegate` was sent reads as null until Linear is asked again within the hour.
+  before `assignee`, `delegate` or their pictures were sent reads as null until Linear is asked again within the hour.
 - A `GET /prs` row's `tickets` are every ticket its title names that Linear has (`found: true`), in the title's order;
   with none from the title, the first its branch or description names that Linear has; in the same shape. Its
   `ticket` is the first of them, for an app older than `tickets`. Empty and null without a Linear connection or while Linear does not answer. Hosted accounts use their own key only. The index

@@ -110,7 +110,7 @@ extension PRSampleSet {
     private static let rateLimitTickets = """
     [{"key": "API-88", "url": "https://linear.app/acme/issue/API-88", "title": "Throttle password reset emails",
       "state": "In Progress", "state_type": "started", "state_color": "#f2c94c", "assignee": "Mona Lisa",
-      "found": true},
+      "delegate": "Acme Agent", "found": true},
      {"key": "SEC-12", "url": "https://linear.app/acme/issue/SEC-12", "title": "Stop reset email floods",
       "state": "Todo", "state_type": "unstarted", "state_color": "#e2e2e2", "found": true}]
     """

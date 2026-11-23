@@ -5,7 +5,7 @@
   "head": "504754b2bc3ce5db892dde980e4bc83b60ff7a68",
   "revision": "504754b2bc3ce5db892dde980e4bc83b60ff7a68-main",
   "diff": "ready",
-  "detail": "2026-11-06T09:30:00Z.SUCCESS.fdd1ac3ccf27bc83",
+  "detail": "2026-11-06T09:30:00Z.SUCCESS.ecdd7a384615441a",
   "status": {
     "list": "review",
     "author": "alex",
@@ -28,7 +28,8 @@
     "state_color": "#f2c94c",
     "assignee": "Alex Doe",
     "assignee_avatar": "https://avatars.linear.app/alex.png",
-    "delegate": null,
+    "delegate": "Atlas",
+    "delegate_avatar": "https://avatars.linear.app/atlas.png",
     "found": true
   },
   "tickets": [
@@ -41,7 +42,8 @@
       "state_color": "#f2c94c",
       "assignee": "Alex Doe",
       "assignee_avatar": "https://avatars.linear.app/alex.png",
-      "delegate": null,
+      "delegate": "Atlas",
+      "delegate_avatar": "https://avatars.linear.app/atlas.png",
       "found": true
     }
   ]

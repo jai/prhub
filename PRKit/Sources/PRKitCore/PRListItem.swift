@@ -46,12 +46,17 @@ public struct PRListTicket: Codable, Hashable, Sendable {
     public var stateColor: String?
     /// Who the ticket is assigned to in Linear, by name: its owner. `nil` for no one, and from a hub that has not sent it.
     public var assignee: String?
+    /// The agent the ticket is delegated to in Linear, by name, and its picture there: `nil` for none, and from a Worker
+    /// that has not sent them.
+    public var delegate: String?
+    public var delegateAvatar: String?
     public var found: Bool?
     public var resolvedAt: Date?
 
     public init(
         key: String, url: String? = nil, title: String? = nil, state: String? = nil, stateType: String? = nil,
-        stateColor: String? = nil, assignee: String? = nil, found: Bool? = nil, resolvedAt: Date? = nil
+        stateColor: String? = nil, assignee: String? = nil, delegate: String? = nil, delegateAvatar: String? = nil,
+        found: Bool? = nil, resolvedAt: Date? = nil
     ) {
         self.key = key
         self.url = url
@@ -60,12 +65,15 @@ public struct PRListTicket: Codable, Hashable, Sendable {
         self.stateType = stateType
         self.stateColor = stateColor
         self.assignee = assignee
+        self.delegate = delegate
+        self.delegateAvatar = delegateAvatar
         self.found = found
         self.resolvedAt = resolvedAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case key, url, title, state, assignee, found
+        case key, url, title, state, assignee, delegate, found
+        case delegateAvatar = "delegate_avatar"
         case stateType = "state_type"
         case stateColor = "state_color"
         case resolvedAt = "resolved_at"

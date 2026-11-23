@@ -122,15 +122,7 @@ struct PRDescriptionView: View {
             Text(session.label)
                 .font(.appCaption)
                 .foregroundStyle(.secondary)
-            HStack(spacing: Space.xs) {
-                PRAvatar(author: detail.bylineAvatar)
-                Text("\(detail.byline) wants \(detail.headBranch) in \(detail.base)")
-                    .font(.appCaption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityIdentifier("pr-author")
+            PRByline(detail: detail)
             tickets
             labels
         }

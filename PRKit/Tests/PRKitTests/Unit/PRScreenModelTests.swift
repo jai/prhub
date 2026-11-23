@@ -78,10 +78,33 @@ struct PRScreenModelTests {
         ]
         let detail = try PullRequestDetail.decode(JSONSerialization.data(withJSONObject: json))
         #expect(detail.byline == "Mona Lisa via hubot (bot)")
+        #expect(detail.requesterShortName == "Mona" && detail.agent == nil, "no ticket is delegated")
         #expect(detail.title("Retry uploads [ENG-7, SEC-12]") == "Retry uploads")
         let tickets = try #require(detail.tickets)
         #expect(tickets.map(\.key) == ["ENG-7", "SEC-12"])
         #expect(tickets[0].title == "Retry uploads" && tickets[0].assignee == "Mona Lisa")
+    }
+
+    @Test func anAgentsBylineShowsTheAgentLinearDelegatedTheTicketTo() throws {
+        var json = try #require(JSONSerialization.jsonObject(with: Data(PRTestPayload.detail().utf8)) as? [String: Any])
+        json["author"] = ["login": "agent-atlas", "name": NSNull(), "avatarUrl": "https://avatars.example/account"]
+        json["authorIsBot"] = true
+        json["requestedBy"] = [
+            "login": NSNull(), "name": "Alex Doe", "avatarUrl": "https://avatars.example/alex", "source": "linear",
+        ]
+        json["tickets"] = [
+            ["key": "SEC-12", "assignee": "Mona Lisa", "delegate": "Other Agent", "found": true],
+            ["key": "ENG-7", "assignee": "Alex Doe", "delegate": "Atlas",
+             "delegate_avatar": "https://avatars.example/atlas", "found": true],
+        ]
+        let detail = try PullRequestDetail.decode(JSONSerialization.data(withJSONObject: json))
+        #expect(detail.requesterShortName == "Alex")
+        #expect(detail.agent?.login == "Atlas", "the delegate of the ticket that named the person")
+        #expect(detail.agent?.avatarUrl == "https://avatars.example/atlas", "Linear's picture, not the GitHub account's")
+        #expect(detail.byline == "Alex Doe via Atlas, agent-atlas (bot)")
+        json["authorIsBot"] = false
+        let person = try PullRequestDetail.decode(JSONSerialization.data(withJSONObject: json))
+        #expect(person.agent == nil && person.requesterShortName == nil && person.byline == "agent-atlas")
     }
 
     @Test func reviewButtonsSpeakTheirStandingReview() {

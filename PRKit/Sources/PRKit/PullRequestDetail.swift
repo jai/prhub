@@ -290,17 +290,40 @@ public enum PRMarkdown {
 
 public extension PullRequestDetail {
     /// Who the PR is from, in a person's words: the human a bot opened it for and the bot, a bot alone, or the author.
-    /// A bot always says it is one.
+    /// A bot always says it is one, after the agent Linear delegated the ticket to where there is one. VoiceOver's words.
     var byline: String {
         let author = author.map { $0.name ?? $0.login } ?? "ghost"
         guard authorIsBot == true else {
             return author
         }
-        let bot = "\(self.author?.login ?? author) (bot)"
+        let bot = [agent?.login, "\(self.author?.login ?? author) (bot)"].compactMap(\.self).joined(separator: ", ")
         guard let human = requestedBy.flatMap({ $0.name ?? $0.login }) else {
             return bot
         }
         return "\(human) via \(bot)"
+    }
+
+    /// The first name of the human a bot opened the PR for, or their login where only that is known.
+    var requesterShortName: String? {
+        guard authorIsBot == true, let requestedBy else {
+            return nil
+        }
+        return requestedBy.name?.split(separator: " ").first.map(String.init) ?? requestedBy.login
+    }
+
+    /// The agent Linear delegated the PR's ticket to, with its name and picture in Linear, on a PR a bot opened. The
+    /// ticket is the one that named the human, where Linear named them.
+    var agent: Author? {
+        guard authorIsBot == true else {
+            return nil
+        }
+        let delegated = (tickets ?? []).first { ticket in
+            ticket.found == true && ticket.delegate != nil
+                && (requestedBy?.source != "linear" || ticket.assignee == requestedBy?.name)
+        }
+        return delegated.flatMap { ticket in
+            ticket.delegate.map { Author(login: $0, avatarUrl: ticket.delegateAvatar, name: $0) }
+        }
     }
 
     /// The face beside the byline: the human a bot opened it for, else the author.

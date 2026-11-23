@@ -24,6 +24,8 @@ struct FixtureContractTests {
         #expect(row.ticket?.key == "ENG-7" && row.ticket?.found == true)
         #expect(row.ticket?.stateText == "In Progress" && row.ticket?.stateColor == "#f2c94c")
         #expect(row.ticket?.assignee == "Alex Doe" && row.tickets?.first?.assignee == "Alex Doe")
+        #expect(row.ticket?.delegate == "Atlas")
+        #expect(row.ticket?.delegateAvatar == "https://avatars.linear.app/atlas.png")
     }
 
     @Test func aMergedRowDecodes() throws {

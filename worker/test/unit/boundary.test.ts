@@ -180,6 +180,7 @@ test("a ticket stored before Linear's assignee was asked for still reads, with n
     assignee: null,
     assignee_avatar: null,
     delegate: null,
+    delegate_avatar: null,
   });
   assert.equal(
     parseStoredTicket(JSON.stringify({ ...stored, assignee: "Alex Doe" }))?.assignee,

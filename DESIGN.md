@@ -434,12 +434,16 @@ parts:
   title:   { holds: "the PR's title without the brackets of tickets shown below", font: appTitle3 semibold }
   state:   { holds: PrStateIcon, column: state }
   ref:     { holds: "repo#N", font: appCaption quiet }
-  byline:  { holds: "PRAvatar and '<who> wants <branch> in <base>'", font: appCaption quiet }
+  byline:  { holds: "PRByline: PRAvatar and who, and for a bot's PR the person, 'via' and a groundFill capsule with the agent's PRAvatar, its name and '· <login>'", font: appCaption }
+  branch:  { holds: "'<branch> → <base>'", font: caption2 monospaced quiet, lines: 1, truncates: middle, starts: under the name }
   tickets: { holds: "ObjectReferenceLines of TicketLine, awaitsLinear false", optional: true }
   labels:  { holds: "an AI trash StatusChip in toneBad when the summary found the description reads as AI slop, then a StatusChip per label in its GitHub colour, darkened on light and lightened on dark until it reads at 4.5:1 (GitHubLabelColor)", scrolls sideways, optional: true }
 rules:
-  - Who: the author's profile name, else their login. A bot's PR says "(bot)" after the bot's login, and leads with
-    the person it was opened for when the Worker found one: "Mona Lisa via hubot (bot)". The face is that person's.
+  - Who: the author's profile name, else their login. A bot's PR leads with the person it was opened for when the
+    Worker found one: their face and first name, "via", then the chip. The chip is the agent Linear delegated the
+    ticket to, with its name and picture in Linear, then the login that opened the PR: "Mona via Atlas · hubot".
+    Without a delegate the chip is the account's picture and "hubot (bot)". At a large text size the chip goes under
+    the person.
   - Tickets are the title's (in brackets), then the branch's, then the description's, as the Worker sends them, with
     Linear's state where it could ask. Without Linear a ticket is its key alone: no "Resolving…" that never resolves.
   - Without Linear on a hosted account that hasn't connected it, the key is followed by "Connect Linear to see this
