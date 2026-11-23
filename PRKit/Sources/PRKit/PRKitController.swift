@@ -162,7 +162,24 @@ struct PRPendingOpen: Equatable {
 @MainActor
 @Observable
 final class PRNavigation {
-    var routes: [PRRoute] = []
+    /// Stored before SwiftUI is told, where `@Observable` tells it first: SwiftUI can redraw while it is being told, read
+    /// the screens from before the change and not be told again, so a review sent from an iPad's diff left its PR up with
+    /// the list hidden (release run 45118718185, 2026-11-23).
+    var routes: [PRRoute] {
+        get {
+            access(keyPath: \.routes)
+            return screens
+        }
+        set {
+            guard newValue != screens else {
+                return
+            }
+            screens = newValue
+            withMutation(keyPath: \.routes) {}
+        }
+    }
+
+    @ObservationIgnored private var screens: [PRRoute] = []
     /// A PR opened from a link or an alert anywhere in the app: the PRs tab shows it, then sets this back to `nil`.
     var pending: PRPendingOpen?
     /// The live chat's bar was tapped: its PR opens with the Ask sheet over it (`openAskActivity`).

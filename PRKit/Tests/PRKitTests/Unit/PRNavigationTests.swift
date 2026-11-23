@@ -109,6 +109,21 @@ struct PRNavigationTests {
         #expect(routes.isEmpty)
     }
 
+    /// A screen SwiftUI redraws while it is being told of the change reads the screens after it: it is not told again
+    /// (the iPad's split view kept a PR up after its review).
+    @Test func aScreenRedrawnAsTheRoutesChangeReadsTheNewOnes() {
+        let navigation = kit.navigation
+        navigation.routes = PRRoute.opening(kit.model.session(for: ref), showsDiff: true)
+        var redrawn: [Int] = []
+        withObservationTracking {
+            _ = navigation.routes
+        } onChange: {
+            MainActor.assumeIsolated { redrawn.append(navigation.routes.count) }
+        }
+        PRStack.routes(Binding(get: { navigation.routes }, set: { navigation.routes = $0 })).leaveDiff()
+        #expect(redrawn == [0], "told once, with the PR already gone")
+    }
+
     @Test func theWideListReplacesThePROnShowAndTheDetailStacksOverIt() {
         let navigation = kit.navigation
         let list = PRStack.replacing(Binding(get: { navigation.routes }, set: { navigation.routes = $0 }))
