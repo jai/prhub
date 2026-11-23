@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/jai/agentchatkit",
       "state" : {
-        "revision" : "8637e41b933e5029473a5dda55a9dbde763871bc",
-        "version" : "0.10.0"
+        "revision" : "5f47bdc95ae58eca99480dad8239be2862a0e9fc",
+        "version" : "0.11.0"
       }
     },
     {
