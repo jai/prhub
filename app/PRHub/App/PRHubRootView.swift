@@ -127,6 +127,8 @@ private struct PRHubTabs: View {
             // A Worker that starts or stops naming FeedbackKit's direct root, or another account, moves Feedback to
             // that path.
             .onChange(of: environment.feedbackPathWanted) { environment.followFeedbackPath() }
+            // Feedback's badge: the chats with a question not answered yet, read at launch and at each foreground.
+            .feedbackAttention(environment.badgedFeedback)
             .alertsOffer(environment.alertPermission)
             .updateOffer(environment.update)
             .environment(\.loadsAuthorAvatars, !environment.isSample)
@@ -157,6 +159,12 @@ private struct PRHubTabs: View {
             environment.connection.config?.isOn(.feedback) == true ? [.prs, .feedback, .settings] : [.prs, .settings]
         }
 
+        /// What the Feedback tab says of its badge: iOS 26 reads no badge out of a tab (iOS 27 says "1 item"), so
+        /// VoiceOver heard nothing of it. Nothing with no chat waiting.
+        private static func badgeWords(_ count: Int) -> String {
+            count > 0 ? "\(count) \(count == 1 ? "needs" : "need") you" : ""
+        }
+
         private var tabBar: some View {
             @Bindable var navigation = environment.navigation
             let tabs = tabs
@@ -177,6 +185,8 @@ private struct PRHubTabs: View {
                             .prKitOfflineBanner(environment.prs)
                     }
                     .accessibilityIdentifier(PRHubTab.feedback.identifier)
+                    .badge(environment.feedback.needsAttentionCount)
+                    .accessibilityValue(Self.badgeWords(environment.feedback.needsAttentionCount))
                 }
                 Tab("Settings", systemImage: AppIcon.settings.symbol, value: PRHubTab.settings) {
                     PRHubSettingsView(environment: environment, endSample: endSample, signIn: signIn)

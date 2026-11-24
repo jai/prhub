@@ -22,8 +22,8 @@
     ///   for the diff's bars; with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View; with
     ///   `-PRHubSlowReview` a review takes 10 seconds to land, so a UI test still finds its toast after a navigation;
     ///   with `-PRHubFeedback` the Worker serves Feedback, over two sample chats that never leave the device
-    ///   (`FeatureSamples.prHub`), and with `-PRHubFeedbackPush <chat>` it opens as a tapped push of that feedback
-    ///   chat does.
+    ///   (`FeatureSamples.prHub`), with `-PRHubFeedbackPush <chat>` it opens as a tapped push of that feedback
+    ///   chat does, and with `-PRHubFeedbackAsks` a third chat's agent has asked a question, so Feedback is badged.
     ///
     /// Each launch starts on empty storage of its own (`PRHubUITestResources`). `-prkit.diffFont face:size` sets one for
     /// the run. `-PRHubAppearance dark` (or `light`) sets the run's appearance whatever the Simulator's is: on CI's
@@ -53,7 +53,8 @@
                 config: DeviceConfig(
                     features: servesFeedback ? features.union([.feedback]) : features, login: PRSampleSet.prHubLogin
                 ),
-                samples: pairedSamples(arguments), feedbackSamples: servesFeedback ? .prHub : nil,
+                samples: pairedSamples(arguments),
+                feedbackSamples: servesFeedback ? (arguments.contains("-PRHubFeedbackAsks") ? .prHubAsking : .prHub) : nil,
                 worker: URL(string: "https://pr-review.octocat.workers.dev")!,
                 isSample: false, usage: usage(resources.defaults), testFlightGroup: testFlightGroup,
                 storage: resources.storage(), build: .current, alertPermission: resources.alertPermission(),

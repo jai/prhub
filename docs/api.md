@@ -246,6 +246,11 @@ and the routes above stay as the fallback. FeedbackKit's live chat draws a sent 
 the phone also registers its APNs token with FeedbackKit (`POST /v2/devices`, removed at sign-out), which pushes a
 chat's answers and questions itself; a tap on one opens Feedback on the chat it names (`feedbackkit.chat`).
 
+**Badge.** The phone's Feedback tab and the Mac toolbar's Feedback button carry the count of chats whose agent asked a
+question with no answer yet: FeedbackKit's `needsAttentionCount`, from the list's rows (`agent.state` `needs_you` with
+`asks`), on either path and with no route of its own. The list is read at launch, at each foreground and every
+5 minutes, and a feedback chat's push in front or tapped counts at once.
+
 | Route | Body | Answer |
 |---|---|---|
 | `POST /feedback/token` | | `{token, expires_at, url}`; `404` while the direct path is off |

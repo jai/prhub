@@ -93,6 +93,16 @@ final class PRHubMacFeedbackUITests: XCTestCase {
         picture("feedback-sent")
     }
 
+    /// The toolbar's Feedback button says how many chats have a question not answered yet, as the phone's tab does.
+    func testAnOpenQuestionIsCountedOnTheToolbarsFeedbackButton() {
+        launch(["-PRHubPaired", "-PRHubFeedback", "-PRHubFeedbackAsks"])
+        let feedback = element("prhub-mac-feedback")
+        XCTAssertTrue(feedback.waitForExistence(timeout: 5), "Feedback is in the PRs window's toolbar")
+        let counted = NSPredicate { button, _ in ((button as? XCUIElement)?.value as? String ?? "").hasPrefix("1 ") }
+        wait(for: [expectation(for: counted, evaluatedWith: feedback)], timeout: 15)
+        picture("feedback-button-badged")
+    }
+
     func testAWorkerWithNoFeedbackHasNoFeedbackButton() {
         launch(["-PRHubPaired"])
         XCTAssertFalse(element("prhub-mac-feedback").exists, "no Feedback button where the Worker serves none")

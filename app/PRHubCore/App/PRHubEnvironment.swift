@@ -66,6 +66,12 @@ public final class PRHubEnvironment {
     @ObservationIgnored public private(set) lazy var notificationDelegate = PRHubNotificationDelegate(
         open: { [weak self] ref, row in self?.openAlert(ref, row: row) },
         openFeedback: { [weak self] chat in self?.openFeedbackChat(chat) },
+        feedbackPush: { [weak self] push in
+            guard let self else {
+                return
+            }
+            Task { await self.badgedFeedback?.received(push) }
+        },
         signedOut: { [weak self] in
             guard let self else {
                 return
@@ -377,6 +383,12 @@ public final class PRHubEnvironment {
             return
         }
         navigation.showFeedbackChat(chat)
+    }
+
+    /// The Feedback whose chats badge its tab and the Mac's toolbar button: none while no Worker is paired or it serves
+    /// no Feedback, as there is no Feedback then.
+    public var badgedFeedback: FeatureRequestsModel? {
+        !isSample && connection.isPaired && sample == nil && connection.config?.isOn(.feedback) == true ? feedback : nil
     }
 
     /// Just paired, or a config read: offers alerts once the Worker pushes.

@@ -11,16 +11,29 @@ import UserNotifications
 public final class PRHubNotificationDelegate: NSObject, UNUserNotificationCenterDelegate, Sendable {
     private let open: @MainActor @Sendable (PullRequestRef, PullRequestRow?) -> Void
     private let openFeedback: @MainActor @Sendable (String) -> Void
+    /// A feedback chat's push arrived in front or was tapped: Feedback's badge counts from it.
+    private let feedbackPush: @MainActor @Sendable (FeedbackPush) -> Void
     private let signedOut: @MainActor @Sendable () -> Void
 
     init(
         open: @escaping @MainActor @Sendable (PullRequestRef, PullRequestRow?) -> Void,
         openFeedback: @escaping @MainActor @Sendable (String) -> Void = { _ in },
+        feedbackPush: @escaping @MainActor @Sendable (FeedbackPush) -> Void = { _ in },
         signedOut: @escaping @MainActor @Sendable () -> Void = {}
     ) {
         self.open = open
         self.openFeedback = openFeedback
+        self.feedbackPush = feedbackPush
         self.signedOut = signedOut
+    }
+
+    /// Everything of an arrival but the system's types, so a test can play it.
+    func arrived(_ userInfo: [AnyHashable: Any]) {
+        guard let push = FeedbackPush(userInfo: userInfo) else {
+            return
+        }
+        let feedbackPush = feedbackPush
+        Task { @MainActor in feedbackPush(push) }
     }
 
     /// `reason: signed_out` (docs/api.md, "Errors on every other route").
@@ -36,6 +49,7 @@ public final class PRHubNotificationDelegate: NSObject, UNUserNotificationCenter
             let signedOut = signedOut
             Task { @MainActor in signedOut() }
         }
+        arrived(notification.request.content.userInfo)
         completionHandler([.banner, .sound, .list])
     }
 
@@ -48,6 +62,7 @@ public final class PRHubNotificationDelegate: NSObject, UNUserNotificationCenter
             let signedOut = signedOut
             Task { @MainActor in signedOut() }
         }
+        arrived(userInfo)
         let ref = PRPush(userInfo: userInfo)?.openedPullRequest
         let row = PRPush.row(in: userInfo)
         let action = response.actionIdentifier

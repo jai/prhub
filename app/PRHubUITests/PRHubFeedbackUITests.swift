@@ -29,6 +29,29 @@ final class PRHubFeedbackUITests: PRHubUITestCase {
         recordScreenshot("feedback-push-opened")
     }
 
+    /// The tab says how many chats have a question not answered yet, before Feedback is opened (Jai, 2026-11-24:
+    /// "expose it as a badge on the tab bar"); with none, it says nothing.
+    func testAnOpenQuestionBadgesTheFeedbackTab() throws {
+        try XCTSkipIf(UIDevice.current.userInterfaceIdiom == .pad, "an iPad's bar draws its badge another way")
+        app.launchArguments = ["-PRHubPaired", "-PRHubFeedback", "-PRHubFeedbackAsks"]
+        app.launch()
+        let tab = app.tab(.feedback)
+        XCTAssertTrue(tab.waitForExistence(timeout: 15), "the Feedback tab")
+        // The tab says its badge in its value, "1 needs you": the app's words, as iOS 26 reads no badge out of a tab.
+        let badged = NSPredicate { tab, _ in ((tab as? XCUIElement)?.value as? String ?? "").hasPrefix("1") }
+        wait(for: [expectation(for: badged, evaluatedWith: tab)], timeout: 15)
+        recordScreenshot("feedback-tab-badged")
+    }
+
+    func testWithNoOpenQuestionTheFeedbackTabHasNoBadge() throws {
+        try XCTSkipIf(UIDevice.current.userInterfaceIdiom == .pad, "an iPad's bar draws its badge another way")
+        app.launchArguments = ["-PRHubPaired", "-PRHubFeedback"]
+        app.launch()
+        app.go(to: .feedback)
+        XCTAssertTrue(app.buttons["feedback-new"].firstMatch.waitForExistence(timeout: 10), "the list has been read")
+        XCTAssertEqual(app.tab(.feedback).value as? String ?? "", "", "two chats, neither with a question")
+    }
+
     func testAWorkerWithNoFeedbackHasNoFeedbackTab() {
         app.launchArguments = ["-PRHubPaired"]
         app.launch()

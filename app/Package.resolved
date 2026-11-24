@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/jai/feedbackkit",
       "state" : {
-        "revision" : "16e6bd1efa1293da7ef8be9469c4805292403ebd",
-        "version" : "0.20.0"
+        "revision" : "ae07144e5a4eb3cf74e753182d8f4c17e742b62a",
+        "version" : "0.21.0"
       }
     },
     {

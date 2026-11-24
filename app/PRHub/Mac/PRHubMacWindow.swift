@@ -1,3 +1,4 @@
+import FeatureKit
 import PRHubCore
 import PRKit
 import PRKitDesign
@@ -7,7 +8,8 @@ import SwiftUI
 /// Smaller changes it. Whatever asks for the phone's Settings tab (`prhub://settings`) opens the Settings window, and
 /// whatever asks for its Feedback tab opens the Feedback window. Feedback has a button in the toolbar, where the Worker
 /// serves it, as the phone has its tab (Jai, 2026-11-24: "Mac version doesn't have a feedback tab?"; the Window menu's
-/// item alone was not found).
+/// item alone was not found). The button carries the count of feedback chats with a question not answered yet, as the
+/// phone's tab carries its badge.
 struct PRHubMacWindow: View {
     let environment: PRHubEnvironment
     @AppStorage(MacTextSize.key) private var textScale = MacTextSize.standard
@@ -24,12 +26,27 @@ struct PRHubMacWindow: View {
             .frame(minWidth: 720, minHeight: 480)
             .toolbar {
                 if environment.connection.config?.isOn(.feedback) == true {
+                    let waiting = environment.feedback.needsAttentionCount
                     ToolbarItem(placement: .primaryAction) {
-                        Button("Feedback", systemImage: AppIcon.conversation.symbol) {
+                        Button {
                             openWindow(id: PRHubMacFeedback.windowID)
+                        } label: {
+                            Label {
+                                HStack(spacing: Space.xs) {
+                                    Text("Feedback")
+                                    // A Mac toolbar item takes no badge of the system's: the count sits in the label.
+                                    if waiting > 0 {
+                                        MacFeedbackCount(count: waiting)
+                                    }
+                                }
+                            } icon: {
+                                Image(systemName: AppIcon.conversation.symbol)
+                            }
                         }
                         .labelStyle(.titleAndIcon)
                         .help("Send feedback and follow your requests (⇧⌘F)")
+                        .accessibilityLabel("Feedback")
+                        .accessibilityValue(waiting > 0 ? "\(waiting) need you" : "")
                         .accessibilityIdentifier("prhub-mac-feedback")
                     }
                 }
@@ -52,5 +69,20 @@ struct PRHubMacWindow: View {
                     await environment.prs.refresh(.foreground)
                 }
             }
+    }
+}
+
+/// How many feedback chats have a question not answered yet, as a badge beside the toolbar button's title.
+private struct MacFeedbackCount: View {
+    let count: Int
+
+    var body: some View {
+        Text(count, format: .number)
+            .font(.appCaption.weight(.semibold))
+            .monospacedDigit()
+            .foregroundStyle(Color.onAccent)
+            .padding(.horizontal, Space.xs)
+            .background(Color.toneBad, in: .capsule)
+            .accessibilityHidden(true)
     }
 }

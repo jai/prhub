@@ -35,5 +35,16 @@
             },
             answer: "Got it. I'll make the change, test it on the iPhone and the Mac, and reply here with the build."
         )
+
+        /// `-PRHubFeedbackAsks`: those chats and one more, whose agent asked a question with no answer yet, so
+        /// Feedback is badged.
+        static var prHubAsking: FeatureSamples {
+            var samples = prHub
+            samples.list.threads.append(FeedbackThread(
+                id: "fb_sample_asks", title: "Sort the list by repo", createdAt: "2026-11-17T10:05:00Z",
+                agent: FeedbackThreadAgent(state: .needsYou, activity: nil, isQueued: false, asks: true)
+            ))
+            return samples
+        }
     }
 #endif

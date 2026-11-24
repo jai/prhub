@@ -123,6 +123,27 @@ struct PRHubFeedbackPushTests {
         #expect(opened.with { $0 } == ["fb_3edc7ec3310c4e9e"])
     }
 
+    /// Feedback's badge counts from a feedback chat's push, in front or tapped; a PR's alert is no news of a chat.
+    @MainActor @Test func aFeedbackPushReachesTheBadgeAndAPRsAlertDoesNot() async {
+        let (pushes, arrivals) = AsyncStream<FeedbackPush>.makeStream()
+        let delegate = PRHubNotificationDelegate(open: { _, _ in }, feedbackPush: { arrivals.yield($0) })
+        delegate.arrived(["aps": ["alert": "Review requested"], "repo": "acme/web", "number": 412])
+        var question = Self.reply
+        question["feedbackkit"] = ["chat": "fb_3edc7ec3310c4e9e", "app": "prhub", "kind": "reply", "asks": true]
+        delegate.arrived(question)
+        var arrived = pushes.makeAsyncIterator()
+        #expect(await arrived.next() == FeedbackPush(chat: "fb_3edc7ec3310c4e9e", app: "prhub", kind: .reply, asks: true))
+    }
+
+    /// The badge counts only where there is a Feedback to open: a paired Worker that serves it.
+    @MainActor @Test func feedbackIsBadgedOnlyWhereTheWorkerServesIt() {
+        let resources = UnitResources()
+        let serving = resources.paired(features: [.feedback])
+        #expect(serving.badgedFeedback === serving.feedback)
+        #expect(resources.paired(features: []).badgedFeedback == nil)
+        #expect(resources.sample().badgedFeedback == nil, "the samples have no Feedback")
+    }
+
     @MainActor @Test func anOpenedFeedbackChatShowsFeedbackOnlyWhereTheWorkerServesIt() {
         let resources = UnitResources()
         let serving = resources.paired(features: [.feedback])
