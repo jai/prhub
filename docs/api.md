@@ -242,7 +242,9 @@ App routes (app auth):
 
 **Direct.** With `FEEDBACKKIT_APP_KEY` (a secret: this app's key in FeedbackKit's `APP_KEYS`) and
 `FEEDBACKKIT_PUBLIC_URL` (FeedbackKit's `https` root) as well, the app talks to FeedbackKit itself, on its `/v2` routes,
-and the routes above stay as the fallback. FeedbackKit's live chat draws a sent screenshot only this way.
+and the routes above stay as the fallback. FeedbackKit's live chat draws a sent screenshot only this way. On this path
+the phone also registers its APNs token with FeedbackKit (`POST /v2/devices`, removed at sign-out), which pushes a
+chat's answers and questions itself; a tap on one opens Feedback on the chat it names (`feedbackkit.chat`).
 
 | Route | Body | Answer |
 |---|---|---|

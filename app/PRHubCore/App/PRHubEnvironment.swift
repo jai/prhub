@@ -32,9 +32,16 @@ public final class PRHubEnvironment {
     /// The Feedback tab's: on FeedbackKit's direct path while the Worker's config names one, else through the Worker
     /// (`followFeedbackPath`).
     public private(set) var feedback: FeatureRequestsModel
-    /// The FeedbackKit root `feedback` is on; nil through the Worker.
-    @ObservationIgnored private var feedbackRoot: URL?
+    /// The path `feedback` is on: its FeedbackKit root, nil through the Worker, and the account whose list it keeps.
+    @ObservationIgnored private var feedbackPath = PRHubFeedbackPath()
     @ObservationIgnored private var feedbackTokens: PRHubFeedbackTokens?
+    /// Whether Feedback follows the Worker's config (`followFeedbackPath`): not over the samples, a fixture or a check.
+    @ObservationIgnored private let followsFeedbackPath: Bool
+    /// This phone, for the pushes of its feedback chats: registered with FeedbackKit while Feedback is on its direct
+    /// path. The Mac gets no pushes, so no token arrives there.
+    @ObservationIgnored public let feedbackDevices = PRHubFeedbackDevices()
+    /// The last word to `feedbackDevices`, so a move to a path and a move off it reach it in order.
+    @ObservationIgnored private var feedbackDevicesMove: Task<Void, Never>?
     /// Anonymous usage events, and Settings' switch for them.
     public let usage: UsageAnalytics
     @ObservationIgnored private let storage: PRHubStorage
@@ -58,6 +65,7 @@ public final class PRHubEnvironment {
     /// Set as the notification center's delegate at launch (`AppDelegate`), which holds it weakly.
     @ObservationIgnored public private(set) lazy var notificationDelegate = PRHubNotificationDelegate(
         open: { [weak self] ref, row in self?.openAlert(ref, row: row) },
+        openFeedback: { [weak self] chat in self?.openFeedbackChat(chat) },
         signedOut: { [weak self] in
             guard let self else {
                 return
@@ -98,13 +106,9 @@ public final class PRHubEnvironment {
         )
         refusals.connection = connection
         navigation = PRHubNavigation(pullRequests: prs)
-        let tokens = PRHubFeedbackTokens(client: prs.client)
-        feedbackTokens = tokens
-        let root = connection.config?.feedbackDirect?.url
-        feedbackRoot = root
-        feedback = FeatureRequestsModel(
-            client: Self.feedbackClient(prs: prs, root: root, tokens: tokens, usage: usage)
-        )
+        followsFeedbackPath = true
+        // The Worker's `/feedback` routes until `followFeedbackPath`, below, has read the config kept on the phone.
+        feedback = FeatureRequestsModel(client: FeatureClient(viewer: prs.client, keptIn: prs.keptFolder), keep: nil)
         isSample = false
         let connection = connection
         host.config = { connection.config }
@@ -118,14 +122,16 @@ public final class PRHubEnvironment {
             // The config as last read: MetricKit hands its payloads early in a launch, a wake's too.
             metricKit?.update(isOn: connection.config?.metricKit == true)
         #endif
+        followFeedbackPath()
     }
 
-    /// Over `access` (none: nothing is sent) and, for "Try with sample PRs", `samples`.
+    /// Over `access` (none: nothing is sent) and, for "Try with sample PRs", `samples`. `feedbackSamples` are a
+    /// fixture's Feedback chats, which never leave the device.
     init(
         connection: WorkerConnection, storage: PRHubStorage, alertPermission: PRHubAlertPermission,
         access: PRViewerAccess = .offline, samples: PRSampleSet? = nil, isSample: Bool = false,
         usage: UsageAnalytics, outbox: (any PRKitOutbox)? = nil, update: PRHubUpdate? = nil,
-        transport: (any HTTPTransport)? = nil, network: PRNetwork? = nil
+        transport: (any HTTPTransport)? = nil, network: PRNetwork? = nil, feedbackSamples: FeatureSamples? = nil
     ) {
         let defaults = storage.prs.settings
         self.alertPermission = alertPermission
@@ -144,7 +150,8 @@ public final class PRHubEnvironment {
         self.outbox = nil
         self.isSample = isSample
         navigation = PRHubNavigation(pullRequests: prs)
-        feedback = FeatureRequestsModel(client: FeatureClient(viewer: prs.client))
+        followsFeedbackPath = false
+        feedback = FeatureRequestsModel(client: FeatureClient(viewer: prs.client, samples: feedbackSamples), keep: nil)
         #if os(iOS)
             metricKit = nil
         #endif
@@ -221,41 +228,88 @@ public final class PRHubEnvironment {
         }
     }
 
-    /// FeedbackKit's direct path when the Worker names its root (`feedback_direct`), with tokens from the Worker; else
-    /// the Worker's `/feedback` routes, whose chats are kept on the device for offline.
-    /// Its requests go through `PRHubFeedbackTransport`, so each send's outcome is recorded.
-    static func feedbackClient(
-        prs: PRKitController, root: URL?, tokens: PRHubFeedbackTokens, usage: UsageAnalytics
-    ) -> FeatureClient {
-        guard let root else {
-            return FeatureClient(viewer: prs.client, keptIn: prs.keptFolder)
-        }
-        let transport = PRHubFeedbackTransport { event in Task { @MainActor in usage.record(event) } }
-        let direct = FeedbackDirect(
-            baseURL: root, token: { renew in try await tokens.token(renew: renew) }, http: transport
-        )
-        return FeatureClient(direct: direct)
+    /// Where the Worker's config says Feedback goes now, and whose list it keeps.
+    public var feedbackPathWanted: PRHubFeedbackPath {
+        PRHubFeedbackPath(host: connection.host, config: connection.isPaired ? connection.config : nil)
     }
 
-    /// A new config that names another FeedbackKit root, or none: the Feedback tab moves to that path. Nothing when it
-    /// is the same.
+    /// A config that names another FeedbackKit root, none, or another person: Feedback moves to that path, with that
+    /// account's kept list and tokens of its own. Nothing when the path is the same.
     public func followFeedbackPath() {
-        guard let tokens = feedbackTokens else {
+        guard followsFeedbackPath else {
             return
         }
-        let root = connection.config?.feedbackDirect?.url
-        guard root != feedbackRoot else {
+        let wanted = feedbackPathWanted
+        guard wanted != feedbackPath || feedbackTokens == nil else {
             return
         }
-        feedbackRoot = root
-        feedback = FeatureRequestsModel(
-            client: Self.feedbackClient(prs: prs, root: root, tokens: tokens, usage: usage)
-        )
+        feedbackPath = wanted
+        makeFeedback()
+    }
+
+    /// FeedbackKit's direct path when the Worker names its root (`feedback_direct`), with tokens from the Worker; else
+    /// the Worker's `/feedback` routes, whose chats are kept on the device for offline. The direct path's requests go
+    /// through `PRHubFeedbackTransport`, so each send's outcome is recorded, and it registers this phone for the
+    /// chats' pushes.
+    private func makeFeedback() {
+        let tokens = PRHubFeedbackTokens(client: prs.client)
+        feedbackTokens = tokens
+        let keep = AppIdentity.isRunningTests ? nil : feedbackPath.keep
+        let devices = feedbackDevices
+        guard let root = feedbackPath.root else {
+            feedback = FeatureRequestsModel(
+                client: FeatureClient(viewer: prs.client, keptIn: prs.keptFolder), keep: keep
+            )
+            feedbackDevicesMove = Task { [last = feedbackDevicesMove] in
+                await last?.value
+                await devices.disconnected()
+            }
+            return
+        }
+        let direct = Self.feedbackDirect(root: root, tokens: tokens, usage: usage)
+        feedback = FeatureRequestsModel(client: FeatureClient(direct: direct), keep: keep)
+        let environment: FeedbackPushEnvironment =
+            APNSEnvironment.current() == APNSEnvironment.sandbox ? .sandbox : .production
+        feedbackDevicesMove = Task { [last = feedbackDevicesMove] in
+            await last?.value
+            await devices.connected(
+                register: { try await direct.registerDevice(token: $0, environment: environment) },
+                unregister: { try await direct.unregisterDevice(token: $0) }
+            )
+        }
+    }
+
+    static func feedbackDirect(root: URL, tokens: PRHubFeedbackTokens, usage: UsageAnalytics) -> FeedbackDirect {
+        let transport = PRHubFeedbackTransport { event in Task { @MainActor in usage.record(event) } }
+        return FeedbackDirect(baseURL: root, token: { renew in try await tokens.token(renew: renew) }, http: transport)
+    }
+
+    /// Before the account leaves, while its session still answers: FeedbackKit forgets this phone, so the account's
+    /// chats push nothing here. Best effort, for 3 seconds at most.
+    private func forgetFeedbackDevice() async {
+        let devices = feedbackDevices
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await devices.forget() }
+            group.addTask { try? await Task.sleep(for: .seconds(3)) }
+            await group.next()
+            group.cancelAll()
+        }
+    }
+
+    /// The account left: its kept Feedback list goes, and Feedback starts again on whatever path is left.
+    private func forgetFeedback() {
+        guard followsFeedbackPath else {
+            return
+        }
+        feedbackPath.keep?.clear()
+        feedbackTokens = nil
+        followFeedbackPath()
     }
 
     /// Settings' Disconnect: the Worker forgets this phone, the phone forgets the Worker and every PR it mirrored, so
     /// the next Worker starts from nothing.
     public func disconnect() async {
+        await forgetFeedbackDevice()
         await connection.disconnect()
         forgetLocalData()
     }
@@ -269,16 +323,19 @@ public final class PRHubEnvironment {
             prs.forgetEverything()
             await outbox?.forget()
         }
+        followFeedbackPath()
     }
 
     /// Settings' Sign out, or Sign in again's: the session ends, and the phone forgets every PR it mirrored.
     public func signOut() async {
+        await forgetFeedbackDevice()
         await connection.signOut()
         forgetLocalData()
     }
 
     /// Settings' Delete Account: the Worker deletes the account and revokes PRHub on GitHub; the phone forgets it all.
     public func deleteAccount() async throws(AccountActionError) {
+        await forgetFeedbackDevice()
         try await connection.deleteAccount()
         forgetLocalData()
     }
@@ -294,6 +351,7 @@ public final class PRHubEnvironment {
         }
         prs.forgetEverything()
         alertPermission.forgetDecline()
+        forgetFeedback()
         if let outbox {
             Task { await outbox.forget() }
         }
@@ -307,6 +365,15 @@ public final class PRHubEnvironment {
             return
         }
         navigation.showAlert(ref, row: row)
+    }
+
+    /// A tapped push of a feedback chat (FeedbackKit's own, `FeedbackPush`): Feedback, on that chat. Nothing while no
+    /// Worker is paired or it serves no Feedback, as there is no Feedback tab then.
+    func openFeedbackChat(_ chat: String) {
+        guard !isSample, connection.isPaired, sample == nil, connection.config?.isOn(.feedback) == true else {
+            return
+        }
+        navigation.showFeedbackChat(chat)
     }
 
     /// Just paired, or a config read: offers alerts once the Worker pushes.
@@ -332,6 +399,9 @@ public final class PRHubEnvironment {
         }
         update.check(connection.config)
         sendPrefetchReports()
+        followFeedbackPath()
+        // A registration with FeedbackKit that failed goes again.
+        Task { await feedbackDevices.retry() }
         // Beside the sync: every alert still in Notification Center opens its PR from the phone.
         async let alerts: Void = keepAlerts()
         // The sync sends this launch's push token too, when the Worker pushes.

@@ -1,3 +1,4 @@
+import FeatureKit
 import Foundation
 import Observation
 import PRKitCore
@@ -5,16 +6,20 @@ import UserNotifications
 
 /// PRHub's notification delegate: a pr-worker alert shows while the app is in front, and its tap opens the PR
 /// (docs/api.md, "Alerts") from the row it carried, which PRHubNotifications has usually fetched already. The hosted Worker's `signed_out` alert shows Sign in again, whether it arrives in front or
-/// is tapped. Nonisolated: the system names no thread for these calls.
+/// is tapped. A push of a feedback chat (FeedbackKit's own, `FeedbackPush`) shows the same way, and its tap opens that
+/// chat. Nonisolated: the system names no thread for these calls.
 public final class PRHubNotificationDelegate: NSObject, UNUserNotificationCenterDelegate, Sendable {
     private let open: @MainActor @Sendable (PullRequestRef, PullRequestRow?) -> Void
+    private let openFeedback: @MainActor @Sendable (String) -> Void
     private let signedOut: @MainActor @Sendable () -> Void
 
     init(
         open: @escaping @MainActor @Sendable (PullRequestRef, PullRequestRow?) -> Void,
+        openFeedback: @escaping @MainActor @Sendable (String) -> Void = { _ in },
         signedOut: @escaping @MainActor @Sendable () -> Void = {}
     ) {
         self.open = open
+        self.openFeedback = openFeedback
         self.signedOut = signedOut
     }
 
@@ -48,7 +53,9 @@ public final class PRHubNotificationDelegate: NSObject, UNUserNotificationCenter
         let action = response.actionIdentifier
         // Not Sendable, but only ever called once, on the main actor.
         nonisolated(unsafe) let done = completionHandler
-        respond(action: action, pullRequest: ref, row: row) { done() }
+        respond(action: action, pullRequest: ref, row: row, feedbackChat: FeedbackPush(userInfo: userInfo)?.chat) {
+            done()
+        }
     }
 
     /// The PR rows of the alerts still in Notification Center, newest first (`PRKitController.keepAlerts`).
@@ -60,12 +67,16 @@ public final class PRHubNotificationDelegate: NSObject, UNUserNotificationCenter
 
     /// Everything of a tap but the system's types, so a test can play it.
     func respond(
-        action: String, pullRequest: PullRequestRef?, row: PullRequestRow? = nil,
+        action: String, pullRequest: PullRequestRef?, row: PullRequestRow? = nil, feedbackChat: String? = nil,
         completion: @escaping @MainActor @Sendable () -> Void
     ) {
         Task { @MainActor in
-            if let pullRequest, action == UNNotificationDefaultActionIdentifier {
-                open(pullRequest, row)
+            if action == UNNotificationDefaultActionIdentifier {
+                if let pullRequest {
+                    open(pullRequest, row)
+                } else if let feedbackChat {
+                    openFeedback(feedbackChat)
+                }
             }
             completion()
         }

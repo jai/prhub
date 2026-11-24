@@ -1,4 +1,5 @@
 import DurableNetworking
+import FeatureKit
 import Foundation
 
 /// "Try with sample PRs": PRHub with no pr-worker, for anyone who has not deployed one yet, App Review included. The
@@ -21,7 +22,7 @@ extension PRHubEnvironment {
     /// `storage.sampleConfiguration`. Nothing is sent to `worker`; the samples' is a name that resolves nowhere.
     static func offline(
         config: DeviceConfig, access: PRViewerAccess = .offline, samples: PRSampleSet? = nil,
-        worker: URL = URL(string: "https://samples.prhub.invalid")!,
+        feedbackSamples: FeatureSamples? = nil, worker: URL = URL(string: "https://samples.prhub.invalid")!,
         isSample: Bool, usage: UsageAnalytics, outbox: (any PRKitOutbox)? = nil, checksUpdates: Bool = false,
         testFlightGroup: TestFlightGroup = .public, transport: (any HTTPTransport)? = nil, storage: PRHubStorage,
         build: PRHubBuild, alertPermission: PRHubAlertPermission, network: PRNetwork? = nil
@@ -38,7 +39,7 @@ extension PRHubEnvironment {
             connection: connection, storage: storage, alertPermission: alertPermission, access: access,
             samples: samples, isSample: isSample, usage: usage, outbox: outbox,
             update: PRHubUpdate(group: testFlightGroup, defaults: defaults, isEnabled: checksUpdates, usage: usage),
-            transport: transport, network: network
+            transport: transport, network: network, feedbackSamples: feedbackSamples
         )
     }
 }

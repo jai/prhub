@@ -20,6 +20,11 @@ there:
 - Short reports of each sync and of how long a PR took to open, for your pr-worker's own use.
 - Your phone's push token, when push is on. The pr-worker uses it to wake the app when a PR changes.
 
+When your pr-worker names a FeedbackKit service for Feedback, the app sends your feedback to that service itself, with
+a short-lived token from your pr-worker. It also sends your phone's push token there, so that an answer in one of your
+feedback chats reaches you as a notification. When you sign out or disconnect, the app asks the service to forget that
+token.
+
 The app uses the camera only to read the setup QR code. It keeps no image.
 
 In "Try with sample PRs", the app sends nothing to GitHub or to a Worker. The sample PRs and what you do with them stay

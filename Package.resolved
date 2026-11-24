@@ -1,5 +1,5 @@
 {
-  "originHash" : "ca1e800b29c2f5a3a787581521fdc92e2ca8e4c27dddc6bf5253f53f05efac6d",
+  "originHash" : "6d878a32a008ddc5e16576692d3aff0002238e3ed77141d7db243aa47242bb9d",
   "pins" : [
     {
       "identity" : "agentchatkit",
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/jai/feedbackkit",
       "state" : {
-        "revision" : "7f83a29b9a57745e8e4027ea17bb4149a74e6a07",
-        "version" : "0.12.0"
+        "revision" : "16e6bd1efa1293da7ef8be9469c4805292403ebd",
+        "version" : "0.20.0"
       }
     }
   ],

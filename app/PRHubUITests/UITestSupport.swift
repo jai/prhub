@@ -58,6 +58,7 @@ class PRHubUITestCase: XCTestCase {
 /// `go(to:)` and never through `tabBars`.
 enum PRHubPlace: String {
     case prs = "prhub-tab-prs"
+    case feedback = "prhub-tab-feedback"
     case settings = "prhub-tab-settings"
 }
 

@@ -20,12 +20,15 @@
             return true
         }
 
-        /// To the pr-worker's `POST /device/register`, when that Worker pushes (docs/api.md).
+        /// To the pr-worker's `POST /device/register`, when that Worker pushes (docs/api.md), and to FeedbackKit, which
+        /// pushes its own chats' answers (`PRHubFeedbackDevices`).
         func application(
             _: UIApplication,
             didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
         ) {
-            PRHubEnvironment.shared.prs.register(apnsToken: APNSEnvironment.hex(deviceToken))
+            let token = APNSEnvironment.hex(deviceToken)
+            PRHubEnvironment.shared.prs.register(apnsToken: token)
+            Task { await PRHubEnvironment.shared.feedbackDevices.tokenArrived(token) }
         }
 
         /// No token: PRHub syncs when opened instead.

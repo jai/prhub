@@ -20,7 +20,10 @@
     /// - `-PRHubPaired`: the PRs and Settings over the sample PRs as if paired, every AI feature on. With `-PRHubSettings`
     ///   it opens on Settings; with `-PRHubLongDiff` For review starts with a PR whose one file is longer than the screen,
     ///   for the diff's bars; with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View; with
-    ///   `-PRHubSlowReview` a review takes 10 seconds to land, so a UI test still finds its toast after a navigation.
+    ///   `-PRHubSlowReview` a review takes 10 seconds to land, so a UI test still finds its toast after a navigation;
+    ///   with `-PRHubFeedback` the Worker serves Feedback, over two sample chats that never leave the device
+    ///   (`FeatureSamples.prHub`), and with `-PRHubFeedbackPush <chat>` it opens as a tapped push of that feedback
+    ///   chat does.
     ///
     /// Each launch starts on empty storage of its own (`PRHubUITestResources`). `-prkit.diffFont face:size` sets one for
     /// the run. `-PRHubAppearance dark` (or `light`) sets the run's appearance whatever the Simulator's is: on CI's
@@ -44,9 +47,13 @@
                 return environment
             }
             // `-PRHubPaired`, the one fixture mode left.
+            let servesFeedback = arguments.contains("-PRHubFeedback")
+            let features: Set<DeviceFeature> = [.askAI, .keyLines, .rewrite, .push]
             let environment = PRHubEnvironment.offline(
-                config: DeviceConfig(features: [.askAI, .keyLines, .rewrite, .push], login: PRSampleSet.prHubLogin),
-                samples: pairedSamples(arguments),
+                config: DeviceConfig(
+                    features: servesFeedback ? features.union([.feedback]) : features, login: PRSampleSet.prHubLogin
+                ),
+                samples: pairedSamples(arguments), feedbackSamples: servesFeedback ? .prHub : nil,
                 worker: URL(string: "https://pr-review.octocat.workers.dev")!,
                 isSample: false, usage: usage(resources.defaults), testFlightGroup: testFlightGroup,
                 storage: resources.storage(), build: .current, alertPermission: resources.alertPermission(),
@@ -54,6 +61,9 @@
             )
             resources.isolateAlerts(in: environment)
             askStatus(arguments, in: environment)
+            if let chat = UserDefaults.standard.string(forKey: "PRHubFeedbackPush") {
+                environment.openFeedbackChat(chat)
+            }
             if arguments.contains("-PRHubSettings") {
                 environment.navigation.selectedTab = .settings
             }

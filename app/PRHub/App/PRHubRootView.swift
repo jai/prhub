@@ -124,8 +124,9 @@ private struct PRHubTabs: View {
         container
             .readableContentWidth()
             .prKitEnvironment(environment.prs)
-            // A Worker that starts or stops naming FeedbackKit's direct root moves the Feedback tab to that path.
-            .onChange(of: environment.connection.config?.feedbackDirect) { environment.followFeedbackPath() }
+            // A Worker that starts or stops naming FeedbackKit's direct root, or another account, moves Feedback to
+            // that path.
+            .onChange(of: environment.feedbackPathWanted) { environment.followFeedbackPath() }
             .alertsOffer(environment.alertPermission)
             .updateOffer(environment.update)
             .environment(\.loadsAuthorAvatars, !environment.isSample)
@@ -169,6 +170,10 @@ private struct PRHubTabs: View {
                 if tabs.contains(.feedback) {
                     Tab("Feedback", systemImage: AppIcon.conversation.symbol, value: PRHubTab.feedback) {
                         FeatureRequestsView(model: environment.feedback)
+                            // A tapped push's chat, for as long as Feedback stays on screen.
+                            .opening(navigation.feedbackChat)
+                            // The view keeps its first model: another path's model is another view.
+                            .id(ObjectIdentifier(environment.feedback))
                             .prKitOfflineBanner(environment.prs)
                     }
                     .accessibilityIdentifier(PRHubTab.feedback.identifier)
@@ -181,6 +186,12 @@ private struct PRHubTabs: View {
             }
             .askStatusBar(environment.prs, isShowing: navigation.selectedTab == .prs)
             .background(TabBarIdentifiers(identifiers: tabs.map(\.identifier)))
+            // Leaving Feedback ends a push's request: the tab next opens where it was left.
+            .onChange(of: navigation.selectedTab) { _, tab in
+                if tab != .feedback {
+                    navigation.feedbackChat = nil
+                }
+            }
             // A Worker that stops serving Feedback under it: the PRs instead.
             .onChange(of: tabs, initial: true) { _, tabs in
                 if !tabs.contains(navigation.selectedTab) {

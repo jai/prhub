@@ -67,6 +67,16 @@ struct UnitResources {
         )
     }
 
+    /// As if paired with a Worker that serves `features`, with nothing sent to it.
+    func paired(features: Set<DeviceFeature>) -> PRHubEnvironment {
+        let settings = defaults()
+        return PRHubEnvironment.offline(
+            config: DeviceConfig(features: features, login: "octocat"), isSample: false, usage: usage(),
+            storage: storage(settings: settings), build: Self.build,
+            alertPermission: alertPermission(defaults: settings), network: PRNetwork(isOnline: true)
+        )
+    }
+
     /// A paired environment over the samples' connection, from which the samples can start.
     func environment(usage: UsageAnalytics? = nil, defaults: InMemoryKeyValueStore? = nil) -> PRHubEnvironment {
         let settings = defaults ?? self.defaults()
