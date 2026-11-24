@@ -1,0 +1,21 @@
+{
+  "configurations": [
+    {
+      "id": "7B0E4C52-9A1D-4F36-8C7E-2D5A1F3B6E90",
+      "name": "Default",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {},
+  "testTargets": [
+    {
+      "parallelizable": false,
+      "target": {
+        "containerPath": "container:PRHub.xcodeproj",
+        "identifier": "C7166F55D9A43B96BBA8D444",
+        "name": "PRHubMacUITests"
+      }
+    }
+  ],
+  "version": 1
+}

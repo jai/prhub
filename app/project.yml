@@ -142,6 +142,7 @@ targets:
         - path: PRHubUITests.xctestplan
           defaultPlan: true
         - path: PRHubRenderingTests.xctestplan
+        - path: PRHubMacUITests.xctestplan
         - path: PRKitUITests.xctestplan
         - path: PRKitRenderingTests.xctestplan
         - path: PRHubE2EPairingTests.xctestplan
@@ -240,6 +241,23 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jaigovindani.prreview.uitests
         GENERATE_INFOPLIST_FILE: YES
+
+  # What only the Mac's windows show, which no Simulator does: the PRs window's toolbar and the windows it opens.
+  # Not in CI yet (docs/workflow.md): a person runs it on a Mac, signed to run locally, from app/:
+  #   xcodebuild test -project PRHub.xcodeproj -scheme PRHub -testPlan PRHubMacUITests -destination 'platform=macOS' \
+  #     CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= CODE_SIGN_ENTITLEMENTS=
+  PRHubMacUITests:
+    type: bundle.ui-testing
+    supportedDestinations: [macOS]
+    sources:
+      - PRHubMacUITests
+    dependencies:
+      - target: PRHub
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jaigovindani.prreview.macuitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: PRHub
 
   # PRKit's native interactions use PRHub only as the controlled sample host.
   PRKitUITests:

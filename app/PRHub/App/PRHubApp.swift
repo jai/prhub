@@ -48,7 +48,8 @@ struct PRHubApp: App {
                 .symbolVariant(DesignTokens.iconVariant)
                 .preferredColorScheme(Self.fixtureColorScheme)
             }
-            .defaultSize(width: 560, height: 720)
+            // Room for the list and a chat beside it.
+            .defaultSize(width: 920, height: 720)
             .keyboardShortcut("f", modifiers: [.command, .shift])
             Settings {
                 Self.windowContent { PRHubMacSettings(environment: $0) }

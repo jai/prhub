@@ -5,7 +5,9 @@ import SwiftUI
 
 /// The Mac's window: the PRs, at the app's text size (`Font.app`), drawn afresh whenever View → Make Text Bigger or
 /// Smaller changes it. Whatever asks for the phone's Settings tab (`prhub://settings`) opens the Settings window, and
-/// whatever asks for its Feedback tab opens the Feedback window.
+/// whatever asks for its Feedback tab opens the Feedback window. Feedback has a button in the toolbar, where the Worker
+/// serves it, as the phone has its tab (Jai, 2026-11-24: "Mac version doesn't have a feedback tab?"; the Window menu's
+/// item alone was not found).
 struct PRHubMacWindow: View {
     let environment: PRHubEnvironment
     @AppStorage(MacTextSize.key) private var textScale = MacTextSize.standard
@@ -20,6 +22,18 @@ struct PRHubMacWindow: View {
             .font(.appBody)
             .id(textScale)
             .frame(minWidth: 720, minHeight: 480)
+            .toolbar {
+                if environment.connection.config?.isOn(.feedback) == true {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Feedback", systemImage: AppIcon.conversation.symbol) {
+                            openWindow(id: PRHubMacFeedback.windowID)
+                        }
+                        .labelStyle(.titleAndIcon)
+                        .help("Send feedback and follow your requests (⇧⌘F)")
+                        .accessibilityIdentifier("prhub-mac-feedback")
+                    }
+                }
+            }
             .onChange(of: environment.navigation.selectedTab, initial: true) { _, tab in
                 guard tab != .prs else {
                     return
