@@ -45,6 +45,22 @@ for (const entry of readdirSync(assets)) {
   }
 }
 
+// The colours PRKitDesign draws from its own values (AppColor.swift), not from a colour set: a host that embeds PRKit
+// ships its own colour sets, and has none for a colour only PRKit's screens use.
+const SWIFT_COLORS = ["ground-list-mac"];
+const colorLines = [];
+for (const name of SWIFT_COLORS) {
+  if (!colors[name] || !colors[`${name}-dark`]) fail(`colors.${name} and colors.${name}-dark are required: AppColor reads them`);
+  colorLines.push(`    public static let ${camel(name)}: UInt32 = ${hex24(colors[name])}`);
+  colorLines.push(`    public static let ${camel(name)}Dark: UInt32 = ${hex24(colors[`${name}-dark`])}`);
+}
+
+function hex24(value) {
+  const hex = String(value).trim().match(/^#([0-9a-f]{6})$/i);
+  if (!hex) fail(`colour ${value} must be #RRGGBB: AppColor draws it opaque`);
+  return `0x${hex[1].toUpperCase()}`;
+}
+
 function colorSet(setName, light, dark) {
   generatedSets.add(setName);
   const entry = (value, appearance) => ({
@@ -142,6 +158,12 @@ ${macStyleLines.join("\n")}
 
     /// Applied to every SF Symbol from the app's root.
     public static let iconVariant: SymbolVariants = ${VARIANTS[icons.variant]}
+}
+
+/// The colours PRKitDesign draws from its own values, as 0xRRGGBB (DESIGN.md \`colors\`): a host ships no colour set
+/// for them. \`AppColor.swift\` gives each its role.
+public enum ColorTokens {
+${colorLines.join("\n")}
 }
 
 /// Space between and around things (DESIGN.md \`spacing\`).

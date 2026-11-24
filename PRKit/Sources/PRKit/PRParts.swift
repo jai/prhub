@@ -360,7 +360,7 @@ struct PRNotUpdatedNote: View {
             .padding(.leading, Space.lg + PrListGrid.avatar + PrListGrid.gutter)
             .padding(.bottom, Space.md)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.groundCard)
+            .blockGround()
             .accessibilityIdentifier("pr-not-updated")
     }
 }

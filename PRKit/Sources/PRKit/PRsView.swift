@@ -225,7 +225,7 @@ struct PRsList: View {
             .animation(AppMotion.fold, value: grouping)
             .animation(AppMotion.fold, value: model.isSyncing)
         }
-        .background(Color.groundPage)
+        .background(Color.groundList)
         .navigationTitle("PRs")
         .toolbar {
             ToolbarItem(placement: .primaryAction) { filterButton }
@@ -446,7 +446,7 @@ struct PRsList: View {
             id: row.id, sentAt: .now, now: .now, folds: folds
         )
         .notUpdated(model.notUpdated.contains(row.id))
-        .selected(selected == ref)
+        .prListRow(isSelected: selected == ref)
         .environment(\.openURL, OpenURLAction { url in
             guard let link = PRLink(url: url), let opener else {
                 openURL(url)

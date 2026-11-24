@@ -22,6 +22,10 @@ colors:
   ground-fill-dark: "#7676803D"
   line: "#3C3C434A"
   line-dark: "#54545899"
+  # The page under the Mac's PR list, where each PR is a card. The Mac's window and a block on it are one colour
+  # (#1E1E1E in dark, white in light), so the list's page is its own: a step darker in dark, the phone's page in light.
+  ground-list-mac: "#F2F2F7"
+  ground-list-mac-dark: "#141414"
   # States: GitHub's, light and dark.
   tone-good: "#1A7F37"
   tone-good-dark: "#3FB950"
@@ -136,6 +140,7 @@ run `make -C app design` if it is a token, then look at the screenshots (Checkin
 | The accent | `colors.primary` | buttons, tab selection, focus rings, your own chat bubbles |
 | A state's colour | `tone-good`, `tone-bad`, `tone-waiting`, `tone-merged` (and `-dark`) | state icons, signals, chips, review words |
 | The page or block colour | `Color.groundPage`, `Color.groundCard` in `PRKitDesign/AppColor.swift` | every page and block |
+| The page under the Mac's PR cards | `colors.ground-list-mac` and `-dark` above | `Color.groundList` on the Mac |
 | A spacing step | `spacing` above (`md: 12px`) | every gap and inset on that step |
 | A corner | `rounded` above: `sm` buttons and fields, `md` boxes, `lg` chat | every button, field, box or bubble |
 | A part's own measure | `PRKitDesign/Metrics.swift` (`PRStyle`, `ChipStyle`); a chat's, jai/agentchatkit `ChatStyle.swift` (`ChatStyle`, `MarkdownStyle`) | that part everywhere |
@@ -157,7 +162,7 @@ all of them are in scope. A new screen adds a row here and a step in `PRHubScree
 | Sign in again | GitHub signed the person out | `SignedOutView`, `PageHeader`, `PRPageBlock` |
 | Connect to a pr-worker | first run, when the build allows it (`PRHUB_SELF_HOSTED`), under "Connect your own Worker" | `OnboardingView`, `SetupCodeScanner` |
 | Sample PRs | onboarding's "Try with sample PRs" | the PR screens over `PRSampleSet.prHub` |
-| PR list | PRs | `PRsView`, `PRsList`, `PrListBlock`, `PRSectionTitle`, `PRSwipeRow` |
+| PR list | PRs | `PRsView`, `PRsList`, `PrListBlock`, `PRSectionTitle`, `PRSwipeRow`; on the Mac each row is a `PRRowCard` |
 | Review shortcut | PRs → a row's Review button, its swipe right, or its long-press menu | `PrListBlock`, `PRSwipeRow`, `PullRequestOpener` |
 | PR filter | PRs → Filter | `PRFilterPanel`, `PRSectionTitle` |
 | PR description | PRs → a PR: its title, who it is from, its tickets, then the way into its diff and the review buttons, the PR at a glance, status, description and conversation | `PRScreen`, `PRDescriptionView`, `ObjectReferenceLines`, `PRChangesCard`, `PRReviewActions`, `PRKeyLinesSummaryCard`, `PRStatusCard`, `.prCard()`, `PRCommentText`, `PRThreadCard` |
@@ -208,15 +213,20 @@ Every colour is a role in `PRKitDesign/AppColor.swift`. Views use the role, neve
 | Tones | `Color.toneGood`, `.toneBad`, `.toneWaiting`, `.toneMerged`: GitHub's, light and dark | a state, a signal, a review's word, a problem |
 | On a colour | `Color.onAccent`: white in light, black in dark | words and spinners on the accent or a tone, except a chat bubble |
 | On a bubble | `Color.onBubble`: white in light and dark | words on the person's own chat bubble |
-| Accent | `.tint`, `Color.accentColor` | controls only: buttons, tab selection, a focused field's ring. Never a row's content |
+| Accent | `.tint`, `Color.accentColor` | controls only: buttons, tab selection, a focused field's ring, the open PR's card edge. Never a row's content |
 | Ground | `Color.groundPage`, `Color.groundCard` | the page, and a block or box on it. Both, always: `.background` is black on black in dark |
+| List ground | `Color.groundList` | the page under a list of cards: the Mac's PR list (PR card). Off the Mac it is `groundPage` |
+| Hover | `Color.groundHover` | over a card's ground under the pointer, and under the open PR's card |
 | Fill | `Color.groundFill` | behind a field or a quiet button |
 | Line | `Color.line` | a box's hairline border |
 | Scrim | `Color.scrim` | the dim under a side panel |
 | Linear | `LinearMark`; a state's own colour from Linear's API | the mark and circle only, never words |
 
-Tones are the colour sets DESIGN.md writes. Text, grounds, fill and line are the system's, so they follow Increase
-Contrast and lift a step inside a sheet; their tokens above hold the same values. A tone means the same everywhere:
+Tones are the colour sets DESIGN.md writes. Text, grounds, fill, hover and line are the system's, so they follow
+Increase Contrast and lift a step inside a sheet; their tokens above hold the same values. The Mac's list ground is
+the one ground that is DESIGN.md's own value: the system has none darker than its window. PRKitDesign draws it from
+`ColorTokens`, which `make -C app design` writes, so an app that embeds PRKit needs no colour set for it. A tone means
+the same everywhere:
 approved and passing are good, changes requested and failing are bad, pending and outdated are waiting. A review that
 only commented is quiet, not a tone. `.tertiary` is not for words: it fails contrast. Nothing is told apart by colour
 alone.
@@ -286,17 +296,19 @@ Division follows these boundaries. Keep edges quiet and continuous.
 |---|---|
 | Sections | the section's title, on the page's grey |
 | Blocks | a band of the page's grey, 8 pt, across the whole width |
+| PRs in the Mac's list | a card each, 8 pt apart on the list's ground (PR card): the Mac's page and block are one colour, so a band of the page can't be seen there |
 | Sidebar and detail | the system's `Divider`, extending through the safe areas; the system owns its thickness and contrast |
 | A PR and its tickets | the rail: a line from the first avatar, turning right to each ticket |
 
-Rows and blocks go to the screen's edges; their corners are square. A list with notes scrolls in a plain `VStack`: a
+Rows and blocks go to the screen's edges; their corners are square. The Mac's PR list is the one exception: its
+rows are cards (PR card). A list with notes scrolls in a plain `VStack`: a
 note's block measures its own height, and a `LazyVStack` rebuilds it from nothing and never settles. The PRs tab has no
 notes, and is lazy.
 
 ### Corners
 
 `Radius.sm` 6 for anything inside a block: a button, a field, a code block. `Radius.md` 8 for a box of its own
-(`.prCard()`). `Radius.lg` 18 for a chat bubble and the chat field. Corners are continuous. A chip and a state icon's
+(`.prCard()`, a PR's card in the Mac's list). `Radius.lg` 18 for a chat bubble and the chat field. Corners are continuous. A chip and a state icon's
 ring are capsules and circles.
 
 ### Navigation
@@ -328,6 +340,7 @@ The shared parts. Use these; extend one rather than writing a near-copy. Each is
 | `PrListBlock`, `PullRequestRow`, `TicketRow` | an item in a list: its PRs, note and ticket | PRKit `Lists/` |
 | `PullRequestLine`, `TicketLine` | a PR or ticket on one line, under something else | PRKit `Lists/ObjectLines.swift` |
 | `ObjectReferenceLines`, `ObjectReferenceLine` | the PRs or tickets something names, a line each, each opening its page: a PR's tickets, Agent Pager's thread accessory | PRKit `Lists/ObjectLines.swift` |
+| `PRRowCard`, `.prListRow(isSelected:)` | a row of the PRs list as its platform sets it apart: a card on the Mac, the block across the width on the phone and the iPad | PRKit `Lists/PRRowCard.swift` |
 | `PrStateIcon`, `PrStatusMarks`, `PrJaiMarkLabel` | a PR's state, its signals, what you did | PRKit `Lists/PrListParts.swift` |
 | `PRSectionTitle` | a section's title on the page's grey | PRKit `Parts/` |
 | `.prCard()` | a box on a PR's page | PRKit `PRParts.swift` |
@@ -405,6 +418,39 @@ rules:
 antiPatterns:
   - A status anywhere but its part.
   - Any button inside the row but Review.
+```
+
+### PR card
+
+```text
+name: PRRowCard
+purpose: One PR and its tickets set apart in the Mac's PR list. The Mac's window and a block on it are one colour
+  (#1E1E1E in dark, white in light), so the band of the page that divides blocks on the phone can't be seen there.
+  The Mac's PRs list only: on the phone and the iPad a row is its block across the width (Layout).
+parts:
+  page:  { holds: "Color.groundList under the whole list: #141414 in dark, #F2F2F7 in light (ground-list-mac)" }
+  card:  { holds: "a PrListBlock: the PR row, its Ask AI line and its ticket lines on the rail", ground: groundCard, radius: "Radius.md, continuous", edge: "Color.line, a hairline", place: "Space.lg from the window's sides, Space.sm from the next card" }
+  mark:  { holds: "the accent, Space.xs wide, down the leading edge, cut to the card's corners", only: selected }
+states: [rest, hovered, selected]
+rules:
+  - Hovered: the ground lifts by groundHover (AppMotion.press). Selected: the same lift and the mark (AppMotion.swap),
+    and VoiceOver's selected trait.
+  - Selected is the PR open beside the list. The Mac opens a PR over its list, so no card is selected there yet; the
+    look is ready for a list beside the PR.
+  - The page goes darker; a card's ground never goes lighter. A tone's words keep 4.5:1 on a card at rest and under
+    the pointer, in light and dark: toneBad is 5.0:1 on #1E1E1E and 4.6:1 on the lifted #242424, and would drop under
+    4.5:1 on a ground lighter than #262626.
+  - What is on a card is not clipped to it, so a keyboard focus ring around its PR or a ticket line is drawn whole.
+    The card is not a stop for the keyboard: focus goes to what is on it, as on a block.
+  - Every measure is a token, and the card has no height of its own: what is on it grows with the text (MacTextSize)
+    and the card grows around it.
+  - A host's own lists (Agent Pager's) draw PrListBlock on their page, with no card.
+  - PRRowCardTests and PRRowCardRenderingTests hold these: the tokens, the band between two cards, the corner, the
+    hairline, the selected look, the tones' contrast, and that a row off the Mac is its block pixel for pixel.
+antiPatterns:
+  - A card on the phone or the iPad.
+  - A shadow, a second border or a lighter ground to lift a card further.
+  - The accent on a card that is not the open PR's.
 ```
 
 ### Ticket line

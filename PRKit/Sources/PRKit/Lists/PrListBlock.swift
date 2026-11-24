@@ -99,7 +99,7 @@ public struct PrListBlock: View {
                 }
             }
         }
-        .background(Color.groundCard)
+        .blockGround()
     }
 
     private func pullRequestRow(_ pullRequest: PRListPullRequest) -> some View {
@@ -171,7 +171,7 @@ public struct PrListBlock: View {
             HStack(alignment: .top, spacing: PrListGrid.gutter) {
                 VStack(spacing: Space.xs) {
                     PrAuthorAvatar(pullRequest: pullRequest)
-                        .background(Color.groundCard, in: .circle)
+                        .avatarGround()
                         .opacity(opacity)
                     if let due = pullRequest.pastSLA(now: now) {
                         PrPastSLAMark(due: due, now: now, format: format)

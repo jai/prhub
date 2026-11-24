@@ -55,6 +55,13 @@ public enum DesignTokens {
     public static let iconVariant: SymbolVariants = .none
 }
 
+/// The colours PRKitDesign draws from its own values, as 0xRRGGBB (DESIGN.md `colors`): a host ships no colour set
+/// for them. `AppColor.swift` gives each its role.
+public enum ColorTokens {
+    public static let groundListMac: UInt32 = 0xF2F2F7
+    public static let groundListMacDark: UInt32 = 0x141414
+}
+
 /// Space between and around things (DESIGN.md `spacing`).
 public enum Space {
     public static let xxs: CGFloat = 2

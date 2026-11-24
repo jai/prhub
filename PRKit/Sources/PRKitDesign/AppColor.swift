@@ -71,6 +71,31 @@ public extension Color {
         #endif
     }
 
+    /// The page under a list whose rows are cards (`PRRowCard`). On the Mac the window and a block on it are one
+    /// colour (`groundPage` and `groundCard` are both #1E1E1E in dark, white in light), so a band of the page between
+    /// two blocks can't be seen there: the list's page is its own (DESIGN.md, `ground-list-mac`), and a card lifts
+    /// off it. Everywhere else it is the page.
+    static var groundList: Color {
+        #if os(iOS)
+            .groundPage
+        #else
+            Color(nsColor: NSColor(name: nil) { appearance in
+                let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                return NSColor(opaque: isDark ? ColorTokens.groundListMacDark : ColorTokens.groundListMac)
+            })
+        #endif
+    }
+
+    /// Over a card's ground under the pointer, and under the one that is open: the system's faintest fill, so a
+    /// tone's words keep their contrast on it.
+    static var groundHover: Color {
+        #if os(iOS)
+            Color(uiColor: .quaternarySystemFill)
+        #else
+            Color(nsColor: .quaternarySystemFill)
+        #endif
+    }
+
     /// Behind a field or a quiet button.
     static var groundFill: Color {
         #if os(iOS)
@@ -94,3 +119,15 @@ public extension Color {
         .black.opacity(0.3)
     }
 }
+
+#if os(macOS)
+    private extension NSColor {
+        /// A colour token (`ColorTokens`, 0xRRGGBB) as an opaque sRGB colour.
+        convenience init(opaque token: UInt32) {
+            self.init(
+                srgbRed: CGFloat((token >> 16) & 0xFF) / 255, green: CGFloat((token >> 8) & 0xFF) / 255,
+                blue: CGFloat(token & 0xFF) / 255, alpha: 1
+            )
+        }
+    }
+#endif
