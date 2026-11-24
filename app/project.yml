@@ -243,7 +243,8 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
 
   # What only the Mac's windows show, which no Simulator does: the PRs window's toolbar and the windows it opens.
-  # Not in CI yet (docs/workflow.md): a person runs it on a Mac, signed to run locally, from app/:
+  # Not in CI yet (docs/workflow.md). It controls the Mac's screen, so agents do not run it by hand on Jai's Macs
+  # (AGENTS.md, "Tests on Jai's Macs"). Signed to run locally, from app/, it is:
   #   xcodebuild test -project PRHub.xcodeproj -scheme PRHub -testPlan PRHubMacUITests -destination 'platform=macOS' \
   #     CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= CODE_SIGN_ENTITLEMENTS=
   PRHubMacUITests:
