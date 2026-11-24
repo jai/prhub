@@ -56,6 +56,52 @@ public struct TicketLine: View {
     }
 }
 
+/// A ticket as a button that opens it: in Linear's app when it is installed, else in a browser sheet over the page, so a
+/// look at a ticket never leaves the PR (`PRPlatform.openInItsAppOrHere`). It keeps the line's quiet look and shows its
+/// ground while pressed; VoiceOver says the ticket, then that it opens in Linear. Its own button, apart from the row
+/// it is on. Just what it holds when there is no page to open.
+public struct TicketLink<Content: View>: View {
+    public let ticket: PRListTicket
+    @ViewBuilder public let content: Content
+
+    public init(ticket: PRListTicket, @ViewBuilder content: () -> Content) {
+        self.ticket = ticket
+        self.content = content()
+    }
+
+    public var body: some View {
+        if let destination = ticket.url.flatMap(PrListLinks.openable) {
+            Button {
+                PRPlatform.openInItsAppOrHere(destination)
+            } label: {
+                content
+                    .multilineTextAlignment(.leading)
+            }
+            .buttonStyle(TicketLinkStyle())
+            .accessibilityLabel(ticket.spokenLine)
+            .accessibilityHint("Opens in Linear")
+            .accessibilityIdentifier("pr-ticket-\(ticket.key)")
+        } else {
+            content
+        }
+    }
+}
+
+/// A line that is a button and still reads as the quiet line it is: pressed, it dims on a ground a little wider than
+/// its words.
+private struct TicketLinkStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? PRStyle.pressedOpacity : 1)
+            .background {
+                RoundedRectangle(cornerRadius: PRStyle.controlRadius, style: .continuous)
+                    .fill(configuration.isPressed ? Color.groundFill : .clear)
+                    .padding(.horizontal, -Space.xs)
+            }
+            .animation(AppMotion.press, value: configuration.isPressed)
+    }
+}
+
 /// What a ticket Linear wasn't asked about opens instead of Linear: where the person connects Linear. Set by an app
 /// whose person can connect Linear and hasn't (PRHub's hosted account); nil everywhere else, and the line is the key.
 public struct ConnectLinear: Sendable {
@@ -105,16 +151,20 @@ public struct ObjectReference: Equatable, Sendable {
     }
 }
 
-/// One PR or ticket on its line, drawn as everywhere else. Its whole width opens it, in the GitHub or Linear app when
-/// installed.
+/// One PR or ticket on its line, drawn as everywhere else. Its whole width opens it: a PR through `openURL`, in the
+/// GitHub app when installed, and a ticket as `TicketLink` does.
 public struct ObjectReferenceLine: View {
     public let reference: ObjectReference
     public var awaitsLinear = true
+    /// Whether the line is a row high (`PRStyle.rowHeight`), the least a finger needs: a PR's page, where its lines
+    /// stand on their own. Off where they sit close under something else that is tapped (a thread's row).
+    public var isRowHigh = false
     @Environment(\.connectLinear) private var connectLinear
 
-    public init(reference: ObjectReference, awaitsLinear: Bool = true) {
+    public init(reference: ObjectReference, awaitsLinear: Bool = true, isRowHigh: Bool = false) {
         self.reference = reference
         self.awaitsLinear = awaitsLinear
+        self.isRowHigh = isRowHigh
     }
 
     /// A ticket the Worker had no Linear to ask about, where the person can connect Linear: the line says so and opens
@@ -133,6 +183,10 @@ public struct ObjectReferenceLine: View {
             .buttonStyle(.borderless)
             .accessibilityHint("Opens Linear in Settings")
             .accessibilityIdentifier("pr-ticket-connect-linear")
+        } else if case let .ticket(ticket) = reference.object {
+            TicketLink(ticket: ticket) {
+                line
+            }
         } else {
             PrListLink(url: reference.url) {
                 line
@@ -148,7 +202,7 @@ public struct ObjectReferenceLine: View {
                 TicketLine(ticket: ticket, awaitsLinear: awaitsLinear, asksToConnectLinear: asksToConnectLinear)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: isRowHigh ? PRStyle.rowHeight : nil, alignment: .leading)
         .contentShape(.rect)
     }
 }
@@ -157,16 +211,19 @@ public struct ObjectReferenceLine: View {
 public struct ObjectReferenceLines: View {
     public let references: [ObjectReference]
     public var awaitsLinear = true
+    /// Each line a row high, one under the other with no gap: a finger's height each (`ObjectReferenceLine.isRowHigh`).
+    public var isRowHigh = false
 
-    public init(references: [ObjectReference], awaitsLinear: Bool = true) {
+    public init(references: [ObjectReference], awaitsLinear: Bool = true, isRowHigh: Bool = false) {
         self.references = references
         self.awaitsLinear = awaitsLinear
+        self.isRowHigh = isRowHigh
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: PRStyle.referenceGap) {
+        VStack(alignment: .leading, spacing: isRowHigh ? 0 : PRStyle.referenceGap) {
             ForEach(Array(references.enumerated()), id: \.offset) { _, reference in
-                ObjectReferenceLine(reference: reference, awaitsLinear: awaitsLinear)
+                ObjectReferenceLine(reference: reference, awaitsLinear: awaitsLinear, isRowHigh: isRowHigh)
             }
         }
     }

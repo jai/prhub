@@ -411,8 +411,9 @@ antiPatterns:
 
 ```text
 name: TicketLine
-purpose: The ticket supporting a block's PRs, in Agent Pager's lists and on the PRs tab. Quiet. The whole line opens
-  Linear, 44 pt tall at least.
+purpose: The ticket supporting a block's PRs, in Agent Pager's lists and on the PRs tab, and a PR's tickets on its
+  page. Quiet. The whole line is a button (TicketLink), 44 pt tall at least, that opens the ticket: in Linear's app
+  when it is installed, else in a browser sheet over the page, so a look at a ticket never leaves the PR.
 parts:
   mark:   { column: text + 16, holds: LinearMark, size: 16 }
   key:    { after: mark, font: appCaption, never truncates }
@@ -422,7 +423,8 @@ parts:
   circle: { column: state, holds: LinearStateCircle }
 rules:
   - One to a block, always last, on the rail.
-  - No accent, no semibold, no chip.
+  - No accent, no semibold, no chip. Pressed, it dims on groundFill.
+  - VoiceOver says "Linear ticket", the key and what Linear has for it, then "Opens in Linear".
 ```
 
 ### PR header
@@ -436,7 +438,7 @@ parts:
   ref:     { holds: "repo#N", font: appCaption quiet }
   byline:  { holds: "PRByline: PRAvatar and who, and for a bot's PR the person, 'via' and a groundFill capsule with the agent's PRAvatar, its name and '· <login>'", font: appCaption }
   branch:  { holds: "'<branch> → <base>'", font: caption2 monospaced quiet, lines: 1, truncates: middle, starts: under the name }
-  tickets: { holds: "ObjectReferenceLines of TicketLine, awaitsLinear false", optional: true }
+  tickets: { holds: "ObjectReferenceLines of TicketLine, awaitsLinear false, each a row high (44 pt) reaching into the header's gaps", optional: true }
   labels:  { holds: "an AI trash StatusChip in toneBad when the summary found the description reads as AI slop, then a StatusChip per label in its GitHub colour, darkened on light and lightened on dark until it reads at 4.5:1 (GitHubLabelColor)", scrolls sideways, optional: true }
 rules:
   - Who: the author's profile name, else their login. A bot's PR leads with the person it was opened for when the

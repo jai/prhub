@@ -17,6 +17,17 @@ struct PRListDisplayTests {
         #expect(Fixture.item(Fixture.ticket("ENG-9", found: false), title: "Gone").headline == "ENG-9 Gone")
     }
 
+    @Test func aTicketThatIsAButtonSaysWhatItIsThenWhatLinearHasForIt() {
+        #expect(Fixture.ticket().spokenLine
+            == "Linear ticket ENG-7, Accept UK mobile numbers at phone sign-in, In Review")
+        var owned = Fixture.ticket()
+        owned.assignee = "Alex Doe"
+        #expect(owned.spokenLine
+            == "Linear ticket ENG-7, Accept UK mobile numbers at phone sign-in, assigned to Alex Doe, In Review")
+        #expect(Fixture.ticket("ENG-8", found: nil).spokenLine == "Linear ticket ENG-8")
+        #expect(Fixture.ticket("ENG-9", found: false).spokenLine == "Linear ticket ENG-9, Not found")
+    }
+
     @Test func withoutATicketTheHeadlineIsTheFirstPRsTitleElseTheItemsTitleElseTheRef() {
         let first = Fixture.pullRequest(title: "fix: Use full-page redirects for sign-in")
         let second = Fixture.pullRequest("acme/tools", 58, title: "Lists")

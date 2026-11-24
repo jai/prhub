@@ -243,6 +243,18 @@ public extension PRListTicket {
         case .some(true): state ?? "Unknown"
         }
     }
+
+    /// VoiceOver's words for a ticket that is a button: "Linear ticket WEB-31, Let shoppers retry a failed payment,
+    /// assigned to Alex Doe, In Review". The key alone until Linear has answered, and "Not found" when it has no such
+    /// issue.
+    var spokenLine: String {
+        let known: [String?] = switch found {
+        case .none: []
+        case .some(false): [stateText]
+        case .some(true): [title, assignee.map { "assigned to \($0)" }, stateText]
+        }
+        return (["Linear ticket \(key)"] + known.compactMap(\.self)).joined(separator: ", ")
+    }
 }
 
 /// A PR's one state: GitHub's own, or that the hub has not got it yet. Nothing here is worked out.

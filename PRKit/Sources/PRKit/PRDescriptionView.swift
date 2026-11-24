@@ -128,10 +128,13 @@ struct PRDescriptionView: View {
         }
     }
 
-    /// The tickets the title and branch name, each opening Linear; the title above leaves their brackets out.
+    /// The tickets the title and branch name, each a button a row high that opens it; the title above leaves their
+    /// brackets out. A line was as tall as its words, 16 pt, and read as text (Jai's feedback, 2026-11-24).
     @ViewBuilder private var tickets: some View {
         if let tickets = detail.tickets, !tickets.isEmpty {
-            ObjectReferenceLines(references: tickets.map(ObjectReference.init), awaitsLinear: false)
+            ObjectReferenceLines(references: tickets.map(ObjectReference.init), awaitsLinear: false, isRowHigh: true)
+                // A row's height reaches into the header's gaps above and below, so the header stays close.
+                .padding(.vertical, -Space.sm)
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("pr-tickets")
         }

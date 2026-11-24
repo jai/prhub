@@ -27,9 +27,10 @@ public enum PrListLinks {
     }
 }
 
-/// A ticket or PR line that opens its URL — in the Linear or GitHub app when installed — through the check a
-/// thread's links pass (`SessionLink.openable`); plain text when there is nothing to open. Borderless, so each line
-/// of a row is its own button. `onOpen` runs as it opens.
+/// A PR line that opens its URL through `openURL`, so a host's PR screens take it, else the GitHub app when installed;
+/// it passes the check a thread's links pass (`SessionLink.openable`), and is plain text when there is nothing to
+/// open. Borderless, so each line of a row is its own button. `onOpen` runs as it opens. A ticket's line is
+/// `TicketLink`.
 public struct PrListLink<Content: View>: View {
     public let url: String?
     public var onOpen: () -> Void = {}

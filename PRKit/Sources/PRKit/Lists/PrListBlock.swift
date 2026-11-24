@@ -231,30 +231,38 @@ public struct PrListBlock: View {
     }
 
     /// An item with no PR: the same places, with Linear's mark for the avatar and the key for the reference.
-    private var ticketRow: some View {
-        PrListLink(url: item.ticket?.url) {
-            HStack(alignment: .top, spacing: PrListGrid.gutter) {
-                LinearMark(size: 22)
-                    .frame(width: avatarSize, height: avatarSize)
-                VStack(alignment: .leading, spacing: Space.xs) {
-                    HStack(alignment: .top, spacing: Space.sm) {
-                        title(item.ticket?.title ?? item.title ?? item.ticket?.key ?? "")
-                        if let ticket = item.ticket {
-                            LinearStateCircle(ticket: ticket)
-                                .frame(height: PrListGrid.titleLine)
-                        }
-                    }
+    @ViewBuilder private var ticketRow: some View {
+        if let ticket = item.ticket {
+            TicketLink(ticket: ticket) {
+                ticketRowParts
+            }
+        } else {
+            ticketRowParts
+        }
+    }
+
+    private var ticketRowParts: some View {
+        HStack(alignment: .top, spacing: PrListGrid.gutter) {
+            LinearMark(size: 22)
+                .frame(width: avatarSize, height: avatarSize)
+            VStack(alignment: .leading, spacing: Space.xs) {
+                HStack(alignment: .top, spacing: Space.sm) {
+                    title(item.ticket?.title ?? item.title ?? item.ticket?.key ?? "")
                     if let ticket = item.ticket {
-                        Text(([ticket.key] + (ticket.found == true ? [ticket.ownerShortName] : []).compactMap(\.self)
-                                + [ticket.stateText]).joined(separator: " · "))
-                            .font(.appCaption)
-                            .foregroundStyle(Color.secondary)
-                            .lineLimit(1)
+                        LinearStateCircle(ticket: ticket)
+                            .frame(height: PrListGrid.titleLine)
                     }
                 }
+                if let ticket = item.ticket {
+                    Text(([ticket.key] + (ticket.found == true ? [ticket.ownerShortName] : []).compactMap(\.self)
+                            + [ticket.stateText]).joined(separator: " · "))
+                        .font(.appCaption)
+                        .foregroundStyle(Color.secondary)
+                        .lineLimit(1)
+                }
             }
-            .contentShape(.rect)
         }
+        .contentShape(.rect)
     }
 
     /// The PR's chat at work or answered, on the rail as a ticket is: the whole line opens the PR with its chat.
@@ -264,11 +272,11 @@ public struct PrListBlock: View {
             .padding(.leading, textColumn + PrListGrid.ticketStep)
     }
 
-    /// The key, the title in what room is left, and where the ticket stands. The whole line opens Linear.
+    /// The key, the title in what room is left, and where the ticket stands. The whole line opens the ticket.
     private func ticketLine(_ ticket: PRListTicket) -> some View {
-        PrListLink(url: ticket.url) {
+        TicketLink(ticket: ticket) {
             TicketLine(ticket: ticket)
-                .frame(minHeight: 44)
+                .frame(minHeight: PRStyle.rowHeight)
                 .contentShape(.rect)
         }
         .anchorPreference(key: TicketLineBounds.self, value: .bounds) { [$0] }
