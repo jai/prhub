@@ -243,6 +243,9 @@ public final class PRHubEnvironment {
         guard wanted != feedbackPath || feedbackTokens == nil else {
             return
         }
+        if feedbackPath.leavesItsAccount(for: wanted) {
+            feedbackPath.keep?.clear()
+        }
         feedbackPath = wanted
         makeFeedback()
     }

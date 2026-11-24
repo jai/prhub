@@ -91,6 +91,13 @@ struct PRHubFeedbackPushTests {
         #expect(PRHubFeedbackPath(host: nil, config: direct).account == nil)
         #expect(PRHubFeedbackPath.accountName(host: "h", person: "../../x") == "h-.._.._x")
         #expect(PRHubFeedbackPath().keep == nil, "no account named: nothing is kept")
+
+        // An account that leaves, or is replaced, takes its kept list with it; a moved root alone does not.
+        let other = PRHubFeedbackPath(root: path.root, account: "prhub.example.com-4242")
+        #expect(path.leavesItsAccount(for: PRHubFeedbackPath()))
+        #expect(path.leavesItsAccount(for: other))
+        #expect(!path.leavesItsAccount(for: PRHubFeedbackPath(root: nil, account: path.account)))
+        #expect(!PRHubFeedbackPath().leavesItsAccount(for: path), "a first sign-in leaves nobody")
     }
 
     private nonisolated(unsafe) static let reply: [AnyHashable: Any] = [

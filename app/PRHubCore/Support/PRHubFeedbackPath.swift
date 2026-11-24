@@ -31,6 +31,12 @@ public struct PRHubFeedbackPath: Equatable, Sendable {
         return String(name.prefix(120))
     }
 
+    /// Whether moving to `next` leaves this path's account behind: it signed out, was disconnected, or another
+    /// person signed in. Its kept list goes then, whichever of the views and the sign-out notices first.
+    func leavesItsAccount(for next: PRHubFeedbackPath) -> Bool {
+        account != nil && account != next.account
+    }
+
     /// The account's kept list; nil keeps nothing.
     var keep: FeedbackKeep? {
         account.flatMap { FeedbackKeep.standard(named: $0) }
