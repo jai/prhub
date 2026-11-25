@@ -124,8 +124,8 @@ export interface Env extends LimitVars {
    * Machine accounts that open PRs for people: logins GitHub calls users, comma-separated. A PR one of them opens is a
    * bot's, and leads with who it was opened for, its Linear ticket's owner first (`requester.ts`). Unset or empty: only
    * GitHub Apps, `[bot]` logins and PRs on a ticket Linear delegated to an agent are a bot's. The hosted Worker's value
-   * is not in this repo: it is the repo's Actions variable `PRHUB_BOT_AUTHORS`, which `deploy-worker.yml` passes at
-   * deploy (docs/hosted-deploy.md).
+   * is not in this repo: it is the repo's Actions secret `PRHUB_BOT_AUTHORS`, which `deploy-worker.yml` passes at
+   * deploy (docs/hosted-deploy.md). A secret only so that the public deploy log masks it; on the Worker it is a var.
    */
   BOT_AUTHORS?: string;
   /** The rewrite's writing guide: `owner/repo@ref` and the comma-separated paths in it. Unset: the built-in guide. */

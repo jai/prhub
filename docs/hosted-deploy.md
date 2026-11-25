@@ -16,22 +16,24 @@ custom domain is chosen. Self-hosted Workers use [deploy/AGENTS.md](../deploy/AG
 ## Configuration
 
 `deploy/hosted/wrangler.jsonc` is the config, committed. Six values stay out of this public repo and come from the
-repo's variables at deploy: the account (`CLOUDFLARE_ACCOUNT_ID`, which wrangler reads from the environment) and five
-vars, each a `wrangler deploy --var`:
+repo's Actions settings at deploy: the account (`CLOUDFLARE_ACCOUNT_ID`, which wrangler reads from the environment) and
+five vars, each a `wrangler deploy --var`. Four are repo variables; `PRHUB_BOT_AUTHORS` is a repo secret, because a
+variable's value is printed in the deploy log, which is public:
 
-| Repo variable | Worker var | Value |
+| Repo variable (or secret) | Worker var | Value |
 |---|---|---|
 | `CLOUDFLARE_ACCOUNT_ID` | (the account) | The account's ID |
 | `PRHUB_GITHUB_APP_ID` | `GITHUB_APP_ID` | The App's App ID |
 | `PRHUB_GITHUB_APP_CLIENT_ID` | `GITHUB_APP_CLIENT_ID` | The App's client ID (`Iv…`) |
 | `PRHUB_APNS_KEY_ID` | `APNS_KEY_ID` | The ID of Jai's APNs key |
 | `FEEDBACKKIT_PUBLIC_URL` | `FEEDBACKKIT_PUBLIC_URL` | FeedbackKit's public URL |
-| `PRHUB_BOT_AUTHORS` | `BOT_AUTHORS` | The machine accounts that open PRs for people: GitHub logins, comma-separated. Optional |
+| `PRHUB_BOT_AUTHORS` (secret) | `BOT_AUTHORS` | The machine accounts that open PRs for people: GitHub logins, comma-separated. Optional |
 
 `BOT_AUTHORS` is how the Worker knows that an account GitHub calls a user is a bot's. A PR such an account opens leads
 with the person it was opened for, its Linear ticket's owner first, on its page and in the list, whether or not Linear
 delegated the ticket to an agent. Not set, such a PR shows a person only when its ticket is delegated. To change it:
-the repo's Settings, Secrets and variables, Actions, Variables; it takes effect at the next `worker-v` release.
+the repo's Settings, Secrets and variables, Actions, Secrets (`gh secret set PRHUB_BOT_AUTHORS -R jai/prhub`); it takes
+effect at the next `worker-v` release.
 
 Secrets, each with `wrangler secret put`, from the password manager:
 

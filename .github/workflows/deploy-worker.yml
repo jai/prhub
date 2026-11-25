@@ -1,8 +1,8 @@
 # Deploys the Worker `prhub` (docs/hosted-deploy.md) from each worker-v<version> tag, which release.yml makes once the
 # worker's tests passed on that commit. The only production path for the hosted Worker:
 # wrangler deploy with deploy/hosted/wrangler.jsonc, which also builds and pushes the AI container (agent/Dockerfile).
-# The Worker's secrets stay as they are. The account and five vars come from the repo's variables, kept out of this
-# public repo's files.
+# The Worker's secrets stay as they are. The account and four vars come from the repo's variables, kept out of this
+# public repo's files, and BOT_AUTHORS from a repo secret, so that this public repo's logs mask it too.
 name: deploy-worker
 
 on:
@@ -41,8 +41,9 @@ jobs:
           APNS_KEY_ID: ${{ vars.PRHUB_APNS_KEY_ID }}
           FEEDBACKKIT_PUBLIC_URL: ${{ vars.FEEDBACKKIT_PUBLIC_URL }}
           # The machine accounts that open PRs for people (worker/src/requester.ts): logins, comma-separated. Not set:
-          # empty, and only GitHub Apps and tickets Linear delegated to an agent count as a bot's.
-          BOT_AUTHORS: ${{ vars.PRHUB_BOT_AUTHORS }}
+          # empty, and only GitHub Apps and tickets Linear delegated to an agent count as a bot's. A secret, not a
+          # variable: a variable's value is printed in this log, which anyone can read.
+          BOT_AUTHORS: ${{ secrets.PRHUB_BOT_AUTHORS }}
         run: |
           npx wrangler deploy --config ../deploy/hosted/wrangler.jsonc \
             --var "GITHUB_APP_ID:$APP_ID" --var "GITHUB_APP_CLIENT_ID:$CLIENT_ID" \

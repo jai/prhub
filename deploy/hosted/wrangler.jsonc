@@ -1,7 +1,8 @@
 // The hosted PRHub Worker (docs/hosted-deploy.md): one Worker on Jai's personal Cloudflare account that everyone signs
 // in to with the PRHub GitHub App. .github/workflows/deploy-worker.yml deploys it from each vX.Y.Z release. The account
 // (CLOUDFLARE_ACCOUNT_ID) and five vars that stay out of this public repo come from the repo's variables at deploy, as
-// `wrangler deploy --var`: GITHUB_APP_ID, GITHUB_APP_CLIENT_ID, APNS_KEY_ID, FEEDBACKKIT_PUBLIC_URL, BOT_AUTHORS. Contract:
+// `wrangler deploy --var`: GITHUB_APP_ID, GITHUB_APP_CLIENT_ID, APNS_KEY_ID, FEEDBACKKIT_PUBLIC_URL, and BOT_AUTHORS
+// (from a repo secret, so the deploy log masks it). Contract:
 // docs/api.md, "Hosted sign-in" and "Webhook routing". Secrets are never here: `wrangler secret put` (the runbook).
 {
   "name": "prhub",
