@@ -6,7 +6,7 @@
 #
 # Order within a component, cheapest first: lint and unit tests start together; integration tests wait for their unit
 # tests; the UI tests wait for the applicable cheaper checks, so a long Simulator run never holds the Mac for a commit
-# that a cheaper check already failed. The app contains PRKit, so an ios release runs PRKit's checks too.
+# that a cheaper check already failed. The Mac's own UI tests (test-ui-mac) run beside the Simulator ones. The app contains PRKit, so an ios release runs PRKit's checks too.
 # App-only jobs inherit their component selection. The shared kit UI gate explicitly permits skipped app checks on a
 # prkit RC, while requiring every applicable cheap check to pass.
 name: release
@@ -36,6 +36,9 @@ jobs:
   test-ui-ios:
     needs: [lint-ios, test-unit-ios, test-integration-ios, test-ui-prkit]
     uses: ./.github/workflows/test-ui-ios.yml
+  test-ui-mac:
+    needs: [lint-ios, test-unit-ios, test-integration-ios, test-ui-prkit]
+    uses: ./.github/workflows/test-ui-mac.yml
 
   # ---- prkit: in prkit and ios releases ----
   lint-prkit:
@@ -70,7 +73,7 @@ jobs:
 
   # ---- The release: every check above that ran passed (the other components' checks are skipped) ----
   release:
-    needs: [lint-ios, test-unit-ios, test-integration-ios, test-ui-ios, lint-prkit, test-unit-prkit, test-integration-prkit, test-ui-prkit, lint-worker, test-unit-worker, test-integration-worker]
+    needs: [lint-ios, test-unit-ios, test-integration-ios, test-ui-ios, test-ui-mac, lint-prkit, test-unit-prkit, test-integration-prkit, test-ui-prkit, lint-worker, test-unit-worker, test-integration-worker]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

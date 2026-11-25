@@ -10,6 +10,8 @@
 #   make test-unit-ios            swift test on PRHubUnitTests
 #   make test-integration-ios     swift test on PRHubIntegrationTests: app persistence and Keychain
 #   make test-ui-ios              the app-hosted rendering plan, then the UI plan, on one Simulator (SIMULATOR or SIM_NAME)
+#   make test-ui-mac              the Mac app's own windows (PRHubMacUITests); it controls the screen of the Mac it
+#                                 runs on, so CI runs it (test-ui-mac.yml) and it is not in all-tests
 #   make test-unit-prkit          swift test on PRKitUnitTests
 #   make test-integration-prkit   swift test on PRKitIntegrationTests: persistence, contracts, fonts, AppKit rendering
 #   make test-ui-prkit            PRKit rendering, then native interactions, on one Simulator (SIMULATOR or SIM_NAME)
@@ -22,6 +24,7 @@
 
 SHELL := /bin/bash
 .PHONY: fix lint-ios lint-prkit lint-worker lint-workflows build-ios test-unit-ios test-integration-ios test-ui-ios \
+	test-ui-mac \
 	test-unit-prkit test-integration-prkit test-ui-prkit test-unit-worker test-integration-worker lint all-tests
 
 X := mise exec
@@ -53,8 +56,8 @@ fix:
 
 lint-ios:
 	$(SWIFTFORMAT) app --lint
-	$(SWIFTLINT) lint --strict --quiet app/PRHub app/PRHubCore app/PRHubTests app/PRHubUITests app/PRHubRenderingTests \
-		app/PRHubE2ETests app/PRHubPerformanceTests
+	$(SWIFTLINT) lint --strict --quiet app/PRHub app/PRHubCore app/PRHubTests app/PRHubUITests app/PRHubMacUITests \
+		app/PRHubRenderingTests app/PRHubE2ETests app/PRHubPerformanceTests
 	$(MAKE) -C app design-check
 	$(SHELLCHECK) app/ci_scripts/ci_post_clone.sh
 	$(GITLEAKS) app
@@ -137,11 +140,22 @@ test-ui-ios:
 	$(call XCODEBUILD_TEST,PRHubRenderingTests)
 	$(call XCODEBUILD_TEST,PRHubUITests) -retry-tests-on-failure -test-iterations 2
 
+# The Mac app's own windows, which no Simulator shows. It controls the screen of the Mac it runs on: CI runs it on a
+# hosted Mac (test-ui-mac.yml), and agents do not run it by hand on Jai's Macs (AGENTS.md). The app is signed to run on
+# that Mac only: no team, no profile and no entitlements. A test that fails runs once more.
+test-ui-mac:
+	$(GENERATE_XCODE_PROJECT)
+	rm -rf app/build/results/PRHubMacUITests.xcresult && $(XCODEBUILD) test -testPlan PRHubMacUITests \
+		-destination 'platform=macOS,arch=arm64' -resultBundlePath build/results/PRHubMacUITests.xcresult \
+		-parallel-testing-enabled NO -retry-tests-on-failure -test-iterations 2 \
+		CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= CODE_SIGN_ENTITLEMENTS=
+
 # Library rendering and native interactions have their own full-target plans and do not rerun the app's UI tests.
 test-ui-prkit:
 	$(GENERATE_XCODE_PROJECT)
 	$(call XCODEBUILD_TEST,PRKitRenderingTests)
 	$(call XCODEBUILD_TEST,PRKitUITests) -retry-tests-on-failure -test-iterations 2
 
+# Not test-ui-mac: it controls the screen of the Mac it runs on.
 all-tests: test-unit-ios test-integration-ios test-ui-ios test-unit-prkit test-integration-prkit test-ui-prkit test-unit-worker \
 	test-integration-worker

@@ -1,0 +1,35 @@
+# test-ui-mac (make test-ui-mac): the Mac app's own windows, which no Simulator shows (PRHubMacUITests): the PRs
+# window's toolbar, the Feedback window it opens, a PR card under the pointer, and a PR link from another app opening
+# in the window that is open. In each ios release (release.yml),
+# after the cheaper ios and PRKit checks pass, beside test-ui-ios. A dispatch runs it on a branch: it is the only way
+# to run these tests, which control the screen of the Mac they run on (AGENTS.md, "Tests on Jai's Macs").
+# Prepare: mise (XcodeGen). Test: make test-ui-mac, which also generates the project and signs the app to run on this
+# Mac only. Keep: result bundles only on failure, for 1 day. Clean up: nothing; GitHub discards the VM
+# (docs/workflow.md, "Disk use").
+name: test-ui-mac
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-ui-mac:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v5
+        with:
+          cache: false
+      - run: make test-ui-mac
+      - name: Keep the result bundles
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-ui-mac
+          path: app/build/results
+          retention-days: 1
+          if-no-files-found: ignore

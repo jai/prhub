@@ -5,8 +5,9 @@ PRHub's CI follows Jai's personal CI standard ([personal-ci-standard.md](https:/
 ## Runners
 
 - **GitHub-hosted Ubuntu** runs everything that needs no Mac: `lint-ios` and `lint-prkit` (on `ubuntu-24.04`: SwiftLint's Linux build needs libxml2.so.2), `lint-worker`, `lint-workflows`, `test-unit-worker`, `test-integration-worker`, `generate-release-candidate`, the `release` job of `release`, `deploy-worker` and `notify-update-available`. GitHub discards each VM after its job.
-- **Zoomies native-Mac runners on Borg Cube 03** run the Mac work (jai/ci `hosts/borg-cube-03/zoomies-mac/kits/prhub.json`). One `mac` runner: `build-ios` and the `swift test` workflows. One `mac-desktop` runner, in the logged-in desktop session: `test-ui-ios` and `test-ui-prkit`. Each runner is ephemeral: it takes one job, and Zoomies then deletes the runner's folder with its `_work` checkout. Jobs share the user's home folder, so anything a job writes outside `_work` stays unless the job deletes it (see "Disk use").
-- Only pushes to `main`, RC tags and the clock start workflows. No workflow runs on a pull request, so no fork's code reaches the home lab.
+- **GitHub-hosted Macs** (`runs-on: xcode-27`) run the Mac work: `build-ios`, the `swift test` workflows, `test-ui-ios`, `test-ui-prkit` and `test-ui-mac`. GitHub discards each VM after its job (see "Disk use").
+- Only pushes to `main`, RC tags, the clock and a dispatch of `test-ui-mac` start workflows. No workflow runs on a pull request, so no fork's code reaches the home lab.
+- **This repo is public, so every job runs on GitHub's runners, never on Jai's Macs** (Jai, 2026-11-25). That includes the Mac UI tests, which control the screen of the Mac they run on.
 
 ## Components
 
@@ -39,13 +40,14 @@ Each test workflow runs one test layer of one component. Each push workflow runs
 
 | Component | Lint | Unit | Integration | UI | Deploy |
 | --- | --- | --- | --- | --- | --- |
-| `ios` | `lint-ios` (with `build-ios`): push, RC | `test-unit-ios`: push, RC | `test-integration-ios`: push, RC | `test-ui-ios`: RC | Xcode Cloud: `ios-v` tag |
+| `ios` | `lint-ios` (with `build-ios`): push, RC | `test-unit-ios`: push, RC | `test-integration-ios`: push, RC | `test-ui-ios`, `test-ui-mac`: RC | Xcode Cloud: `ios-v` tag |
 | `worker` | `lint-worker`: push, RC | `test-unit-worker`: push, RC | `test-integration-worker`: push, RC | | `deploy-worker`: `worker-v` tag |
 | `prkit` | `lint-prkit`: push, ios and prkit RC | `test-unit-prkit`: push, ios and prkit RC | `test-integration-prkit`: push, ios and prkit RC | `test-ui-prkit`: ios and prkit RC | None: apps get the `v` tag with Swift Package Manager |
 
 - **Unit**: `swift test` on `PRHubUnitTests` and `PRKitUnitTests`; Vitest project `unit` in `worker/` and `agent/`. No app host, storage or network.
 - **Integration**: `swift test` on `PRHubIntegrationTests` (persistence, Keychain, contract fixtures) and `PRKitIntegrationTests` (persistence, contract fixtures, bundled fonts, and the AppKit checks of `PRKit/Tests/PRKitRenderingTests`); Vitest projects `integration-node` and `integration-runtime` (workerd) in `worker/`, and `integration` in `agent/` (a real git and a local server). Outside services are stubbed.
 - **UI**: `make test-ui-prkit` runs `PRKitRenderingTests` (library rendering) then `PRKitUITests` (native gestures, navigation and the review keyboard). Sources live under `PRKit/Tests`; the controlled PRHub app is their test host. Rendering constructs direct library models with canonical in-memory storage support, while interaction tests share only PRHub's launch/navigation support and sample host. `make test-ui-ios` runs `PRHubRenderingTests` (app build settings and account-sheet width) then `PRHubUITests` (Settings, onboarding, account, sample and link wiring). Each rendering plan runs serially without retries; each interaction plan runs serially on the same owned Simulator and retries a failing test once. Both workflows run on iPhone 17 and iPad Pro 13-inch Simulators. Each plan selects its complete named target; there is no selected-test allowlist. The app UI target does not include library assertion sources.
+- **Mac UI**: `make test-ui-mac` runs `PRHubMacUITests`, what only the Mac app's own windows show and no Simulator does: the PRs window's toolbar and the Feedback window it opens, a PR card lifting under the pointer, and a PR link from another app opening in the window that is open. It runs on a hosted Mac's desktop, serially, with the app signed to run on that Mac only, and retries a failing test once. These tests control the screen, so nobody runs them by hand on Jai's Macs (`AGENTS.md`, "Tests on Jai's Macs"). To run them on a branch: `gh workflow run test-ui-mac.yml -R jai/prhub --ref <branch>`.
 - **End-to-end**: `PRHubE2ETests.xctestplan` and `PRHubE2EPairingTests.xctestplan` need a paired deployed Worker; a person runs them. Tester Army (`e2e/`) is started by hand.
 - **Not in CI**: `PRHubPerformanceTests.xctestplan` needs a physical device.
 - `deploy-worker` deploys with `wrangler deploy` (`deploy/hosted/wrangler.jsonc`) and then checks that the live Worker answers. Xcode Cloud's "PRHub TestFlight Internal and External" starts on the `ios-v` tag and only archives and uploads; `app/ci_scripts/ci_post_clone.sh` generates the project for it.
@@ -55,7 +57,7 @@ Each test workflow runs one test layer of one component. Each push workflow runs
 
 `generate-release-candidate` tags the current head of `main`. Component paths determine the next version, while the tested source tree includes every current test-host fix. Git-cliff uses `--unreleased` to bump from the newest component release tag even when that tag points to a commit outside the component paths.
 
-`release` runs the checks of the RC's component in its own run, cheapest first. Lint and unit tests start together; integration waits for its unit tests. `test-ui-prkit` waits for the kit's cheap checks and, on an ios RC, every cheap app check too. Its explicit condition allows app-only checks to be skipped on a prkit RC. `test-ui-ios` then waits for the kit UI gate and the app's cheap checks, without rerunning library UI. Both UI gates run inside the same release run and hold that component's concurrency group. Worker RCs skip both. The final `release` job requires every check that ran to pass, including the kit UI gate.
+`release` runs the checks of the RC's component in its own run, cheapest first. Lint and unit tests start together; integration waits for its unit tests. `test-ui-prkit` waits for the kit's cheap checks and, on an ios RC, every cheap app check too. Its explicit condition allows app-only checks to be skipped on a prkit RC. `test-ui-ios` then waits for the kit UI gate and the app's cheap checks, without rerunning library UI; `test-ui-mac` waits for the same checks and runs beside it. The UI gates run inside the same release run and hold that component's concurrency group. Worker RCs skip both. The final `release` job requires every check that ran to pass, including the kit UI gate and the Mac UI gate.
 
 ## Make targets
 
@@ -70,13 +72,14 @@ Each test workflow runs one test layer of one component. Each push workflow runs
 | `make test-unit-ios` | `swift test --filter PRHubUnitTests` |
 | `make test-integration-ios` | `swift test --filter PRHubIntegrationTests` |
 | `make test-ui-ios` | The rendering plan, then the UI plan (`SIMULATOR=<udid>` or `SIM_NAME=<name>` picks the Simulator) |
+| `make test-ui-mac` | The Mac UI plan, on the desktop of the Mac it runs on. CI's; not in `make all-tests` |
 | `make test-unit-prkit` | `swift test --filter PRKitUnitTests` |
 | `make test-integration-prkit` | `swift test --filter PRKitIntegrationTests` |
 | `make test-ui-prkit` | PRKit rendering, then native library interactions, using the same Simulator selection |
 | `make test-unit-worker` | The Worker's and the agent's unit tests |
 | `make test-integration-worker` | The Worker's storage, contract and workerd tests, and the agent's integration tests |
 | `make lint` | All lint targets |
-| `make all-tests` | All test targets |
+| `make all-tests` | All test targets except `test-ui-mac` |
 
 - The Swift test targets use four build jobs by default; `SWIFT_JOBS=2` limits local validation when sharing a Mac.
 - The worker targets need `npm ci` in `worker/` and `agent/` first, as in any npm project; the workflows do it in their prepare step.
@@ -99,7 +102,7 @@ RC tags have separate groups and never cancel in progress; release serialization
 
 All jobs use GitHub-hosted runners: native Swift and UI checks use `macos-26`, and Linux checks and release metadata use hosted Ubuntu. GitHub discards each job's VM, including the checkout, build products, tool/download caches and any simulator left by an interrupted cleanup.
 
-Native Xcode builds default to two compiler jobs (`JOBS=2`). The hosted arm64 Mac has [3 cores and 7 GB RAM](https://docs.github.com/en/actions/reference/runners/github-hosted-runners); UI jobs use one owned simulator, with parallel testing disabled for both rendering and interactions. This avoids the extra booted clone that timed out initializing Accessibility during the first hosted PRKit iPad run. UI jobs delete their own simulator in their cleanup step. On failure, original result bundles and diagnostics go to a GitHub artifact for three days; successful jobs upload no test evidence.
+Native Xcode builds default to two compiler jobs (`JOBS=2`). The hosted arm64 Mac has [3 cores and 7 GB RAM](https://docs.github.com/en/actions/reference/runners/github-hosted-runners); UI jobs use one owned simulator, with parallel testing disabled for both rendering and interactions. This avoids the extra booted clone that timed out initializing Accessibility during the first hosted PRKit iPad run. UI jobs delete their own simulator in their cleanup step; `test-ui-mac` uses none and has no cleanup step. On failure, original result bundles and diagnostics go to a GitHub artifact for three days; successful jobs upload no test evidence.
 
 ## Deviations from Part 1
 
