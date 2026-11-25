@@ -217,17 +217,24 @@ public struct PrListBlock: View {
         ViewThatFits(in: .horizontal) {
             metaText(pullRequest, showsAuthor: true)
                 .fixedSize()
+            // A bot's PR: what it came through goes before the person does.
+            if pullRequest.requestedBy != nil {
+                metaText(pullRequest, showsAuthor: true, showsVia: false)
+                    .fixedSize()
+            }
             metaText(pullRequest, showsAuthor: false)
                 .truncationMode(.head)
         }
     }
 
-    private func metaText(_ pullRequest: PRListPullRequest, showsAuthor: Bool) -> some View {
+    private func metaText(_ pullRequest: PRListPullRequest, showsAuthor: Bool, showsVia: Bool = true) -> some View {
         // Grey as a colour, not `.secondary`: inside the phone's borderless button that would be a paler tint.
-        Text(item.metaLine(of: pullRequest, now: now, format: format, showsAuthor: showsAuthor))
-            .font(.appCaption)
-            .foregroundStyle(Color.secondary)
-            .lineLimit(1)
+        Text(item.metaLine(
+            of: pullRequest, now: now, format: format, showsAuthor: showsAuthor, showsVia: showsVia
+        ))
+        .font(.appCaption)
+        .foregroundStyle(Color.secondary)
+        .lineLimit(1)
     }
 
     /// An item with no PR: the same places, with Linear's mark for the avatar and the key for the reference.

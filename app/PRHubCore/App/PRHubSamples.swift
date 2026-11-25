@@ -337,6 +337,11 @@ struct PRHubSample {
         return (all ?? []).filter { $0.found == true }
     }
 
+    /// The person the row leads with, as the Worker sends them on a bot's row: the detail's `requestedBy`.
+    private var requestedBy: PRListPerson? {
+        bot.flatMap { try? JSONDecoder().decode(PRListPerson.self, from: Data($0.utf8)) }
+    }
+
     var sample: PRSampleSet.Sample {
         let row = PullRequestRow(
             repo: repo, number: number, title: title, head: "sample-\(number)", revision: "sample", diff: .ready,
@@ -345,7 +350,10 @@ struct PRHubSample {
                 list: list, author: author, checks: checks, review: review, merge: merge, jaiReview: yourReview,
                 jaiReviewedAt: yourReview.map { _ in Date.now.addingTimeInterval(-86400).ISO8601Format() },
                 requestedAt: requestedHoursAgo.map { Date.now.addingTimeInterval(-$0 * 3600).ISO8601Format() },
-                reviewDueAt: dueHoursAgo.map { Date.now.addingTimeInterval(-$0 * 3600).ISO8601Format() }
+                reviewDueAt: dueHoursAgo.map { Date.now.addingTimeInterval(-$0 * 3600).ISO8601Format() },
+                requestedBy: requestedBy,
+                agent: requestedBy.flatMap { _ in rowTickets.first { $0.delegate != nil } }
+                    .map { PRListPerson(name: $0.delegate, avatarUrl: $0.delegateAvatar) }
             ),
             keyLines: PRKeyLines.defaultContext, ticket: rowTickets.first, tickets: rowTickets
         )

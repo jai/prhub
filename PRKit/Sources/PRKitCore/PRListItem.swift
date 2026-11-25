@@ -80,6 +80,25 @@ public struct PRListTicket: Codable, Hashable, Sendable {
     }
 }
 
+/// Someone a PR's row names besides the account that opened it: the human a bot opened it for, or the agent Linear
+/// delegated its ticket to. A person from Linear has a name and Linear's picture and no login; an agent has its name.
+public struct PRListPerson: Codable, Hashable, Sendable {
+    public var login: String?
+    public var name: String?
+    public var avatarUrl: String?
+
+    public init(login: String? = nil, name: String? = nil, avatarUrl: String? = nil) {
+        self.login = login
+        self.name = name
+        self.avatarUrl = avatarUrl
+    }
+
+    /// Their first name, else their login: "Mona" for "Mona Lisa".
+    public var shortName: String? {
+        name?.split(separator: " ").first.map(String.init) ?? login
+    }
+}
+
 /// A GitHub pull request: the ref, its URL and what GitHub said of it, held as a Threads PR (`status`) so both
 /// screens put a PR's state in the same words, and Jai's own latest review of it. `found` is as for a ticket.
 public struct PRListPullRequest: Equatable, Sendable {
@@ -88,6 +107,10 @@ public struct PRListPullRequest: Equatable, Sendable {
     /// Who opened it: their GitHub login, and the name on their profile (`nil` for a bot or none set).
     public var author: String?
     public var authorName: String?
+    /// Only the PRs tab sets these, on a bot's PR: the human it was opened for (its Linear ticket's owner first), and
+    /// the agent Linear delegated the ticket to. The row then leads with the person, never the bot's own picture.
+    public var requestedBy: PRListPerson?
+    public var agent: PRListPerson?
     public var jaiReview: PRJaiReview?
     public var jaiReviewedAt: Date?
     /// Whether a review is asked of Jai now: `true` after his review means he was asked again.
@@ -102,13 +125,16 @@ public struct PRListPullRequest: Equatable, Sendable {
 
     public init(
         status: PullRequestStatus, createdAt: Date? = nil, author: String? = nil, authorName: String? = nil,
-        jaiReview: PRJaiReview? = nil, jaiReviewedAt: Date? = nil, jaiReviewRequested: Bool? = nil, found: Bool? = nil,
-        resolvedAt: Date? = nil, isAnswered: Bool? = nil, reviewDueAt: Date? = nil
+        requestedBy: PRListPerson? = nil, agent: PRListPerson? = nil, jaiReview: PRJaiReview? = nil,
+        jaiReviewedAt: Date? = nil, jaiReviewRequested: Bool? = nil, found: Bool? = nil, resolvedAt: Date? = nil,
+        isAnswered: Bool? = nil, reviewDueAt: Date? = nil
     ) {
         self.status = status
         self.createdAt = createdAt
         self.author = author
         self.authorName = authorName
+        self.requestedBy = requestedBy
+        self.agent = agent
         self.jaiReview = jaiReview
         self.jaiReviewedAt = jaiReviewedAt
         self.jaiReviewRequested = jaiReviewRequested
@@ -218,12 +244,15 @@ public extension PRListItem {
 
     /// "Aymen · web-app#6952 · 12h": who, where and how long ago. The ref stays out when it is already the title, and
     /// the age is left out until GitHub has said it.
+    /// A bot's PR with someone behind it leads with them: "Mona via Atlas · web-app#6952 · 12h", the agent Linear
+    /// delegated the ticket to, else the account that opened it; `showsVia` off leaves the person alone.
     func metaLine(
-        of pullRequest: PRListPullRequest, now: Date, format: ThreadTimeFormat, showsAuthor: Bool
+        of pullRequest: PRListPullRequest, now: Date, format: ThreadTimeFormat, showsAuthor: Bool, showsVia: Bool = true
     ) -> String {
         let reference = title(of: pullRequest) == pullRequest.ref ? nil : pullRequest.status.reference
         let age = pullRequest.found == true ? pullRequest.createdAt.map { format.age($0, now: now) } : nil
-        return [showsAuthor ? pullRequest.authorShortName : nil, reference, age].compactMap(\.self)
+        let who = showsVia ? pullRequest.whoLine : pullRequest.whoShortName
+        return [showsAuthor ? who : nil, reference, age].compactMap(\.self)
             .joined(separator: " · ")
     }
 }
@@ -296,13 +325,46 @@ public extension PRListPullRequest {
         authorName?.split(separator: " ").first.map(String.init) ?? author
     }
 
-    /// The author's GitHub picture, from GitHub's own `github.com/<login>.png`; `nil` without a login, or for one a
+    /// Who the row is from, shortly: the human a bot opened it for, else who opened it.
+    var whoShortName: String? {
+        requestedBy?.shortName ?? authorShortName
+    }
+
+    /// `whoShortName`, and for a bot's PR with someone behind it what it came through: "Mona via Atlas" where Linear
+    /// delegated the ticket to an agent, else "Mona via hubot", the account that opened it.
+    var whoLine: String? {
+        guard let person = requestedBy?.shortName else {
+            return authorShortName
+        }
+        return (agent?.name ?? author).map { "\(person) via \($0)" } ?? person
+    }
+
+    /// The initials under the picture: "AS" for Aymen Sakouhi; a login's first letter where there is no name. The human
+    /// a bot opened it for, else who opened it; `nil` with neither.
+    var whoInitials: String? {
+        let name = requestedBy.map { $0.name ?? $0.login } ?? authorName
+        if let words = name?.split(separator: " "), let first = words.first?.first {
+            return String([first] + (words.dropFirst().last?.first.map { [$0] } ?? [])).uppercased()
+        }
+        return requestedBy == nil ? author?.first.map { String($0).uppercased() } : nil
+    }
+
+    /// The picture the row leads with. A bot's PR with someone behind it shows them: the picture the Worker sent
+    /// (Linear's), else GitHub's for their login, else none, so their initials show and never the bot's face. Any other
+    /// PR: the author's GitHub picture, from GitHub's own `github.com/<login>.png`; `nil` without a login, or for one a
     /// GitHub login could not be (letters, digits and hyphens).
     var avatarURL: URL? {
-        guard let author, author.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }) else {
+        if let requestedBy {
+            return requestedBy.avatarUrl.flatMap(URL.init(string:)) ?? requestedBy.login.flatMap(Self.gitHubAvatar)
+        }
+        return author.flatMap(Self.gitHubAvatar)
+    }
+
+    private static func gitHubAvatar(_ login: String) -> URL? {
+        guard login.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }) else {
             return nil
         }
-        return URL(string: "https://github.com/\(author).png?size=96")
+        return URL(string: "https://github.com/\(login).png?size=96")
     }
 }
 

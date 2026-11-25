@@ -53,10 +53,17 @@ public struct PullRequestRow: Codable, Hashable, Identifiable, Sendable {
         public var reviewDueAt: String?
         /// On a merged row only.
         public var mergedAt: String?
+        /// On a bot's PR with someone behind it: the human it was opened for, as the detail's `requestedBy` has them
+        /// (its Linear ticket's owner first). Absent on a person's PR, and from a Worker older than it.
+        public var requestedBy: PRListPerson?
+        /// With `requestedBy`, the agent Linear delegated the ticket to: its name and picture there. Absent without a
+        /// delegation.
+        public var agent: PRListPerson?
 
         public init(
             list: String?, author: String?, checks: String, review: String, merge: String, jaiReview: String?,
-            jaiReviewedAt: String?, requestedAt: String? = nil, reviewDueAt: String? = nil, mergedAt: String? = nil
+            jaiReviewedAt: String?, requestedAt: String? = nil, reviewDueAt: String? = nil, mergedAt: String? = nil,
+            requestedBy: PRListPerson? = nil, agent: PRListPerson? = nil
         ) {
             self.list = list
             self.author = author
@@ -68,6 +75,8 @@ public struct PullRequestRow: Codable, Hashable, Identifiable, Sendable {
             self.requestedAt = requestedAt
             self.reviewDueAt = reviewDueAt
             self.mergedAt = mergedAt
+            self.requestedBy = requestedBy
+            self.agent = agent
         }
 
         /// This status with what is given changed.
@@ -75,7 +84,7 @@ public struct PullRequestRow: Codable, Hashable, Identifiable, Sendable {
             Status(
                 list: list ?? self.list, author: author, checks: checks, review: review ?? self.review, merge: merge,
                 jaiReview: jaiReview, jaiReviewedAt: jaiReviewedAt, requestedAt: requestedAt, reviewDueAt: reviewDueAt,
-                mergedAt: mergedAt ?? self.mergedAt
+                mergedAt: mergedAt ?? self.mergedAt, requestedBy: requestedBy, agent: agent
             )
         }
     }
@@ -154,7 +163,7 @@ public struct PullRequestRow: Codable, Hashable, Identifiable, Sendable {
             review: status.flatMap { Marked.Review(rawValue: $0.review) }
         )
         return PRListPullRequest(
-            status: marked, author: status?.author,
+            status: marked, author: status?.author, requestedBy: status?.requestedBy, agent: status?.agent,
             jaiReview: status?.jaiReview.flatMap(PRJaiReview.init(rawValue:)),
             jaiReviewedAt: status?.jaiReviewedAt.flatMap { try? Date($0, strategy: .iso8601) },
             jaiReviewRequested: isReviewRequest, found: true, isAnswered: isAnswered, reviewDueAt: reviewDue

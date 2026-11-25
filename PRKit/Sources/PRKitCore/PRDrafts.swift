@@ -78,7 +78,7 @@ public extension PullRequestRow {
         }
         let read = Status(
             list: "reviewed", author: status.author, checks: status.checks, review: status.review, merge: status.merge,
-            jaiReview: answer.review, jaiReviewedAt: answer.sentAt
+            jaiReview: answer.review, jaiReviewedAt: answer.sentAt, requestedBy: status.requestedBy, agent: status.agent
         )
         return with(read)
     }

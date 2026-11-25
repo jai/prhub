@@ -92,6 +92,56 @@ struct PRListDisplayTests {
         #expect(Fixture.pullRequest(authorName: "Alex Doe").authorShortName == "Alex")
     }
 
+    /// Jai, 2026-11-25: a PR an agent's account opened for a ticket that is someone's showed the account alone.
+    @Test func aBotsRowLeadsWithThePersonBehindItAndNamesTheAgentOnlyWhereLinearDelegated() throws {
+        let row = { (people: String) throws -> PRListPullRequest in
+            let json = """
+            {"repo": "acme/web-app", "number": 6798, "title": "t", "head": "h", "revision": "r", "diff": "ready",
+             "detail": "d", "status": {"list": "mine", "author": "hubot", \(people) "checks": "passing",
+             "review": "required", "merge": "blocked", "jaiReview": null, "jaiReviewedAt": null}}
+            """
+            return try JSONDecoder().decode(PullRequestRow.self, from: Data(json.utf8)).listPullRequest
+        }
+        let meta = { (pullRequest: PRListPullRequest, showsVia: Bool) in
+            PRListItem(pullRequests: [pullRequest])
+                .metaLine(of: pullRequest, now: now, format: format, showsAuthor: true, showsVia: showsVia)
+        }
+        let mona = #""requestedBy": {"login": null, "name": "Mona Lisa", "avatarUrl": "https://linear.example/mona", "#
+            + #""source": "linear"},"#
+
+        // The ticket has an owner and Linear delegated it to an agent.
+        let delegated = try row(mona + #""agent": {"name": "Atlas", "avatarUrl": "https://linear.example/atlas"},"#)
+        #expect(meta(delegated, true) == "Mona via Atlas · web-app#6798")
+        #expect(meta(delegated, false) == "Mona · web-app#6798", "in less room the person stays")
+        #expect(delegated.avatarURL?.absoluteString == "https://linear.example/mona" && delegated.whoInitials == "ML")
+
+        // An owner and no delegate: the person, through the account that opened it.
+        let owned = try row(mona)
+        #expect(meta(owned, true) == "Mona via hubot · web-app#6798")
+        #expect(owned.avatarURL?.absoluteString == "https://linear.example/mona" && owned.whoInitials == "ML")
+
+        // Linear has no picture of the owner: their initials, never the bot's face.
+        let faceless = try row(#""requestedBy": {"login": null, "name": "Mona Lisa", "avatarUrl": null, "source": "linear"},"#)
+        #expect(faceless.avatarURL == nil && faceless.whoInitials == "ML")
+        // A person GitHub knows (a "Requested by @mona" line): GitHub's picture of them.
+        let named = try row(#""requestedBy": {"login": "mona", "name": null, "avatarUrl": null, "source": "body"},"#)
+        #expect(named.avatarURL?.absoluteString == "https://github.com/mona.png?size=96")
+        #expect(meta(named, true) == "mona via hubot · web-app#6798")
+
+        // Answered on the phone, the row keeps its person.
+        let json = #"{"repo": "a/b", "number": 1, "title": "t", "head": "h", "revision": "r", "diff": "ready", "#
+            + #""detail": "d", "status": {"list": "review", "author": "hubot", \#(mona) "checks": "passing", "#
+            + #""review": "required", "merge": "blocked", "jaiReview": null, "jaiReviewedAt": null}}"#
+        let asked = try JSONDecoder().decode(PullRequestRow.self, from: Data(json.utf8))
+        let answered = asked.answered(PRLocalAnswer(review: "approved", sentAt: "2026-11-25T00:00:00Z", head: "h"))
+        #expect(answered.isAnswered && answered.listPullRequest.whoLine == "Mona via hubot")
+
+        // No owner: the bot alone, as it was. An older Worker sends neither.
+        let bare = try row("")
+        #expect(meta(bare, true) == "hubot · web-app#6798" && bare.whoInitials == "H")
+        #expect(bare.avatarURL?.absoluteString == "https://github.com/hubot.png?size=96")
+    }
+
     @Test func anItemShowsItsTicketAndPullRequest() {
         let item = Fixture.item(Fixture.ticket(), [Fixture.pullRequest(
             title: "Accept UK mobile numbers at phone sign-in", state: .draft, merge: .blocked,

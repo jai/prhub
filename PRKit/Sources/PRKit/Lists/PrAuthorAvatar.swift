@@ -2,8 +2,9 @@ import PRKitCore
 import PRKitDesign
 import SwiftUI
 
-/// A PR author's GitHub picture in a circle, their initials while it loads or where GitHub has none. With no author known
-/// it draws nothing: the column stays, and there is no empty circle.
+/// A PR author's GitHub picture in a circle, their initials while it loads or where GitHub has none. A bot's PR with
+/// someone behind it shows that person instead (`PRListPullRequest.avatarURL`). With no one known it draws nothing: the
+/// column stays, and there is no empty circle.
 public struct PrAuthorAvatar: View {
     public let pullRequest: PRListPullRequest
     @Environment(\.loadsAuthorAvatars) private var loadsAvatars
@@ -44,12 +45,8 @@ public struct PrAuthorAvatar: View {
         }
     }
 
-    /// "AS" for Aymen Sakouhi; a login's first letter where GitHub has no name.
     private var initials: String? {
-        if let words = pullRequest.authorName?.split(separator: " "), let first = words.first?.first {
-            return String([first] + (words.dropFirst().last?.first.map { [$0] } ?? [])).uppercased()
-        }
-        return pullRequest.author?.first.map { String($0).uppercased() }
+        pullRequest.whoInitials
     }
 }
 

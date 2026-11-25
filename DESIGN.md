@@ -410,6 +410,11 @@ states: [resolving, notFound, open, draft, merged, closed, faded, answered]
 rules:
   - An empty optional part collapses. The state column never moves.
   - Meta gives way in this order, the name, then the repo's front. `#N` and the age stay.
+  - A bot's PR with someone behind it (the Worker's `requestedBy`: its Linear ticket's owner first) leads with that
+    person: the avatar is their picture (Linear's, else GitHub's for their login, else their initials, never the
+    bot's), and meta starts "Mona via Atlas", the agent Linear delegated the ticket to, or "Mona via hubot", the
+    account that opened it, where the ticket has no delegate. "via …" gives way before the name does. A bot's PR
+    with no one behind it is the account alone.
   - Signals wrap whole. Words in status never truncate.
   - The Review button is the one button in a row. With it, meta and signals stop short of the state column.
   - A long press opens the row's menu: Open, Review changes, Open in GitHub, Copy link, then the swipe's actions.
@@ -490,8 +495,8 @@ rules:
   - Who: the author's profile name, else their login. A bot's PR leads with the person it was opened for when the
     Worker found one: their face and first name, "via", then the chip. The chip is the agent Linear delegated the
     ticket to, with its name and picture in Linear, then the login that opened the PR: "Mona via Atlas · hubot".
-    Without a delegate the chip is the account's picture and "hubot (bot)". At a large text size the chip goes under
-    the person.
+    Without a delegate the chip is the account's picture and "hubot (bot)": "Mona via hubot (bot)". Without a person
+    it is the chip alone. At a large text size the chip goes under the person.
   - Tickets are the title's (in brackets), then the branch's, then the description's, as the Worker sends them, with
     Linear's state where it could ask. Without Linear a ticket is its key alone: no "Resolving…" that never resolves.
   - Without Linear on a hosted account that hasn't connected it, the key is followed by "Connect Linear to see this

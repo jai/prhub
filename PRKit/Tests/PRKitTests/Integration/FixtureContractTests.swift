@@ -28,6 +28,15 @@ struct FixtureContractTests {
         #expect(row.ticket?.delegateAvatar == "https://avatars.linear.app/atlas.png")
     }
 
+    @Test func aBotsRowNamesTheTicketsOwner() throws {
+        let row = try JSONDecoder().decode(PullRequestRow.self, from: Self.data("bot-row.json"))
+        #expect(row.status?.author == "atlas-bot")
+        #expect(row.status?.requestedBy?.name == "Alex Doe" && row.status?.requestedBy?.login == nil)
+        #expect(row.status?.agent == nil && row.ticket?.delegate == nil, "the ticket is not delegated")
+        #expect(row.listPullRequest.whoLine == "Alex via atlas-bot")
+        #expect(row.listPullRequest.avatarURL?.absoluteString == "https://avatars.linear.app/alex.png")
+    }
+
     @Test func aMergedRowDecodes() throws {
         let row = try JSONDecoder().decode(PullRequestRow.self, from: Self.data("merged-row.json"))
         #expect(row.isMerged)
