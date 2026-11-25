@@ -22,9 +22,17 @@
         }
 
         func clicked(_ clicked: Int) {
-            guard clicked >= 0, clicked < items.count, case let .row(section, index) = items[clicked],
-                  case let .line(line) = row(section: section, row: index), !composerHasText
-            else {
+            guard clicked >= 0, clicked < items.count, case let .row(section, index) = items[clicked] else {
+                return
+            }
+            switch row(section: section, row: index) {
+            case let .rest(line), let .less(line):
+                actions.showWholeLine(line)
+                return
+            default:
+                break
+            }
+            guard let line = row(section: section, row: index).codeLine, !composerHasText else {
                 return
             }
             let kind = document.lines[line].kind
@@ -57,7 +65,7 @@
         func highlightLines() {
             table.enumerateAvailableRowViews { rowView, row in
                 guard case let .row(section, index) = items[row],
-                      case let .line(line) = self.row(section: section, row: index)
+                      let line = self.row(section: section, row: index).codeLine
                 else {
                     return
                 }

@@ -144,6 +144,11 @@ struct PRDiffPage: View {
                 if session.topFile != file {
                     session.topFile = file
                 }
+            },
+            showWholeLine: { index in
+                if document.lines.indices.contains(index) {
+                    session.showWhole(document.lines[index], in: document)
+                }
             }
         )
     }
@@ -169,7 +174,10 @@ struct PRDiffPage: View {
                 text: text,
                 placeholder: "Comment on this line",
                 buttonTitle: session.drafts.isEmpty ? "Start review" : "Add to review",
-                context: document.isClipped(line) ? document.text(of: line) : nil,
+                // Wrapped, the whole line is on screen over the box. Scrolled, a cut line is read here, as far as a
+                // box can hold.
+                context: !rows.wraps && document.isClipped(line)
+                    ? document.text(of: line, limit: DiffDocument.pieceBytes) : nil,
                 lines: 1 ... 6,
                 // The box closes at once and the toast follows the comment to GitHub, as a review's does.
                 alternate: .init(title: "Comment now") { words in

@@ -5,16 +5,39 @@
     import UIKit
 
     extension DiffTableContainer {
-        func lineCell(_ index: Int, at indexPath: IndexPath) -> UITableViewCell {
+        /// A line of code, or one piece of a long one where lines wrap: the line's numbers are beside its first.
+        func lineCell(_ index: Int, piece: Int = 0, at indexPath: IndexPath) -> UITableViewCell {
             let cell = table.dequeueReusableCell(withIdentifier: DiffLineCell.identifier, for: indexPath)
             let line = document.lines[index]
-            let text = document.text(of: line, limit: DiffDocument.columns)
-            (cell as? DiffLineCell)?.configure(
-                line: line, text: document.isClipped(line) ? "\(text)⋯" : text,
-                metrics: metrics, digits: document.lineNumberDigits
-            )
+            if rows.wraps {
+                // Before the table has a width a row is asked for by a test alone, and nothing is narrow enough to wrap.
+                let wrap = wrap ?? DiffWrap(metrics: metrics, width: DiffWrap.unbounded)
+                (cell as? DiffLineCell)?.configure(
+                    line: line, wrapped: wrap.text(line: index, piece: piece, of: document), isFirstPiece: piece == 0,
+                    rows: rows.cut.contains(index) ? DiffWrap.shownRows : 0, metrics: metrics,
+                    digits: document.lineNumberDigits
+                )
+            } else {
+                let text = document.text(of: line, limit: DiffDocument.columns)
+                (cell as? DiffLineCell)?.configure(
+                    line: line, text: document.isClipped(line) ? "\(text)⋯" : text,
+                    metrics: metrics, digits: document.lineNumberDigits
+                )
+            }
             mark(cell, line: index, at: indexPath)
-            cell.accessibilityIdentifier = "diff-line-\(index)"
+            cell.accessibilityIdentifier = piece == 0 ? "diff-line-\(index)" : "diff-line-\(index)-piece-\(piece)"
+            return cell
+        }
+
+        /// "Show full line", under the start of a very long line, on the line's own colour; "Show less" under its end.
+        func restCell(_ index: Int, isLess: Bool = false, at indexPath: IndexPath) -> UITableViewCell {
+            let cell = table.dequeueReusableCell(withIdentifier: DiffRestCell.identifier, for: indexPath)
+            let line = document.lines[index]
+            (cell as? DiffRestCell)?.configure(
+                title: isLess ? DiffWrap.lessTitle : DiffWrap.restTitle(line), metrics: metrics, digits: document.lineNumberDigits
+            )
+            cell.backgroundColor = DiffStyle.background(line.kind)
+            cell.accessibilityIdentifier = "diff-line-\(index)-\(isLess ? "less" : "rest")"
             return cell
         }
 
