@@ -81,6 +81,53 @@ final class PRHubMacListUITests: XCTestCase {
         add(attachment)
     }
 
+    /// The red of a past-SLA mark (`tone-bad`, light or dark) in the card's avatar column, under the avatar: how many
+    /// of the picture's pixels there are red. The column is the card's leading 32 pt, which no other red reaches: a
+    /// failing check's words are in the text column.
+    private func redUnderTheAvatar(of card: XCUIElement) throws -> Int {
+        let picture = try Picture(card)
+        let scale = Double(picture.width) / Double(card.frame.width)
+        let columns = 0 ..< min(picture.width, Int(32 * scale))
+        let rows = min(picture.height, Int(32 * scale)) ..< picture.height
+        var red = 0
+        for row in rows {
+            for column in columns {
+                let at = (row * picture.width + column) * 4
+                let (r, g, b) = (Int(picture.bytes[at]), Int(picture.bytes[at + 1]), Int(picture.bytes[at + 2]))
+                if r >= 150, r - max(g, b) >= 80 {
+                    red += 1
+                }
+            }
+        }
+        return red
+    }
+
+    /// Jai, 2026-11-25: "We lost the SLA overdue red clock in PR Hub, it seems, in the list of PRs. I can't tell which
+    /// are over SLA." A review past its SLA has the red clock and its age under its avatar, on its card; one not yet
+    /// due has none. The samples hold one of each.
+    func testAReviewPastItsSLAHasTheRedClockUnderItsAvatarOnItsCard() throws {
+        app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-PRHubPaired"]
+        app.launch()
+        let late = prCard("Rate-limit the password reset endpoint")
+        let onTime = prCard("Show a retry button when checkout fails")
+        XCTAssertTrue(late.waitForExistence(timeout: 30), "the sample review that is 26 hours past its SLA")
+        XCTAssertTrue(onTime.exists, "the sample review asked 3 hours ago")
+        app.activate()
+        // The pointer off every card, so neither is lifted.
+        app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0))
+            .withOffset(CGVector(dx: 0, dy: 14)).hover()
+        var red = try redUnderTheAvatar(of: late)
+        for _ in 0 ..< 15 where red < 40 {
+            Thread.sleep(forTimeInterval: 0.2)
+            red = try redUnderTheAvatar(of: late)
+        }
+        picture("past-sla-clock")
+        XCTAssertTrue(late.label.contains("Past review SLA"), "the card says it is past its SLA: \(late.label)")
+        XCTAssertGreaterThanOrEqual(red, 40, "the red clock and its age are drawn under the late review's avatar")
+        XCTAssertEqual(try redUnderTheAvatar(of: onTime), 0, "a review not yet due has no clock")
+        XCTAssertFalse(onTime.label.contains("Past review SLA"), "nor says so: \(onTime.label)")
+    }
+
     func testTheCardUnderThePointerLiftsItsGroundAndRestsAgainOffIt() throws {
         // No windows of an earlier run: the launch opens the PRs window alone. First, so it is read as a pair.
         app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-PRHubPaired"]

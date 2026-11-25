@@ -168,7 +168,7 @@ struct PRRowCardRenderingTests {
 }
 
 /// One pixel, sRGB.
-private struct Pixel: CustomStringConvertible {
+struct Pixel: CustomStringConvertible {
     let red: Int
     let green: Int
     let blue: Int
@@ -230,7 +230,7 @@ private extension Color.Resolved {
 }
 
 /// A drawn view's pixels, sRGB, top row first.
-private struct Bitmap {
+struct Bitmap {
     let width: Int
     let height: Int
     let bytes: [UInt8]
