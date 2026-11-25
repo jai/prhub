@@ -51,6 +51,7 @@ Each test workflow runs one test layer of one component. Each push workflow runs
 - **End-to-end**: `PRHubE2ETests.xctestplan` and `PRHubE2EPairingTests.xctestplan` need a paired deployed Worker; a person runs them. Tester Army (`e2e/`) is started by hand.
 - **Not in CI**: `PRHubPerformanceTests.xctestplan` needs a physical device.
 - `deploy-worker` deploys with `wrangler deploy` (`deploy/hosted/wrangler.jsonc`) and then checks that the live Worker answers. Xcode Cloud's "PRHub TestFlight Internal and External" starts on the `ios-v` tag and only archives and uploads; `app/ci_scripts/ci_post_clone.sh` generates the project for it.
+- **An `ios` release confirms that Xcode Cloud started.** GitHub's event for a tag does not always reach Xcode Cloud (`ios-v0.37.0` never built; jai/ci, `docs/xcode-cloud-start`). After the `release` job pushes the `ios-v` tag, `release/confirm-xcode-cloud-run.mjs` asks App Store Connect for a run on that tag for 3 minutes. With none, it deletes the tag and pushes the same tag object again, at most twice; with none after that, the job fails and says what to do. The GitHub Release is made only after a run exists, so a tag that is pushed again never has a Release. Nothing else in this repo starts on an `ios-v` tag. The job can be re-run: it keeps the tag that is there and looks again. `node release/confirm-xcode-cloud-run.mjs <tag> --dry-run` looks once and pushes nothing.
 - This repo is public. Each `lint-<component>` runs gitleaks on its component's files.
 
 ## Release order
@@ -113,11 +114,12 @@ Each names what it changes, why, and Jai's approval.
 - **`lint-ios` has a second job, `build-ios`**, and `make build-ios` is a target Part 1 does not list. Part 1 asks for builds of every shipped target on each push, and has no build workflow. Approval: pending.
 - **`test-ui-ios` and `test-ui-prkit` also run their app-hosted rendering plans.** Its checks are UI-layer: they need the app on a Simulator. Folding it in keeps one make target per workflow, and the release still gates it. Approval: pending.
 - **`notify-update-available` runs `release/app-latest.test.mjs` before each run.** `release/` belongs to no component, so no test workflow covers it. Approval: pending.
+- **The `release` job confirms Xcode Cloud's run before the GitHub Release, and runs `release/confirm-xcode-cloud-run.test.mjs` before it tags an `ios` release.** Part 1 has the tag start Xcode Cloud and checks nothing. Approved by Jai, 2026-11-25 ("Yes, but keep it clean").
 - **`.claude/hooks/fix-edited-file.py`** is a Claude Code hook that Part 1 does not list. Approval: pending.
 
 ## Open questions
 
-- **`release/app-latest.test.mjs`**: move it into `test-unit-worker`, or give `release/` a test workflow?
+- **`release/app-latest.test.mjs` and `release/confirm-xcode-cloud-run.test.mjs`**: move them into `test-unit-worker`, or give `release/` a test workflow?
 - **Runners**: the playbook names Borg Cube 03 and the Mac mini. Since 2026-11-18 the Mac jobs ran on Cube 03, and two `mac` jobs on Cube 04, which the playbook leaves for later. The Mac mini ran none.
 
 ## Not in CI

@@ -2,7 +2,9 @@
 # that commit through workflow_call, so the concurrency group holds until the end. All green: the release tag
 # (ios-v<version>, worker-v<version>, or v<version> for prkit) and the GitHub Release, with git-cliff's notes. A red check
 # stops the release; the next RC gets the same version. RC tags stay, as the record of what was tested.
-# ios-v starts Xcode Cloud ("PRHub TestFlight Internal and External"); worker-v starts deploy-worker.yml.
+# ios-v starts Xcode Cloud ("PRHub TestFlight Internal and External"); worker-v starts deploy-worker.yml. Some tag events
+# never reach Xcode Cloud, so an ios release confirms its run started, and pushes the tag again when it did not, before
+# it makes the GitHub Release (release/confirm-xcode-cloud-run.mjs).
 #
 # Order within a component, cheapest first: lint and unit tests start together; integration tests wait for their unit
 # tests; the UI tests wait for the applicable cheaper checks, so a long Simulator run never holds the Mac for a commit
@@ -76,7 +78,8 @@ jobs:
     needs: [lint-ios, test-unit-ios, test-integration-ios, test-ui-ios, test-ui-mac, lint-prkit, test-unit-prkit, test-integration-prkit, test-ui-prkit, lint-worker, test-unit-worker, test-integration-worker]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # An ios release waits for Xcode Cloud: 3 minutes after each push of the tag, and at most 3 pushes.
+    timeout-minutes: 15
     steps:
       # The jai-agents App's token, made here after the tests (it stops after 1 hour). A tag or release made with
       # github.token starts no workflow, so neither Xcode Cloud's start nor deploy-worker.yml would follow.
@@ -89,10 +92,16 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
-      # The component's paths are generate-release-candidate.yml's: git-cliff's notes cover the same commits.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      # Before the tag: release/ belongs to no component, so no test workflow covers it (docs/workflow.md).
+      - name: Test the Xcode Cloud confirmation
+        if: startsWith(github.ref_name, 'rc-ios-')
+        run: node --test release/confirm-xcode-cloud-run.test.mjs
+      # The component's paths are generate-release-candidate.yml's: git-cliff's notes cover the same commits. On a
+      # re-run of this job the tag is there from the first attempt: it is kept, and its message is the notes.
       - name: Tag the release and write its notes
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           rest=${GITHUB_REF_NAME#rc-}
           component=${rest%%-*}
@@ -104,6 +113,15 @@ jobs:
             prkit) prefix=v; paths=(PRKit Package.swift Package.resolved .swiftlint.yml Makefile .github/workflows .gitleaks.toml cliff.toml) ;;
           esac
           tag="$prefix$version"
+          echo "tag=$tag" >> "$GITHUB_ENV"
+          if git rev-parse --quiet --verify "refs/tags/$tag" > /dev/null; then
+            if [ "$(git rev-parse "$tag^{commit}")" != "$(git rev-parse HEAD)" ]; then
+              echo "::error::$tag is already on another commit"
+              exit 1
+            fi
+            git tag --list --format='%(contents)' "$tag" > "$RUNNER_TEMP/notes.md"
+            exit 0
+          fi
           include=()
           for path in "${paths[@]}"; do
             if [ -d "$path" ]; then include+=(--include-path "$path/**"); else include+=(--include-path "$path"); fi
@@ -113,4 +131,18 @@ jobs:
           git -c user.name='jai-agents[bot]' -c user.email='356602356+jai-agents[bot]@users.noreply.github.com' \
             tag -a "$tag" -F "$RUNNER_TEMP/notes.md"
           git push origin "refs/tags/$tag"
-          gh release create "$tag" --verify-tag --title "$tag" --notes-file "$RUNNER_TEMP/notes.md"
+      # Before the GitHub Release, so that a tag it pushes again has no Release yet. Nothing in this repo starts on an
+      # ios-v tag but Xcode Cloud, and the tag is pushed again only while Xcode Cloud has no run for it.
+      - name: Confirm Xcode Cloud started a run for the tag
+        if: startsWith(github.ref_name, 'rc-ios-')
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: node release/confirm-xcode-cloud-run.mjs "$tag"
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh release view "$tag" > /dev/null 2>&1 ||
+            gh release create "$tag" --verify-tag --title "$tag" --notes-file "$RUNNER_TEMP/notes.md"
