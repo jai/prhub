@@ -22,6 +22,8 @@ import {
   isBotAuthor,
   type RequestedBy,
   requestedByOf,
+  type RowAgent,
+  rowPeopleOf,
   withTicketOwner,
 } from "./requester.ts";
 import {
@@ -197,6 +199,10 @@ interface CommonStatus {
   jaiReviewedAt: string | null;
   /** A draft PR. Absent on a row stored before it was kept: read as not known. */
   draft?: boolean;
+  /** On a bot's PR with someone behind it (`rowPeopleOf`): the detail's `requestedBy`. Absent on any other. */
+  requestedBy?: RequestedBy;
+  /** With `requestedBy`, where Linear delegated the ticket to an agent: its name and picture there. */
+  agent?: RowAgent;
 }
 
 /**
@@ -1265,6 +1271,7 @@ async function readOwnedPullRequests(
         ...pr.detail,
         tickets: resolvedTickets(pr.ticketKeys, issues),
       });
+      pr.status = pr.status && { ...pr.status, ...rowPeopleOf(pr.detail) };
       pr.tickets = rowTickets(pr.ticketKeys, pr.detail.tickets);
       pr.ticket = pr.tickets[0] ?? null;
     }

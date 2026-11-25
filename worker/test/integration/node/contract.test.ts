@@ -7,13 +7,14 @@ import { alertMessage } from "../../../src/alerts.ts";
 import { parseRowStatus } from "../../../src/boundary.ts";
 import { deviceConfig } from "../../../src/config.ts";
 import type { Env } from "../../../src/env.ts";
-import { detailVersionOf, mergedRow } from "../../../src/github.ts";
+import { detailVersionOf, mergedRow, pullRequest } from "../../../src/github.ts";
 import { DEFAULT_CONTEXT } from "../../../src/key-lines.ts";
 
+import { botAuthorsOf, rowPeopleOf, withTicketOwner } from "../../../src/requester.ts";
 import { resolvedTickets, rowTickets } from "../../../src/tickets.ts";
 import { authenticate, hostedAccountConfig } from "../../../src/hosted.ts";
 import { bearer, hostedWorld, ORIGIN, signIn } from "../../support/hosted-world.ts";
-import { readPr as read } from "../../support/pr-node.ts";
+import { prNode, readPr as read, REVIEW_WEEK } from "../../support/pr-node.ts";
 
 // Golden fixtures (PRKit/Tests/PRContractFixtures/Fixtures/): what the Worker sends, from the real builders, for the app's contract tests.
 // `UPDATE_FIXTURES=1 npm test` writes them after a deliberate change; otherwise a change fails here.
@@ -61,6 +62,62 @@ test("a row of GET /prs, on the review list, with the ticket its branch names", 
   pr.ticket = pr.tickets[0] ?? null;
   // As `PrIndex.rows` serves it: the status as stored and read back.
   matchesFixture("row.json", {
+    repo: pr.repo,
+    number: pr.number,
+    title: pr.title,
+    head: pr.head,
+    revision: pr.revision,
+    diff: "ready",
+    detail: await detailVersionOf(pr),
+    status: parseRowStatus(JSON.stringify(pr.status)),
+    keyLines: DEFAULT_CONTEXT,
+    ticket: pr.ticket,
+    tickets: pr.tickets,
+  });
+});
+
+test("a row of GET /prs for a bot's PR, with the ticket's owner and no delegate", async () => {
+  const pr = pullRequest(
+    prNode({
+      author: { __typename: "User", login: "atlas-bot", avatarUrl: null },
+      headRefName: "atlas/eng-7-retry",
+    }) as never,
+    "jai",
+    false,
+    REVIEW_WEEK,
+    null,
+    botAuthorsOf({ BOT_AUTHORS: "atlas-bot" }),
+  );
+  assert.ok(pr.status);
+  // As `readPullRequests` fills it, with Linear's answer.
+  pr.detail = withTicketOwner({
+    ...pr.detail,
+    tickets: resolvedTickets(
+      pr.ticketKeys,
+      new Map([
+        [
+          "ENG-7",
+          {
+            key: "ENG-7",
+            url: "https://linear.app/acme/issue/ENG-7/retry-uploads",
+            title: "Retry failed uploads",
+            state: "In Review",
+            state_type: "started",
+            state_color: "#0f783c",
+            assignee: "Alex Doe",
+            assignee_avatar: "https://avatars.linear.app/alex.png",
+            delegate: null,
+            delegate_avatar: null,
+            found: true,
+          },
+        ],
+      ]),
+    ),
+  });
+  pr.status = { ...pr.status, ...rowPeopleOf(pr.detail) };
+  pr.tickets = rowTickets(pr.ticketKeys, pr.detail.tickets);
+  pr.ticket = pr.tickets[0] ?? null;
+  matchesFixture("bot-row.json", {
     repo: pr.repo,
     number: pr.number,
     title: pr.title,

@@ -151,3 +151,36 @@ export function withTicketOwner<Detail extends OwnedDetail>(detail: Detail): Det
   }
   return { ...detail, authorIsBot: true, requestedBy: owner };
 }
+
+/** The agent Linear delegated a bot's PR's ticket to, as a row says it: its name and picture in Linear. */
+export interface RowAgent {
+  name: string;
+  avatarUrl: string | null;
+}
+
+/** What a row says of who is behind a bot's PR (`rowPeopleOf`): both absent on a person's PR. */
+export interface RowPeople {
+  requestedBy?: RequestedBy;
+  agent?: RowAgent;
+}
+
+/**
+ * Who a list row leads with on a bot's PR, as its page does: the human it was opened for (`requestedBy`) and the agent
+ * Linear delegated the ticket to (`agent`), from the ticket that named the human where Linear named them. Nothing for
+ * a person's PR, or a bot's with no one behind it.
+ */
+export function rowPeopleOf(detail: OwnedDetail): RowPeople {
+  if (!detail.authorIsBot || !detail.requestedBy) {
+    return {};
+  }
+  const { requestedBy } = detail;
+  const delegated = detail.tickets.find(
+    (ticket) =>
+      ticket.found === true &&
+      ticket.delegate &&
+      (requestedBy.source !== "linear" || ticket.assignee === requestedBy.name),
+  );
+  return delegated?.delegate
+    ? { requestedBy, agent: { name: delegated.delegate, avatarUrl: delegated.delegate_avatar } }
+    : { requestedBy };
+}

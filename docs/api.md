@@ -266,7 +266,7 @@ question with no answer yet: FeedbackKit's `needsAttentionCount`, from the list'
 
 `GET /prs` rows and `GET /prs/{owner}/{repo}/{n}/detail` speak the words in `worker/src/vocab.ts`, the same sets
 the Pager Worker uses for threads. Examples, written by `worker/test/integration/node/contract.test.ts` from the real builders and
-checked on every run: [`row.json`](../PRKit/Tests/PRContractFixtures/Fixtures/row.json), [`merged-row.json`](../PRKit/Tests/PRContractFixtures/Fixtures/merged-row.json),
+checked on every run: [`row.json`](../PRKit/Tests/PRContractFixtures/Fixtures/row.json), [`bot-row.json`](../PRKit/Tests/PRContractFixtures/Fixtures/bot-row.json) (a bot's PR), [`merged-row.json`](../PRKit/Tests/PRContractFixtures/Fixtures/merged-row.json),
 [`detail.json`](../PRKit/Tests/PRContractFixtures/Fixtures/detail.json), [`device-config.json`](../PRKit/Tests/PRContractFixtures/Fixtures/device-config.json),
 [`alert.json`](../PRKit/Tests/PRContractFixtures/Fixtures/alert.json) (an alert's payload).
 
@@ -276,6 +276,10 @@ checked on every run: [`row.json`](../PRKit/Tests/PRContractFixtures/Fixtures/ro
   served as `status: null`.
 - `GET …/detail`, `…/diff`, `…/key-lines` and `…/rewrite` answer with `Server-Timing: github;desc="github calls";dur=<n>`,
   the GitHub calls that request made (`0` when R2 answered), so a client can measure its share of the token's hour.
+- An open row's `status.requestedBy` is its detail's `requestedBy` (below), only on a bot's PR with someone behind
+  it: the list leads with that person. With it, `status.agent` is `{name, avatarUrl}` of the agent Linear delegated
+  the ticket to, absent when the ticket has no delegate. Both are absent on a person's PR, on a bot's with no one
+  behind it, and on a merged row.
 - An open row's `status.draft` says whether the PR is a draft. A row stored before it was kept has none: not known
   until the PR is read again.
 - A detail's `merge` (`clean`, `behind`, `blocked`, `conflicting`, `unstable`, `unknown`) and `review` (`approved`,

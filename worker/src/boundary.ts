@@ -186,6 +186,16 @@ const COMMON_STATUS = {
   jaiReview: NULLABLE_TEXT,
   jaiReviewedAt: NULLABLE_TEXT,
   draft: z.boolean().optional(),
+  // Only on a bot's PR with someone behind it (`rowPeopleOf`).
+  requestedBy: z
+    .object({
+      login: NULLABLE_TEXT,
+      name: NULLABLE_TEXT,
+      avatarUrl: NULLABLE_TEXT,
+      source: z.enum(["co_author", "body", "linear", "assignee"]),
+    })
+    .optional(),
+  agent: z.object({ name: z.string(), avatarUrl: NULLABLE_TEXT }).optional(),
 };
 
 /**

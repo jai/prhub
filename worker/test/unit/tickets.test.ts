@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { Env } from "../../src/env.ts";
 import { pullRequest } from "../../src/github.ts";
-import { botAuthorsOf, isBotAuthor, requestedByOf, withTicketOwner } from "../../src/requester.ts";
+import {
+  botAuthorsOf,
+  isBotAuthor,
+  requestedByOf,
+  rowPeopleOf,
+  withTicketOwner,
+} from "../../src/requester.ts";
 import {
   type Ticket,
   allKeys,
@@ -311,4 +317,62 @@ test("an agent's PR on a delegated Linear ticket is the ticket assignee's, throu
   assert.equal(withTicketOwner({ ...bot, requestedBy: coAuthor }).requestedBy?.name, "Alex Doe");
   const asked = { login: "octocat", name: null, avatarUrl: null, source: "body" as const };
   assert.equal(withTicketOwner({ ...bot, requestedBy: asked }).requestedBy, asked);
+});
+
+// Jai, 2026-11-25: a PR an agent's account opened for a ticket that is someone's, with no Linear delegation, showed
+// the account alone, on its page and in the list. The account is one BOT_AUTHORS names.
+test("a row of a bot's PR names the ticket's owner, and the agent only where Linear delegated the ticket", () => {
+  const ticket: Ticket = {
+    key: "ENG-7",
+    url: "https://linear.app/acme/issue/ENG-7",
+    title: "Retry failed uploads",
+    state: "In Review",
+    state_type: "started",
+    state_color: "#0f783c",
+    assignee: "Alex Doe",
+    assignee_avatar: "https://avatars.example/alex",
+    delegate: null,
+    delegate_avatar: null,
+    found: true,
+  };
+  const node = prNode({
+    author: { __typename: "User", login: "atlas-bot", avatarUrl: "https://avatars.example/a" },
+    viewerDidAuthor: false,
+  });
+  const byBot = pullRequest(node as never, "jai", true, null, null, bots).detail;
+  const alex = {
+    login: null,
+    name: "Alex Doe",
+    avatarUrl: "https://avatars.example/alex",
+    source: "linear",
+  };
+
+  // An owner and no delegate: the person, and no agent.
+  const owned = withTicketOwner({ ...byBot, tickets: [ticket] });
+  assert.deepEqual(rowPeopleOf(owned), { requestedBy: alex });
+
+  // An owner and a delegate: the person, and the agent as Linear has it.
+  const delegated = {
+    ...ticket,
+    delegate: "Atlas",
+    delegate_avatar: "https://avatars.example/atlas",
+  };
+  assert.deepEqual(rowPeopleOf(withTicketOwner({ ...byBot, tickets: [delegated] })), {
+    requestedBy: alex,
+    agent: { name: "Atlas", avatarUrl: "https://avatars.example/atlas" },
+  });
+
+  // Another ticket's delegate is not this person's agent.
+  const others = { ...delegated, key: "SEC-12", assignee: "Mona Lisa" };
+  assert.deepEqual(rowPeopleOf(withTicketOwner({ ...byBot, tickets: [ticket, others] })), {
+    requestedBy: alex,
+  });
+
+  // No owner: the bot alone, as before.
+  const unowned = { ...ticket, assignee: null, assignee_avatar: null };
+  assert.deepEqual(rowPeopleOf(withTicketOwner({ ...byBot, tickets: [unowned] })), {});
+
+  // A person's PR on someone else's ticket stays the person's.
+  const byPerson = pullRequest(prNode() as never, "jai", true, null, null, bots).detail;
+  assert.deepEqual(rowPeopleOf(withTicketOwner({ ...byPerson, tickets: [ticket] })), {});
 });
