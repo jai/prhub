@@ -33,10 +33,13 @@ struct PRBotPeopleRenderingTests {
     }
 
     /// A PR's page byline, opened by hubot, with the ticket Linear answered with.
-    private static func byline(bot: Bool, requestedBy: String?, delegate: String?) throws -> some View {
+    private static func byline(
+        bot: Bool, requestedBy: String?, delegate: String?, delegateAvatar: String? = nil
+    ) throws -> some View {
         let ticket = """
         {"key": "API-88", "title": "Throttle password reset emails", "state": "In Review", "found": true,
-         "assignee": \(requestedBy == nil ? "null" : #""Mona Lisa""#), "delegate": \(delegate.map { #""\#($0)""# } ?? "null")}
+         "assignee": \(requestedBy == nil ? "null" : #""Mona Lisa""#), "delegate": \(delegate.map { #""\#($0)""# } ?? "null"),
+         "delegate_avatar": \(delegateAvatar.map { #""\#($0)""# } ?? "null")}
         """
         let json = """
         {"url": "u", "head": "h", "base": "main", "headBranch": "atlas/api-88-rate-limit",
@@ -49,13 +52,44 @@ struct PRBotPeopleRenderingTests {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// The agent's picture in Linear, in hand so it is drawn without the network: one flat colour no other part has.
+    private static let atlasPicture = "https://linear.example/atlas.png"
+    private static let atlasWithPicture = #"{"name": "Atlas", "avatarUrl": "\#(atlasPicture)"}"#
+    private static let fox: (red: UInt8, green: UInt8, blue: UInt8) = (255, 0, 255)
+
+    private static func foxPicture() throws -> Image {
+        var bytes = [UInt8](repeating: 255, count: 16 * 16 * 4)
+        for pixel in 0 ..< 16 * 16 {
+            bytes[pixel * 4 + 1] = 0
+        }
+        let sRGB = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+        let context = try #require(CGContext(
+            data: &bytes, width: 16, height: 16, bitsPerComponent: 8, bytesPerRow: 64, space: sRGB,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        return try Image(decorative: #require(context.makeImage()), scale: 1)
+    }
+
+    /// How many of `bytes`' pixels are the fox's colour.
+    private func foxPixels(_ bytes: [UInt8]) -> Int {
+        stride(from: 0, to: bytes.count, by: 4).count { offset in
+            bytes[offset] > 240 && bytes[offset + 1] < 15 && bytes[offset + 2] > 240
+        }
+    }
+
+    /// The same picture, but for a level of rounding where two drawings were composed apart.
+    private func isSame(_ one: [UInt8], _ other: [UInt8]) -> Bool {
+        one.count == other.count && zip(one, other).allSatisfy { abs(Int($0) - Int($1)) <= 2 }
+    }
+
     private func render(_ view: some View) throws -> CGImage {
-        let renderer = ImageRenderer(
+        let renderer = try ImageRenderer(
             content: view
                 .frame(width: Self.width)
                 .background(Color.white)
                 .environment(\.colorScheme, .light)
                 .environment(\.loadsAuthorAvatars, false)
+                .environment(\.avatarPictures, [Self.atlasPicture: Self.foxPicture()])
         )
         renderer.scale = 2
         return try #require(renderer.cgImage)
@@ -78,9 +112,15 @@ struct PRBotPeopleRenderingTests {
         return bytes
     }
 
-    /// The row's avatar column, and the rest of the row beside it.
-    private static let face: Range<CGFloat> = 0 ..< 0.12
-    private static let words: Range<CGFloat> = 0.12 ..< 1
+    // The row's avatar column, and the rest of the row beside it.
+    // The Mac's avatar is smaller, so its text starts sooner.
+    #if os(macOS)
+        private static let split: CGFloat = 0.12
+    #else
+        private static let split: CGFloat = 0.145
+    #endif
+    private static let face: Range<CGFloat> = 0 ..< split
+    private static let words: Range<CGFloat> = split ..< 1
 
     @Test func aBotsRowWithAnOwnerAndNoDelegateLeadsWithTheOwnerThenTheAccount() throws {
         let owned = try render(Self.row(author: "hubot", requestedBy: Self.mona))
@@ -107,6 +147,27 @@ struct PRBotPeopleRenderingTests {
         let owned = try render(Self.row(author: "hubot", requestedBy: Self.mona))
         #expect(try bytes(delegated, columns: Self.face) == bytes(owned, columns: Self.face), "the owner's face on both")
         #expect(try bytes(delegated, columns: Self.words) != bytes(owned, columns: Self.words), "via the agent, not the account")
+    }
+
+    /// Jai, 2026-11-25: "Remember that Finbot has its own avatar as well". The agent is drawn as Linear's picture of it,
+    /// on the row at the person's corner and on the page in its chip: never as initials or the GitHub account's picture.
+    @Test func theAgentIsDrawnAsItsOwnPictureInLinearOnTheRowAndOnThePage() throws {
+        let pictured = try render(Self.row(author: "hubot", requestedBy: Self.mona, agent: Self.atlasWithPicture))
+        #expect(try foxPixels(bytes(pictured, columns: Self.face)) > 200, "the agent's picture, at the person's corner")
+        #expect(try foxPixels(bytes(pictured, columns: Self.words)) == 0, "and nowhere else in the row")
+        // Linear has no picture of the agent: its name in the line, and no mark made up for it.
+        let unpictured = try render(Self.row(author: "hubot", requestedBy: Self.mona, agent: Self.atlas))
+        let owned = try render(Self.row(author: "hubot", requestedBy: Self.mona))
+        #expect(try isSame(bytes(unpictured, columns: Self.face), bytes(owned, columns: Self.face)))
+        // An agent with no one behind the PR is not drawn.
+        let alone = try render(Self.row(author: "hubot", agent: Self.atlasWithPicture))
+        #expect(try foxPixels(bytes(alone, columns: 0 ..< 1)) == 0)
+
+        let page = try render(Self.byline(
+            bot: true, requestedBy: Self.mona, delegate: "Atlas", delegateAvatar: Self.atlasPicture
+        ))
+        #expect(try foxPixels(bytes(page, columns: 0.15 ..< 1)) > 200, "the chip's picture is the agent's own")
+        #expect(try foxPixels(bytes(page, columns: 0 ..< 0.08)) == 0, "the person's face is not the agent's")
     }
 
     @Test func aBotsRowWithNoOwnerAndAPersonsRowAreAsTheyWere() throws {

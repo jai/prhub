@@ -413,8 +413,9 @@ rules:
   - A bot's PR with someone behind it (the Worker's `requestedBy`: its Linear ticket's owner first) leads with that
     person: the avatar is their picture (Linear's, else GitHub's for their login, else their initials, never the
     bot's), and meta starts "Mona via Atlas", the agent Linear delegated the ticket to, or "Mona via hubot", the
-    account that opened it, where the ticket has no delegate. "via …" gives way before the name does. A bot's PR
-    with no one behind it is the account alone.
+    account that opened it, where the ticket has no delegate. "via …" gives way before the name does. The agent's own
+    picture in Linear sits at the avatar's bottom trailing corner, half its size; an agent Linear has no picture of
+    has no mark, never initials or the account's picture. A bot's PR with no one behind it is the account alone.
   - Signals wrap whole. Words in status never truncate.
   - The Review button is the one button in a row. With it, meta and signals stop short of the state column.
   - A long press opens the row's menu: Open, Review changes, Open in GitHub, Copy link, then the swipe's actions.

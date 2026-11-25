@@ -142,15 +142,23 @@ public struct PRAvatar: View {
         self.author = author
     }
 
+    @Environment(\.avatarPictures) private var pictures
+
     public var body: some View {
-        AsyncImage(url: author?.avatarUrl.flatMap(URL.init(string:))) { image in
-            image.resizable().scaledToFill()
-        } placeholder: {
-            Text((author?.login.prefix(1) ?? "?").uppercased())
-                .font(.appCaption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.groundFill)
+        Group {
+            if let picture = author?.avatarUrl.flatMap({ pictures[$0] }) {
+                picture.resizable().scaledToFill()
+            } else {
+                AsyncImage(url: author?.avatarUrl.flatMap(URL.init(string:))) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    Text((author?.login.prefix(1) ?? "?").uppercased())
+                        .font(.appCaption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.groundFill)
+                }
+            }
         }
         .frame(width: size, height: size)
         .clipShape(.circle)
