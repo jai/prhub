@@ -92,7 +92,7 @@ struct PRBotPeopleRenderingTests {
                 .environment(\.avatarPictures, [Self.atlasPicture: Self.foxPicture()])
         )
         renderer.scale = 2
-        return try #require(renderer.cgImage)
+        return try renderer.settledImage()
     }
 
     /// The bytes of `image` within `part`, a fraction of its width from the leading edge: its face, or what follows.

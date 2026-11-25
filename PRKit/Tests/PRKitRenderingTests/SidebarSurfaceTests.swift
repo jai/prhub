@@ -14,7 +14,7 @@
                     .sidebarSurface()
                     .environment(\.colorScheme, scheme))
             renderer.scale = 2
-            let image = try #require(renderer.uiImage?.cgImage)
+            let image = try renderer.settledImage()
             let width = image.width
             let height = image.height
             var pixels = [UInt8](repeating: 0, count: width * height * 4)

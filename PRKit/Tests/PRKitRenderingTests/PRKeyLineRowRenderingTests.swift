@@ -24,18 +24,7 @@ struct PRKeyLineRowRenderingTests {
     private func render(_ view: some View, width: CGFloat? = Self.width, in scheme: ColorScheme) throws -> Bitmap {
         let renderer = ImageRenderer(content: view.frame(width: width).environment(\.colorScheme, scheme))
         renderer.scale = Self.scale
-        // Drawn until two draws in a row are the same and not empty: a process's first draw can come back unfinished
-        // (PRRowCardRenderingTests, 2026-11-25).
-        var last = try Bitmap(#require(renderer.cgImage))
-        for _ in 0 ..< 5 {
-            let next = try Bitmap(#require(renderer.cgImage))
-            if next.bytes == last.bytes, next.bytes.contains(where: { $0 != 0 }) {
-                return next
-            }
-            last = next
-        }
-        Issue.record("the view did not draw the same twice, or drew nothing")
-        return last
+        return try Bitmap(renderer.settledImage())
     }
 
     private func pixel(_ points: CGFloat) -> Int {
