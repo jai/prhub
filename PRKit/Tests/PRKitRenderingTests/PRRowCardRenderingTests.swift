@@ -10,6 +10,8 @@ import Testing
 struct PRRowCardRenderingTests {
     private static let width: CGFloat = 400
     private static let scale: CGFloat = 2
+    /// How many more draws a view gets to settle.
+    private static let draws = 5
     private static let now = Date(timeIntervalSince1970: 1_800_000_000)
 
     /// A PR with every signal and its ticket, as the PRs tab draws it.
@@ -31,6 +33,9 @@ struct PRRowCardRenderingTests {
         )
     }
 
+    /// The view as it draws once it has settled: drawn until two draws in a row are the same and not empty. A process's
+    /// first draw can come back unfinished: on a slow Mac the renderer stops waiting for its images, and on 2026-11-25
+    /// that blank first draw failed two releases (run 45609673448, `block.bytes` all zero).
     private func render(_ view: some View, in scheme: ColorScheme) throws -> Bitmap {
         let renderer = ImageRenderer(
             content: view
@@ -39,7 +44,16 @@ struct PRRowCardRenderingTests {
                 .environment(\.loadsAuthorAvatars, false)
         )
         renderer.scale = Self.scale
-        return try Bitmap(#require(renderer.cgImage))
+        var last = try Bitmap(#require(renderer.cgImage))
+        for _ in 0 ..< Self.draws {
+            let next = try Bitmap(#require(renderer.cgImage))
+            if next.bytes == last.bytes, next.bytes.contains(where: { $0 != 0 }) {
+                return next
+            }
+            last = next
+        }
+        Issue.record("the view did not draw the same twice, or drew nothing, in \(Self.draws + 1) draws")
+        return last
     }
 
     private func pixel(_ points: CGFloat) -> Int {
@@ -158,7 +172,9 @@ struct PRRowCardRenderingTests {
             let block = try render(Self.block(1), in: scheme)
             let row = try render(Self.block(1).prListRow(isSelected: false), in: scheme)
             #expect(row.width == block.width && row.height == block.height)
-            #expect(row.bytes == block.bytes, "a row on the phone is its block, with no card around it")
+            // Compared here, not in the expectation: a failure would print every byte of both pictures.
+            let isTheBlock = row.bytes == block.bytes
+            #expect(isTheBlock, "a row on the phone is its block, with no card around it")
 
             var environment = EnvironmentValues()
             environment.colorScheme = scheme
