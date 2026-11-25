@@ -19,7 +19,8 @@
     ///   app leaves the foreground (as for GitHub), and on acme too when it comes back.
     /// - `-PRHubPaired`: the PRs and Settings over the sample PRs as if paired, every AI feature on. With `-PRHubSettings`
     ///   it opens on Settings; with `-PRHubLongDiff` For review starts with a PR whose one file is longer than the screen,
-    ///   for the diff's bars; with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View; with
+    ///   for the diff's bars; with `-PRHubLongLines` it starts with a PR of lines too long for any screen
+    ///   (`PRHubLongLineSamples`); with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View; with
     ///   `-PRHubSlowReview` a review takes 10 seconds to land, so a UI test still finds its toast after a navigation;
     ///   with `-PRHubFeedback` the Worker serves Feedback, over two sample chats that never leave the device
     ///   (`FeatureSamples.prHub`), with `-PRHubFeedbackPush <chat>` it opens as a tapped push of that feedback
@@ -86,6 +87,10 @@
 
         private static func pairedSamples(_ arguments: [String]) -> PRSampleSet {
             var samples: PRSampleSet = arguments.contains("-PRHubLongDiff") ? .prHubLongDiff : .prHub
+            if arguments.contains("-PRHubLongLines") {
+                let bytes = UserDefaults.standard.integer(forKey: "PRHubLongLineBytes")
+                samples = .prHubLongLines(bytes: bytes > 0 ? bytes : PRHubLongLineSamples.defaultBytes)
+            }
             if arguments.contains("-PRHubSlowReview") {
                 samples.reviewDelay = .seconds(10)
             }

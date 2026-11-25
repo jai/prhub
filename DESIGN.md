@@ -265,13 +265,30 @@ moves the path or the counts. A path too long for its row shrinks first, down to
 scrolls sideways in its room, opening at its end, so the file's name is what shows and the folders are a swipe away;
 the whole path is also in the Files panel.
 
-**The diff stops at its sideways edges.** The code stops at its left and right edges, with no bounce, so the file header
-and the threads and notes, which stay where the screen is, are never pulled off it.
+**Long lines wrap.** A line too long for the diff wraps in the diff's width, so every line is read to its end by
+scrolling down and nothing scrolls sideways: a sideways scroll of a tall diff fights the scroll down and the back swipe.
+It breaks at a word's end where the line has words (prose in a README, a comment, a string, code), and wherever the
+row ends where it has hardly a space, fewer than one in sixteen characters (minified code and data), so those rows are
+full. The rows after the first are set in two columns past the line's own indentation, at most a quarter of the width,
+so a wrapped line reads as one line and the file's shape stays. The line's numbers stay beside its first row.
+A tab is four columns. A line that opens cut, a minified file's one line, is drawn a kilobyte a row
+(`DiffDocument.pieceBytes`), each piece ending after a space, a comma or a semicolon where it can: no megabyte is laid
+out at once. A minified line of more than a kilobyte, and any line of more than four (`DiffDocument.wholeBytes`),
+opens cut: its first twenty rows (`DiffWrap.shownRows`; fewer on a wide screen, where its first kilobyte ends sooner),
+then **Show full line** with the line's size, in the accent. A file saved as one line is changed as two, the old and the
+new, and twenty rows each with their buttons are one phone screen, so the next file is a swipe away. The button opens
+the whole line for as long as the PR is open, and **Show less**, under its end, cuts it again. A paragraph written as one
+line is read whole, with no button. **Wrap lines**, under the
+panel's list of files beside Changed lines only, turns wrapping off for the device: each line is then one row, cut with
+`⋯` past 160 columns, and the code scrolls sideways as one sheet.
+
+**The diff stops at its sideways edges.** With Wrap lines off, the code stops at its left and right edges, with no
+bounce, so the file header and the threads and notes, which stay where the screen is, are never pulled off it.
 
 **Diff line numbers.** Two quiet, right-aligned columns precede the code: old line, then new line. Added lines have
 only a new number, removed lines only an old one, and context lines have both. Headers and metadata have neither.
 The columns use the diff font and grow to fit the largest line number in the diff, with at least three digits of
-space per column and `Space.sm` after each. Line numbers scroll sideways with their code.
+space per column and `Space.sm` after each. With Wrap lines off, line numbers scroll sideways with their code.
 
 **The diff font.** Code (a diff, a code block, a line quoted in the comment box) is `DiffFont`: one monospaced face and
 a size, chosen in Settings → Diff font and kept on the device. The default is the `code` token, the system's monospaced

@@ -30,7 +30,7 @@ enum DiffStyle {
 struct DiffMetrics {
     /// Apple's smallest tap target.
     static let minimumTapTarget: CGFloat = 44
-    private static let rowPadding: CGFloat = 2
+    static let rowPadding: CGFloat = 2
     private static let headerPadding = Space.sm
 
     let font: DiffFont
@@ -79,6 +79,11 @@ struct DiffMetrics {
         (lineNumberWidth(digits: digits) + DiffStyle.lineNumberGap) * 2
     }
 
+    /// The code's room in a row `rowWidth` wide: what the line numbers and the insets leave.
+    func codeWidth(inRow rowWidth: CGFloat, digits: Int) -> CGFloat {
+        max(0, rowWidth - gutterWidth(digits: digits) - DiffStyle.lineInset * 2)
+    }
+
     /// The file header's path for `text` in `width`: the header's size when it fits, else smaller, down to the code's
     /// size (a heading is never smaller than what it heads). A path still too long is cut from the front.
     func headerPath(fitting text: String, in width: CGFloat) -> PlatformFont {
@@ -106,6 +111,100 @@ struct DiffMetrics {
             self.init(font, scale: MacTextSize.codeScale)
         }
     #endif
+}
+
+/// Long lines wrapped in the code's room: at a word's end where the line has words, and wherever the row ends where it
+/// has hardly a space (minified code). The rows that follow the first are set in past the line's own indentation, so a
+/// wrapped line still reads as one line and the file's shape stays.
+struct DiffWrap {
+    /// How far past the code's own start a wrapped line's later rows begin, in columns.
+    private static let hangingColumns = 2
+    /// The rows shown of a line that opens cut (`DiffRows.cut`), over "Show full line". A file saved as one line is
+    /// changed as two, the old and the new: twenty rows each and their two buttons are one phone screen, so the next
+    /// file is a swipe away. On a wider screen the line's first piece ends before twenty rows do.
+    static let shownRows = 20
+    /// A room no line is too long for: a row drawn before its table has a width.
+    static let unbounded: CGFloat = 1_000_000
+
+    let metrics: DiffMetrics
+    /// The code's room: `DiffMetrics.codeWidth(inRow:digits:)`.
+    let width: CGFloat
+
+    /// Whole characters that fit across.
+    var columns: Int {
+        max(1, Int(width / metrics.columnWidth))
+    }
+
+    /// A piece that needs no measuring: short enough for one row whatever it holds, a column kept spare.
+    func isOneRow(line index: Int, piece: Int, of document: DiffDocument) -> Bool {
+        document.byteCount(ofLine: index, piece: piece) < columns && document.isPlain(line: index, piece: piece)
+    }
+
+    /// About how many rows a piece wraps to, from its bytes alone: the table's guess until the piece is on screen.
+    func estimatedRows(line index: Int, piece: Int, of document: DiffDocument) -> Int {
+        let bytes = document.byteCount(ofLine: index, piece: piece)
+        return max(1, (bytes + columns - 1) / columns)
+    }
+
+    func height(rows: Int) -> CGFloat {
+        CGFloat(rows) * (metrics.rowHeight - DiffMetrics.rowPadding) + DiffMetrics.rowPadding
+    }
+
+    /// The row's height for text that measures `textHeight`: never less than a row of code.
+    func height(fitting textHeight: CGFloat) -> CGFloat {
+        max(metrics.rowHeight, ceil(textHeight) + DiffMetrics.rowPadding)
+    }
+
+    /// A piece as drawn. The first piece starts at the row's edge; a later one starts set in, as a wrapped row does.
+    func text(line index: Int, piece: Int, of document: DiffDocument) -> NSAttributedString {
+        let line = document.lines[index]
+        // At most a quarter of the room: in the largest text a row holds a dozen characters.
+        let indent = min(document.indentColumns(of: line) + Self.hangingColumns, columns / 4)
+        let style = NSMutableParagraphStyle()
+        style.lineBreakMode = document.isMinified(line: index, piece: piece) ? .byCharWrapping : .byWordWrapping
+        style.headIndent = CGFloat(indent) * metrics.columnWidth
+        style.firstLineHeadIndent = piece == 0 ? 0 : style.headIndent
+        style.tabStops = []
+        style.defaultTabInterval = CGFloat(DiffDocument.tabColumns) * metrics.columnWidth
+        return NSAttributedString(
+            string: document.text(ofLine: index, piece: piece),
+            attributes: [.font: metrics.code, .paragraphStyle: style, .foregroundColor: PlatformColor.diffCode]
+        )
+    }
+
+    /// A row's height, no more than `shownRows` of it for a line shown cut: as tall as that many rows of text are
+    /// drawn, so the text fills its row and the numbers stay beside its first.
+    func height(_ height: CGFloat, isCut: Bool) -> CGFloat {
+        isCut ? min(height, self.height(fitting: CGFloat(Self.shownRows) * metrics.code.diffLineHeight)) : height
+    }
+
+    /// How `text` breaks, for the label that draws it: a label's own setting is what it follows.
+    static func lineBreakMode(of text: NSAttributedString) -> NSLineBreakMode {
+        guard text.length > 0,
+              let style = text.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        else {
+            return .byWordWrapping
+        }
+        return style.lineBreakMode
+    }
+
+    static let lessTitle = "Show less"
+
+    /// "Show full line (54 KB)", under the start of a very long line.
+    static func restTitle(_ line: DiffDocument.Line) -> String {
+        "Show full line (\(line.length.formatted(.byteCount(style: .file))))"
+    }
+}
+
+extension PlatformColor {
+    /// Code's own colour, set on wrapped text because an attributed string doesn't take its label's.
+    static var diffCode: PlatformColor {
+        #if os(iOS)
+            .label
+        #else
+            .labelColor
+        #endif
+    }
 }
 
 extension PlatformFont {
@@ -144,4 +243,6 @@ struct DiffActions {
     let setResolved: (PullRequestDetail.Thread, Bool) async throws -> Void
     /// The file at the top of the screen, by index, as the reader scrolls.
     let showsFileOnTop: (Int) -> Void
+    /// "Show full line" on a very long line, by its index in the document.
+    var showWholeLine: (Int) -> Void = { _ in }
 }
