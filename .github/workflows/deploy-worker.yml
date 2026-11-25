@@ -1,7 +1,7 @@
 # Deploys the Worker `prhub` (docs/hosted-deploy.md) from each worker-v<version> tag, which release.yml makes once the
 # worker's tests passed on that commit. The only production path for the hosted Worker:
 # wrangler deploy with deploy/hosted/wrangler.jsonc, which also builds and pushes the AI container (agent/Dockerfile).
-# The Worker's secrets stay as they are. The account and four vars come from the repo's variables, kept out of this
+# The Worker's secrets stay as they are. The account and five vars come from the repo's variables, kept out of this
 # public repo's files.
 name: deploy-worker
 
@@ -40,10 +40,14 @@ jobs:
           CLIENT_ID: ${{ vars.PRHUB_GITHUB_APP_CLIENT_ID }}
           APNS_KEY_ID: ${{ vars.PRHUB_APNS_KEY_ID }}
           FEEDBACKKIT_PUBLIC_URL: ${{ vars.FEEDBACKKIT_PUBLIC_URL }}
+          # The machine accounts that open PRs for people (worker/src/requester.ts): logins, comma-separated. Not set:
+          # empty, and only GitHub Apps and tickets Linear delegated to an agent count as a bot's.
+          BOT_AUTHORS: ${{ vars.PRHUB_BOT_AUTHORS }}
         run: |
           npx wrangler deploy --config ../deploy/hosted/wrangler.jsonc \
             --var "GITHUB_APP_ID:$APP_ID" --var "GITHUB_APP_CLIENT_ID:$CLIENT_ID" \
-            --var "APNS_KEY_ID:$APNS_KEY_ID" --var "FEEDBACKKIT_PUBLIC_URL:$FEEDBACKKIT_PUBLIC_URL"
+            --var "APNS_KEY_ID:$APNS_KEY_ID" --var "FEEDBACKKIT_PUBLIC_URL:$FEEDBACKKIT_PUBLIC_URL" \
+            --var "BOT_AUTHORS:$BOT_AUTHORS"
       - name: The live Worker answers
         run: |
           url=https://prhub.jai-f89.workers.dev

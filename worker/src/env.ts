@@ -120,7 +120,13 @@ export interface Env extends LimitVars {
   AI_DEFAULTS?: string;
   /** Optional: a rewrite goes on without the ticket, and a PR's tickets without their Linear state, when it is not set. */
   LINEAR_API_KEY?: string;
-  /** Accounts GitHub calls users that open PRs for someone else, comma-separated: their PRs say so (`requester.ts`). */
+  /**
+   * Machine accounts that open PRs for people: logins GitHub calls users, comma-separated. A PR one of them opens is a
+   * bot's, and leads with who it was opened for, its Linear ticket's owner first (`requester.ts`). Unset or empty: only
+   * GitHub Apps, `[bot]` logins and PRs on a ticket Linear delegated to an agent are a bot's. The hosted Worker's value
+   * is not in this repo: it is the repo's Actions variable `PRHUB_BOT_AUTHORS`, which `deploy-worker.yml` passes at
+   * deploy (docs/hosted-deploy.md).
+   */
   BOT_AUTHORS?: string;
   /** The rewrite's writing guide: `owner/repo@ref` and the comma-separated paths in it. Unset: the built-in guide. */
   GUIDE_REPO?: string;

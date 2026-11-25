@@ -15,8 +15,8 @@ custom domain is chosen. Self-hosted Workers use [deploy/AGENTS.md](../deploy/AG
 
 ## Configuration
 
-`deploy/hosted/wrangler.jsonc` is the config, committed. Five values stay out of this public repo and come from the
-repo's variables at deploy: the account (`CLOUDFLARE_ACCOUNT_ID`, which wrangler reads from the environment) and four
+`deploy/hosted/wrangler.jsonc` is the config, committed. Six values stay out of this public repo and come from the
+repo's variables at deploy: the account (`CLOUDFLARE_ACCOUNT_ID`, which wrangler reads from the environment) and five
 vars, each a `wrangler deploy --var`:
 
 | Repo variable | Worker var | Value |
@@ -26,6 +26,12 @@ vars, each a `wrangler deploy --var`:
 | `PRHUB_GITHUB_APP_CLIENT_ID` | `GITHUB_APP_CLIENT_ID` | The App's client ID (`Iv…`) |
 | `PRHUB_APNS_KEY_ID` | `APNS_KEY_ID` | The ID of Jai's APNs key |
 | `FEEDBACKKIT_PUBLIC_URL` | `FEEDBACKKIT_PUBLIC_URL` | FeedbackKit's public URL |
+| `PRHUB_BOT_AUTHORS` | `BOT_AUTHORS` | The machine accounts that open PRs for people: GitHub logins, comma-separated. Optional |
+
+`BOT_AUTHORS` is how the Worker knows that an account GitHub calls a user is a bot's. A PR such an account opens leads
+with the person it was opened for, its Linear ticket's owner first, on its page and in the list, whether or not Linear
+delegated the ticket to an agent. Not set, such a PR shows a person only when its ticket is delegated. To change it:
+the repo's Settings, Secrets and variables, Actions, Variables; it takes effect at the next `worker-v` release.
 
 Secrets, each with `wrangler secret put`, from the password manager:
 
@@ -59,7 +65,8 @@ npx wrangler@4 r2 bucket create prhub-hosted          # once
 cd worker
 CLOUDFLARE_ACCOUNT_ID=$ACCOUNT_ID npx wrangler@4 deploy --config ../deploy/hosted/wrangler.jsonc \
     --var "GITHUB_APP_ID:$APP_ID" --var "GITHUB_APP_CLIENT_ID:$CLIENT_ID" \
-    --var "APNS_KEY_ID:$APNS_KEY_ID" --var "FEEDBACKKIT_PUBLIC_URL:$FEEDBACKKIT_PUBLIC_URL"
+    --var "APNS_KEY_ID:$APNS_KEY_ID" --var "FEEDBACKKIT_PUBLIC_URL:$FEEDBACKKIT_PUBLIC_URL" \
+    --var "BOT_AUTHORS:$BOT_AUTHORS"
 ```
 
 Then each secret, piped so it is never printed or kept in the shell history:
