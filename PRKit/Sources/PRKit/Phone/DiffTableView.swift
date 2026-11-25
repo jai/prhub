@@ -44,6 +44,7 @@
         }
 
         private let backSwipe = BackSwipeKeeper()
+        private lazy var sidewaysDrag = SidewaysDragSink { [weak self] in self?.rows.wraps ?? false }
 
         init(
             document: DiffDocument, rows: DiffRows, viewed: Set<String>, font: DiffFont,
@@ -85,6 +86,7 @@
             belowRows.cancelsTouchesInView = false
             table.addGestureRecognizer(belowRows)
             addSubview(table)
+            addGestureRecognizer(sidewaysDrag.pan)
             watchKeyboard()
             registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in
                 self.remeasure(font: self.metrics.font)

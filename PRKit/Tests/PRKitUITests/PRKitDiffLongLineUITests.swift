@@ -71,8 +71,11 @@ final class PRKitDiffLongLineUITests: PRHubUITestCase {
         recordScreenshot("long-lines-8-full-line")
         let less = app.cells["diff-line-4-less"]
         let table = diffTable
-        for _ in 0 ..< 60 where !(less.exists && less.isHittable) {
+        // `while`, not `for … where`: that asked the question sixty times over once the answer was yes.
+        var swipes = 0
+        while swipes < 60, !(less.exists && less.isHittable) {
             table.swipeUp(velocity: .fast)
+            swipes += 1
         }
         XCTAssertTrue(less.exists && less.isHittable, "Show less, under the line's end")
         app.waitForStill(less)
@@ -173,9 +176,11 @@ final class PRKitDiffLongLineUITests: PRHubUITestCase {
         let rests = app.cells.matching(NSPredicate(format: "identifier ENDSWITH '-rest'"))
         let table = diffTable
         var rest = rests.allElementsBoundByIndex.first(where: \.isHittable)
-        for _ in 0 ..< 10 where rest == nil {
+        var swipes = 0
+        while swipes < 10, rest == nil {
             table.swipeUp(velocity: .slow)
             rest = rests.allElementsBoundByIndex.first(where: \.isHittable)
+            swipes += 1
         }
         recordScreenshot("long-lines-show-full-line")
         XCTAssertNotNil(rest, "Show full line, under the line's start")
@@ -207,8 +212,12 @@ final class PRKitDiffLongLineUITests: PRHubUITestCase {
         // Its last row above the foot of the screen, by a row's height at least: the diff's last line stops over the
         // floating controls.
         let isRead = { line.exists && line.frame.maxY > screen.minY + 60 && line.frame.maxY < screen.maxY - 20 }
-        for _ in 0 ..< 60 where !isRead() {
+        // `while`, not `for … where`: with the line in view that asked sixty times more, a minute and more on a slow
+        // host, and one of those snapshots timed out (the iPad's job, 2026-11-25).
+        var swipes = 0
+        while swipes < 60, !isRead() {
             table.swipeUp(velocity: .slow)
+            swipes += 1
         }
         XCTAssertTrue(isRead(), "the end of the line, \(tail), is on screen")
         app.waitForStill(line)

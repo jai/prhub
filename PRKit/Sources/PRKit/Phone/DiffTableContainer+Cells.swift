@@ -228,4 +228,31 @@
             scrollViews.contains { $0.view?.panGestureRecognizer === other }
         }
     }
+
+    /// Wrapped, the code has nowhere to go sideways, so neither scroll view takes a sideways drag, and the table took the
+    /// lifted finger for a tap on the line under it: the comment box opened (CI's recording, 2026-11-25). This takes
+    /// the drag and does nothing with it, so the touch is cancelled as a scroll's would be.
+    @MainActor
+    final class SidewaysDragSink: NSObject, UIGestureRecognizerDelegate {
+        let pan = UIPanGestureRecognizer()
+        private let wraps: () -> Bool
+
+        init(wraps: @escaping () -> Bool) {
+            self.wraps = wraps
+            super.init()
+            pan.delegate = self
+        }
+
+        func gestureRecognizerShouldBegin(_: UIGestureRecognizer) -> Bool {
+            let speed = pan.velocity(in: pan.view)
+            return wraps() && abs(speed.x) > abs(speed.y)
+        }
+
+        /// Beside the others, the back swipe from the screen's edge among them: it only cancels the touch.
+        func gestureRecognizer(
+            _: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith _: UIGestureRecognizer
+        ) -> Bool {
+            true
+        }
+    }
 #endif
