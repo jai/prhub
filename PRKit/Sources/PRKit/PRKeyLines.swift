@@ -81,6 +81,9 @@ struct PRKeyLinesList: View {
             }
             .padding(PRStyle.inset)
         }
+        // The list's page, so each key line's card stands off it (DESIGN.md, A key line).
+        .background(Color.groundList)
+        .keyLinesReadToTheFoot()
     }
 
     private var contextPicker: some View {
@@ -138,7 +141,7 @@ struct PRKeyLinesList: View {
                     .buttonStyle(PRButtonStyle(.secondary))
             }
         case let .ready(lines):
-            VStack(alignment: .leading, spacing: Space.xs) {
+            VStack(alignment: .leading, spacing: Space.sm) {
                 if let summary = lines.summary {
                     PRKeyLinesSummaryCard(summary: summary) { session.show($0) }
                 }
@@ -150,12 +153,12 @@ struct PRKeyLinesList: View {
                         .accessibilityIdentifier("key-lines-reviewed-count")
                 }
                 ForEach(lines.items) { item in
-                    let isSelected = session.selectedKeyLine?.id == item.id
-                    row(item, isSelected: isSelected)
-                        .background(
-                            isSelected ? Color(platform: DiffStyle.selectedLine) : .clear,
-                            in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous)
-                        )
+                    PRKeyLineRow(
+                        item: item, isSelected: session.selectedKeyLine?.id == item.id,
+                        isReviewed: session.isReviewed(item), show: { session.show(item) },
+                        explain: session.offersAsk ? { session.explain(item, in: document) } : nil,
+                        setReviewed: { session.setReviewed($0, item) }
+                    )
                 }
                 if !lines.leftOut.isEmpty {
                     Text("Too big to read: \(lines.leftOut.joined(separator: ", "))")
@@ -165,59 +168,91 @@ struct PRKeyLinesList: View {
             }
         }
     }
+}
 
-    /// A heading line (its kind, where it is, Explain and its tick), then why it matters across the whole row. The path
-    /// scrolls sideways when it is too long to show.
-    private func row(_ item: PRKeyLines.Item, isSelected: Bool) -> some View {
+private extension View {
+    /// The last key line reads down to the tab bar. Without this the phone blurs the foot of the list for the height
+    /// of the review bar under the panel, over the last line's words (Jai's picture, 2026-11-25).
+    func keyLinesReadToTheFoot() -> some View {
+        #if os(iOS)
+            scrollEdgeEffectHidden(true, for: .bottom)
+        #else
+            self
+        #endif
+    }
+}
+
+/// One key line in the list, a card of its own: a heading line (its tick first, as a file's viewed mark is in Files;
+/// its kind; Explain last, away from the tick), then where it is on a line to itself, cut in the middle so the file's
+/// name and the line stay, then why it matters across the whole card. A tap anywhere but a control shows the line.
+struct PRKeyLineRow: View {
+    let item: PRKeyLines.Item
+    let isSelected: Bool
+    let isReviewed: Bool
+    let show: () -> Void
+    /// Nil where Ask AI is off: no Explain.
+    let explain: (() -> Void)?
+    let setReviewed: (Bool) -> Void
+    @Environment(\.dynamicTypeSize) private var textSize
+
+    var body: some View {
         // A ticked line's words fade; its controls stay.
-        let words = session.isReviewed(item) ? PRStyle.doneOpacity : 1
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: Space.sm) {
-                HStack(spacing: Space.sm) {
-                    StatusChip(text: item.kindTitle, tint: item.kindTint)
-                    ScrollView(.horizontal) {
-                        Text(verbatim: "\(item.path):\(item.line)")
-                            .font(.appCaption.monospaced())
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    .scrollIndicators(.hidden)
-                }
-                .opacity(words)
-                .contentShape(.rect)
-                .onTapGesture { session.show(item) }
-                .accessibilityHidden(true)
-                if session.offersAsk {
-                    Button("Explain", systemImage: AppIcon.askAI.symbol) { session.explain(item, in: document) }
+        let words = isReviewed ? PRStyle.doneOpacity : 1
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 0) {
+                PRKeyLineCheck(
+                    isReviewed: isReviewed, toggle: { setReviewed(!isReviewed) },
+                    identifier: "key-line-reviewed-\(item.id)"
+                )
+                StatusChip(text: item.kindTitle, tint: item.kindTint)
+                    .opacity(words)
+                    .frame(maxWidth: .infinity, minHeight: PRStyle.rowHeight, alignment: .leading)
+                    .contentShape(.rect)
+                    .onTapGesture(perform: show)
+                    .accessibilityHidden(true)
+                if let explain {
+                    Button("Explain", systemImage: AppIcon.askAI.symbol, action: explain)
                         .labelStyle(.iconOnly)
                         .font(.appFootnote)
                         .foregroundStyle(Color.primary)
-                        .frame(width: PRStyle.rowHeight, height: PRStyle.rowHeight)
+                        // A finger's width at least, and room beside the icon when the text is large.
+                        .padding(.horizontal, Space.sm)
+                        .frame(minWidth: PRStyle.rowHeight, minHeight: PRStyle.rowHeight)
                         .contentShape(.rect)
                         .buttonStyle(.plain)
                         .accessibilityLabel("Explain \(item.path):\(item.line)")
                         .accessibilityIdentifier("key-line-explain-\(item.id)")
                 }
-                PRKeyLineCheck(item: item, session: session)
             }
-            .padding(.leading, Space.sm)
-            Button { session.show(item) } label: {
-                Text(item.why)
-                    .font(.appFootnote)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding([.horizontal, .bottom], Space.sm)
-                    .opacity(words)
-                    .contentShape(.rect)
+            Button(action: show) {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text(verbatim: "\(item.path):\(item.line)")
+                        .font(.appCaption.monospaced())
+                        .foregroundStyle(.secondary)
+                        // One line, and in the largest text up to three: there one line holds a dozen letters.
+                        .lineLimit(textSize.isAccessibilitySize ? 3 : 1)
+                        .truncationMode(.middle)
+                        .multilineTextAlignment(.leading)
+                    Text(item.why)
+                        .font(.appFootnote)
+                        .multilineTextAlignment(.leading)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding([.horizontal, .bottom], PRStyle.inset)
+                .opacity(words)
+                .contentShape(.rect)
             }
             .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(item.kindTitle), \(item.path):\(item.line), \(item.why)")
-            .accessibilityAddTraits(isSelected ? .isSelected : [])
+            .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
             .accessibilityIdentifier("key-line-\(item.id)")
             .contextMenu {
                 Button("Copy", systemImage: AppIcon.copy.symbol) { Pasteboard.copy(item.why) }
             }
         }
+        .background(isSelected ? Color(platform: DiffStyle.selectedLine) : .clear)
+        .prCard()
     }
 }
 
@@ -317,25 +352,20 @@ extension PRKeyLines.Item {
     }
 }
 
-/// A key line's tick: checked off as reviewed, or not yet. A finger's width, beside the line in the list or its note.
+/// A key line's tick: checked off as reviewed, or not yet. The circle a file's viewed mark is (`PRCheckCircle`), a
+/// finger's width, first in the line's heading.
 struct PRKeyLineCheck: View {
     let isReviewed: Bool
     let toggle: () -> Void
     let identifier: String
 
-    init(item: PRKeyLines.Item, session: PRSession) {
-        isReviewed = session.isReviewed(item)
-        identifier = "key-line-reviewed-\(item.id)"
-        toggle = { [isReviewed] in session.setReviewed(!isReviewed, item) }
-    }
-
     var body: some View {
         Button(action: toggle) {
-            Image(systemName: (isReviewed ? AppIcon.taskDone : AppIcon.taskOpen).symbol)
-                .font(.appFootnote)
-                .foregroundStyle(isReviewed ? Color.toneGood : Color.secondary)
+            PRCheckCircle(isOn: isReviewed)
                 .contentTransition(.symbolEffect(.replace))
-                .frame(width: PRStyle.rowHeight, height: PRStyle.rowHeight)
+                // A finger's width at least, and room beside the circle when the text is large.
+                .padding(.horizontal, Space.sm)
+                .frame(minWidth: PRStyle.rowHeight, minHeight: PRStyle.rowHeight)
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -396,7 +426,7 @@ struct PRKeyLineNote: View {
             Spacer(minLength: 0)
             Button(
                 reviewed ? "Reviewed" : "Mark reviewed",
-                systemImage: (reviewed ? AppIcon.taskDone : AppIcon.taskOpen).symbol
+                systemImage: PRCheckCircle.symbol(isOn: reviewed)
             ) { actions.setReviewed(item, !reviewed) }
                 .buttonStyle(PRButtonStyle(.secondary, iconOnly: iconOnly))
                 .contentTransition(.symbolEffect(.replace))

@@ -651,14 +651,19 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
   right closes it. In place: no sheet. A diff's Files and Key lines (`PRNavigator`) use it. It opens on Key lines when
   the PR offers them, else on Files. Where a regular width has room (`PanelStyle`), the diff's panel is a column beside
   the code instead, open until its button puts it away, and a pick in it keeps it open.
-- **A key line:** in Key lines, a heading (its kind as a `StatusChip`: Risk in `toneBad`, Decision and Logic quiet;
-  its path and line, scrolling sideways, never cut; Explain, `AppIcon.askAI`, which asks Ask AI to explain that line;
-  its tick), then why it matters across the whole width, copied whole from its long-press menu. Its note under the
+- **A key line:** in Key lines, a card of its own (`PRKeyLineRow`, `.prCard()`) on the list's page
+  (`Color.groundList`), `Space.sm` from the next, so one ends where the next begins in dark as in light. On it: a
+  heading (its tick first, where a file's viewed mark is in Files; its kind as a `StatusChip`: Risk in `toneBad`,
+  Decision and Logic quiet; Explain, `AppIcon.askAI`, which asks Ask AI to explain that line, last, the card's width
+  from the tick), then its path and line on a line of their own (`appCaption` monospaced, quiet, cut in the middle so
+  the file's name and the line stay), then why it matters across the whole card, copied whole from its long-press
+  menu. A tap anywhere but the tick and Explain shows the line. The list reads down to the tab bar: its last line is
+  never under a bar or a blur (`PRKitKeyLinesPanelUITests`, `PRKeyLineRowRenderingTests`). Its note under the
   line in the diff: the kind and Close on top, the why (selectable, to copy), then Explain on the left and Mark
   reviewed / Reviewed on the right, as `PRButtonStyle(.secondary)` buttons. The note stays on screen while the code
   scrolls sideways, as threads and file headers do.
-- **A PR at a glance:** `PRKeyLinesSummaryCard`, above the key lines on `groundFill`, and on a PR's page under its
-  review buttons as one of the page's cards (`prCard`), when the PR's key lines are already on the phone: the page never
+- **A PR at a glance:** `PRKeyLinesSummaryCard`, a card (`prCard`) above the key lines, and on a PR's page under its
+  review buttons as one of the page's cards, when the PR's key lines are already on the phone: the page never
   asks for them. Up to five parts, `Space.md` apart:
   its risk and why, the bugs found (each a tap to its line), whether it meets its Linear ticket, whether its
   description reads as AI slop, and what it does. Each
@@ -679,8 +684,9 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
   Rewrite and Edit each ask first in a confirmation dialog; Explain opens the chat at once.
 - **A PR's link:** a long press on a PR's row, and on Open in GitHub in a PR's bar (a click and hold on the Mac),
   offers Copy link; the bar's also offers Share. A tap on Open in GitHub still opens it.
-- **A key line's tick:** `PRKeyLineCheck`, `AppIcon.taskOpen` or `.taskDone` in `toneGood`, last in its heading in
-  Key lines, 44 pt square; in the note it is the Mark reviewed button. A ticked line's words fade to
+- **A key line's tick:** `PRKeyLineCheck`, the circle a file's viewed mark is (`PRCheckCircle`: an empty ring, quiet,
+  or a filled tick in `toneGood`), first in its heading in Key lines, 44 pt to tap; in the note it is the Mark
+  reviewed button, with the same circle. A square is a task in someone's Markdown, never this. A ticked line's words fade to
   `PRStyle.doneOpacity` and its controls stay, and the list says how many are reviewed. Previous and Next pass over
   ticked lines until all are ticked. Ticks are the Worker's, by head, so each device shows the same ones and a new
   commit starts again (docs/api.md, "Reviewed key lines").

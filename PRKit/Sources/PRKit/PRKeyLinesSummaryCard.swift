@@ -83,7 +83,7 @@ public extension PRKeyLines {
 /// its ticket, whether its description reads as AI slop, and what it does. Up to five parts, each under a heading of an icon and words (DESIGN.md, "A PR at a
 /// glance"): the icons share one column
 /// and every word starts in the next, so a heading reads as a heading and a bullet's second line stays under its first.
-/// Above the key lines it sits on the fill; on a PR's page it is one of the page's cards.
+/// A card in both places: above the key lines on the list's page, and on a PR's page as one of its cards.
 struct PRKeyLinesSummaryCard: View {
     let summary: PRKeyLines.Summary
     var onPage = false
@@ -91,23 +91,13 @@ struct PRKeyLinesSummaryCard: View {
     let showBug: (PRKeyLines.Item) -> Void
 
     var body: some View {
-        if onPage {
-            parts
-                .padding(PRStyle.inset)
-                .prCard()
-                .textSelection(.enabled)
-                // Its own element, holding the others: without this the name goes to every child, a bug's button too.
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("pr-summary")
-        } else {
-            parts
-                .padding(Space.sm)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.groundFill, in: .rect(cornerRadius: PRStyle.controlRadius, style: .continuous))
-                .textSelection(.enabled)
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("key-lines-summary")
-        }
+        parts
+            .padding(PRStyle.inset)
+            .prCard()
+            .textSelection(.enabled)
+            // Its own element, holding the others: without this the name goes to every child, a bug's button too.
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(onPage ? "pr-summary" : "key-lines-summary")
     }
 
     private var parts: some View {

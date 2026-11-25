@@ -141,9 +141,7 @@ struct PRFileList: View {
     private func row(_ file: DiffRows.File) -> some View {
         let isViewed = viewed.contains(file.path)
         return HStack(spacing: Space.sm) {
-            Image(systemName: isViewed ? "checkmark.circle.fill" : "circle")
-                .font(.appFootnote)
-                .foregroundStyle(isViewed ? Color.toneGood : Color.secondary)
+            PRCheckCircle(isOn: isViewed)
             Text(file.path)
                 .font(.appCaption.monospaced())
                 .lineLimit(2)
@@ -159,6 +157,23 @@ struct PRFileList: View {
         .padding(.horizontal, Space.lg)
         .frame(minHeight: 44)
         .contentShape(.rect)
+    }
+}
+
+/// The circle that says a thing is done with: a file viewed, a key line reviewed. One mark for both, so the navigator's
+/// two pages read alike: an empty ring, quiet, or a filled tick in `toneGood`.
+struct PRCheckCircle: View {
+    let isOn: Bool
+
+    /// The mark's symbol, for a button that shows it beside its words (a key line's note).
+    static func symbol(isOn: Bool) -> String {
+        isOn ? "checkmark.circle.fill" : "circle"
+    }
+
+    var body: some View {
+        Image(systemName: Self.symbol(isOn: isOn))
+            .font(.appFootnote)
+            .foregroundStyle(isOn ? Color.toneGood : Color.secondary)
     }
 }
 
