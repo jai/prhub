@@ -17,6 +17,15 @@
   "semanticCommits": "enabled",
   "semanticCommitType": "fix",
   "semanticCommitScope": "deps",
+  "packageRules": [
+    {
+      "description": "Temporary: AgentChatKit 0.12.1 rebuilds every bubble in a host that modifies the chat theme in the environment (Agent Pager fb_3cde3642c7513c88). Remove this rule with 0.12.2.",
+      "matchPackageNames": [
+        "jai/agentchatkit"
+      ],
+      "allowedVersions": "<0.12.1"
+    }
+  ],
   "customManagers": [
     {
       "customType": "regex",
