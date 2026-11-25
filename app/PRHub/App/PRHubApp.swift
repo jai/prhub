@@ -34,8 +34,15 @@ struct PRHubApp: App {
                 // DESIGN.md's icon style, for every symbol in the app.
                 .symbolVariant(DesignTokens.iconVariant)
                 .preferredColorScheme(Self.fixtureColorScheme)
+            #if os(macOS)
+                // A link from outside (a PR handoff, a setup link, `prhub://settings`) goes to the PRs window that is
+                // open. Without this the Mac opened one more PRs window for every link.
+                .handlesExternalEvents(preferring: MacExternalEvents.all, allowing: MacExternalEvents.all)
+            #endif
         }
         #if os(macOS)
+        // With no PRs window open, a link opens one: this scene, not Feedback or Settings.
+        .handlesExternalEvents(matching: MacExternalEvents.all)
         .defaultSize(width: 1200, height: 800)
         .commands { MacTextSizeCommands() }
         #endif
@@ -45,6 +52,7 @@ struct PRHubApp: App {
                     PRHubMacFeedback(environment: environment)
                         .prKitOfflineBanner(environment.prs)
                 }
+                .handlesExternalEvents(preferring: MacExternalEvents.none, allowing: MacExternalEvents.none)
                 .symbolVariant(DesignTokens.iconVariant)
                 .preferredColorScheme(Self.fixtureColorScheme)
             }
@@ -53,11 +61,21 @@ struct PRHubApp: App {
             .keyboardShortcut("f", modifiers: [.command, .shift])
             Settings {
                 Self.windowContent { PRHubMacSettings(environment: $0) }
+                    .handlesExternalEvents(preferring: MacExternalEvents.none, allowing: MacExternalEvents.none)
                     .symbolVariant(DesignTokens.iconVariant)
                     .preferredColorScheme(Self.fixtureColorScheme)
             }
         #endif
     }
+
+    #if os(macOS)
+        /// Which links from outside a Mac window takes: the PRs window all of them, Feedback and Settings none, as
+        /// only the PRs window's `onOpenURL` knows what to do with one.
+        private enum MacExternalEvents {
+            static let all: Set<String> = ["*"]
+            static let none: Set<String> = []
+        }
+    #endif
 
     /// Every window's content: on a fixture launch the fixture's environment and storage, and links out of the app
     /// stay in it; the app's own links still come back through `onOpenURL`.

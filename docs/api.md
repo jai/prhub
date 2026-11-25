@@ -36,7 +36,8 @@ registers again at its next launch or foreground. `POST /device/event` takes an 
 Another app can open `prhub-pr://open?url=<percent-encoded GitHub URL>`, with exactly one `url` query item. The value
 must be an HTTPS `github.com/<owner>/<repo>/pull/<positive number>` URL, with no credentials or port. Its suffix,
 query and fragment remain in the handed-off URL; `/files` and `/changes` open the PR's diff, and other suffixes open
-its overview. PRHub selects its PRs tab. The current samples stay open when the link arrives during samples.
+its overview. PRHub selects its PRs tab. The current samples stay open when the link arrives during samples. On the Mac
+the PR opens in the PRs window that is open, which comes to the front; with none open, PRHub opens one.
 
 Malformed handoffs, non-PR URLs, extra query items and duplicate `url` items do nothing. Settings and setup links keep
 their separate routes. A caller should try this custom URL first and, if the system cannot open PRHub, try the original
