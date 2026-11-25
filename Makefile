@@ -142,12 +142,15 @@ test-ui-ios:
 
 # The Mac app's own windows, which no Simulator shows. It controls the screen of the Mac it runs on: CI runs it on a
 # hosted Mac (test-ui-mac.yml), and agents do not run it by hand on Jai's Macs (AGENTS.md). The app is signed to run on
-# that Mac only: no team, no profile and no entitlements. A test that fails runs once more.
+# that Mac only: no team, no profile and no entitlements. A test that fails runs once more. A test that hangs is stopped
+# and failed after 2 minutes (the longest takes 25 seconds): an assertion that fails in an async test with
+# continueAfterFailure off never returns, which held a run for its whole hour (2026-11-25).
 test-ui-mac:
 	$(GENERATE_XCODE_PROJECT)
 	rm -rf app/build/results/PRHubMacUITests.xcresult && $(XCODEBUILD) test -testPlan PRHubMacUITests \
 		-destination 'platform=macOS,arch=arm64' -resultBundlePath build/results/PRHubMacUITests.xcresult \
 		-parallel-testing-enabled NO -retry-tests-on-failure -test-iterations 2 \
+		-test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 120 \
 		CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= CODE_SIGN_ENTITLEMENTS=
 
 # Library rendering and native interactions have their own full-target plans and do not rerun the app's UI tests.
