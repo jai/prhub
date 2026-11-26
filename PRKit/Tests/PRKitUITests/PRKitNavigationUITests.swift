@@ -33,7 +33,8 @@ final class PRKitNavigationUITests: PRHubUITestCase {
     /// leaves the diff and its PR for the list, where the toast follows it under the nav bar (Jai's feedback, build 305).
     func testTheDiffHasTheReviewBarAndSendsAReview() throws {
         // A sample review lands in 0.9 s and its toast leaves 2 s later: on CI that was gone before the list's checks
-        // reached it.
+        // reached it. With the fixture it lands in 10 s and its toast then stays: one look at the toast's words took
+        // 2.5 s on a slow Mac and stepped over the whole 2 s that it said Approved (run 45788013207).
         launch(["-PRHubSlowReview"])
         openCheckout()
         app.buttons["pr-files-changed"].tap()

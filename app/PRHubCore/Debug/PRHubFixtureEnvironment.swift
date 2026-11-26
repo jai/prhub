@@ -21,7 +21,8 @@
     ///   it opens on Settings; with `-PRHubLongDiff` For review starts with a PR whose one file is longer than the screen,
     ///   for the diff's bars; with `-PRHubLongLines` it starts with a PR of lines too long for any screen
     ///   (`PRHubLongLineSamples`); with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View; with
-    ///   `-PRHubSlowReview` a review takes 10 seconds to land, so a UI test still finds its toast after a navigation;
+    ///   `-PRHubSlowReview` a review takes 10 seconds to land, so a UI test still finds its toast after a navigation,
+    ///   and its toast then stays, so the test reads what it says however slowly it looks;
     ///   with `-PRHubPendingAddRefused` a pending comment added on a line is refused, as GitHub refuses one on a line
     ///   outside the diff, so a UI test can show a failed one;
     ///   with `-PRHubFeedback` the Worker serves Feedback, over two sample chats that never leave the device
@@ -95,6 +96,7 @@
             }
             if arguments.contains("-PRHubSlowReview") {
                 samples.reviewDelay = .seconds(10)
+                samples.reviewDwell = .seconds(3600)
             }
             if arguments.contains("-PRHubPendingAddRefused") {
                 samples.refusesLinePendingAdds = "GitHub didn't take the comment. Its line may no longer be in the diff."

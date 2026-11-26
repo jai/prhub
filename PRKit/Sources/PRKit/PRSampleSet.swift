@@ -34,6 +34,9 @@ public struct PRSampleSet: Sendable {
     public var askChat: PRAskChat?
     /// How long a review sent from its box takes to answer, as a Worker's would: long enough to see it go.
     public var reviewDelay = Duration.milliseconds(900)
+    /// How long a landed review's toast stays before it goes; nil is the app's own time (`ToastStyle.dwell`). A UI test
+    /// sets it long: it reads the toast's words by polling, and one poll can take longer than the toast's 2 seconds.
+    public var reviewDwell: Duration?
     /// Set, the first review sent from its box is refused in these words, and Retry sends it: a UI test's or a
     /// recording's way to show a refusal on sample PRs.
     public var refusesFirstReview: String?
