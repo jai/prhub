@@ -415,6 +415,7 @@
             )
             header.onTap = { [weak self] in self?.toggleFile(section) }
             header.onViewed = { [weak self] in self?.actions.setViewed($0, file.path) }
+            header.onWhole = { [weak self] in self?.actions.hidden.setWholeFile($0, file.path) }
             header.pin(toVisibleWidth: bounds.width, offsetX: contentOffset.x)
             return header
         }
@@ -427,7 +428,8 @@
             switch row(at: indexPath) {
             case let .line(index): codeRowHeight(line: index, piece: 0)
             case let .piece(index, piece): codeRowHeight(line: index, piece: piece)
-            case .rest, .less: max(metrics.rowHeight, DiffMetrics.minimumTapTarget)
+            case .rest, .less, .gapMore, .gapLess: max(metrics.rowHeight, DiffMetrics.minimumTapTarget)
+            case let .gap(index): gapRowHeight(rows.gaps[index])
             case .thread, .draft, .note: UITableView.automaticDimension
             }
         }
@@ -444,7 +446,7 @@
                 return wrap.height(wrap.height(rows: rows), isCut: self.rows.cut.contains(index))
             case let .piece(index, piece):
                 return wrap.height(rows: wrap.estimatedRows(line: index, piece: piece, of: document))
-            case .rest, .less, .thread, .draft, .note:
+            case .rest, .less, .thread, .draft, .note, .gap, .gapMore, .gapLess:
                 return metrics.rowHeight
             }
         }
@@ -468,6 +470,12 @@
                 }
             case .note:
                 return noteCell(at: indexPath)
+            case let .gap(index):
+                return gapCell(rows.gaps[index], at: indexPath)
+            case let .gapMore(index):
+                return gapCell(rows.gaps[index], part: "more", at: indexPath)
+            case let .gapLess(index):
+                return gapCell(rows.gaps[index], part: "less", at: indexPath)
             }
         }
     }
@@ -480,6 +488,16 @@
             switch row(at: indexPath) {
             case let .rest(index), let .less(index):
                 actions.showWholeLine(index)
+                return
+            case let .gap(index), let .gapLess(index):
+                // A failed gap's row has its own button.
+                if case .failed = rows.gaps[index].state {
+                    return
+                }
+                actions.hidden.toggle(rows.gaps[index])
+                return
+            case let .gapMore(index):
+                actions.hidden.showAll(rows.gaps[index])
                 return
             default:
                 break

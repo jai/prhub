@@ -71,7 +71,8 @@ struct DiffDocumentTests {
         ])
 
         #expect(rows.files.map(\.path) == ["f"])
-        #expect(rows.files[0].rows == [.line(3), .line(4), .thread(1), .line(5), .thread(0), .line(6)])
+        // Round them, what the diff leaves out: the file's first four lines, and whatever follows the hunk.
+        #expect(rows.files[0].rows == [.gap(0), .line(3), .line(4), .thread(1), .line(5), .thread(0), .line(6), .gap(1)])
     }
 
     @Test func aFileCountsItsChangesAndKeepsItsHeaderOnlyWhenThatIsAllItHas() {
@@ -97,7 +98,8 @@ struct DiffDocumentTests {
         #expect(document.files == ["one", "new name"])
         #expect(rows.files[0].change == DiffDocument.FileChange(added: 2, removed: 1))
         #expect(rows.files[0].rows == [.line(3), .line(4), .line(5), .line(6), .line(7), .line(8)])
-        #expect(rows.files[1].rows == [.line(10), .line(11), .line(12)])
+        // A rename's header lines, then the way to its text, none of which its diff shows.
+        #expect(rows.files[1].rows == [.line(10), .line(11), .line(12), .gap(0)])
     }
 
     @Test func aLongLineIsClippedAndStillReadsInFull() {

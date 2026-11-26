@@ -199,10 +199,15 @@
         private var fittedWidth: CGFloat?
         var onTap: () -> Void = {}
         var onViewed: (Bool) -> Void = { _ in }
+        /// "Show whole file", on or off, from the header's right-click menu.
+        var onWhole: (Bool) -> Void = { _ in }
+        private let showsWhole: Bool?
 
         init(_ file: DiffRows.File, section: Int, isCollapsed: Bool, isViewed: Bool, metrics: DiffMetrics) {
             self.metrics = metrics
+            showsWhole = file.showsWhole
             super.init(frame: .zero)
+            menu = Self.menu(for: file, target: self)
             bar.wantsLayer = true
             bar.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
             chevron.image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)?
@@ -298,6 +303,83 @@
         @objc private func viewedClicked() {
             onViewed(!isViewed)
         }
+
+        /// A right click on the header: "Show whole file", ticked while every line of the file is shown. A file whose
+        /// diff leaves nothing out has no menu.
+        private static func menu(for file: DiffRows.File, target: DiffFileHeaderView) -> NSMenu? {
+            guard let isOn = file.showsWhole else {
+                return nil
+            }
+            let item = NSMenuItem(title: DiffRows.File.wholeTitle, action: #selector(wholeClicked), keyEquivalent: "")
+            item.target = target
+            item.state = isOn ? .on : .off
+            item.identifier = NSUserInterfaceItemIdentifier(file.wholeIdentifier)
+            item.setAccessibilityIdentifier(file.wholeIdentifier)
+            let menu = NSMenu()
+            menu.addItem(item)
+            return menu
+        }
+
+        @objc private func wholeClicked() {
+            if let showsWhole {
+                onWhole(!showsWhole)
+            }
+        }
+    }
+
+    /// "Show 12 hidden lines", "Show N more lines" or "Show less": a button the width of the code, so a test and
+    /// VoiceOver find it by its identifier, with the small spinner after its words while its file is read.
+    final class DiffGapView: NSView {
+        private let button: NSButton
+        private let spinner = NSProgressIndicator()
+        private let codeX: CGFloat
+        var onPress: () -> Void = {}
+
+        init(title: String, identifier: String, isBusy: Bool, metrics: DiffMetrics, digits: Int) {
+            button = NSButton(title: title, target: nil, action: nil)
+            codeX = DiffStyle.lineInset + metrics.gutterWidth(digits: digits)
+            super.init(frame: .zero)
+            button.isBordered = false
+            button.alignment = .left
+            button.lineBreakMode = .byTruncatingMiddle
+            button.attributedTitle = NSAttributedString(
+                string: title, attributes: [.font: metrics.code, .foregroundColor: NSColor.controlAccentColor]
+            )
+            button.target = self
+            button.action = #selector(pressed)
+            button.setAccessibilityElement(true)
+            button.setAccessibilityRole(.button)
+            button.setAccessibilityIdentifier(identifier)
+            button.setAccessibilityLabel(title)
+            button.setAccessibilityValue(isBusy ? "Loading" : nil)
+            addSubview(button)
+            spinner.style = .spinning
+            spinner.controlSize = .small
+            spinner.isDisplayedWhenStopped = false
+            addSubview(spinner)
+            if isBusy {
+                spinner.startAnimation(nil)
+            }
+        }
+
+        @available(*, unavailable)
+        required init?(coder _: NSCoder) {
+            fatalError("not used from a storyboard")
+        }
+
+        override func layout() {
+            super.layout()
+            let size = button.fittingSize
+            spinner.sizeToFit()
+            let side = spinner.frame.width
+            let width = min(size.width, max(0, bounds.width - codeX - DiffStyle.lineInset - side - Space.sm))
+            button.frame = NSRect(x: codeX, y: (bounds.height - size.height) / 2, width: width, height: size.height)
+            spinner.frame.origin = NSPoint(x: button.frame.maxX + Space.sm, y: (bounds.height - side) / 2)
+        }
+
+        @objc private func pressed() {
+            onPress()
+        }
     }
 
     extension DiffTableContainer {
@@ -321,8 +403,34 @@
                     metrics: metrics, digits: document.lineNumberDigits
                 )
             }
-            view.setAccessibilityIdentifier(piece == 0 ? "diff-line-\(index)" : "diff-line-\(index)-piece-\(piece)")
+            view.setAccessibilityIdentifier(DiffLineNames.identifier(line, index: index, piece: piece))
             return view
+        }
+
+        /// The row that offers a gap, "Show 12 hidden lines", on the hunk header's ground. `part` is "more" for
+        /// "Show N more lines" and "less" for "Show less".
+        func gapView(_ gap: DiffRows.Gap, part: String? = nil) -> NSView {
+            let title = part == "more" ? gap.moreTitle : part == "less" ? DiffRows.Gap.lessTitle : gap.title
+            let view = DiffGapView(
+                title: title, identifier: gap.identifier(part), isBusy: part == nil && gap.state == .loading,
+                metrics: metrics, digits: document.lineNumberDigits
+            )
+            view.onPress = { [weak self] in
+                if part == "more" {
+                    self?.actions.hidden.showAll(gap)
+                } else {
+                    self?.press(gap)
+                }
+            }
+            return view
+        }
+
+        /// A failed gap's row is a card on the list's own ground.
+        func gapFill(_ gap: DiffRows.Gap) -> NSColor {
+            if case .failed = gap.state {
+                return .clear
+            }
+            return DiffStyle.background(.hunk)
         }
 
         /// "Show full line", under the start of a very long line; "Show less" under its end.
@@ -347,13 +455,15 @@
             headers[section] = header
             header.onTap = { [weak self] in self?.toggleFile(section) }
             header.onViewed = { [weak self] in self?.actions.setViewed($0, file.path) }
+            header.onWhole = { [weak self] in self?.actions.hidden.setWholeFile($0, file.path) }
             header.pin(offsetX: contentView.bounds.minX, width: contentView.bounds.width)
             return header
         }
 
         func hostedID(section: Int, row: Int) -> String? {
             switch self.row(section: section, row: row) {
-            case .line, .piece, .rest, .less: nil
+            case .line, .piece, .rest, .less, .gapMore, .gapLess: nil
+            case let .gap(index): rows.gaps[index].failureID
             case let .thread(index): rows.threads[index].id
             case let .draft(index): rows.pending[index].id
             case .note: rows.note?.id
@@ -363,8 +473,16 @@
         /// The host for a thread, a draft or the box, kept by id and given its current content.
         func hostedRow(section: Int, row: Int) -> HostedRow? {
             switch self.row(section: section, row: row) {
-            case .line, .piece, .rest, .less:
+            case .line, .piece, .rest, .less, .gapMore, .gapLess:
                 return nil
+            case let .gap(index):
+                let gap = rows.gaps[index]
+                guard case let .failed(words) = gap.state else {
+                    return nil
+                }
+                return host(gap.failureID) {
+                    DiffGapFailure(gap: gap, words: words) { [weak self] in self?.actions.hidden.retry(gap) }
+                }
             case let .thread(index):
                 let thread = rows.threads[index]
                 let isCollapsed = thread.isResolved != actions.folds.isFlipped(thread.id)

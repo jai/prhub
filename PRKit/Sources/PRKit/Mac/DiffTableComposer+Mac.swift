@@ -29,6 +29,12 @@
             case let .rest(line), let .less(line):
                 actions.showWholeLine(line)
                 return
+            case let .gap(gap), let .gapLess(gap):
+                press(rows.gaps[gap])
+                return
+            case let .gapMore(gap):
+                actions.hidden.showAll(rows.gaps[gap])
+                return
             default:
                 break
             }
@@ -40,6 +46,14 @@
                 return
             }
             actions.compose(line == composing ? nil : line)
+        }
+
+        /// "Show N hidden lines" or "Show less". A failed gap's row has its own button.
+        func press(_ gap: DiffRows.Gap) {
+            if case .failed = gap.state {
+                return
+            }
+            actions.hidden.toggle(gap)
         }
 
         /// The line being commented on, from the screen, which holds the box.

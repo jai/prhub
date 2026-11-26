@@ -25,8 +25,36 @@
                 )
             }
             mark(cell, line: index, at: indexPath)
-            cell.accessibilityIdentifier = piece == 0 ? "diff-line-\(index)" : "diff-line-\(index)-piece-\(piece)"
+            cell.accessibilityIdentifier = DiffLineNames.identifier(line, index: index, piece: piece)
             return cell
+        }
+
+        /// The row that offers a gap, "Show 12 hidden lines", with the hunk header's ground: the lines belong between
+        /// two hunks. While its file is read it turns the small spinner; a read that failed says why in its place,
+        /// with Try again. `part` is "more" for "Show N more lines" and "less" for "Show less".
+        func gapCell(_ gap: DiffRows.Gap, part: String? = nil, at indexPath: IndexPath) -> UITableViewCell {
+            if part == nil, case let .failed(words) = gap.state {
+                return hostedCell(at: indexPath, id: gap.failureID) {
+                    DiffGapFailure(gap: gap, words: words) { [weak self] in self?.actions.hidden.retry(gap) }
+                }
+            }
+            let cell = table.dequeueReusableCell(withIdentifier: DiffRestCell.identifier, for: indexPath)
+            let title = part == "more" ? gap.moreTitle : part == "less" ? DiffRows.Gap.lessTitle : gap.title
+            (cell as? DiffRestCell)?.configure(
+                title: title, metrics: metrics, digits: document.lineNumberDigits,
+                isBusy: part == nil && gap.state == .loading
+            )
+            cell.backgroundColor = DiffStyle.background(.hunk)
+            cell.accessibilityIdentifier = gap.identifier(part)
+            cell.accessibilityValue = part == nil ? gap.spokenValue : nil
+            return cell
+        }
+
+        func gapRowHeight(_ gap: DiffRows.Gap) -> CGFloat {
+            if case .failed = gap.state {
+                return UITableView.automaticDimension
+            }
+            return max(metrics.rowHeight, DiffMetrics.minimumTapTarget)
         }
 
         /// "Show full line", under the start of a very long line, on the line's own colour; "Show less" under its end.
@@ -38,6 +66,7 @@
             )
             cell.backgroundColor = DiffStyle.background(line.kind)
             cell.accessibilityIdentifier = "diff-line-\(index)-\(isLess ? "less" : "rest")"
+            cell.accessibilityValue = nil
             return cell
         }
 

@@ -435,6 +435,7 @@ struct PRMirrorTests {
             PRPendingComment(PRDraftComment(id: UUID(), path: "f", line: line, side: side, body: "b"))
         }
         let rows = DiffRows(document: document, threads: [], pending: [draft(5, .right), draft(5, .left)])
-        #expect(rows.files[0].rows == [.line(3), .line(4), .draft(1), .line(5), .draft(0)])
+        // Round them, the rows for what the diff leaves out before its hunk and after it.
+        #expect(rows.files[0].rows == [.gap(0), .line(3), .line(4), .draft(1), .line(5), .draft(0), .gap(1)])
     }
 }

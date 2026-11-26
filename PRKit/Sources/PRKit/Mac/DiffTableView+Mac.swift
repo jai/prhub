@@ -151,7 +151,10 @@
                 }
                 closeComposer()
             }
-            let ids = Set(rows.threads.map(\.id) + rows.pending.map(\.id) + (rows.note.map { [$0.id] } ?? []))
+            // A gap whose file could not be read is a hosted row too.
+            let failed = rows.gaps.filter { $0.state != .open && $0.state != .closed && $0.state != .loading }
+                .map(\.failureID)
+            let ids = Set(rows.threads.map(\.id) + rows.pending.map(\.id) + (rows.note.map { [$0.id] } ?? []) + failed)
             hosted = hosted.filter { ids.contains($0.key) }
             headers = [:]
             rebuild()
@@ -384,7 +387,11 @@
                 switch self.row(section: section, row: index) {
                 case let .line(line): return codeRowHeight(line: line, piece: 0)
                 case let .piece(line, piece): return codeRowHeight(line: line, piece: piece)
-                case .rest, .less: return metrics.rowHeight + Space.sm
+                case .rest, .less, .gapMore, .gapLess: return metrics.rowHeight + Space.sm
+                case let .gap(gap):
+                    guard case .failed = rows.gaps[gap].state else {
+                        return metrics.rowHeight + Space.sm
+                    }
                 case .thread, .draft, .note: break
                 }
                 let height = hostedID(section: section, row: index).flatMap { hosted[$0]?.height }
@@ -399,6 +406,8 @@
                 switch self.row(section: section, row: index) {
                 case let .line(line), let .piece(line, _): rowView.fill = fill(forLine: line)
                 case let .rest(line), let .less(line): rowView.fill = DiffStyle.background(document.lines[line].kind)
+                case let .gap(gap): rowView.fill = gapFill(rows.gaps[gap])
+                case .gapMore, .gapLess: rowView.fill = DiffStyle.background(.hunk)
                 case .thread, .draft, .note: break
                 }
             }
@@ -415,6 +424,12 @@
                 case let .piece(line, piece): return lineView(line, piece: piece)
                 case let .rest(line): return restView(line)
                 case let .less(line): return restView(line, isLess: true)
+                case let .gapMore(gap): return gapView(rows.gaps[gap], part: "more")
+                case let .gapLess(gap): return gapView(rows.gaps[gap], part: "less")
+                case let .gap(gap):
+                    guard case .failed = rows.gaps[gap].state else {
+                        return gapView(rows.gaps[gap])
+                    }
                 case .thread, .draft, .note: break
                 }
                 return hostedRow(section: section, row: index).map { host in

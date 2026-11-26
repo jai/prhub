@@ -261,7 +261,10 @@ struct PRPendingSyncTests {
             return
         }
         // The removed line carries the thread and its pending reply; the added one the two line comments.
-        #expect(rows.files[0].rows == [.line(3), .line(4), .thread(0), .draft(2), .line(5), .draft(0), .draft(4)])
+        // Round them, the rows for what the diff leaves out before its hunk and after it.
+        #expect(rows.files[0].rows == [
+            .gap(0), .line(3), .line(4), .thread(0), .draft(2), .line(5), .draft(0), .draft(4), .gap(1),
+        ])
         #expect(session.pendingOffDiff.map(\.id) == ["PRRC_2", "PRRC_4"], "the page lists what the diff has no line for")
         #expect(session.pendingReplies(to: "PRRT_1").map(\.id) == ["PRRC_3"])
     }

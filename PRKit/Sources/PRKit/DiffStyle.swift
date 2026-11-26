@@ -251,4 +251,18 @@ struct DiffActions {
     var showWholeLine: (Int) -> Void = { _ in }
     /// A key line's words as a comment of the review: whether it has one, and the press that opens its box.
     var keyLineDraft = PRKeyLineDraftActions()
+    /// The lines the diff leaves out (`DiffGaps.swift`).
+    var hidden = DiffHiddenActions()
+}
+
+/// What the rows of the lines a diff leaves out ask for, and a file's "Show whole file".
+struct DiffHiddenActions {
+    /// "Show N hidden lines" on a gap, and "Show less" under its lines.
+    var toggle: (DiffRows.Gap) -> Void = { _ in }
+    /// "Show N more lines", in a long gap.
+    var showAll: (DiffRows.Gap) -> Void = { _ in }
+    /// "Try again", where a file's text could not be read.
+    var retry: (DiffRows.Gap) -> Void = { _ in }
+    /// "Show whole file", on or off, by the file's path.
+    var setWholeFile: (Bool, String) -> Void = { _, _ in }
 }

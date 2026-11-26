@@ -93,6 +93,8 @@
     final class DiffRestCell: UITableViewCell {
         static let identifier = "rest"
         private let title = UILabel()
+        /// Turns while the row's file is being read.
+        private let spinner = UIActivityIndicatorView(style: .medium)
         private var codeX: CGFloat = 0
 
         override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
@@ -101,6 +103,8 @@
             title.textColor = .tintColor
             title.adjustsFontSizeToFitWidth = true
             contentView.addSubview(title)
+            spinner.hidesWhenStopped = true
+            contentView.addSubview(spinner)
             isAccessibilityElement = true
             accessibilityTraits = .button
         }
@@ -110,20 +114,32 @@
             fatalError("not used from a storyboard")
         }
 
-        func configure(title text: String, metrics: DiffMetrics, digits: Int) {
+        func configure(title text: String, metrics: DiffMetrics, digits: Int, isBusy: Bool = false) {
             title.font = metrics.code
             title.text = text
             accessibilityLabel = text
             codeX = DiffStyle.lineInset + metrics.gutterWidth(digits: digits)
+            if isBusy {
+                spinner.startAnimating()
+            } else {
+                spinner.stopAnimating()
+            }
             setNeedsLayout()
         }
 
         override func layoutSubviews() {
             super.layoutSubviews()
             let bounds = contentView.bounds
-            title.frame = CGRect(
-                x: codeX, y: 0, width: max(0, bounds.width - codeX - DiffStyle.lineInset), height: bounds.height
-            )
+            let room = max(0, bounds.width - codeX - DiffStyle.lineInset)
+            guard spinner.isAnimating else {
+                title.frame = CGRect(x: codeX, y: 0, width: room, height: bounds.height)
+                return
+            }
+            // The words keep their place and the spinner turns after them.
+            let side = spinner.intrinsicContentSize.width
+            let width = min(ceil(title.sizeThatFits(bounds.size).width), max(0, room - side - Space.sm))
+            title.frame = CGRect(x: codeX, y: 0, width: width, height: bounds.height)
+            spinner.center = CGPoint(x: title.frame.maxX + Space.sm + side / 2, y: bounds.midY)
         }
     }
 
@@ -148,6 +164,10 @@
         private var fittedWidth: CGFloat?
         var onTap: () -> Void = {}
         var onViewed: (Bool) -> Void = { _ in }
+        /// "Show whole file", on or off, from the header's menu.
+        var onWhole: (Bool) -> Void = { _ in }
+        /// The file as configured: its menu reads how "Show whole file" stands when it opens.
+        private var file: DiffRows.File?
 
         override init(reuseIdentifier: String?) {
             super.init(reuseIdentifier: reuseIdentifier)
@@ -170,6 +190,7 @@
             }
             contentView.addSubview(bar)
             addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
+            addInteraction(UIContextMenuInteraction(delegate: self))
             pathRoom.isAccessibilityElement = true
             pathRoom.accessibilityTraits = .button
             accessibilityElements = [pathRoom, viewed]
@@ -184,6 +205,14 @@
             _ file: DiffRows.File, section: Int, isCollapsed: Bool, isViewed: Bool, metrics: DiffMetrics
         ) {
             self.metrics = metrics
+            self.file = file
+            // VoiceOver's way to the menu's one item.
+            pathRoom.accessibilityCustomActions = file.showsWhole.map { isOn in
+                [UIAccessibilityCustomAction(name: DiffRows.File.wholeTitle) { [weak self] _ in
+                    self?.onWhole(!isOn)
+                    return true
+                }]
+            }
             chevron.preferredSymbolConfiguration = .init(pointSize: metrics.chevronSymbolSize, weight: .semibold)
             path.font = metrics.headerPath
             change.font = metrics.headerChange
@@ -261,6 +290,33 @@
 
         @objc private func viewedTapped() {
             onViewed(!isViewed)
+        }
+    }
+
+    /// A long press on a file's header: "Show whole file", ticked while every line of the file is shown. A file whose
+    /// diff leaves nothing out has no menu.
+    extension DiffFileHeader: UIContextMenuInteractionDelegate {
+        func contextMenuInteraction(
+            _: UIContextMenuInteraction, configurationForMenuAtLocation _: CGPoint
+        ) -> UIContextMenuConfiguration? {
+            guard let file, let isOn = file.showsWhole else {
+                return nil
+            }
+            return UIContextMenuConfiguration(actionProvider: { [weak self] _ in
+                let action = UIAction(title: DiffRows.File.wholeTitle, state: isOn ? .on : .off) { _ in
+                    self?.onWhole(!isOn)
+                }
+                action.accessibilityIdentifier = file.wholeIdentifier
+                return UIMenu(children: [action])
+            })
+        }
+
+        /// The bar on screen is what lifts: with wrapping off the header itself is as wide as the code.
+        func contextMenuInteraction(
+            _: UIContextMenuInteraction, configuration _: UIContextMenuConfiguration,
+            highlightPreviewForItemWithIdentifier _: any NSCopying
+        ) -> UITargetedPreview? {
+            UITargetedPreview(view: bar)
         }
     }
 

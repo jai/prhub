@@ -78,17 +78,18 @@ struct DiffPiecesTests {
         #expect(pieces > 100)
 
         let cut = DiffRows(document: document, threads: [])
-        #expect(cut.files[0].rows.count == 4, "the hunk, the removed line, the line's start, Show full line")
-        #expect(cut.files[0].rows.last == .rest(Self.addedLine))
+        // After them, the row for what the diff leaves out past its hunk (`DiffGapTests`).
+        #expect(cut.files[0].rows.count == 5, "the hunk, the removed line, the line's start, Show full line")
+        #expect(cut.files[0].rows.dropLast().last == .rest(Self.addedLine))
         #expect(cut.cut == [Self.addedLine])
 
         let id = DiffRows.LineID(document.lines[Self.addedLine], in: document)
         let whole = DiffRows(document: document, threads: [], longLines: .init(whole: [id])).files[0].rows
-        #expect(whole.count == 3 + pieces, "every piece, then Show less")
-        #expect(whole.last == .less(Self.addedLine))
+        #expect(whole.count == 4 + pieces, "every piece, then Show less")
+        #expect(whole.dropLast().last == .less(Self.addedLine))
 
         let scrolled = DiffRows(document: document, threads: [], longLines: .init(wraps: false)).files[0].rows
-        #expect(scrolled == [.line(3), .line(4), .line(5)], "one row a line where lines scroll sideways")
+        #expect(scrolled == [.line(3), .line(4), .line(5), .gap(0)], "one row a line where lines scroll sideways")
     }
 
     /// What a wrapped line's later rows are set in past: the code's own start.
