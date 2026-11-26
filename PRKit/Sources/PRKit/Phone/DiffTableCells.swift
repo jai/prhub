@@ -10,16 +10,6 @@
         let oldNumber = UILabel()
         let newNumber = UILabel()
         private var numberWidth: CGFloat = 0
-        /// The first row's height where the code wraps over several: the numbers sit beside that row. Nil on one row.
-        private var firstRowHeight: CGFloat?
-
-        /// A label that wraps as a wrapped row's does: the table measures with one of these.
-        static func wrappingLabel() -> UILabel {
-            let label = UILabel()
-            label.numberOfLines = 0
-            label.lineBreakMode = .byWordWrapping
-            return label
-        }
 
         override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
             super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -39,36 +29,10 @@
         }
 
         func configure(line: DiffDocument.Line, text: String, metrics: DiffMetrics, digits: Int) {
-            label.attributedText = nil
-            label.numberOfLines = 1
-            label.lineBreakMode = .byClipping
-            firstRowHeight = nil
             for field in [label, oldNumber, newNumber] {
                 field.font = metrics.code
             }
             label.text = text
-            setNumbers(line, metrics: metrics, digits: digits)
-        }
-
-        /// A piece of a line wrapped in the row's width, as `DiffWrap.text` made it. Only a line's first piece has its
-        /// numbers. `rows` is how many of its rows are drawn, for a line shown cut; 0 is all of them.
-        func configure(
-            line: DiffDocument.Line, wrapped text: NSAttributedString, isFirstPiece: Bool, rows: Int = 0,
-            metrics: DiffMetrics, digits: Int
-        ) {
-            label.numberOfLines = rows
-            label.font = metrics.code
-            label.attributedText = text
-            label.lineBreakMode = DiffWrap.lineBreakMode(of: text)
-            firstRowHeight = metrics.rowHeight
-            for field in [oldNumber, newNumber] {
-                field.font = metrics.code
-            }
-            setNumbers(isFirstPiece ? line : nil, metrics: metrics, digits: digits)
-        }
-
-        private func setNumbers(_ line: DiffDocument.Line?, metrics: DiffMetrics, digits: Int) {
-            let line = line ?? DiffDocument.Line(start: 0, length: 0, kind: .meta, file: 0, oldLine: 0, newLine: 0)
             oldNumber.text = line.oldLine > 0 ? String(line.oldLine) : ""
             newNumber.text = line.newLine > 0 ? String(line.newLine) : ""
             oldNumber.accessibilityLabel = line.oldLine > 0 ? "Old line \(line.oldLine)" : nil
@@ -81,49 +45,10 @@
             super.layoutSubviews()
             let step = numberWidth + DiffStyle.lineNumberGap
             let inset = DiffStyle.lineInset
-            let numberHeight = min(firstRowHeight ?? .greatestFiniteMagnitude, contentView.bounds.height)
-            oldNumber.frame = CGRect(x: inset, y: 0, width: numberWidth, height: numberHeight)
+            oldNumber.frame = CGRect(x: inset, y: 0, width: numberWidth, height: contentView.bounds.height)
             newNumber.frame = oldNumber.frame.offsetBy(dx: step, dy: 0)
             let codeX = inset + step * 2
             label.frame = CGRect(x: codeX, y: 0, width: max(0, contentView.bounds.width - codeX - inset), height: contentView.bounds.height)
-        }
-    }
-
-    /// "Show full line": a button the width of the code, under the pieces shown of a very long line.
-    final class DiffRestCell: UITableViewCell {
-        static let identifier = "rest"
-        private let title = UILabel()
-        private var codeX: CGFloat = 0
-
-        override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
-            super.init(style: style, reuseIdentifier: reuseIdentifier)
-            selectionStyle = .none
-            title.textColor = .tintColor
-            title.adjustsFontSizeToFitWidth = true
-            contentView.addSubview(title)
-            isAccessibilityElement = true
-            accessibilityTraits = .button
-        }
-
-        @available(*, unavailable)
-        required init?(coder _: NSCoder) {
-            fatalError("not used from a storyboard")
-        }
-
-        func configure(title text: String, metrics: DiffMetrics, digits: Int) {
-            title.font = metrics.code
-            title.text = text
-            accessibilityLabel = text
-            codeX = DiffStyle.lineInset + metrics.gutterWidth(digits: digits)
-            setNeedsLayout()
-        }
-
-        override func layoutSubviews() {
-            super.layoutSubviews()
-            let bounds = contentView.bounds
-            title.frame = CGRect(
-                x: codeX, y: 0, width: max(0, bounds.width - codeX - DiffStyle.lineInset), height: bounds.height
-            )
         }
     }
 

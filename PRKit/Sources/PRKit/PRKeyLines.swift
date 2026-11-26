@@ -304,7 +304,6 @@ struct PRNavigator: View {
 
     private var filesFoot: some View {
         let changedOnly = session.changedLinesOnly
-        let wraps = session.longLines.wraps
         return VStack(alignment: .leading, spacing: Space.sm) {
             Button("Changed lines only", systemImage: (changedOnly ? AppIcon.viewFilterOn : AppIcon.viewFilter).symbol) {
                 session.setChangedLinesOnly(!changedOnly)
@@ -312,12 +311,6 @@ struct PRNavigator: View {
             .buttonStyle(PRButtonStyle(.secondary))
             .accessibilityIdentifier("diff-changed-only")
             .accessibilityValue(changedOnly ? "on" : "off")
-            Button("Wrap lines", systemImage: (wraps ? AppIcon.wrapLinesOn : AppIcon.wrapLines).symbol) {
-                session.setWrapsLongLines(!wraps)
-            }
-            .buttonStyle(PRButtonStyle(.secondary))
-            .accessibilityIdentifier("diff-wrap-lines")
-            .accessibilityValue(wraps ? "on" : "off")
             Text(session.summary(document))
                 .font(.appCaption2.monospacedDigit())
                 .foregroundStyle(.secondary)

@@ -64,24 +64,6 @@
         let oldNumber = NSTextField(labelWithString: "")
         let newNumber = NSTextField(labelWithString: "")
         private var numberWidth: CGFloat = 0
-        /// The first row's height where the code wraps over several: the numbers sit beside that row. Nil on one row.
-        private var firstRowHeight: CGFloat?
-
-        /// A label that wraps as a wrapped row's does: the list measures with one of these.
-        static func wrappingLabel() -> NSTextField {
-            let label = NSTextField(labelWithString: "")
-            wrap(label, true)
-            return label
-        }
-
-        private static func wrap(_ label: NSTextField, _ wraps: Bool) {
-            label.usesSingleLineMode = !wraps
-            label.maximumNumberOfLines = wraps ? 0 : 1
-            label.lineBreakMode = wraps ? .byWordWrapping : .byClipping
-            label.cell?.wraps = wraps
-            label.cell?.isScrollable = false
-            label.cell?.truncatesLastVisibleLine = false
-        }
 
         override init(frame: NSRect) {
             super.init(frame: frame)
@@ -103,34 +85,10 @@
         }
 
         func configure(line: DiffDocument.Line, text: String, metrics: DiffMetrics, digits: Int) {
-            Self.wrap(label, false)
-            firstRowHeight = nil
             for field in [label, oldNumber, newNumber] {
                 field.font = metrics.code
             }
             label.stringValue = text
-            setNumbers(line, metrics: metrics, digits: digits)
-        }
-
-        /// A piece of a line wrapped in the row's width, as `DiffWrap.text` made it. Only a line's first piece has its
-        /// numbers. `rows` is how many of its rows are drawn, for a line shown cut; 0 is all of them.
-        func configure(
-            line: DiffDocument.Line, wrapped text: NSAttributedString, isFirstPiece: Bool, rows: Int = 0,
-            metrics: DiffMetrics, digits: Int
-        ) {
-            Self.wrap(label, true)
-            label.maximumNumberOfLines = rows
-            firstRowHeight = metrics.rowHeight
-            for field in [label, oldNumber, newNumber] {
-                field.font = metrics.code
-            }
-            label.lineBreakMode = DiffWrap.lineBreakMode(of: text)
-            label.attributedStringValue = text
-            setNumbers(isFirstPiece ? line : nil, metrics: metrics, digits: digits)
-        }
-
-        private func setNumbers(_ line: DiffDocument.Line?, metrics: DiffMetrics, digits: Int) {
-            let line = line ?? DiffDocument.Line(start: 0, length: 0, kind: .meta, file: 0, oldLine: 0, newLine: 0)
             oldNumber.stringValue = line.oldLine > 0 ? String(line.oldLine) : ""
             newNumber.stringValue = line.newLine > 0 ? String(line.newLine) : ""
             oldNumber.setAccessibilityLabel(line.oldLine > 0 ? "Old line \(line.oldLine)" : nil)
@@ -143,46 +101,10 @@
             super.layout()
             let step = numberWidth + DiffStyle.lineNumberGap
             let inset = DiffStyle.lineInset
-            // Beside the first row of a wrapped line, which is the top one: AppKit counts up from the bottom.
-            let numberHeight = min(firstRowHeight ?? bounds.height, bounds.height)
-            oldNumber.frame = NSRect(
-                x: inset, y: bounds.height - numberHeight, width: numberWidth, height: numberHeight
-            )
+            oldNumber.frame = NSRect(x: inset, y: 0, width: numberWidth, height: bounds.height)
             newNumber.frame = oldNumber.frame.offsetBy(dx: step, dy: 0)
             let codeX = inset + step * 2
             label.frame = NSRect(x: codeX, y: 0, width: max(0, bounds.width - codeX - inset), height: bounds.height)
-        }
-    }
-
-    /// "Show full line": a link the width of the code, under the pieces shown of a very long line. The list's click
-    /// opens the line.
-    final class DiffRestView: NSView {
-        private let title: NSTextField
-        private let codeX: CGFloat
-
-        init(title text: String, metrics: DiffMetrics, digits: Int) {
-            title = NSTextField(labelWithString: text)
-            codeX = DiffStyle.lineInset + metrics.gutterWidth(digits: digits)
-            super.init(frame: .zero)
-            title.font = metrics.code
-            title.textColor = .controlAccentColor
-            title.lineBreakMode = .byTruncatingMiddle
-            title.setAccessibilityRole(.button)
-            addSubview(title)
-        }
-
-        @available(*, unavailable)
-        required init?(coder _: NSCoder) {
-            fatalError("not used from a storyboard")
-        }
-
-        override func layout() {
-            super.layout()
-            let height = title.fittingSize.height
-            title.frame = NSRect(
-                x: codeX, y: (bounds.height - height) / 2, width: max(0, bounds.width - codeX - DiffStyle.lineInset),
-                height: height
-            )
         }
     }
 
@@ -301,36 +223,16 @@
     }
 
     extension DiffTableContainer {
-        /// A line of code, or one piece of a long one where lines wrap: the line's numbers are beside its first.
-        func lineView(_ index: Int, piece: Int = 0) -> NSView {
+        func lineView(_ index: Int) -> NSView {
             let reused = table.makeView(withIdentifier: DiffLineView.identifier, owner: nil) as? DiffLineView
             let view = reused ?? DiffLineView()
             let line = document.lines[index]
-            if rows.wraps {
-                // Before the list has a width a row is asked for by a test alone, and nothing is narrow enough to wrap.
-                let wrap = wrap ?? DiffWrap(metrics: metrics, width: DiffWrap.unbounded)
-                view.configure(
-                    line: line, wrapped: wrap.text(line: index, piece: piece, of: document), isFirstPiece: piece == 0,
-                    rows: rows.cut.contains(index) ? DiffWrap.shownRows : 0, metrics: metrics,
-                    digits: document.lineNumberDigits
-                )
-            } else {
-                let text = document.text(of: line, limit: DiffDocument.columns)
-                view.configure(
-                    line: line, text: document.isClipped(line) ? "\(text)⋯" : text,
-                    metrics: metrics, digits: document.lineNumberDigits
-                )
-            }
-            view.setAccessibilityIdentifier(piece == 0 ? "diff-line-\(index)" : "diff-line-\(index)-piece-\(piece)")
-            return view
-        }
-
-        /// "Show full line", under the start of a very long line; "Show less" under its end.
-        func restView(_ index: Int, isLess: Bool = false) -> NSView {
-            let view = DiffRestView(
-                title: isLess ? DiffWrap.lessTitle : DiffWrap.restTitle(document.lines[index]), metrics: metrics, digits: document.lineNumberDigits
+            let text = document.text(of: line, limit: DiffDocument.columns)
+            view.configure(
+                line: line, text: document.isClipped(line) ? "\(text)⋯" : text,
+                metrics: metrics, digits: document.lineNumberDigits
             )
-            view.setAccessibilityIdentifier("diff-line-\(index)-\(isLess ? "less" : "rest")")
+            view.setAccessibilityIdentifier("diff-line-\(index)")
             return view
         }
 
@@ -353,7 +255,7 @@
 
         func hostedID(section: Int, row: Int) -> String? {
             switch self.row(section: section, row: row) {
-            case .line, .piece, .rest, .less: nil
+            case .line: nil
             case let .thread(index): rows.threads[index].id
             case let .draft(index): rows.drafts[index].id.uuidString
             case .note: rows.note?.id
@@ -363,7 +265,7 @@
         /// The host for a thread, a draft or the box, kept by id and given its current content.
         func hostedRow(section: Int, row: Int) -> HostedRow? {
             switch self.row(section: section, row: row) {
-            case .line, .piece, .rest, .less:
+            case .line:
                 return nil
             case let .thread(index):
                 let thread = rows.threads[index]

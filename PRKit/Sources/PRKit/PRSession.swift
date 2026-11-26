@@ -18,28 +18,27 @@ struct PRContent: Sendable {
 
     init(
         detail: PullRequestDetail, document: DiffDocument?, drafts: [PRDraftComment] = [],
-        changedLinesOnly: Bool = false, note: PRKeyLines.Item? = nil, longLines: DiffRows.LongLines = .init()
+        changedLinesOnly: Bool = false, note: PRKeyLines.Item? = nil
     ) {
         self.detail = detail
         let threads = detail.reviewThreads.nodes
         diff = document.map {
             .document($0, DiffRows(
-                document: $0, threads: threads, drafts: drafts, changedLinesOnly: changedLinesOnly, note: note,
-                longLines: longLines
+                document: $0, threads: threads, drafts: drafts, changedLinesOnly: changedLinesOnly, note: note
             ))
         } ?? .tooLarge
     }
 
     fileprivate func replacing(
         detail: PullRequestDetail? = nil, drafts: [PRDraftComment], changedLinesOnly: Bool,
-        note: PRKeyLines.Item? = nil, longLines: DiffRows.LongLines
+        note: PRKeyLines.Item? = nil
     ) -> PRContent {
         guard case let .document(document, _) = diff else {
             return PRContent(detail: detail ?? self.detail, document: nil)
         }
         return PRContent(
             detail: detail ?? self.detail, document: document, drafts: drafts, changedLinesOnly: changedLinesOnly,
-            note: note, longLines: longLines
+            note: note
         )
     }
 }
@@ -71,8 +70,6 @@ enum PRSessionState: Sendable {
 @Observable
 final class PRSession: Hashable {
     private static let changedLinesKey = "prChangedLinesOnly"
-    /// Kept only once the reader turns wrapping off: wrapped is the default.
-    private static let scrollsLongLinesKey = "prScrollsLongLines"
     private static let contextKey = "prKeyLinesContext"
 
     let ref: PullRequestRef
@@ -99,8 +96,6 @@ final class PRSession: Hashable {
     /// Set here first, so a file folds under Jai's thumb. GitHub follows, and a refusal puts it back.
     var viewedFiles: Set<String> = []
     private(set) var changedLinesOnly: Bool
-    /// Long lines wrapped or scrolled sideways, and the very long ones opened in full.
-    private(set) var longLines: DiffRows.LongLines
     private(set) var jump: DiffJump?
     var isShowingNavigator = false
     /// Key lines first; the panel shows Files alone where the Worker has none.
@@ -198,11 +193,8 @@ final class PRSession: Hashable {
         self.drafts = drafts
         let changedLinesOnly = model.settings.bool(forKey: Self.changedLinesKey)
         self.changedLinesOnly = changedLinesOnly
-        let longLines = DiffRows.LongLines(wraps: !model.settings.bool(forKey: Self.scrollsLongLinesKey))
-        self.longLines = longLines
         contextLines = model.settings.object(forKey: Self.contextKey) as? Int ?? PRKeyLines.defaultContext
-        state = (content?.replacing(drafts: drafts, changedLinesOnly: changedLinesOnly, longLines: longLines))
-            .map(PRSessionState.ready)
+        state = (content?.replacing(drafts: drafts, changedLinesOnly: changedLinesOnly)).map(PRSessionState.ready)
             ?? .reading
         viewedFiles = Set(content?.detail.viewedFiles ?? [])
         timer = DiffOpenTimer(startedAt: tappedAt)
@@ -260,9 +252,7 @@ final class PRSession: Hashable {
         do {
             let fetched = try await model.fetch(ref, row: opening.reads)
             let content = fetched.content
-                .replacing(
-                    drafts: drafts, changedLinesOnly: changedLinesOnly, note: selectedKeyLine, longLines: longLines
-                )
+                .replacing(drafts: drafts, changedLinesOnly: changedLinesOnly, note: selectedKeyLine)
             viewedFiles = Set(content.detail.viewedFiles ?? [])
             withAnimation(AppMotion.swap) { state = .ready(content) }
             reportContent(networkMilliseconds: fetched.networkMilliseconds, decodeMilliseconds: fetched.decodeMilliseconds)
@@ -315,9 +305,7 @@ final class PRSession: Hashable {
 
     /// A newer copy on screen, with this session's drafts, changed-lines choice and open key line.
     private func swapIn(_ fetched: PRContent) {
-        let content = fetched.replacing(
-            drafts: drafts, changedLinesOnly: changedLinesOnly, note: selectedKeyLine, longLines: longLines
-        )
+        let content = fetched.replacing(drafts: drafts, changedLinesOnly: changedLinesOnly, note: selectedKeyLine)
         viewedFiles = Set(content.detail.viewedFiles ?? [])
         withAnimation(AppMotion.swap) { state = .ready(content) }
     }
@@ -390,19 +378,6 @@ final class PRSession: Hashable {
         changedLinesOnly = isOn
         model.settings.set(isOn, forKey: Self.changedLinesKey)
         setDrafts(drafts)
-    }
-
-    /// Long lines wrap in the diff's width, or stay on one row that scrolls sideways.
-    func setWrapsLongLines(_ isOn: Bool) {
-        longLines.wraps = isOn
-        model.settings.set(!isOn, forKey: Self.scrollsLongLinesKey)
-        rebuildRows()
-    }
-
-    /// "Show full line": every piece of a very long line, for as long as this PR is open. "Show less" takes it back.
-    func showWhole(_ line: DiffDocument.Line, in document: DiffDocument) {
-        longLines.whole.formSymmetricDifference([DiffRows.LineID(line, in: document)])
-        rebuildRows()
     }
 
     func show(file path: String) {
@@ -531,8 +506,7 @@ final class PRSession: Hashable {
         if let content {
             withAnimation(AppMotion.fold) {
                 state = .ready(content.replacing(
-                    detail: detail, drafts: drafts, changedLinesOnly: changedLinesOnly, note: selectedKeyLine,
-                    longLines: longLines
+                    detail: detail, drafts: drafts, changedLinesOnly: changedLinesOnly, note: selectedKeyLine
                 ))
             }
         }

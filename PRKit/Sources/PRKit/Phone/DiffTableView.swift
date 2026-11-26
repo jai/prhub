@@ -4,11 +4,9 @@
     import SwiftUI
     import UIKit
 
-    /// One tall list, a section per file. Long lines wrap in its width (`DiffRows.wraps`): a line that fits is a row of
-    /// the fixed height and is never measured; one that wraps is measured when it comes on screen, and a very long one
-    /// is several rows, a piece each. With wrapping off the list sits inside one sideways scroller, every row the
-    /// fixed height. Threads and the comment box size themselves, as wide as the screen and not the table, so they
-    /// read without scrolling sideways. A tap on a code line highlights it and opens the box under it.
+    /// A fixed line height, so the table never measures code: one tall list inside one sideways scroller, a section per file.
+    /// Threads and the comment box are the rows that size themselves, as wide as the screen and not the table, so they read
+    /// without scrolling sideways. A tap on a code line highlights it and opens the box under it.
     final class DiffTableContainer: UIScrollView, UITableViewDataSource, UITableViewDelegate {
         static let hostedIdentifier = "hosted"
         /// Past this many rows, a file folds with a cross-dissolve: animating each row out would drop frames.
@@ -32,17 +30,6 @@
         var isKeyboardUp = false
         var isSettlingBars = false
         private var hasPlacedTop = false
-        /// Wrapped rows' heights, by line and piece, at `wrapWidth`: measured once each.
-        private var wrapHeights: [WrapKey: CGFloat] = [:]
-        private var wrapWidth: CGFloat = 0
-        /// Measures a wrapped row as its cell's label will draw it.
-        private let wrapSizer = DiffLineCell.wrappingLabel()
-
-        private struct WrapKey: Hashable {
-            let line: Int
-            let piece: Int
-        }
-
         private let backSwipe = BackSwipeKeeper()
 
         init(
@@ -73,7 +60,6 @@
             table.isDirectionalLockEnabled = true
             table.keyboardDismissMode = .interactive
             table.register(DiffLineCell.self, forCellReuseIdentifier: DiffLineCell.identifier)
-            table.register(DiffRestCell.self, forCellReuseIdentifier: DiffRestCell.identifier)
             table.register(DiffHostedCell.self, forCellReuseIdentifier: Self.hostedIdentifier)
             table.register(DiffFileHeader.self, forHeaderFooterViewReuseIdentifier: DiffFileHeader.identifier)
             // Set by hand, from `update(topInset:)`: the bars leaving must not move the code.
@@ -115,7 +101,6 @@
 
         private func remeasure(font: DiffFont) {
             metrics = DiffMetrics(font, traits: traitCollection)
-            wrapHeights.removeAll()
             applyMetricsToTable()
             setNeedsLayout()
             UIView.transition(with: table, duration: 0.25, options: .transitionCrossDissolve) {
@@ -134,15 +119,8 @@
             guard rows.stamp != self.rows.stamp else {
                 return
             }
-            let rewraps = rows.wraps != self.rows.wraps
             self.document = document
             self.rows = rows
-            wrapHeights.removeAll()
-            if rewraps {
-                // Wrapped, there is nothing to the side: back to the left edge, and the table to the screen's width.
-                contentOffset.x = 0
-                setNeedsLayout()
-            }
             if let composing, path(ofLine: composing) == nil {
                 // The new diff may be shorter: the box's line is gone, so nothing may look it up before it closes.
                 if !document.lines.indices.contains(composing) {
@@ -233,9 +211,7 @@
                 // it, and the whole note above the floating controls. With the line in the middle, a tall note (the
                 // largest text) ran down to the stepper.
                 let under = rows.files[section].rows
-                // Past the line's own later pieces, where it is a long one.
-                let next = under[(row + 1)...].firstIndex { !$0.continuesLine } ?? under.count
-                let shown = next < under.count && under[next] == .note ? next : row
+                let shown = row + 1 < under.count && under[row + 1] == .note ? row + 1 : row
                 table.scrollToRow(at: IndexPath(row: shown, section: section), at: .middle, animated: true)
                 return
             }
@@ -284,13 +260,11 @@
         override func layoutSubviews() {
             super.layoutSubviews()
             let codeWidth = CGFloat(DiffDocument.columns + 2) * metrics.columnWidth
-            let width = rows.wraps
-                ? bounds.width : max(bounds.width, codeWidth + metrics.gutterWidth(digits: document.lineNumberDigits))
+            let width = max(bounds.width, codeWidth + metrics.gutterWidth(digits: document.lineNumberDigits))
             // Without animation: the tab bar leaving grows this view inside the bars' animation, and an animated frame
             // animates the table's bounds, its scroll position included. The rows then freeze under the finger.
             UIView.performWithoutAnimation {
                 table.frame = CGRect(x: 0, y: 0, width: width, height: bounds.height)
-                rewrap(to: width)
                 table.layoutIfNeeded()
             }
             // A table with no size yet can't hold an offset, so the first one waits for this.
@@ -306,53 +280,6 @@
             for cell in table.visibleCells where cell.reuseIdentifier == Self.hostedIdentifier {
                 pinToScreen(cell)
             }
-        }
-
-        /// A new width, the first or a turned screen's: wrapped lines break elsewhere, so every row's height is asked for
-        /// again, and the row that was at the top stays there.
-        private func rewrap(to width: CGFloat) {
-            guard rows.wraps, width != wrapWidth else {
-                return
-            }
-            let top = wrapWidth > 0 ? table.indexPathsForVisibleRows?.first : nil
-            wrapWidth = width
-            wrapHeights.removeAll()
-            table.reloadData()
-            if let top, top.section < table.numberOfSections, top.row < table.numberOfRows(inSection: top.section) {
-                table.layoutIfNeeded()
-                table.scrollToRow(at: top, at: .top, animated: false)
-            }
-        }
-
-        /// The code's room when lines wrap; nil when they scroll, or before the table has a width.
-        var wrap: DiffWrap? {
-            guard rows.wraps, wrapWidth > 0 else {
-                return nil
-            }
-            return DiffWrap(
-                metrics: metrics, width: metrics.codeWidth(inRow: wrapWidth, digits: document.lineNumberDigits)
-            )
-        }
-
-        /// A code row's height: the fixed one unless the piece wraps, and then what its label measures, kept.
-        private func codeRowHeight(line: Int, piece: Int) -> CGFloat {
-            guard let wrap else {
-                return metrics.rowHeight
-            }
-            if wrap.isOneRow(line: line, piece: piece, of: document) {
-                return metrics.rowHeight
-            }
-            let key = WrapKey(line: line, piece: piece)
-            if let height = wrapHeights[key] {
-                return height
-            }
-            let text = wrap.text(line: line, piece: piece, of: document)
-            wrapSizer.attributedText = text
-            wrapSizer.lineBreakMode = DiffWrap.lineBreakMode(of: text)
-            let size = wrapSizer.sizeThatFits(CGSize(width: wrap.width, height: .greatestFiniteMagnitude))
-            let height = wrap.height(wrap.height(fitting: size.height), isCut: rows.cut.contains(line))
-            wrapHeights[key] = height
-            return height
         }
 
         /// A thread or a key line's note is the screen's width: it stays on screen while the code scrolls sideways, as the
@@ -419,41 +346,16 @@
         }
 
         func tableView(_: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-            switch row(at: indexPath) {
-            case let .line(index): codeRowHeight(line: index, piece: 0)
-            case let .piece(index, piece): codeRowHeight(line: index, piece: piece)
-            case .rest, .less: max(metrics.rowHeight, DiffMetrics.minimumTapTarget)
-            case .thread, .draft, .note: UITableView.automaticDimension
-            }
-        }
-
-        /// The table's guess for a row not yet on screen: a wrapped piece's from its length, so the scroll bar and a
-        /// jump to a far line are about right before anything is measured.
-        func tableView(_: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
-            guard let wrap else {
+            if case .line = row(at: indexPath) {
                 return metrics.rowHeight
             }
-            switch row(at: indexPath) {
-            case let .line(index):
-                let rows = wrap.estimatedRows(line: index, piece: 0, of: document)
-                return wrap.height(wrap.height(rows: rows), isCut: self.rows.cut.contains(index))
-            case let .piece(index, piece):
-                return wrap.height(rows: wrap.estimatedRows(line: index, piece: piece, of: document))
-            case .rest, .less, .thread, .draft, .note:
-                return metrics.rowHeight
-            }
+            return UITableView.automaticDimension
         }
 
         func tableView(_: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
             switch row(at: indexPath) {
             case let .line(index):
                 return lineCell(index, at: indexPath)
-            case let .piece(index, piece):
-                return lineCell(index, piece: piece, at: indexPath)
-            case let .rest(index):
-                return restCell(index, at: indexPath)
-            case let .less(index):
-                return restCell(index, isLess: true, at: indexPath)
             case let .thread(index):
                 return threadCell(rows.threads[index], at: indexPath)
             case let .draft(index):
@@ -472,14 +374,7 @@
     extension DiffTableContainer {
         func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
             tableView.deselectRow(at: indexPath, animated: false)
-            switch row(at: indexPath) {
-            case let .rest(index), let .less(index):
-                actions.showWholeLine(index)
-                return
-            default:
-                break
-            }
-            guard let index = row(at: indexPath).codeLine, !composerHasText else {
+            guard case let .line(index) = row(at: indexPath), !composerHasText else {
                 return
             }
             let kind = document.lines[index].kind
@@ -497,7 +392,7 @@
         private func highlightLines() {
             UIView.animate(withDuration: 0.18) {
                 for indexPath in self.table.indexPathsForVisibleRows ?? [] {
-                    if let index = self.row(at: indexPath).codeLine {
+                    if case let .line(index) = self.row(at: indexPath) {
                         self.table.cellForRow(at: indexPath).map {
                             self.mark($0, line: index, at: indexPath)
                         }

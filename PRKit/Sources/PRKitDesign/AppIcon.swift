@@ -58,8 +58,6 @@ public enum AppIcon: String {
     case restore = "arrow.uturn.backward"
     case viewFilter = "line.3.horizontal.decrease.circle"
     case viewFilterOn = "line.3.horizontal.decrease.circle.fill"
-    case wrapLines = "arrow.uturn.down.circle"
-    case wrapLinesOn = "arrow.uturn.down.circle.fill"
     case moveUp = "arrow.up"
     case remove = "minus"
 

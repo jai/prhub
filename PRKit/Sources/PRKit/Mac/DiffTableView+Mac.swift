@@ -4,9 +4,8 @@
     import PRKitDesign
     import SwiftUI
 
-    /// The phone's diff table, drawn by AppKit: one list of every file's header and rows. Long lines wrap in the window's
-    /// width (`DiffRows.wraps`), a very long one as several rows; with wrapping off the list is wider than the window and
-    /// code scrolls sideways. Threads, drafts and the comment box stay as wide as the window, held in view as the list moves.
+    /// The phone's diff table, drawn by AppKit: one list of every file's header and rows, wider than the window so code
+    /// scrolls sideways. Threads, drafts and the comment box stay as wide as the window, held in view as the list moves.
     /// A click on a code line highlights it and opens the box under it.
     struct DiffTableView: NSViewRepresentable {
         let document: DiffDocument
@@ -60,16 +59,6 @@
         let hostedWidth = HostedWidth()
         /// By file, so a fold or a viewed mark turns the one on screen.
         var headers: [Int: DiffFileHeaderView] = [:]
-        /// Wrapped rows' heights, by line and piece, at `wrapWidth`: measured once each.
-        private var wrapHeights: [WrapKey: CGFloat] = [:]
-        private var wrapWidth: CGFloat = 0
-        /// Measures a wrapped row as its label will draw it.
-        private let wrapSizer = DiffLineView.wrappingLabel()
-
-        private struct WrapKey: Hashable {
-            let line: Int
-            let piece: Int
-        }
 
         init(
             document: DiffDocument, rows: DiffRows, viewed: Set<String>, font: DiffFont,
@@ -124,7 +113,6 @@
             }
             metrics = next
             headers = [:]
-            wrapHeights.removeAll()
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.25
                 table.animator().reloadData()
@@ -137,10 +125,8 @@
             guard rows.stamp != self.rows.stamp else {
                 return
             }
-            let rewraps = rows.wraps != self.rows.wraps
             self.document = document
             self.rows = rows
-            wrapHeights.removeAll()
             if let composing, path(ofLine: composing) == nil {
                 // The new diff may be shorter: the box's line is gone, so nothing may look it up before it closes.
                 if !document.lines.indices.contains(composing) {
@@ -153,11 +139,6 @@
             headers = [:]
             rebuild()
             table.reloadData()
-            if rewraps {
-                // Wrapped, there is nothing to the side: back to the left edge, and the list to the window's width.
-                contentView.scroll(to: NSPoint(x: 0, y: contentView.bounds.minY))
-                tile()
-            }
         }
 
         /// A file marked viewed folds, and one unmarked opens, wherever the change came from.
@@ -224,16 +205,9 @@
         override func tile() {
             super.tile()
             let codeWidth = CGFloat(DiffDocument.columns + 2) * metrics.columnWidth
-            let width = rows.wraps ? contentView.bounds.width
-                : max(contentView.bounds.width, codeWidth + metrics.gutterWidth(digits: document.lineNumberDigits))
+            let width = max(contentView.bounds.width, codeWidth + metrics.gutterWidth(digits: document.lineNumberDigits))
             if let column = table.tableColumns.first, column.width != width {
                 column.width = width
-            }
-            if rows.wraps, wrapWidth != width {
-                // A new width: wrapped lines break elsewhere, so every row's height is asked for again.
-                wrapWidth = width
-                wrapHeights.removeAll()
-                table.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0 ..< table.numberOfRows))
             }
             let rowWidth = max(contentView.bounds.width - DiffStyle.threadInset * 2, 200)
             if hostedWidth.value != rowWidth {
@@ -260,35 +234,6 @@
                     pinned.pin(offsetX: visible.minX, width: visible.width)
                 }
             }
-        }
-
-        /// The code's room when lines wrap; nil when they scroll, or before the list has a width.
-        var wrap: DiffWrap? {
-            guard rows.wraps, wrapWidth > 0 else {
-                return nil
-            }
-            return DiffWrap(
-                metrics: metrics, width: metrics.codeWidth(inRow: wrapWidth, digits: document.lineNumberDigits)
-            )
-        }
-
-        /// A code row's height: the fixed one unless the piece wraps, and then what its label measures, kept.
-        private func codeRowHeight(line: Int, piece: Int) -> CGFloat {
-            guard let wrap, !wrap.isOneRow(line: line, piece: piece, of: document) else {
-                return metrics.rowHeight
-            }
-            let key = WrapKey(line: line, piece: piece)
-            if let height = wrapHeights[key] {
-                return height
-            }
-            let text = wrap.text(line: line, piece: piece, of: document)
-            wrapSizer.lineBreakMode = DiffWrap.lineBreakMode(of: text)
-            wrapSizer.attributedStringValue = text
-            let room = NSRect(x: 0, y: 0, width: wrap.width, height: DiffWrap.unbounded)
-            let whole = wrap.height(fitting: wrapSizer.cell?.cellSize(forBounds: room).height ?? 0)
-            let height = wrap.height(whole, isCut: rows.cut.contains(line))
-            wrapHeights[key] = height
-            return height
         }
 
         // MARK: - Rows
@@ -353,11 +298,8 @@
             case .header:
                 return metrics.fileHeaderHeight
             case let .row(section, index):
-                switch self.row(section: section, row: index) {
-                case let .line(line): return codeRowHeight(line: line, piece: 0)
-                case let .piece(line, piece): return codeRowHeight(line: line, piece: piece)
-                case .rest, .less: return metrics.rowHeight + Space.sm
-                case .thread, .draft, .note: break
+                if case .line = self.row(section: section, row: index) {
+                    return metrics.rowHeight
                 }
                 let height = hostedID(section: section, row: index).flatMap { hosted[$0]?.height }
                     ?? hostedRow(section: section, row: index)?.height ?? 0
@@ -367,12 +309,8 @@
 
         func tableView(_: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
             let rowView = DiffRowView()
-            if case let .row(section, index) = items[row] {
-                switch self.row(section: section, row: index) {
-                case let .line(line), let .piece(line, _): rowView.fill = fill(forLine: line)
-                case let .rest(line), let .less(line): rowView.fill = DiffStyle.background(document.lines[line].kind)
-                case .thread, .draft, .note: break
-                }
+            if case let .row(section, index) = items[row], case let .line(line) = self.row(section: section, row: index) {
+                rowView.fill = fill(forLine: line)
             }
             return rowView
         }
@@ -382,12 +320,8 @@
             case let .header(section):
                 return headerView(section)
             case let .row(section, index):
-                switch self.row(section: section, row: index) {
-                case let .line(line): return lineView(line)
-                case let .piece(line, piece): return lineView(line, piece: piece)
-                case let .rest(line): return restView(line)
-                case let .less(line): return restView(line, isLess: true)
-                case .thread, .draft, .note: break
+                if case let .line(line) = self.row(section: section, row: index) {
+                    return lineView(line)
                 }
                 return hostedRow(section: section, row: index).map { host in
                     let cell = HostedCell(host: host)
