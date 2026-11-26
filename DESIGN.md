@@ -345,6 +345,9 @@ A PR and its diff are two screens on one stack, as on GitHub. `PRRoute` names th
   list in a column and the picked PR beside it; what the PR opens stacks over it there. A diff takes the list's room,
   and its panel is a column beside the code when there is room for both (`PRPanelPlacement`). A compact width (a phone,
   Slide Over, a narrow Split View) is the phone's stack. A change of width keeps what is open.
+- **The top bar is solid.** A PR's page scrolls up to its bar's foot and no further: the bar is the page's own ground
+  (`titleClearOfThePage()`), as the diff's bars are, so no words are read behind the title. The system's soft edge left
+  them readable under an iPad's title, which sits below the tabs.
 - **The keyboard.** On the diff: ⌥⌘↓ and ⌥⌘↑ the next and previous file, ⌃⌘V Viewed on the file at the top, ⌥⌘0 the
   panel (`PRDiffShortcuts`).
 
