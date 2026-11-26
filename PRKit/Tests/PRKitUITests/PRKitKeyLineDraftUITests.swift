@@ -72,9 +72,13 @@ final class PRKitKeyLineDraftUITests: PRHubUITestCase {
             )
         }
         app.waitForStill(copy)
+        recordScreenshot("key-line-row-largest-reached")
         for name in ["key-line-copy-\(line)", "key-line-add-\(line)", "key-line-explain-\(line)"] {
             let control = app.buttons[name]
-            XCTAssertTrue(control.exists && control.isHittable, name)
+            XCTAssertTrue(
+                control.exists && control.isHittable,
+                "\(name): exists \(control.exists), at \(control.exists ? control.frame : .null), tab bar from \(bottom)"
+            )
             XCTAssertLessThanOrEqual(control.frame.maxX, window.maxX, "\(name) is on the card")
             XCTAssertGreaterThanOrEqual(control.frame.width, 44, "\(name) is a finger's width")
         }
