@@ -127,7 +127,7 @@ struct PRDiffPage: View {
             compose: { line in
                 withAnimation(AppMotion.fold) {
                     session.composingOffDiff = nil
-                    session.composingLine = line
+                    session.compose(line, in: document)
                 }
             },
             closeNote: { session.closeKeyLine() },
@@ -163,6 +163,12 @@ struct PRDiffPage: View {
                 isAdded: { session.pendingComment(on: $0) != nil },
                 offers: { session.offersAddToReview($0) },
                 add: { addToReview($0) }
+            ),
+            hidden: DiffHiddenActions(
+                toggle: { session.toggle($0) },
+                showAll: { session.showAll(of: $0) },
+                retry: { session.retry($0) },
+                setWholeFile: { session.setWholeFile($0, path: $1) }
             )
         )
     }
@@ -209,36 +215,33 @@ struct PRDiffPage: View {
         if let index = session.composingLine, document.lines.indices.contains(index),
            let target = PRComposerTarget(document, line: document.lines[index])
         {
-            let line = document.lines[index]
-            let text = session.text(for: target)
-            let ask: ((String) -> Void)? = session.offersAsk ? { words in
-                let anchor = session.askAnchor(for: target, code: document.text(of: line))
-                text.wrappedValue = ""
-                PRPlatform.endEditing()
-                closeComposer()
-                session.openAsk(about: anchor, words: words)
-            } : nil
+            if document.lines[index].isOutsideDiff {
+                fileComposer(document.lines[index], target: target)
+            } else {
+                lineComposer(document.lines[index], target: target)
+            }
+        }
+    }
+
+    /// The box of a line the diff does not show. GitHub takes no comment on such a line, so the comment is kept for
+    /// the review on the line's file, its words saying which line; the box says so.
+    private func fileComposer(_ line: DiffDocument.Line, target: PRComposerTarget) -> some View {
+        let text = session.text(for: target)
+        return VStack(alignment: .leading, spacing: Space.sm) {
+            Text(PRSession.onFileCaption)
+                .font(.appFootnote)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("composer-on-file")
             InlineComposer(
                 text: text,
-                placeholder: "Comment on this line",
+                placeholder: "Comment on this file",
                 buttonTitle: PRPendingWords.addTitle(
                     usesPendingReview: session.usesPendingReview, hasPending: !session.pending.isEmpty
                 ),
-                // Wrapped, the whole line is on screen over the box. Scrolled, a cut line is read here, as far as a
-                // box can hold.
-                context: !rows.wraps && document.isClipped(line)
-                    ? document.text(of: line, limit: DiffDocument.pieceBytes) : nil,
                 lines: 1 ... 6,
-                // The box closes at once and the toast follows the comment to GitHub, as a review's does.
-                alternate: .init(title: "Comment now") { words in
-                    PRPlatform.endEditing()
-                    try session.submitReview(words, to: target)
-                    closeComposer()
-                },
-                ask: ask,
                 send: { words in
                     PRPlatform.endEditing()
-                    session.addDraft(words, on: target)
+                    session.addPendingOnFile(words, path: document.files[line.file], line: line.newLine)
                     closeComposer()
                 },
                 cancel: {
@@ -247,8 +250,49 @@ struct PRDiffPage: View {
                     closeComposer()
                 }
             )
-            .bottomStrip()
         }
+        .bottomStrip()
+    }
+
+    private func lineComposer(_ line: DiffDocument.Line, target: PRComposerTarget) -> some View {
+        let text = session.text(for: target)
+        let ask: ((String) -> Void)? = session.offersAsk ? { words in
+            let anchor = session.askAnchor(for: target, code: document.text(of: line))
+            text.wrappedValue = ""
+            PRPlatform.endEditing()
+            closeComposer()
+            session.openAsk(about: anchor, words: words)
+        } : nil
+        return InlineComposer(
+            text: text,
+            placeholder: "Comment on this line",
+            buttonTitle: PRPendingWords.addTitle(
+                usesPendingReview: session.usesPendingReview, hasPending: !session.pending.isEmpty
+            ),
+            // Wrapped, the whole line is on screen over the box. Scrolled, a cut line is read here, as far as a
+            // box can hold.
+            context: !rows.wraps && document.isClipped(line)
+                ? document.text(of: line, limit: DiffDocument.pieceBytes) : nil,
+            lines: 1 ... 6,
+            // The box closes at once and the toast follows the comment to GitHub, as a review's does.
+            alternate: .init(title: "Comment now") { words in
+                PRPlatform.endEditing()
+                try session.submitReview(words, to: target)
+                closeComposer()
+            },
+            ask: ask,
+            send: { words in
+                PRPlatform.endEditing()
+                session.addDraft(words, on: target)
+                closeComposer()
+            },
+            cancel: {
+                text.wrappedValue = ""
+                PRPlatform.endEditing()
+                closeComposer()
+            }
+        )
+        .bottomStrip()
     }
 
     /// The key line stepper and the panel button, floating over the code above the review bar.

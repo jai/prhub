@@ -92,7 +92,7 @@ extension PRSession {
     func summary(_ document: DiffDocument) -> String {
         let scrollable = timer.milliseconds.map { "\(Int($0.rounded())) ms to scrollable" } ?? "…"
         let size = document.data.count.formatted(.byteCount(style: .file))
-        return "\(scrollable) · \(document.lines.count) lines · \(size) · \(isPreloaded ? "preloaded" : "live")"
+        return "\(scrollable) · \(document.diffLineCount) lines · \(size) · \(isPreloaded ? "preloaded" : "live")"
     }
 
     func setViewed(_ isViewed: Bool, path: String) {

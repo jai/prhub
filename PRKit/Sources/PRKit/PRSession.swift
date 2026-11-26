@@ -18,28 +18,30 @@ struct PRContent: Sendable {
 
     init(
         detail: PullRequestDetail, document: DiffDocument?, pending: [PRPendingComment] = [],
-        changedLinesOnly: Bool = false, note: PRKeyLines.Item? = nil, longLines: DiffRows.LongLines = .init()
+        changedLinesOnly: Bool = false, note: PRKeyLines.Item? = nil, longLines: DiffRows.LongLines = .init(),
+        hidden: DiffRows.Hidden = .init()
     ) {
         self.detail = detail
         let threads = detail.reviewThreads.nodes
         diff = document.map {
             .document($0, DiffRows(
                 document: $0, threads: threads, pending: pending, changedLinesOnly: changedLinesOnly, note: note,
-                longLines: longLines
+                longLines: longLines, hidden: hidden
             ))
         } ?? .tooLarge
     }
 
+    /// `hiddenLines`' texts join the document here, each once: a document that has them is passed on as it is.
     fileprivate func replacing(
         detail: PullRequestDetail? = nil, pending: [PRPendingComment], changedLinesOnly: Bool,
-        note: PRKeyLines.Item? = nil, longLines: DiffRows.LongLines
+        note: PRKeyLines.Item? = nil, longLines: DiffRows.LongLines, hiddenLines: PRHiddenLines = .init()
     ) -> PRContent {
         guard case let .document(document, _) = diff else {
             return PRContent(detail: detail ?? self.detail, document: nil)
         }
         return PRContent(
-            detail: detail ?? self.detail, document: document, pending: pending, changedLinesOnly: changedLinesOnly,
-            note: note, longLines: longLines
+            detail: detail ?? self.detail, document: document.showing(hiddenLines.texts), pending: pending,
+            changedLinesOnly: changedLinesOnly, note: note, longLines: longLines, hidden: hiddenLines.shown
         )
     }
 }
@@ -107,6 +109,9 @@ final class PRSession: Hashable {
     private(set) var changedLinesOnly: Bool
     /// Long lines wrapped or scrolled sideways, and the very long ones opened in full.
     private(set) var longLines: DiffRows.LongLines
+    /// The lines the diff leaves out that the reader opened, and the files' texts read for them
+    /// (`PRSession+Hidden.swift`).
+    var hiddenLines = PRHiddenLines()
     private(set) var jump: DiffJump?
     var isShowingNavigator = false
     /// Key lines first; the panel shows Files alone where the Worker has none.
@@ -243,8 +248,13 @@ final class PRSession: Hashable {
     /// `content` with this session's pending comments, changed-lines choice and open key line.
     private func shown(_ content: PRContent) -> PRContent {
         pending = Self.pending(in: content.detail, on: ref, drafts: drafts, model: model)
+        // A newer commit's diff leaves other lines out, of other texts.
+        if hiddenLines.head != content.detail.head {
+            hiddenLines = PRHiddenLines(head: content.detail.head)
+        }
         return content.replacing(
-            pending: pending, changedLinesOnly: changedLinesOnly, note: selectedKeyLine, longLines: longLines
+            pending: pending, changedLinesOnly: changedLinesOnly, note: selectedKeyLine, longLines: longLines,
+            hiddenLines: hiddenLines
         )
     }
 
@@ -570,7 +580,7 @@ final class PRSession: Hashable {
         withAnimation(AppMotion.fold) {
             state = .ready(content.replacing(
                 detail: detail, pending: pending, changedLinesOnly: changedLinesOnly, note: selectedKeyLine,
-                longLines: longLines
+                longLines: longLines, hiddenLines: hiddenLines
             ))
         }
     }
@@ -589,7 +599,7 @@ extension PRSession {
     func report(document: DiffDocument, milliseconds: Double) {
         let event = PROpenEvent(
             milliseconds: Int(milliseconds.rounded()), parseMilliseconds: parseMilliseconds, preloaded: isPreloaded,
-            bytes: document.data.count, lines: document.lines.count
+            bytes: document.data.count, lines: document.diffLineCount
         )
         Task { await model.report(event) }
     }
@@ -661,7 +671,7 @@ extension PRSession {
     }
 
     /// The PR as GitHub has it now, over the copy on screen, and no key lines kept from the older commit.
-    private func readNewestCommit() async -> Bool {
+    func readNewestCommit() async -> Bool {
         guard let fetched = try? await model.fetch(ref, row: nil), case .ready = state else {
             return false
         }

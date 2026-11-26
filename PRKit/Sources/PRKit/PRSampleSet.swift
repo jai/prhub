@@ -14,12 +14,15 @@ public struct PRSampleSet: Sendable {
         public let diff: String
         /// `PRKeyLines` JSON, at `row.keyLines`'s context.
         public let keyLines: String?
+        /// Each changed file's text at the PR's head, by path: what the diff's hunks leave out is read from it.
+        public let files: [String: String]
 
-        public init(row: PullRequestRow, detail: String, diff: String, keyLines: String?) {
+        public init(row: PullRequestRow, detail: String, diff: String, keyLines: String?, files: [String: String] = [:]) {
             self.row = row
             self.detail = detail
             self.diff = diff
             self.keyLines = keyLines
+            self.files = files
         }
     }
 
@@ -46,6 +49,8 @@ public struct PRSampleSet: Sendable {
     /// The labels every sample PR's repo has, and whether they can be put on a PR: what a sample answers the labels
     /// read with.
     public var repoLabels = PRRepoLabels(labels: PRSampleSet.sampleLabels, canEdit: true)
+    /// The files, by path, whose text can't be read, and why: a UI test's way to show a read that failed.
+    public var failsFileReads: [String: PRFileProblem] = [:]
     /// Set, the list opens with these words in its "Not up to date" line: a UI test's way to picture that line.
     public var notUpToDate: String?
 
@@ -87,6 +92,19 @@ public struct PRSampleSet: Sendable {
             return nil
         }
         return samples.first { $0.row.repo == ref.repo && $0.row.number == ref.number }?.keyLines.map { Data($0.utf8) }
+    }
+
+    /// A sample file's text at its PR's head, as the Worker's `file` route answers: the sample's own, or the problem
+    /// `failsFileReads` names. A file the sample has no text for is not there.
+    public func fileText(_ path: String, for ref: PullRequestRef) throws -> Data {
+        if let problem = failsFileReads[path] {
+            throw problem
+        }
+        guard let text = samples.first(where: { $0.row.repo == ref.repo && $0.row.number == ref.number })?.files[path]
+        else {
+            throw PRFileProblem.missing
+        }
+        return Data(text.utf8)
     }
 
     public func merged(reviewed: Bool) -> [PullRequestRow] {
