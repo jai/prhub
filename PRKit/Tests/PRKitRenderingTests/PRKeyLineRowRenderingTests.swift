@@ -98,3 +98,47 @@ struct PRKeyLineRowRenderingTests {
         #expect(looksTicked, "a ticked line looks ticked")
     }
 }
+
+/// The note's Reviewed button, drawn off screen ticked and not. Its words are the same either way and only its circle
+/// changes (Jai, 2026-11-26: "butons can't change when you click them it should just be \"Reviewed\""). It read
+/// "Mark reviewed" until ticked and "Reviewed" after, so a press changed its words and its width.
+@MainActor
+struct PRKeyLineReviewedButtonRenderingTests {
+    private static let scale: CGFloat = 2
+
+    private func render(isReviewed: Bool, iconOnly: Bool = false, in scheme: ColorScheme) throws -> Bitmap {
+        let button = PRKeyLineReviewedButton(isReviewed: isReviewed, iconOnly: iconOnly) {}
+            .padding(Space.sm)
+            .background(Color.groundCard)
+            .tint(Color.accentColor)
+            .environment(\.colorScheme, scheme)
+        let renderer = ImageRenderer(content: button)
+        renderer.scale = Self.scale
+        return try Bitmap(renderer.settledImage())
+    }
+
+    @Test(arguments: [ColorScheme.light, .dark])
+    func aPressChangesTheCircleAndNoWords(_ scheme: ColorScheme) throws {
+        let open = try render(isReviewed: false, in: scheme)
+        let ticked = try render(isReviewed: true, in: scheme)
+        #expect(open.width == ticked.width && open.height == ticked.height, "the same size ticked or not")
+        guard open.width == ticked.width, open.height == ticked.height else { return }
+
+        // The columns where the two pictures differ: the circle's, and no others.
+        let changed = (0 ..< open.width).filter { column in
+            (0 ..< open.height).contains { open[column, $0].distance(to: ticked[column, $0]) >= 24 }
+        }
+        let first = try #require(changed.first, "a ticked button looks ticked"), last = try #require(changed.last)
+        // The circle is as tall as the footnote's line at most, and leads; the words after it are far wider.
+        let circle = Int(PRStyle.controlHeight * Self.scale)
+        #expect(last - first < circle, "only the circle changes: columns \(first) to \(last) of \(open.width)")
+        #expect(last < open.width / 2, "and it leads the words, which stay: columns \(first) to \(last)")
+    }
+
+    /// In the largest text the button is its circle alone; ticked or not it is the same size there too.
+    @Test func theCircleAloneIsTheSameSizeTickedOrNot() throws {
+        let open = try render(isReviewed: false, iconOnly: true, in: .dark)
+        let ticked = try render(isReviewed: true, iconOnly: true, in: .dark)
+        #expect(open.width == ticked.width && open.height == ticked.height)
+    }
+}

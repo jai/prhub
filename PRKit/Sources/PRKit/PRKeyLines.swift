@@ -431,15 +431,27 @@ struct PRKeyLineNote: View {
                     .accessibilityIdentifier("key-line-note-explain")
             }
             Spacer(minLength: 0)
-            Button(
-                reviewed ? "Reviewed" : "Mark reviewed",
-                systemImage: PRCheckCircle.symbol(isOn: reviewed)
-            ) { actions.setReviewed(item, !reviewed) }
-                .buttonStyle(PRButtonStyle(.secondary, iconOnly: iconOnly))
-                .contentTransition(.symbolEffect(.replace))
-                .accessibilityLabel("Reviewed")
-                .accessibilityValue(reviewed ? "checked" : "not checked")
-                .accessibilityIdentifier("key-line-note-reviewed")
+            PRKeyLineReviewedButton(isReviewed: reviewed, iconOnly: iconOnly) { actions.setReviewed(item, !reviewed) }
         }
+    }
+}
+
+/// A key line's tick with its word, in the note. Its word is "Reviewed" ticked or not, and only the circle says which
+/// (`PRCheckCircle`'s ring or filled tick), so a press changes no words and moves nothing (Jai, 2026-11-26: "butons
+/// can't change when you click them it should just be \"Reviewed\"").
+struct PRKeyLineReviewedButton: View {
+    static let title = "Reviewed"
+
+    let isReviewed: Bool
+    var iconOnly = false
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(Self.title, systemImage: PRCheckCircle.symbol(isOn: isReviewed), action: toggle)
+            .buttonStyle(PRButtonStyle(.secondary, iconOnly: iconOnly))
+            .contentTransition(.symbolEffect(.replace))
+            .accessibilityLabel(Self.title)
+            .accessibilityValue(isReviewed ? "checked" : "not checked")
+            .accessibilityIdentifier("key-line-note-reviewed")
     }
 }

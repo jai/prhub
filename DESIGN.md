@@ -702,8 +702,9 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
 - **A PR's link:** a long press on a PR's row, and on Open in GitHub in a PR's bar (a click and hold on the Mac),
   offers Copy link; the bar's also offers Share. A tap on Open in GitHub still opens it.
 - **A key line's tick:** `PRKeyLineCheck`, the circle a file's viewed mark is (`PRCheckCircle`: an empty ring, quiet,
-  or a filled tick in `toneGood`), first in its heading in Key lines, 44 pt to tap; in the note it is the Mark
-  reviewed button, with the same circle. A square is a task in someone's Markdown, never this. A ticked line's words fade to
+  or a filled tick in `toneGood`), first in its heading in Key lines, 44 pt to tap; in the note it is the
+  Reviewed button (`PRKeyLineReviewedButton`), with the same circle: its word is "Reviewed" ticked or not, and only
+  the circle changes. A square is a task in someone's Markdown, never this. A ticked line's words fade to
   `PRStyle.doneOpacity` and its controls stay, and the list says how many are reviewed. Previous and Next pass over
   ticked lines until all are ticked. Ticks are the Worker's, by head, so each device shows the same ones and a new
   commit starts again (docs/api.md, "Reviewed key lines").
