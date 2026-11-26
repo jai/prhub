@@ -38,6 +38,10 @@ public enum PRWrite: Encodable, Sendable {
     case pendingSubmit(PRReviewEvent, body: String)
     /// Throws the pending review away, its comments with it.
     case pendingDiscard
+    /// One of the repo's labels put on the PR, by its name.
+    case labelAdd(name: String)
+    /// A label taken off the PR.
+    case labelRemove(name: String)
 
     /// A draft as GitHub takes it: its id is the phone's own.
     private struct ReviewComment: Encodable {
@@ -68,6 +72,7 @@ public enum PRWrite: Encodable, Sendable {
         var base: String?
         var comment: String?
         var file: Bool?
+        var name: String?
     }
 
     private var payload: Payload {
@@ -111,6 +116,10 @@ public enum PRWrite: Encodable, Sendable {
             Payload(kind: "pending_submit", body: body, event: event.rawValue)
         case .pendingDiscard:
             Payload(kind: "pending_discard")
+        case let .labelAdd(name):
+            Payload(kind: "label_add", name: name)
+        case let .labelRemove(name):
+            Payload(kind: "label_remove", name: name)
         }
     }
 
@@ -236,6 +245,13 @@ public struct PRViewerClient: Sendable {
 
     public func liveDetail(_ ref: PullRequestRef) async throws -> Data {
         try await get(path: "prs/\(ref.repo)/\(ref.number)/detail")
+    }
+
+    /// The labels the PR's repo has, and whether the person may change the PR's (`GET …/labels`). A Worker older than
+    /// the route answers a `404` with no words of its own, which is thrown as `PRWorkerError.unreachable`.
+    public func labels(for ref: PullRequestRef) async throws -> PRRepoLabels {
+        let path = "prs/\(ref.repo)/\(ref.number)/labels"
+        return try decode(PRRepoLabels.self, from: await get(path: path), path: path)
     }
 
     /// GitHub's refusal comes back in its own words, and the PR as it now stands otherwise.

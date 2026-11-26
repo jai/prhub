@@ -48,6 +48,9 @@ extension PRsModel {
             if let refusal = samples.refusesLinePendingAdds, case .pendingAdd(_, _, .some, _, _) = write {
                 throw PRWorkerError.refused(refusal, isPermanent: true)
             }
+            if let refusal = samples.labelRefusal(of: write) {
+                throw PRWorkerError.refused(refusal, isPermanent: true)
+            }
             guard samples.answersOnPhone, let detail = sampleWrite(write, to: ref) else {
                 throw PRLocalRefusal.sampleWrite
             }
@@ -70,7 +73,9 @@ extension PRsModel {
             return nil
         }
         let login = configuration.login ?? "you"
-        let data = PRSampleSet.applying(write, to: stored, login: login)
+        let data = PRSampleSet.applying(
+            write, to: stored, login: login, labels: samples?.repoLabels.labels ?? []
+        )
         try? mirror.files.write(data, to: row.detailFileName)
         sampleWritten(write, to: row)
         return try? PullRequestDetail.decode(data)

@@ -43,6 +43,9 @@ public struct PRSampleSet: Sendable {
     /// Set, a sample's pending comment on a line is refused in these words, as GitHub refuses one on a line outside the
     /// diff; one on a whole file is taken. A UI test's way to show a pending comment that failed.
     public var refusesLinePendingAdds: String?
+    /// The labels every sample PR's repo has, and whether they can be put on a PR: what a sample answers the labels
+    /// read with.
+    public var repoLabels = PRRepoLabels(labels: PRSampleSet.sampleLabels, canEdit: true)
     /// Set, the list opens with these words in its "Not up to date" line: a UI test's way to picture that line.
     public var notUpToDate: String?
 
@@ -54,6 +57,18 @@ public struct PRSampleSet: Sendable {
         self.mergedMine = mergedMine
         self.answersOnPhone = answersOnPhone
     }
+
+    /// A made-up repo's labels, sorted as the Worker sends them. "sample" is the one PRHub's sample PRs come with.
+    public static let sampleLabels: [PRRepoLabels.Label] = [
+        .init(name: "bug", color: "d73a4a", description: "Something isn't working"),
+        .init(name: "documentation", color: "0075ca", description: "Improvements or additions to the docs"),
+        .init(name: "enhancement", color: "a2eeef", description: "A new feature or request"),
+        .init(name: "help-wanted", color: "008672", description: "Extra attention is needed"),
+        .init(name: "needs-design", color: "fbca04", description: "Waiting on a design before it can go on"),
+        .init(name: "question", color: "d876e3", description: nil),
+        .init(name: "sample", color: "8250DF", description: "A PR that comes with the app"),
+        .init(name: "wontfix", color: "ffffff", description: "This will not be worked on"),
+    ]
 
     /// Apart from the mirror's own directory, so samples never mix with a Worker's PRs.
     public static let directoryName = "pr-samples"
@@ -106,9 +121,11 @@ public struct PRSampleSet: Sendable {
     /// the conversation; an approval or a change request is the decision and its reviewer's state; a line comment,
     /// alone or sent with a review, starts a thread on its line, which takes replies and resolves; an edit is the
     /// description; a merge leaves the PR merged. A detail that carries `pendingReview` keeps a pending review as
-    /// GitHub would: comments are added to it, changed and removed, and its submit posts them with the review. Other
-    /// writes leave it as it was.
-    public static func applying(_ write: PRWrite, to detail: Data, login: String, now: Date = .now) -> Data {
+    /// GitHub would: comments are added to it, changed and removed, and its submit posts them with the review. A label
+    /// is put on in its colour among `labels`, the repo's, or taken off. Other writes leave it as it was.
+    public static func applying(
+        _ write: PRWrite, to detail: Data, login: String, now: Date = .now, labels: [PRRepoLabels.Label] = []
+    ) -> Data {
         guard var object = (try? JSONSerialization.jsonObject(with: detail)) as? [String: Any] else {
             return detail
         }
@@ -153,6 +170,14 @@ public struct PRSampleSet: Sendable {
             object["body"] = body
         case .merge:
             object["state"] = "merged"
+        case let .labelAdd(name):
+            let held = object["labels"] as? [[String: Any]] ?? []
+            if !held.contains(where: { $0["name"] as? String == name }) {
+                let color = labels.first { $0.name == name }?.color ?? "808080"
+                object["labels"] = held + [["name": name, "color": color]]
+            }
+        case let .labelRemove(name):
+            object["labels"] = (object["labels"] as? [[String: Any]] ?? []).filter { $0["name"] as? String != name }
         default:
             return detail
         }
@@ -224,6 +249,23 @@ public struct PRSampleSet: Sendable {
             }
         }
         return object
+    }
+
+    /// Why a sample refuses to change a label, in the words GitHub's refusal comes in; nil when it takes the change.
+    public func labelRefusal(of write: PRWrite) -> String? {
+        let name: String
+        switch write {
+        case let .labelAdd(added): name = added
+        case let .labelRemove(removed): name = removed
+        default: return nil
+        }
+        guard repoLabels.canEdit else {
+            return "You can't change labels on this repo."
+        }
+        if case .labelAdd = write, !repoLabels.labels.contains(where: { $0.name == name }) {
+            return "This repo has no label named \"\(name)\"."
+        }
+        return nil
     }
 
     /// A sample's row after `write`, as the Worker's next list would have it: an approval or a change request is the

@@ -113,6 +113,9 @@ public enum PRWriteKind: String, CaseIterable, Sendable {
     case pendingEdit = "pending_edit"
     case pendingDelete = "pending_delete"
     case pendingDiscard = "pending_discard"
+    /// A label put on the PR, or taken off it.
+    case labelAdd = "label_add"
+    case labelRemove = "label_remove"
 
     public init(_ write: PRWrite) {
         self = switch write {
@@ -130,7 +133,16 @@ public enum PRWriteKind: String, CaseIterable, Sendable {
         case .editBody: .editBody
         case .merge: .merge
         case .pendingAdd, .pendingEdit, .pendingDelete, .pendingSubmit, .pendingDiscard: Self.pending(write)
+        case .labelAdd, .labelRemove: Self.label(write)
         }
+    }
+
+    /// A label's write: put on, or taken off.
+    private static func label(_ write: PRWrite) -> PRWriteKind {
+        if case .labelAdd = write {
+            return .labelAdd
+        }
+        return .labelRemove
     }
 
     /// A write to the pending review, by what it does. Its submit is the review it posts.

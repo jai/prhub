@@ -158,6 +158,8 @@ final class PRSession: Hashable {
     var isKeyboardUp = false
     /// The line under the PR's actions: a write saved for later, a refusal, or a sample's note.
     var notice: PRNotice?
+    /// The repo's labels as read for this PR, and what was put on or taken off here (`PRLabels.swift`).
+    var labelEditing = PRLabelEditing()
     private(set) var isUpdatingBranch = false
     private(set) var isMerged = false
     private(set) var isRewriting = false
