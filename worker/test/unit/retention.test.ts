@@ -14,6 +14,10 @@ test("the sweep deletes a closed PR's objects once the newest is past retention,
       "users/1/acme/api/7/r1.diff": { body: "", uploaded: new Date(NOW - 40 * day) },
       "users/1/acme/api/7/detail/v1.json": { body: "", uploaded: new Date(NOW - 40 * day) },
       "users/1/ai/acme/api/7/head/rewrite.json": { body: "", uploaded: new Date(NOW - 35 * day) },
+      [`users/1/acme/api/7/${"a".repeat(40)}/file/${"0".repeat(64)}`]: {
+        body: "",
+        uploaded: new Date(NOW - 36 * day),
+      },
       "users/1/acme/api/8/r1.diff": { body: "", uploaded: new Date(NOW - 40 * day) },
       "users/1/acme/api/8/detail/v2.json": { body: "", uploaded: new Date(NOW - 2 * day) },
       "users/1/acme/api/9/r1.diff": { body: "", uploaded: new Date(NOW - 90 * day) },
@@ -27,7 +31,7 @@ test("the sweep deletes a closed PR's objects once the newest is past retention,
     (id) => id === prId(repoOf("acme/api"), 9),
     NOW - 30 * day,
   );
-  assert.equal(deleted, 3);
+  assert.equal(deleted, 4);
   assert.deepEqual([...bucket.objects.keys()].sort(), [
     "users/1/acme/api/8/detail/v2.json",
     "users/1/acme/api/8/r1.diff",

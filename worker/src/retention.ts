@@ -1,15 +1,19 @@
 /**
- * Retention of what R2 keeps for a PR no longer on the list (docs/api.md, "Limits"): its diffs, details, AI answers and
- * Ask record go once the newest of them is older than `closed_pull_request_retention_days`. A PR still on the list keeps
- * everything. The sweep reads the state that exists (the bucket and the index) each time, so a run cut short is
+ * Retention of what R2 keeps for a PR no longer on the list (docs/api.md, "Limits"): its diffs, files, details, AI
+ * answers and Ask record go once the newest of them is older than `closed_pull_request_retention_days`. A PR still on
+ * the list keeps everything. The sweep reads the state that exists (the bucket and the index) each time, so a run cut short is
  * finished by the next one.
  */
 import { parseRepoFullName, prId, type PrId } from "./ids.ts";
 
-/** The objects one PR leaves under a prefix (`scopedKey`): `pr-index.ts` diffs and details, `ai-run.ts`, `ask-chat.ts`. */
+/**
+ * The objects one PR leaves under a prefix (`scopedKey`): `pr-index.ts` diffs and details, `pr-file.ts` files,
+ * `ai-run.ts`, `ask-chat.ts`.
+ */
 const PULL_REQUEST_OBJECTS = [
   /^([\w.-]+)\/([\w.-]+)\/(\d+)\/[^/]+\.diff$/,
   /^([\w.-]+)\/([\w.-]+)\/(\d+)\/detail\/[^/]+\.json$/,
+  /^([\w.-]+)\/([\w.-]+)\/(\d+)\/[0-9a-f]{40}\/file\/[0-9a-f]{64}$/,
   /^ai\/([\w.-]+)\/([\w.-]+)\/(\d+)\/[^/]+\/[^/]+\.json$/,
   /^ask\/([\w.-]+)\/([\w.-]+)\/(\d+)\.json$/,
 ];

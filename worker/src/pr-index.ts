@@ -809,6 +809,14 @@ export class PrIndex extends DurableObject<Env> {
     }
   }
 
+  /** The head commit the index holds a PR at; null for a PR on none of the lists. */
+  headOf(id: PrId): string | null {
+    const rows = this.sql
+      .exec<{ head: string }>("SELECT head FROM pull_requests WHERE id = ? COLLATE NOCASE", id)
+      .toArray();
+    return rows[0]?.head ?? null;
+  }
+
   /** The key lines checked off on a PR at `head` (`reviewed-key-lines.ts`). */
   reviewedKeyLines(pr: PrId, head: Sha): ReviewedKeyLines {
     return reviewedKeyLines(this.sql, pr, head);

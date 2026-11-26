@@ -274,7 +274,7 @@ checked on every run: [`row.json`](../PRKit/Tests/PRContractFixtures/Fixtures/ro
   `requestedAt` (when review was last asked of the user himself, null for a team's request) and `reviewDueAt` are on
   `review` rows alone, `mergedAt` on `merged` rows alone. A stored status that no longer parses is
   served as `status: null`.
-- `GET …/detail`, `…/diff`, `…/key-lines` and `…/rewrite` answer with `Server-Timing: github;desc="github calls";dur=<n>`,
+- `GET …/detail`, `…/diff`, `…/file`, `…/key-lines` and `…/rewrite` answer with `Server-Timing: github;desc="github calls";dur=<n>`,
   the GitHub calls that request made (`0` when R2 answered), so a client can measure its share of the token's hour.
 - An open row's `status.requestedBy` is its detail's `requestedBy` (below), only on a bot's PR with someone behind
   it: the list leads with that person. With it, `status.agent` is `{name, avatarUrl}` of the agent Linear delegated
@@ -333,6 +333,36 @@ checked on every run: [`row.json`](../PRKit/Tests/PRContractFixtures/Fixtures/ro
   `reviewThreads.nodes` leaves out a thread whose comments are all unsent and each unsent reply to a posted thread. A
   detail stored before `pendingReview` existed lacks it until its PR is read again, which the index does once for
   every row it holds.
+
+### `GET /prs/{owner}/{repo}/{n}/file`
+
+`GET /prs/{owner}/{repo}/{n}/file?path=<path>&head=<sha>` answers one file's text at the PR's head commit, its bytes
+as GitHub has them, as `text/plain; charset=utf-8`. GitHub's diff shows three unchanged lines around each change; the
+app reads the file when the reader expands the rest, and unchanged lines are the same on both sides.
+
+- `path` is the file's path in the repo, at most 1,024 characters, with no leading `/`, no empty, `.` or `..` segment
+  and no control character. `head` is the full 40-character commit. Anything else is `400 validation_error`, and
+  GitHub is not asked.
+- `head` must be the PR's head: the one the person's index holds or, for a PR on none of their lists or a head the
+  index has not caught up with, the one GitHub's `GET /repos/{repo}/pulls/{n}` answers now (one more call). Any other
+  commit is `409 head_moved`: read the PR again and ask at its new head.
+- The file is read with the token the diff is read with (`GET /repos/{repo}/contents/{path}?ref={head}`, raw), and kept
+  in R2 at `{owner}/{repo}/{n}/{head}/file/{sha256 of path, hex}`, under `users/<id>/` on the hosted Worker. A copy is
+  good for ever, as a file at a commit never changes: a repeat read asks GitHub nothing, head check included, and
+  nobody is served from another person's copy. Copies go with the PR's diffs
+  (`closed_pull_request_retention_days`, `DELETE /account`).
+
+| Status | `error.code` | When |
+|---|---|---|
+| `400` | `validation_error` | A `path` or `head` as above |
+| `404` | `not_found` | GitHub has no such PR, or nothing at that path at that commit, or what is there is no file: a directory or a submodule |
+| `409` | `head_moved` | `head` is not the PR's head commit |
+| `413` | `too_large` | The file is over 1 MB (1,048,576 bytes) |
+| `415` | `binary_file` | A NUL byte in the file's first 8 KB: it is not text |
+
+Errors are `{"error": {"code", "message"}}`. Any other answer of GitHub's (a `403`, a `429` while its rate limit asks
+for a wait, a `5xx`) is passed on as the diff route passes it. A refused or failed read keeps nothing. An older Worker
+answers `404` with no JSON body.
 
 ### `POST /prs/{owner}/{repo}/{n}/write`
 
@@ -737,7 +767,7 @@ A var the Worker cannot use does not stop anything. The default serves, and the 
 | `github_reserve_minimum` | `LIMIT_GITHUB_RESERVE_MINIMUM` | 100 | 100 | The least of a token's requests that background reads leave alone |
 | `indexed_pull_requests_max` | `LIMIT_INDEXED_PULL_REQUESTS_MAX` | 500 | off | PRs one index holds; a new PR past it waits (`limit_reached` in `/events`). `off` allowed |
 | `indexed_repos_max` | `LIMIT_INDEXED_REPOS_MAX` | 3000 | 3000 | Repos in `GET /repos` |
-| `closed_pull_request_retention_days` | `LIMIT_CLOSED_PULL_REQUEST_RETENTION_DAYS` | 30 | off | How long R2 keeps the diffs, details, AI answers and Ask record of a PR no longer on the list. `off` allowed |
+| `closed_pull_request_retention_days` | `LIMIT_CLOSED_PULL_REQUEST_RETENTION_DAYS` | 30 | off | How long R2 keeps the diffs, files, details, AI answers and Ask record of a PR no longer on the list. `off` allowed |
 | `poll_interval_minutes` | `LIMIT_POLL_INTERVAL_MINUTES` | 10 | n/a | Each person's background poll and token refresh |
 | `installation_sync_hours` | `LIMIT_INSTALLATION_SYNC_HOURS` | 6 | n/a | How often the poll reads the person's installations again |
 | `installation_sync_on_open_minutes` | `LIMIT_INSTALLATION_SYNC_ON_OPEN_MINUTES` | 10 | n/a | The least time between installation reads on app open |
@@ -1104,7 +1134,7 @@ request with the secret answers `401 unauthorized`.
 ### Per person
 
 - The PR index is `PrIndex` named `user:<id>`, bound to the account at sign-in, and `AiJobs` is named the same. Their
-  reads and writes use the person's token and login; R2 keys go under `users/<id>/` (rows' diffs and details, the repo
+  reads and writes use the person's token and login; R2 keys go under `users/<id>/` (rows' diffs, files and details, the repo
   index, AI answers, Ask's session record). Nothing one person holds is named so another's request can reach it.
 - Pairing, `/github/setup`, `/github/callback`, `/github/app-credentials` and `/prs/states` answer `404`.
 
