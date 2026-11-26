@@ -27,6 +27,8 @@
     ///   outside the diff, so a UI test can show a failed one;
     ///   with `-PRHubLabelsReadOnly` the sample repos' labels can be read and not changed, as on a repo the person
     ///   can't triage;
+    ///   with `-PRHubHiddenLines` For review starts with a PR whose diff leaves lines out (`PRHubHiddenLineSamples`),
+    ///   and with `-PRHubFileTooLarge` too, one of its files can't be read, as one over 1 MB can't;
     ///   with `-PRHubFeedback` the Worker serves Feedback, over two sample chats that never leave the device
     ///   (`FeatureSamples.prHub`), with `-PRHubFeedbackPush <chat>` it opens as a tapped push of that feedback
     ///   chat does, and with `-PRHubFeedbackAsks` a third chat's agent has asked a question, so Feedback is badged.
@@ -95,6 +97,9 @@
             if arguments.contains("-PRHubLongLines") {
                 let bytes = UserDefaults.standard.integer(forKey: "PRHubLongLineBytes")
                 samples = .prHubLongLines(bytes: bytes > 0 ? bytes : PRHubLongLineSamples.defaultBytes)
+            }
+            if arguments.contains("-PRHubHiddenLines") {
+                samples = .prHubHiddenLines(failsRates: arguments.contains("-PRHubFileTooLarge"))
             }
             if arguments.contains("-PRHubSlowReview") {
                 samples.reviewDelay = .seconds(10)

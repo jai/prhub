@@ -61,7 +61,7 @@ extension PRSampleSet {
                     + "- [x] Tested with a declined test card\\n- [ ] Tested on a slow network\\n\\nFixes WEB-31",
                 diff: checkoutDiff, keyLines: checkoutKeyLines,
                 comment: ("hubot", "Should the button say why it failed?"), tickets: checkoutTickets,
-                pendingReview: checkoutPendingReview
+                pendingReview: checkoutPendingReview, files: ["src/checkout/payments.ts": checkoutPayments]
             ).sample,
             PRHubSample(
                 repo: "acme/api", number: 88, title: "Rate-limit the password reset endpoint [API-88] [SEC-12]",
@@ -188,6 +188,31 @@ extension PRSampleSet {
     +export async function retryPayment(orderId) {
     +  return api.post(`/orders/${orderId}/pay`, { retry: true });
     +}
+
+    """
+
+    /// `payments.ts` at the PR's head: its diff starts at line 10, so the lines over it and under it are read from here.
+    private static let checkoutPayments = """
+    import { api } from "../api";
+    import { track } from "../analytics";
+
+    // Payments for an order: the first try, and a retry after a failure.
+
+    const timeout = 15_000;
+
+    // Charges the order's card. The server answers once the bank has.
+    export async function pay(order) {
+      return api.post(`/orders/${order.id}/pay`);
+    }
+    // The server ignores a second payment for the same order.
+    export async function retryPayment(orderId) {
+      return api.post(`/orders/${orderId}/pay`, { retry: true });
+    }
+
+    // Told to analytics once the bank has answered.
+    export function paid(order) {
+      track("order_paid", { id: order.id, total: order.total });
+    }
 
     """
 
@@ -345,6 +370,9 @@ struct PRHubSample {
     /// The detail's `pendingReview`, as JSON: the user's review not submitted yet. Every sample carries the key, as a
     /// Worker that reads pending reviews does.
     var pendingReview = "null"
+    /// Changed files' texts at the PR's head, by path, for the lines the diff leaves out. A file not named here has
+    /// the text its diff shows: right where the diff starts at the file's first line and runs to its last.
+    var files: [String: String] = [:]
 
     /// The row's tickets: the detail's tickets Linear has. Each sample's are all its title's, or one from its
     /// description, which is what the Worker picks for them.
@@ -373,7 +401,30 @@ struct PRHubSample {
             ),
             keyLines: PRKeyLines.defaultContext, ticket: rowTickets.first, tickets: rowTickets
         )
-        return PRSampleSet.Sample(row: row, detail: detail, diff: diff, keyLines: keyLines)
+        return PRSampleSet.Sample(
+            row: row, detail: detail, diff: diff, keyLines: keyLines,
+            files: Self.shownTexts(in: diff).merging(files) { _, given in given }
+        )
+    }
+
+    /// Each file's new side as its diff shows it: every unchanged and added line of its hunks, in order.
+    static func shownTexts(in diff: String) -> [String: String] {
+        var texts: [String: String] = [:]
+        var path: String?
+        var inHunk = false
+        for line in diff.split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.hasPrefix("diff --git ") {
+                path = nil
+                inHunk = false
+            } else if !inHunk, line.hasPrefix("+++ b/") {
+                path = String(line.dropFirst(6))
+            } else if line.hasPrefix("@@") {
+                inHunk = true
+            } else if inHunk, let path, line.hasPrefix("+") || line.hasPrefix(" ") {
+                texts[path, default: ""] += line.dropFirst() + "\n"
+            }
+        }
+        return texts
     }
 
     /// The diff's lines that start with `prefix`, its file headers aside.
