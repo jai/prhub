@@ -10,10 +10,13 @@
     "enabled": false
   },
   "automerge": true,
-  "automergeType": "branch",
-  "ignoreTests": true,
+  "automergeType": "pr",
+  "ignoreTests": false,
   "platformAutomerge": false,
-  "rebaseWhen": "behind-base-branch",
+  "rebaseWhen": "conflicted",
+  "gitIgnoredAuthors": [
+    "41898282+github-actions[bot]@users.noreply.github.com"
+  ],
   "semanticCommits": "enabled",
   "semanticCommitType": "fix",
   "semanticCommitScope": "deps",
