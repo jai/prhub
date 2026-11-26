@@ -95,6 +95,26 @@ const SIDE = z.enum(["LEFT", "RIGHT"]);
 
 const ReviewComment = z.object({ path: TEXT, line: z.number(), side: SIDE, body: TEXT });
 
+/** GitHub's own limit is 50; a name is taken up to this, as an emoji is sent by its longer shortcode (`:rocket:`). */
+const MAX_LABEL_NAME = 200;
+
+function hasControlCharacter(text: string): boolean {
+  for (let at = 0; at < text.length; at += 1) {
+    const code = text.charCodeAt(at);
+    if (code < 0x20 || code === 0x7f) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** A label's name, trimmed: 1 to 200 characters, none of them a control character. */
+const LABEL_NAME = z
+  .string()
+  .transform((name) => name.trim())
+  .pipe(z.string().min(1).max(MAX_LABEL_NAME))
+  .refine((name) => !hasControlCharacter(name));
+
 const WriteSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("comment"), body: TEXT }),
   z
@@ -143,6 +163,8 @@ const WriteSchema = z.discriminatedUnion("kind", [
     method: z.enum(["merge", "squash", "rebase"]),
     commit: TEXT,
   }),
+  z.object({ kind: z.literal("label_add"), name: LABEL_NAME }),
+  z.object({ kind: z.literal("label_remove"), name: LABEL_NAME }),
   // A comment on a line names the line and its side; one on the whole file (`file`) names neither.
   z
     .object({

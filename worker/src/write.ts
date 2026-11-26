@@ -1,6 +1,7 @@
 import { type Env, githubLogin } from "./env";
 import { getFromGitHub, graphql, GraphqlRefusal, postToGitHub, sendToGitHub } from "./github";
 import { repoParts, type RepoFullName } from "./ids";
+import { addLabel, removeLabel } from "./pr-labels.ts";
 import {
   gitHubReason,
   parseWrite,
@@ -381,9 +382,35 @@ async function sendRest(
         { merge_method: write.method, sha: write.commit },
         env,
       );
+    case "label_add":
+      return addLabel(repo, number, write.name, env);
+    case "label_remove":
+      return removeLabel(repo, number, write.name, env);
     default:
       return Response.json({ message: "That goes through GraphQL." }, { status: 400 });
   }
+}
+
+/** The kinds Ask's agent may not send (`github_act`): a label is the person's own tap in the app. */
+const NOT_FOR_ASK = new Set(["label_add", "label_remove"]);
+
+/**
+ * One of Ask's actions (`github_act`), as the person: null when GitHub took it, else why not, in words for the chat.
+ */
+export async function actForAsk(
+  repo: RepoFullName,
+  number: number,
+  action: unknown,
+  env: Env,
+): Promise<string | null> {
+  if (NOT_FOR_ASK.has(String((action as { kind?: unknown } | null)?.kind))) {
+    return "Labels are changed in the app, not by Ask.";
+  }
+  const refused = await writeToGitHub(repo, number, action, env);
+  return refused
+    ? (((await refused.json().catch(() => null)) as { error?: string } | null)?.error ??
+        `HTTP ${refused.status}`)
+    : null;
 }
 
 /** Null when GitHub took it. Otherwise the answer for the phone, with GitHub's own words: it decides what is allowed. */

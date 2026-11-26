@@ -24,6 +24,10 @@ export type Write =
   | { kind: "checkbox"; index: number; checked: boolean; task: string | null }
   | { kind: "edit_body"; body: string; base: string | null }
   | { kind: "merge"; method: "merge" | "squash" | "rebase"; commit: string }
+  /** A label the repo already has, put on the PR; `name` in any case. */
+  | { kind: "label_add"; name: string }
+  /** A label taken off the PR; one that is not on it counts as done. */
+  | { kind: "label_remove"; name: string }
   | PendingWrite;
 
 /**

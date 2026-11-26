@@ -30,6 +30,7 @@ import { parseRepoFullName, parseSha, prId, type RepoFullName } from "./ids";
 import { DEFAULT_CONTEXT } from "./key-lines";
 import { type AiConfig, type AiFeature, resolveChoice } from "./models";
 import { fileRoute } from "./pr-file.ts";
+import { labelsRoute } from "./pr-labels.ts";
 import { detailKey, diffKey, PrIndex } from "./pr-index";
 import {
   codeHashOf,
@@ -74,7 +75,7 @@ import { LimitName } from "./limits";
 export { AgentContainer, AiJobs, Installation, IpLimit, PrIndex, SignIn, UserAccount };
 
 const PULL_REQUEST_PATH =
-  /^\/prs\/([\w.-]+)\/([\w.-]+)\/(\d+)\/(diff|file|detail|summary|write|key-lines-reviewed|key-lines|rewrite|ask|ask\/linear)$/;
+  /^\/prs\/([\w.-]+)\/([\w.-]+)\/(\d+)\/(diff|file|labels|detail|summary|write|key-lines-reviewed|key-lines|rewrite|ask|ask\/linear)$/;
 /** GraphQL's `Int`: a bigger number is no PR, and GitHub would refuse the query for it. */
 const MAX_PR_NUMBER = 2_147_483_647;
 const VERSION = /^[\w.:-]{1,200}$/;
@@ -567,7 +568,7 @@ function pullRequestRoute(
 ): Promise<Response> {
   const kind = match[4];
   // What a PR's screen reads says what it cost GitHub, so the apps' share of the token's hour can be measured.
-  return ["detail", "diff", "file", "key-lines", "rewrite"].includes(kind)
+  return ["detail", "diff", "file", "labels", "key-lines", "rewrite"].includes(kind)
     ? counted(env, (counting) => pullRequestRead(match, params, request, counting, context))
     : pullRequestRead(match, params, request, env, context);
 }
@@ -587,6 +588,11 @@ function pullRequestRead(
   }
   if (kind === "summary") {
     return summaryRoute(repo, pr, env);
+  }
+  if (kind === "labels") {
+    return request.method === "GET" && pr >= 1 && pr <= MAX_PR_NUMBER
+      ? labelsRoute(repo, pr, env)
+      : Promise.resolve(new Response("not found\n", { status: 404 }));
   }
   if (kind === "write") {
     return request.method === "POST"

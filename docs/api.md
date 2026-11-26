@@ -274,7 +274,7 @@ checked on every run: [`row.json`](../PRKit/Tests/PRContractFixtures/Fixtures/ro
   `requestedAt` (when review was last asked of the user himself, null for a team's request) and `reviewDueAt` are on
   `review` rows alone, `mergedAt` on `merged` rows alone. A stored status that no longer parses is
   served as `status: null`.
-- `GET …/detail`, `…/diff`, `…/file`, `…/key-lines` and `…/rewrite` answer with `Server-Timing: github;desc="github calls";dur=<n>`,
+- `GET …/detail`, `…/diff`, `…/file`, `…/labels`, `…/key-lines` and `…/rewrite` answer with `Server-Timing: github;desc="github calls";dur=<n>`,
   the GitHub calls that request made (`0` when R2 answered), so a client can measure its share of the token's hour.
 - An open row's `status.requestedBy` is its detail's `requestedBy` (below), only on a bot's PR with someone behind
   it: the list leads with that person. With it, `status.agent` is `{name, avatarUrl}` of the agent Linear delegated
@@ -364,6 +364,31 @@ Errors are `{"error": {"code", "message"}}`. Any other answer of GitHub's (a `40
 for a wait, a `5xx`) is passed on as the diff route passes it. A refused or failed read keeps nothing. An older Worker
 answers `404` with no JSON body.
 
+### `GET /prs/{owner}/{repo}/{n}/labels`
+
+The labels the PR's repo has, for the app to choose from, and whether the person may change the PR's:
+
+```json
+{
+  "labels": [{ "name": "bug", "color": "d73a4a", "description": "Something isn't working" }],
+  "canEdit": true
+}
+```
+
+- `labels` is every label of the repo (`GET /repos/{repo}/labels?per_page=100`, page after page), sorted by name
+  whatever its case, each with `name`, `color` (six hex digits, as a detail's `labels` have it) and `description`
+  (`null` for none). A repo with more than 500 is served its first 500 as GitHub lists them. They are read with the
+  token the diff is read with. The labels on the PR itself are the detail's `labels`.
+- `canEdit` is GitHub's `viewerCanLabel` on the pull request ("Indicates if the viewer can edit labels for this
+  object"), asked as the person, never as a read token's account. `false`: show the labels and offer no change.
+- Nothing is kept: each request asks GitHub (one call per 100 labels and one for `canEdit`), and the answer is
+  `Cache-Control: no-store`.
+
+`404` with `{"error": {"code": "not_found", "message"}}` when GitHub has no such PR or repo for the person, and `502
+github_unavailable` when `canEdit` could not be asked. Any other answer of GitHub's to the label read (a `403`, a `429`
+while its rate limit asks for a wait, a `5xx`) is passed on as the file route passes it. An older Worker answers `404`
+with no JSON body. The labels are changed with `label_add` and `label_remove` below.
+
 ### `POST /prs/{owner}/{repo}/{n}/write`
 
 One write as the person, with their own token: `{"kind": …, "client_ref"?: …}` and the kind's own fields. It answers
@@ -384,12 +409,27 @@ otherwise GitHub's status with `{"error": "…"}` in GitHub's own words where it
 | `checkbox` | `index`, `checked`, `task?` | Ticks one task in the description, read from GitHub now |
 | `edit_body` | `body`, `base?` | Replaces the description; `409` when it is no longer `base` |
 | `merge` | `method` (`merge`, `squash`, `rebase`), `commit` | Merges, if the head is still `commit` |
+| `label_add` | `name` | Puts one of the repo's labels on the PR |
+| `label_remove` | `name` | Takes a label off the PR. One that is not on it counts as done |
 | `pending_add` | `pullRequest` (the detail's `id`), `path`, `body`, and `line` with `side`, or `file: true` | Adds a comment to the unsent review, and starts that review when there is none |
 | `pending_reply` | `thread`, `body` | A reply to a posted thread that waits in the unsent review, started when there is none |
 | `pending_edit` | `comment`, `body` | Changes the words of a comment in the unsent review |
 | `pending_delete` | `comment` | Deletes a comment in the unsent review |
 | `pending_submit` | `event`, `body?` | Sends the unsent review. With none started, posts a review of these words alone |
 | `pending_discard` | | Deletes the unsent review and its comments. None there counts as done |
+
+**Labels.** `name` is trimmed, and must then be 1 to 200 characters with no control character, else `400`. GitHub's
+own limit is 50; the Worker takes more because an emoji may be sent by its shortcode (`:rocket:`), and GitHub decides.
+
+- `label_add` adds only a label the repo already has. GitHub's own call (`POST /repos/{repo}/issues/{n}/labels`)
+  makes a label that does not exist, for anyone who can push. So the Worker asks the repo for the label first
+  (`GET /repos/{repo}/labels/{name}`, which finds a name whatever its case) and sends the repo's own spelling. A name
+  the repo has not got is refused with `422` (`This repo has no label named "…".`), and nothing is posted.
+- `label_remove` is `DELETE /repos/{repo}/issues/{n}/labels/{name}`. GitHub's `404` "Label does not exist" (the label
+  is already off the PR) counts as done; any other `404` is a PR it has not got.
+- Someone who may not label the PR (`canEdit` false on `GET …/labels`) is refused by GitHub with `403`, in its words.
+- The answer's detail carries the PR's `labels` after the write, up to 50 of them.
+- Ask's `github_act` does not take these two kinds: its answer says "Labels are changed in the app, not by Ask."
 
 **The unsent review** (the detail's `pendingReview`) is GitHub's own pending review, one per person and PR, so the app,
 github.com and every device hold the same one. The `pending_` kinds are GraphQL mutations as the person:

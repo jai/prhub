@@ -15,7 +15,7 @@ import {
   subscriptionChat,
 } from "./ask-subscription";
 import { askBudgetOf, limitsOf } from "./limits";
-import { writeToGitHub } from "./write";
+import { actForAsk } from "./write";
 import { proposalsOf } from "./linear-act";
 import { linearPostedNow } from "./ask-linear";
 import { allKeys, ticketKeysOf } from "./tickets";
@@ -252,13 +252,7 @@ export async function ask(
       turn,
       doing,
       // As the person, with their own sign-in: the way the app's own buttons write.
-      act: async (action) => {
-        const refused = await writeToGitHub(repo, number, action, env);
-        return refused
-          ? (((await refused.json().catch(() => null)) as { error?: string } | null)?.error ??
-              `HTTP ${refused.status}`)
-          : null;
-      },
+      act: (action) => actForAsk(repo, number, action, env),
       // Cards only: each posts when the person confirms it (`postAskLinear`), with their own Linear key.
       linear: (raw) => proposalsOf(raw, async () => keysOf(await prFacts(repo, number, env)), env),
     });
