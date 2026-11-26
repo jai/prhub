@@ -72,6 +72,7 @@ struct PRKeyLinesList: View {
     let session: PRSession
     let document: DiffDocument
     @State private var customContext = ""
+    @Environment(\.pullRequestOpener) private var opener
 
     var body: some View {
         ScrollView {
@@ -157,7 +158,14 @@ struct PRKeyLinesList: View {
                         item: item, isSelected: session.selectedKeyLine?.id == item.id,
                         isReviewed: session.isReviewed(item), show: { session.show(item) },
                         explain: session.offersAsk ? { session.explain(item, in: document) } : nil,
-                        setReviewed: { session.setReviewed($0, item) }
+                        setReviewed: { session.setReviewed($0, item) },
+                        isAdded: session.pendingComment(on: item) != nil,
+                        // A comment the review already has with no line in the diff is on the PR's page: back to it.
+                        addToReview: session.offersAddToReview(item) ? {
+                            if session.addToReview(item) == .listedOnThePage {
+                                opener?.stack.back()
+                            }
+                        } : nil
                     )
                 }
                 if !lines.leftOut.isEmpty {
@@ -183,8 +191,9 @@ private extension View {
 }
 
 /// One key line in the list, a card of its own: a heading line (its tick first, as a file's viewed mark is in Files;
-/// its kind; Explain last, away from the tick), then where it is on a line to itself, cut in the middle so the file's
-/// name and the line stay, then why it matters across the whole card. A tap anywhere but a control shows the line.
+/// its kind; then Copy, Add to review and Explain, away from the tick), then where it is on a line to itself, cut in
+/// the middle so the file's name and the line stay, then why it matters across the whole card. A tap anywhere but a
+/// control shows the line.
 struct PRKeyLineRow: View {
     let item: PRKeyLines.Item
     let isSelected: Bool
@@ -193,6 +202,10 @@ struct PRKeyLineRow: View {
     /// Nil where Ask AI is off: no Explain.
     let explain: (() -> Void)?
     let setReviewed: (Bool) -> Void
+    /// The review has a pending comment on this line: Add to review is ticked, and shows it.
+    var isAdded = false
+    /// Nil where no comment on this line can be kept: no Add to review.
+    var addToReview: (() -> Void)?
     @Environment(\.dynamicTypeSize) private var textSize
 
     var body: some View {
@@ -210,18 +223,16 @@ struct PRKeyLineRow: View {
                     .contentShape(.rect)
                     .onTapGesture(perform: show)
                     .accessibilityHidden(true)
-                if let explain {
-                    Button("Explain", systemImage: AppIcon.askAI.symbol, action: explain)
-                        .labelStyle(.iconOnly)
-                        .font(.appFootnote)
-                        .foregroundStyle(Color.primary)
-                        // A finger's width at least, and room beside the icon when the text is large.
-                        .padding(.horizontal, Space.sm)
-                        .frame(minWidth: PRStyle.rowHeight, minHeight: PRStyle.rowHeight)
-                        .contentShape(.rect)
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Explain \(item.path):\(item.line)")
-                        .accessibilityIdentifier("key-line-explain-\(item.id)")
+                if !textSize.isAccessibilitySize {
+                    controls
+                }
+            }
+            // In the largest text the controls have a line of their own: beside the tick and the kind they ran off
+            // the card.
+            if textSize.isAccessibilitySize {
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    controls
                 }
             }
             Button(action: show) {
@@ -253,6 +264,39 @@ struct PRKeyLineRow: View {
         }
         .background(isSelected ? Color(platform: DiffStyle.selectedLine) : .clear)
         .prCard()
+    }
+
+    /// Copy, Add to review and Explain: each its icon, a finger's width, with its words as its label.
+    @ViewBuilder private var controls: some View {
+        control("Copy", icon: .copy, id: "key-line-copy-\(item.id)") { Pasteboard.copy(item.why) }
+            .accessibilityLabel("Copy \(item.path):\(item.line)")
+        if let addToReview {
+            // Its words are the same ticked or not; only the icon says the review has the comment.
+            control(
+                PRKeyLineAddButton.title, icon: PRKeyLineAddButton.icon(isAdded: isAdded),
+                id: "key-line-add-\(item.id)", action: addToReview
+            )
+            .contentTransition(.symbolEffect(.replace))
+            .accessibilityLabel("\(PRKeyLineAddButton.title), \(item.path):\(item.line)")
+            .accessibilityValue(PRKeyLineAddButton.value(isAdded: isAdded))
+        }
+        if let explain {
+            control("Explain", icon: .askAI, id: "key-line-explain-\(item.id)", action: explain)
+                .accessibilityLabel("Explain \(item.path):\(item.line)")
+        }
+    }
+
+    private func control(_ title: String, icon: AppIcon, id: String, action: @escaping () -> Void) -> some View {
+        Button(title, systemImage: icon.symbol, action: action)
+            .labelStyle(.iconOnly)
+            .font(.appFootnote)
+            .foregroundStyle(Color.primary)
+            // A finger's width at least, and room beside the icon when the text is large.
+            .padding(.horizontal, Space.sm)
+            .frame(minWidth: PRStyle.rowHeight, minHeight: PRStyle.rowHeight)
+            .contentShape(.rect)
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(id)
     }
 }
 
@@ -382,27 +426,22 @@ struct PRKeyLineCheck: View {
     }
 }
 
-/// Under its line in the diff, while it's the key line being looked at: its kind and Close on top, why it matters
-/// (long-press to copy), then Explain and Reviewed, so it's checked off where it's read.
+/// Under its line in the diff, while it's the key line being looked at: its kind, Copy and Close on top, why it
+/// matters, then Explain, Add to review and Reviewed, so it's commented on and checked off where it's read.
 struct PRKeyLineNote: View {
     let item: PRKeyLines.Item
-    /// Read in the body, so the note follows a tick made in the list.
+    /// Read in the body, so the note follows a tick made in the list and a comment added to the review.
     let actions: DiffActions
 
     var body: some View {
         let reviewed = actions.isReviewed(item)
+        let added = actions.keyLineDraft.isAdded(item)
         VStack(alignment: .leading, spacing: Space.sm) {
-            HStack {
+            HStack(spacing: 0) {
                 StatusChip(text: item.kindTitle, tint: item.kindTint)
                 Spacer(minLength: 0)
-                Button("Close", systemImage: AppIcon.close.symbol, action: actions.closeNote)
-                    .labelStyle(.iconOnly)
-                    .font(.appFootnote)
-                    .foregroundStyle(.secondary)
-                    .frame(width: PRStyle.rowHeight, height: PRStyle.rowHeight)
-                    .contentShape(.rect)
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("key-line-note-close")
+                top("Copy", icon: .copy, id: "key-line-note-copy") { Pasteboard.copy(item.why) }
+                top("Close", icon: .close, id: "key-line-note-close", action: actions.closeNote)
             }
             Text(item.why)
                 .font(.appFootnote)
@@ -410,12 +449,13 @@ struct PRKeyLineNote: View {
                 .opacity(reviewed ? PRStyle.doneOpacity : 1)
                 .textSelection(.enabled)
                 .accessibilityIdentifier("key-line-note")
-            // Their words while both fit; in the largest text their icons alone, words as their labels: there the words
-            // broke a few letters to a line ("Ex- plai n", CI's picture, 2026-11-14), and one over the other ran the
-            // note down under the stepper.
+            // Their words while all fit; then Explain's icon with the others' words; in the largest text their icons
+            // alone, words as their labels: there the words broke a few letters to a line ("Ex- plai n", CI's picture,
+            // 2026-11-14), and one over the other ran the note down under the stepper.
             ViewThatFits(in: .horizontal) {
-                buttons(reviewed, iconOnly: false)
-                buttons(reviewed, iconOnly: true)
+                buttons(reviewed, added, explainIcon: false, iconOnly: false)
+                buttons(reviewed, added, explainIcon: true, iconOnly: false)
+                buttons(reviewed, added, explainIcon: true, iconOnly: true)
             }
         }
         .padding([.leading, .bottom, .trailing], PRStyle.inset)
@@ -423,16 +463,59 @@ struct PRKeyLineNote: View {
         .prCard()
     }
 
-    private func buttons(_ reviewed: Bool, iconOnly: Bool) -> some View {
+    /// A control on the note's top line: its icon, quiet, a finger's width.
+    private func top(_ title: String, icon: AppIcon, id: String, action: @escaping () -> Void) -> some View {
+        Button(title, systemImage: icon.symbol, action: action)
+            .labelStyle(.iconOnly)
+            .font(.appFootnote)
+            .foregroundStyle(.secondary)
+            .frame(width: PRStyle.rowHeight, height: PRStyle.rowHeight)
+            .contentShape(.rect)
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(id)
+    }
+
+    private func buttons(_ reviewed: Bool, _ added: Bool, explainIcon: Bool, iconOnly: Bool) -> some View {
         HStack(spacing: Space.sm) {
             if let explain = actions.explain {
                 Button("Explain", systemImage: AppIcon.askAI.symbol) { explain(item) }
-                    .buttonStyle(PRButtonStyle(.secondary, iconOnly: iconOnly))
+                    .buttonStyle(PRButtonStyle(.secondary, iconOnly: explainIcon))
                     .accessibilityIdentifier("key-line-note-explain")
+            }
+            if actions.keyLineDraft.offers(item) {
+                PRKeyLineAddButton(isAdded: added, iconOnly: iconOnly) { actions.keyLineDraft.add(item) }
             }
             Spacer(minLength: 0)
             PRKeyLineReviewedButton(isReviewed: reviewed, iconOnly: iconOnly) { actions.setReviewed(item, !reviewed) }
         }
+    }
+}
+
+/// A key line's words into the review, in the note: the press opens the line's comment box with the words in it. Its
+/// words are "Add to review" before and after; once the review has a pending comment on the line its icon is a tick,
+/// and the press shows that comment.
+struct PRKeyLineAddButton: View {
+    static let title = "Add to review"
+
+    static func icon(isAdded: Bool) -> AppIcon {
+        isAdded ? .done : .compose
+    }
+
+    static func value(isAdded: Bool) -> String {
+        isAdded ? "added" : "not added"
+    }
+
+    let isAdded: Bool
+    var iconOnly = false
+    let add: () -> Void
+
+    var body: some View {
+        Button(Self.title, systemImage: Self.icon(isAdded: isAdded).symbol, action: add)
+            .buttonStyle(PRButtonStyle(.secondary, iconOnly: iconOnly))
+            .contentTransition(.symbolEffect(.replace))
+            .accessibilityLabel(Self.title)
+            .accessibilityValue(Self.value(isAdded: isAdded))
+            .accessibilityIdentifier("key-line-note-add")
     }
 }
 

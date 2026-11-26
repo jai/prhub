@@ -698,14 +698,26 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
 - **A key line:** in Key lines, a card of its own (`PRKeyLineRow`, `.prCard()`) on the list's page
   (`Color.groundList`), `Space.sm` from the next, so one ends where the next begins in dark as in light. On it: a
   heading (its tick first, where a file's viewed mark is in Files; its kind as a `StatusChip`: Risk in `toneBad`,
-  Decision and Logic quiet; Explain, `AppIcon.askAI`, which asks Ask AI to explain that line, last, the card's width
-  from the tick), then its path and line on a line of their own (`appCaption` monospaced, quiet, cut in the middle so
-  the file's name and the line stay), then why it matters across the whole card, copied whole from its long-press
-  menu. A tap anywhere but the tick and Explain shows the line. The list reads down to the tab bar: its last line is
+  Decision and Logic quiet; then three icons a finger wide, last, away from the tick: Copy, `AppIcon.copy`, which
+  copies why it matters; Add to review, `AppIcon.compose`; and Explain, `AppIcon.askAI`, which asks Ask AI to explain
+  that line), then its path and line on a line of their own (`appCaption` monospaced, quiet, cut in the middle so
+  the file's name and the line stay), then why it matters across the whole card, copied from its long-press menu
+  too. In the largest text the three icons have a line of their own under the tick and the kind. A tap anywhere but a
+  control shows the line. The list reads down to the tab bar: its last line is
   never under a bar or a blur (`PRKitKeyLinesPanelUITests`, `PRKeyLineRowRenderingTests`). Its note under the
-  line in the diff: the kind and Close on top, the why (selectable, to copy), then Explain on the left and Mark
-  reviewed / Reviewed on the right, as `PRButtonStyle(.secondary)` buttons. The note stays on screen while the code
-  scrolls sideways, as threads and file headers do.
+  line in the diff (`PRKeyLineNote`): the kind on top with Copy and Close at the far end (icons, quiet), the why
+  (selectable), then Explain and Add to review on the left and Reviewed on the right, as `PRButtonStyle(.secondary)`
+  buttons: their words while all fit, then Explain's icon with the others' words, then icons alone. The note stays on
+  screen while the code scrolls sideways, as threads and file headers do.
+- **A key line into the review:** Add to review, on a key line of any kind, shows the line and opens its comment box
+  (`InlineComposer`, under the code) with the key line's words in it, unless words are waiting there. Nothing is kept
+  until the box's own Add to review, which keeps them as a pending comment like any other (A pending comment); on a
+  Worker with no pending reviews, as a comment waiting on the device. The control reads "Add to review" before and
+  after (`PRKeyLineAddButton`): once the review has a pending comment on that line, GitHub's or the device's, its
+  icon is `AppIcon.done`, and a press shows that comment and adds none. For a line the diff does not show, the same
+  box opens under "This line isn't in the diff, so the comment goes on the file." (`appCaption`, quiet), and the
+  comment is kept on the file, its words starting "Line N: "; it is then listed on the PR's page, where a press of
+  the ticked control goes. With no pending reviews such a line has no Add to review.
 - **A PR at a glance:** `PRKeyLinesSummaryCard`, a card (`prCard`) above the key lines, and on a PR's page under its
   review buttons as one of the page's cards, when the PR's key lines are already on the phone: the page never
   asks for them. Up to five parts, `Space.md` apart:

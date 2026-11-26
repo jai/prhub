@@ -246,4 +246,6 @@ struct DiffActions {
     let showsFileOnTop: (Int) -> Void
     /// "Show full line" on a very long line, by its index in the document.
     var showWholeLine: (Int) -> Void = { _ in }
+    /// A key line's words as a comment of the review: whether it has one, and the press that opens its box.
+    var keyLineDraft = PRKeyLineDraftActions()
 }

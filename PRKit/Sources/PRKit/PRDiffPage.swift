@@ -81,7 +81,9 @@ struct PRDiffPage: View {
             .diffExtendsUnderBars()
         }
         .overlay(alignment: .bottom) {
-            if session.composingLine == nil, reviewAction == nil, !session.isKeyboardUp {
+            if session.composingLine == nil, session.composingOffDiff == nil, reviewAction == nil,
+               !session.isKeyboardUp
+            {
                 controls
                     .transition(.opacity)
             }
@@ -90,6 +92,8 @@ struct PRDiffPage: View {
             Group {
                 if session.composingLine != nil {
                     composer
+                } else if let item = session.composingOffDiff {
+                    offDiffComposer(item)
                 } else if let reviewAction {
                     // A review sent from the diff is the end of the PR: back to the list, where the toast follows
                     // it (Jai's feedback, build 305).
@@ -120,7 +124,12 @@ struct PRDiffPage: View {
             openURL: openURL,
             text: { line in PRComposerTarget(document, line: line).map(session.text(for:)) ?? .constant("") },
             replyText: { session.openText(for: .reply(thread: $0)) },
-            compose: { line in withAnimation(AppMotion.fold) { session.composingLine = line } },
+            compose: { line in
+                withAnimation(AppMotion.fold) {
+                    session.composingOffDiff = nil
+                    session.composingLine = line
+                }
+            },
             closeNote: { session.closeKeyLine() },
             isReviewed: { session.isReviewed($0) },
             setReviewed: { session.setReviewed($1, $0) },
@@ -149,8 +158,47 @@ struct PRDiffPage: View {
                 if document.lines.indices.contains(index) {
                     session.showWhole(document.lines[index], in: document)
                 }
-            }
+            },
+            keyLineDraft: PRKeyLineDraftActions(
+                isAdded: { session.pendingComment(on: $0) != nil },
+                offers: { session.offersAddToReview($0) },
+                add: { addToReview($0) }
+            )
         )
+    }
+
+    /// A key line's Add to review, from its note. A comment the review already has with no line in the diff is on
+    /// the PR's page: back to it.
+    private func addToReview(_ item: PRKeyLines.Item) {
+        if session.addToReview(item) == .listedOnThePage {
+            opener?.stack.back()
+        }
+    }
+
+    /// The box for a key line whose line the diff does not show: the line's box, for a comment on the file.
+    private func offDiffComposer(_ item: PRKeyLines.Item) -> some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            Text("This line isn't in the diff, so the comment goes on the file.")
+                .font(.appCaption)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("key-line-box-off-diff")
+            InlineComposer(
+                text: session.offDiffText(for: item), placeholder: "Comment on this file",
+                buttonTitle: PRPendingWords.addTitle(
+                    usesPendingReview: session.usesPendingReview, hasPending: !session.pending.isEmpty
+                ),
+                lines: 1 ... 6,
+                send: { words in
+                    PRPlatform.endEditing()
+                    session.addToFile(words, for: item)
+                },
+                cancel: {
+                    PRPlatform.endEditing()
+                    session.closeOffDiffBox(for: item)
+                }
+            )
+        }
+        .bottomStrip()
     }
 
     private func closeComposer() {

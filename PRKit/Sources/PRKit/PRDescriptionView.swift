@@ -21,6 +21,7 @@ struct PRDescriptionView: View {
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage("prConversationNewestFirst") private var newestFirst = true
     private static let descriptionEditor = "description-editor"
+    private static let pendingList = "pending-list"
 
     private var folds: FoldSet {
         session.folds
@@ -29,6 +30,10 @@ struct PRDescriptionView: View {
     var body: some View {
         ScrollViewReader { proxy in
             page
+                // A key line's comment that has no line in the diff is in the page's list: its press comes here.
+                .onChange(of: session.pendingListShows) {
+                    withAnimation(AppMotion.fold) { proxy.scrollTo(Self.pendingList, anchor: .top) }
+                }
             #if os(iOS)
                 // The keyboard's arrival is what covers a box that has just opened, Post and all.
                 .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
@@ -67,6 +72,7 @@ struct PRDescriptionView: View {
                 PRReviewActions(session: session, isAuthor: detail.isAuthor, showsNotice: false, action: $action)
                 composer
                 PRPendingList(session: session)
+                    .id(Self.pendingList)
                 if let summary = session.summary {
                     // A bug's tap is its line in the diff, as in Key lines.
                     PRKeyLinesSummaryCard(summary: summary, onPage: true) { bug in

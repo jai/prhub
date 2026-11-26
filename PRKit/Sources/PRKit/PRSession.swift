@@ -123,6 +123,11 @@ final class PRSession: Hashable {
     var keyLineMarks = 0
     /// The line of the document being commented on. The comment box sits above the keyboard, not in the diff.
     var composingLine: Int?
+    /// The key line being commented on whose line the diff does not show: the same box, for a comment on its file
+    /// (`PRSession+KeyLineDraft.swift`).
+    var composingOffDiff: PRKeyLines.Item?
+    /// Asks the PR's page to show its list of pending comments. Each ask is new, so a second one still moves it.
+    var pendingListShows = 0
     /// The nav bar and tab bar have got out of the way of the code.
     var barsHidden = false
     /// Asking the PR's AI agent (`PRSession+Ask.swift`).
