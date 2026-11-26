@@ -63,9 +63,10 @@ final class PRKitKeyLineDraftUITests: PRHubUITestCase {
         let copy = app.buttons["key-line-copy-\(line)"]
         let finger = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
             .withOffset(CGVector(dx: app.buttons["key-lines-context-100"].frame.midX, dy: window.height * 0.6))
-        for _ in 0 ..< 20 where !(copy.isHittable && copy.frame.maxY <= bottom) {
+        // The glance alone is thousands of points tall at this size: as many drags as that test allows itself.
+        for _ in 0 ..< 40 where !(copy.exists && copy.isHittable && copy.frame.maxY <= bottom) {
             finger.press(
-                forDuration: 0.05, thenDragTo: finger.withOffset(CGVector(dx: 0, dy: -250)), withVelocity: .slow,
+                forDuration: 0.05, thenDragTo: finger.withOffset(CGVector(dx: 0, dy: -400)), withVelocity: .fast,
                 thenHoldForDuration: 0.2
             )
         }
