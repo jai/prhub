@@ -60,7 +60,8 @@ extension PRSampleSet {
                     + "end. The retry calls `retryPayment`, which the server treats as the same payment.\\n\\n"
                     + "- [x] Tested with a declined test card\\n- [ ] Tested on a slow network\\n\\nFixes WEB-31",
                 diff: checkoutDiff, keyLines: checkoutKeyLines,
-                comment: ("hubot", "Should the button say why it failed?"), tickets: checkoutTickets
+                comment: ("hubot", "Should the button say why it failed?"), tickets: checkoutTickets,
+                pendingReview: checkoutPendingReview
             ).sample,
             PRHubSample(
                 repo: "acme/api", number: 88, title: "Rate-limit the password reset endpoint [API-88] [SEC-12]",
@@ -99,6 +100,18 @@ extension PRSampleSet {
         ],
         mergedReviewed: [], mergedMine: [], answersOnPhone: true
     )
+
+    /// A review started on github.com and not submitted: one comment on a line of the diff, one on a whole file.
+    private static let checkoutPendingReview = """
+    {"id": "sample-pending-412", "body": "", "comments": [
+      {"id": "sample-pending-412-1", "path": "src/checkout/payments.ts", "line": 13, "side": "RIGHT",
+       "body": "Should a retry stop after a few tries?", "createdAt": "\(Date.now.addingTimeInterval(-7200).ISO8601Format())",
+       "outdated": false, "thread": null, "file": false},
+      {"id": "sample-pending-412-2", "path": "src/checkout/CheckoutError.tsx", "line": null, "side": "RIGHT",
+       "body": "This file could use a test for the retry.",
+       "createdAt": "\(Date.now.addingTimeInterval(-3600).ISO8601Format())",
+       "outdated": false, "thread": null, "file": true}]}
+    """
 
     /// The ticket the checkout retry's description fixes, as the Worker has it from Linear.
     private static let checkoutTickets = """
@@ -329,6 +342,9 @@ struct PRHubSample {
     var bot: String?
     /// The detail's `tickets`, as JSON.
     var tickets = "[]"
+    /// The detail's `pendingReview`, as JSON: the user's review not submitted yet. Every sample carries the key, as a
+    /// Worker that reads pending reviews does.
+    var pendingReview = "null"
 
     /// The row's tickets: the detail's tickets Linear has. Each sample's are all its title's, or one from its
     /// description, which is what the Worker picks for them.
@@ -433,7 +449,7 @@ struct PRHubSample {
                     {"name": "lint", "state": "success", "url": null, "required": false, "workflow": "CI"},
                     \(Self.groupedChecks)],
          "comments": {"nodes": \(comments)}, "reviews": {"nodes": \(reviews)}, "reviewThreads": {"nodes": []},
-         "title": \(String(reflecting: title))}
+         "pendingReview": \(pendingReview), "title": \(String(reflecting: title))}
         """
     }
 }

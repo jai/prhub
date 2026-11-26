@@ -18,6 +18,29 @@ struct PRHubSampleDataTests {
         }
     }
 
+    /// Every sample is a PR on a Worker that reads pending reviews, and one comes with a review begun on github.com:
+    /// a comment on a line its diff shows, and one on a whole file.
+    @Test func everySampleCarriesThePendingReviewKeyAndOneHasAReviewWaiting() throws {
+        var waiting: [PRSampleSet.Sample] = []
+        for sample in PRSampleSet.prHub.samples {
+            let detail = try PullRequestDetail.decode(Data(sample.detail.utf8))
+            #expect(detail.pendingReview.isSupported, "\(sample.row.id)")
+            if !detail.pendingReview.comments.isEmpty {
+                waiting.append(sample)
+            }
+        }
+        let sample = try #require(waiting.first)
+        #expect(waiting.count == 1 && sample.row.id == "acme/web#412")
+        let detail = try PullRequestDetail.decode(Data(sample.detail.utf8))
+        let rows = DiffRows(
+            document: DiffDocument(data: Data(sample.diff.utf8)), threads: [],
+            pending: PRPendingDevice().comments(over: detail.pendingReview.comments)
+        )
+        #expect(detail.pendingReview.comments.count == 2)
+        #expect(rows.placed == ["sample-pending-412-1"], "one sits under its line; the page lists the file's")
+        #expect(detail.pendingReview.comments[1].isFile)
+    }
+
     @Test func everyKeyLineIsALineItsDiffShows() throws {
         for sample in PRSampleSet.prHub.samples {
             let document = DiffDocument(data: Data(sample.diff.utf8))

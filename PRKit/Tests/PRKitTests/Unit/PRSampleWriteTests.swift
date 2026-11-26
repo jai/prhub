@@ -19,7 +19,7 @@ struct PRSampleWriteTests {
     "title":null}
     """
 
-    private func model(list: String = "review") -> PRsModel {
+    private func model(list: String = "review", detail: String = PRSampleWriteTests.detail) -> PRsModel {
         let status = PullRequestRow.Status(
             list: list, author: "mona", checks: "passing", review: "approved", merge: "clean", jaiReview: nil,
             jaiReviewedAt: nil
@@ -29,7 +29,7 @@ struct PRSampleWriteTests {
             detail: "sample", status: status
         )
         let samples = PRSampleSet(
-            samples: [.init(row: row, detail: Self.detail, diff: "", keyLines: nil)], mergedReviewed: [],
+            samples: [.init(row: row, detail: detail, diff: "", keyLines: nil)], mergedReviewed: [],
             mergedMine: [], answersOnPhone: true
         )
         let client = PRViewerClient(access: .offline, transport: UnexpectedTransport())
@@ -108,5 +108,56 @@ struct PRSampleWriteTests {
         #expect(model.merged[.mine]?.count == 1 && model.merged[.review] == nil)
         #expect(try reopened(model).state == "merged")
         #expect(try await model.write(.comment(body: "Thanks."), to: ref).posted?.comments.nodes.count == 1)
+    }
+
+    // MARK: - A pending review on a sample PR
+
+    private func pendingModel() -> PRsModel {
+        model(detail: Self.detail.replacing(#""title":null}"#, with: #""title":null,"pendingReview":null}"#))
+    }
+
+    @Test func aSampleKeepsAPendingReviewAsGitHubWould() async throws {
+        let model = pendingModel()
+        let add = PRWrite.pendingAdd(pullRequest: "", path: "README.md", line: 3, side: .right, body: "Which step?")
+        let added = try #require(try await model.write(add, to: ref).posted?.pendingReview.comments)
+        #expect(added.map(\.body) == ["Which step?"] && added[0].line == 3 && !added[0].isFile)
+        let onFile = PRWrite.pendingAdd(pullRequest: "", path: "README.md", line: nil, side: .right, body: "Add a title.")
+        _ = try await model.write(onFile, to: ref)
+        _ = try await model.write(.pendingEdit(comment: added[0].id, body: "Which of the steps?"), to: ref)
+        let held = try reopened(model).pendingReview.comments
+        #expect(held.map(\.body) == ["Which of the steps?", "Add a title."], "kept when the PR opens again")
+        #expect(held[1].isFile && held[1].line == nil)
+        let left = try #require(try await model.write(.pendingDelete(comment: held[1].id), to: ref).posted)
+        #expect(left.pendingReview.comments.map(\.id) == [held[0].id])
+        #expect(left.reviewThreads.nodes.isEmpty, "nothing is posted until the review is")
+    }
+
+    @Test func submittingItPostsTheReviewWithItsCommentsAndLeavesNoneWaiting() async throws {
+        let model = pendingModel()
+        _ = try await model.write(.pendingAdd(pullRequest: "", path: "README.md", line: 3, side: .right, body: "Which step?"), to: ref)
+        let detail = try #require(try await model.write(.pendingSubmit(.requestChanges, body: "Add a test."), to: ref).posted)
+        #expect(detail.pendingReview == PRPendingReviewAnswer.none)
+        #expect(detail.reviewDecision == "CHANGES_REQUESTED" && detail.reviews.nodes.last?.body == "Add a test.")
+        #expect(detail.reviewThreads.nodes.map(\.line) == [3])
+        #expect(detail.reviewThreads.nodes.first?.comments.nodes.map(\.body) == ["Which step?"])
+        #expect(model.rows.first?.status?.review == "changes_requested")
+    }
+
+    @Test func theLastCommentsRemovalAndADiscardEndThePendingReview() async throws {
+        let model = pendingModel()
+        let add = PRWrite.pendingAdd(pullRequest: "", path: "README.md", line: 3, side: .right, body: "Which step?")
+        let added = try #require(try await model.write(add, to: ref).posted?.pendingReview.comments.first)
+        let emptied = try #require(try await model.write(.pendingDelete(comment: added.id), to: ref).posted)
+        #expect(emptied.pendingReview == PRPendingReviewAnswer.none)
+        _ = try await model.write(add, to: ref)
+        let discarded = try #require(try await model.write(.pendingDiscard, to: ref).posted)
+        #expect(discarded.pendingReview == PRPendingReviewAnswer.none && discarded.reviewThreads.nodes.isEmpty)
+    }
+
+    /// A sample detail without the key is an older Worker's: a pending write changes nothing, and nothing is invented.
+    @Test func aSampleWithoutTheKeyTakesNoPendingReview() async throws {
+        let model = model()
+        let add = PRWrite.pendingAdd(pullRequest: "", path: "README.md", line: 3, side: .right, body: "Which step?")
+        #expect(try await model.write(add, to: ref).posted?.pendingReview == .unsupported)
     }
 }
