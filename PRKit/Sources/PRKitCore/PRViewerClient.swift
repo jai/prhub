@@ -28,6 +28,16 @@ public enum PRWrite: Encodable, Sendable {
     /// `base` is the description he started from, so a late copy can't undo a newer edit.
     case editBody(String, base: String?)
     case merge(method: String, commit: String)
+    /// A comment added to the person's pending review on GitHub, which starts one where there is none. `line` nil puts
+    /// it on the whole file. `pullRequest` is GitHub's id of the PR (`PullRequestDetail.id`).
+    case pendingAdd(pullRequest: String, path: String, line: Int?, side: PRDiffSide, body: String)
+    /// New words for a comment of the pending review, by GitHub's id of it.
+    case pendingEdit(comment: String, body: String)
+    case pendingDelete(comment: String)
+    /// Submits the pending review with these words, its comments with it. With none it posts a review with no comments.
+    case pendingSubmit(PRReviewEvent, body: String)
+    /// Throws the pending review away, its comments with it.
+    case pendingDiscard
 
     /// A draft as GitHub takes it: its id is the phone's own.
     private struct ReviewComment: Encodable {
@@ -56,6 +66,8 @@ public enum PRWrite: Encodable, Sendable {
         var method: String?
         var task: String?
         var base: String?
+        var comment: String?
+        var file: Bool?
     }
 
     private var payload: Payload {
@@ -87,6 +99,18 @@ public enum PRWrite: Encodable, Sendable {
             Payload(kind: "edit_body", body: body, base: base)
         case let .merge(method, commit):
             Payload(kind: "merge", commit: commit, method: method)
+        case let .pendingAdd(pullRequest, path, line?, side, body):
+            Payload(kind: "pending_add", body: body, path: path, line: line, side: side.rawValue, pullRequest: pullRequest)
+        case let .pendingAdd(pullRequest, path, nil, _, body):
+            Payload(kind: "pending_add", body: body, path: path, pullRequest: pullRequest, file: true)
+        case let .pendingEdit(comment, body):
+            Payload(kind: "pending_edit", body: body, comment: comment)
+        case let .pendingDelete(comment):
+            Payload(kind: "pending_delete", comment: comment)
+        case let .pendingSubmit(event, body):
+            Payload(kind: "pending_submit", body: body, event: event.rawValue)
+        case .pendingDiscard:
+            Payload(kind: "pending_discard")
         }
     }
 

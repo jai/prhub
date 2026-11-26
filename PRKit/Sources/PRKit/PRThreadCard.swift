@@ -176,23 +176,3 @@ struct PRCheckCircle: View {
             .foregroundStyle(isOn ? Color.toneGood : Color.secondary)
     }
 }
-
-/// A line comment waiting for its review: Jai's words, not yet on GitHub, and marked so.
-struct PRDraftCard: View {
-    let draft: PRDraftComment
-    let remove: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Space.sm) {
-            HStack {
-                StatusChip(text: "Pending", tint: Color.toneWaiting)
-                Spacer()
-                Button("Delete", role: .destructive, action: remove)
-                    .buttonStyle(PRButtonStyle(.plain))
-            }
-            PRCommentText(draft.body)
-        }
-        .padding(PRStyle.inset)
-        .prCard()
-    }
-}

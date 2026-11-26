@@ -11,6 +11,8 @@ public final class PRNetwork {
     public private(set) var isOnline: Bool
     @ObservationIgnored private var watcher: PathWatcher?
     @ObservationIgnored private var isHeld = false
+    /// The network came back: what waited for it on this device can go (`PRPendingSync.syncAll`).
+    @ObservationIgnored var onReturn: (() -> Void)?
 
     public init(isOnline: Bool) {
         self.isOnline = isOnline
@@ -47,7 +49,11 @@ public final class PRNetwork {
         guard !isHeld else {
             return
         }
+        let wasOnline = isOnline
         isOnline = isUp
+        if isUp, !wasOnline {
+            onReturn?()
+        }
     }
 }
 

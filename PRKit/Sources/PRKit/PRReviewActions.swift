@@ -139,7 +139,7 @@ struct PRReviewActions: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
-            PRPendingComments(count: session.drafts.count)
+            PRPendingComments(session: session)
             PRReviewBar(isAuthor: isAuthor, yourReview: session.yourReview) { next in
                 withAnimation(AppMotion.fold) { action = action == next ? nil : next }
             }
@@ -167,7 +167,7 @@ struct PRReviewComposer: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
             if showsPending {
-                PRPendingComments(count: session.drafts.count)
+                PRPendingComments(session: session)
             }
             composer
         }
@@ -177,10 +177,10 @@ struct PRReviewComposer: View {
         InlineComposer(
             text: session.text(for: action.target),
             placeholder: action == .approve ? "Add a note, or just approve" : "Say something",
-            buttonTitle: action.title, needsText: action != .approve && session.drafts.isEmpty,
+            buttonTitle: action.title, needsText: action != .approve && session.pendingGoing == 0,
             sendAtLeading: action == .approve
         ) { text in
-            try session.submitReview(text, to: action.target(hasDrafts: !session.drafts.isEmpty))
+            try session.submitReview(text, to: action.target(hasDrafts: session.pendingGoing > 0))
             isSent = true
             session.discardText(for: action.target)
             close()
@@ -193,16 +193,24 @@ struct PRReviewComposer: View {
     }
 }
 
-/// The line comments waiting for the review, over the review's buttons and its box.
+/// What goes with the review, over its buttons and its box: how many pending comments, GitHub's and this device's, and
+/// in plain words what will not go because GitHub refused it.
 private struct PRPendingComments: View {
-    let count: Int
+    let session: PRSession
 
     var body: some View {
-        if count > 0 {
-            Text("\(count) pending comment\(count == 1 ? "" : "s") will go with your review")
+        let going = session.pendingGoing
+        if going > 0 {
+            Text(PRPendingWords.going(going))
                 .font(.appFootnote)
                 .foregroundStyle(Color.toneWaiting)
                 .accessibilityIdentifier("pr-pending-comments")
+        }
+        if let refused = PRPendingWords.refused(comments: session.pendingNotGoing, changes: session.pendingChangesRefused) {
+            Text(refused)
+                .font(.appFootnote)
+                .foregroundStyle(Color.toneBad)
+                .accessibilityIdentifier("pr-pending-refused")
         }
     }
 }

@@ -197,7 +197,7 @@ private struct Table {
             folds: FoldSet(), setViewed: { _, _ in }, openURL: OpenURLAction { _ in .handled },
             text: { _ in .constant("") }, replyText: { _ in .constant(nil) }, compose: { _ in }, closeNote: {},
             isReviewed: { _ in false }, setReviewed: { _, _ in }, explain: nil, setBarsHidden: { _ in },
-            setKeyboardUp: { _ in }, removeDraft: { _ in }, reply: { _, _ in }, setResolved: { _, _ in },
+            setKeyboardUp: { _ in }, pending: .none, reply: { _, _ in }, setResolved: { _, _ in },
             showsFileOnTop: { _ in }
         )
     }

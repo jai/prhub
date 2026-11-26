@@ -172,7 +172,11 @@ extension PRsModel {
         }
         guard waiting.contains(id) else {
             queued[id] = nil
-            _ = reviewLanded(job: id, data: data)
+            if pendingSync.answered(job: id, data: data) {
+                Task { await refresh(.pull) }
+            } else {
+                _ = reviewLanded(job: id, data: data)
+            }
             return
         }
         outcomes[id] = .success(data)
@@ -188,6 +192,11 @@ extension PRsModel {
         if waiting.contains(id) {
             outcomes[id] = .failure(.refused(why))
             wakeAnswerWait(id)
+            return
+        }
+        // A pending comment's refusal is kept on its comment first, so it outlasts these words and a relaunch.
+        if kind == .write, pendingSync.refused(job: id, reason: why) == .settled {
+            queued[id] = nil
             return
         }
         if case let .write(write, ref) = queued[id], reviewRefused(job: id, reason: why) {

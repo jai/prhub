@@ -459,9 +459,9 @@
             case let .thread(index):
                 return threadCell(rows.threads[index], at: indexPath)
             case let .draft(index):
-                let draft = rows.drafts[index]
-                return hostedCell(at: indexPath, id: draft.id) {
-                    PRDraftCard(draft: draft) { [weak self] in self?.actions.removeDraft(draft) }
+                let comment = rows.pending[index]
+                return hostedCell(at: indexPath, id: comment.id) {
+                    PRPendingCard(comment: comment, actions: actions.pending)
                 }
             case .note:
                 return noteCell(at: indexPath)

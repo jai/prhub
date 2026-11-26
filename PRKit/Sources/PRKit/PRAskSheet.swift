@@ -89,7 +89,7 @@ struct PRAskSheet: View {
             PRAskReviewCard(
                 draft: draft, event: event, isUsed: session.isUsed(message),
                 isNewest: session.pendingAskReview?.id == message.id,
-                otherDrafts: session.drafts.count,
+                otherDrafts: session.pendingGoing,
                 post: { session.postAskReview(message) },
                 addToDrafts: { session.addAskReviewToDrafts(message) }
             )

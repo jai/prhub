@@ -355,7 +355,7 @@
             switch self.row(section: section, row: row) {
             case .line, .piece, .rest, .less: nil
             case let .thread(index): rows.threads[index].id
-            case let .draft(index): rows.drafts[index].id.uuidString
+            case let .draft(index): rows.pending[index].id
             case .note: rows.note?.id
             }
         }
@@ -377,9 +377,9 @@
                     )
                 }
             case let .draft(index):
-                let draft = rows.drafts[index]
-                return host(draft.id.uuidString) {
-                    PRDraftCard(draft: draft) { [weak self] in self?.actions.removeDraft(draft) }
+                let comment = rows.pending[index]
+                return host(comment.id) {
+                    PRPendingCard(comment: comment, actions: actions.pending)
                 }
             case .note:
                 guard let note = rows.note else {

@@ -50,8 +50,10 @@ struct PRReviewToast: Identifiable, Equatable {
     }
 
     private var doneWords: String {
-        guard case let .review(event, _, _, _) = write else {
-            return "Comment posted"
+        let event: PRReviewEvent
+        switch write {
+        case let .review(sent, _, _, _), let .pendingSubmit(sent, _): event = sent
+        default: return "Comment posted"
         }
         return switch event {
         case .approve: "Approved"
@@ -128,6 +130,10 @@ extension PRsModel {
                 fail(toast.id, PRWorkerError.refused(refusal).localizedDescription)
                 return
             }
+        }
+        // With the review on GitHub, what is still unsent goes first, in the PR's order: the submit carries it.
+        if case .pendingSubmit = toast.write {
+            await pendingSync.sync(toast.ref).value
         }
         do {
             let outcome = try await write(toast.write, to: toast.ref) { job in

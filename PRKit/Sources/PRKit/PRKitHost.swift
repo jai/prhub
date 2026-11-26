@@ -143,6 +143,25 @@ public protocol PRKitOutbox: AnyObject {
     func enqueue(_ job: PROutboxJob) async throws -> String
     /// Whether a job of this kind for this PR is still on the phone.
     func isQueued(_ kind: PROutboxJob.Kind, about ref: PullRequestRef) -> Bool
+    /// Stops the job `id` and forgets it. True only when nothing of it can have reached the Worker: it had not been
+    /// tried yet. A pending comment changed or deleted before its add went is stopped this way, and sent again as it
+    /// now reads.
+    func cancel(_ id: String) async -> Bool
+    /// Whether the job `id`, a write to this PR, is still on the phone, or may be: a pending comment whose job is on
+    /// no phone and not on GitHub is sent again.
+    func holds(job id: String, about ref: PullRequestRef) -> Bool
+}
+
+public extension PRKitOutbox {
+    /// A host that can't stop a job: the change then follows the job once it has landed.
+    func cancel(_: String) async -> Bool {
+        false
+    }
+
+    /// A host that can't tell one job from another answers for the PR's writes as a whole.
+    func holds(job _: String, about ref: PullRequestRef) -> Bool {
+        isQueued(.write, about: ref)
+    }
 }
 
 /// What a UI test or a benchmark launch asks the PRs tab to do once it is showing.

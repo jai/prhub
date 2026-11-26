@@ -173,6 +173,8 @@ public struct PullRequestDetail: Decodable, Sendable {
     public let reviewThreads: Nodes<Thread>
     /// Present only on a live read: the Worker's rows carry the title otherwise.
     public let title: String?
+    /// The person's unsubmitted review on GitHub, from a Worker that reads it (`PRPendingReviewAnswer`).
+    public let pendingReview: PRPendingReviewAnswer
 
     public var listState: PrListState {
         PrListState(rawValue: (state ?? "open").capitalized) ?? .open
@@ -214,6 +216,41 @@ public struct PullRequestDetail: Decodable, Sendable {
         let reviewed = reviews.nodes.filter { !($0.state == "COMMENTED" && $0.body.isEmpty) }.map(Entry.review)
         let oldestFirst = (spoken + reviewed + reviewThreads.nodes.map(Entry.thread)).sorted { $0.date < $1.date }
         return newestFirst ? oldestFirst.reversed() : oldestFirst
+    }
+}
+
+/// What a detail says of the person's pending review on GitHub. Its key is always there from a Worker that reads
+/// pending reviews, null when the person has none, and absent from an older Worker: with that one the app keeps line
+/// comments on the device and sends them with the review, as it always did.
+public enum PRPendingReviewAnswer: Decodable, Hashable, Sendable {
+    /// No `pendingReview` key: the Worker does not know pending reviews.
+    case unsupported
+    /// The Worker knows them, and the person has none on this PR.
+    case none
+    case review(PRPendingReview)
+
+    /// Whether the PR's review lives on GitHub: every pending comment is sent there as it is written.
+    public var isSupported: Bool {
+        self != .unsupported
+    }
+
+    /// GitHub's pending comments; none without a pending review.
+    public var comments: [PRPendingReview.Comment] {
+        guard case let .review(review) = self else {
+            return []
+        }
+        return review.comments
+    }
+}
+
+extension KeyedDecodingContainer {
+    /// The synthesized decoding of `PullRequestDetail` reads its `pendingReview` through this, so an absent key is an
+    /// answer of its own and not a failure. A pending review this app can't read at all counts as none.
+    func decode(_: PRPendingReviewAnswer.Type, forKey key: Key) throws -> PRPendingReviewAnswer {
+        guard contains(key) else {
+            return .unsupported
+        }
+        return (try? decode(PRPendingReview.self, forKey: key)).map(PRPendingReviewAnswer.review) ?? .none
     }
 }
 

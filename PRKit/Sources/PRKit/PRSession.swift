@@ -17,28 +17,28 @@ struct PRContent: Sendable {
     let diff: PRDiff
 
     init(
-        detail: PullRequestDetail, document: DiffDocument?, drafts: [PRDraftComment] = [],
+        detail: PullRequestDetail, document: DiffDocument?, pending: [PRPendingComment] = [],
         changedLinesOnly: Bool = false, note: PRKeyLines.Item? = nil, longLines: DiffRows.LongLines = .init()
     ) {
         self.detail = detail
         let threads = detail.reviewThreads.nodes
         diff = document.map {
             .document($0, DiffRows(
-                document: $0, threads: threads, drafts: drafts, changedLinesOnly: changedLinesOnly, note: note,
+                document: $0, threads: threads, pending: pending, changedLinesOnly: changedLinesOnly, note: note,
                 longLines: longLines
             ))
         } ?? .tooLarge
     }
 
     fileprivate func replacing(
-        detail: PullRequestDetail? = nil, drafts: [PRDraftComment], changedLinesOnly: Bool,
+        detail: PullRequestDetail? = nil, pending: [PRPendingComment], changedLinesOnly: Bool,
         note: PRKeyLines.Item? = nil, longLines: DiffRows.LongLines
     ) -> PRContent {
         guard case let .document(document, _) = diff else {
             return PRContent(detail: detail ?? self.detail, document: nil)
         }
         return PRContent(
-            detail: detail ?? self.detail, document: document, drafts: drafts, changedLinesOnly: changedLinesOnly,
+            detail: detail ?? self.detail, document: document, pending: pending, changedLinesOnly: changedLinesOnly,
             note: note, longLines: longLines
         )
     }
@@ -86,8 +86,11 @@ final class PRSession: Hashable {
     private(set) var state: PRSessionState
     /// Said once, when content first shows (`PRKitEvent.contentShown`).
     private var hasReportedContent = false
-    /// Line comments waiting for the review they will go out with.
+    /// Line comments this device holds for the review they go out with, on a Worker without pending reviews. With
+    /// one that has them, `pending` is the list and the device's part of it is `PRPendingSync`'s.
     private(set) var drafts: [PRDraftComment]
+    /// Every comment of the review not submitted yet, GitHub's and this device's (`PRSession+Pending.swift`).
+    private(set) var pending: [PRPendingComment]
     /// The diff has shown once: the timer counts from there, unless the PR opened on its diff.
     var hasShownDiff = false
     /// The PR's description has shown, so a diff after it was a tap of its own.
@@ -178,10 +181,10 @@ final class PRSession: Hashable {
     }
 
     /// Half-written comments, by `PRComposerTarget.key`. A key with no text is a box open and empty.
-    private var writing: [String: String] = [:]
+    var writing: [String: String] = [:]
     private let rowTitle: String?
     let model: PRsModel
-    private let draftStore: PRDraftStore
+    let draftStore: PRDraftStore
 
     init(
         ref: PullRequestRef, title: String?, content: PRContent?, keyLines: PRKeyLines? = nil,
@@ -201,7 +204,9 @@ final class PRSession: Hashable {
         let longLines = DiffRows.LongLines(wraps: !model.settings.bool(forKey: Self.scrollsLongLinesKey))
         self.longLines = longLines
         contextLines = model.settings.object(forKey: Self.contextKey) as? Int ?? PRKeyLines.defaultContext
-        state = (content?.replacing(drafts: drafts, changedLinesOnly: changedLinesOnly, longLines: longLines))
+        let pending = content.map { Self.pending(in: $0.detail, on: ref, drafts: drafts, model: model) } ?? []
+        self.pending = pending
+        state = (content?.replacing(pending: pending, changedLinesOnly: changedLinesOnly, longLines: longLines))
             .map(PRSessionState.ready)
             ?? .reading
         viewedFiles = Set(content?.detail.viewedFiles ?? [])
@@ -210,6 +215,27 @@ final class PRSession: Hashable {
         if let keyLines {
             keyLinesByContext[keyLines.context] = keyLines
         }
+        model.pendingSync.follow(ref, self)
+    }
+
+    /// The PR's pending comments as `detail` and this device have them. With a Worker that reads pending reviews,
+    /// GitHub's are checked against the device's first (`PRPendingSync.note`); without one they are the device's drafts.
+    private static func pending(
+        in detail: PullRequestDetail, on ref: PullRequestRef, drafts: [PRDraftComment], model: PRsModel
+    ) -> [PRPendingComment] {
+        guard detail.pendingReview.isSupported else {
+            return drafts.map(PRPendingComment.init)
+        }
+        model.pendingSync.note(detail, for: ref)
+        return model.pendingSync.comments(for: ref)
+    }
+
+    /// `content` with this session's pending comments, changed-lines choice and open key line.
+    private func shown(_ content: PRContent) -> PRContent {
+        pending = Self.pending(in: content.detail, on: ref, drafts: drafts, model: model)
+        return content.replacing(
+            pending: pending, changedLinesOnly: changedLinesOnly, note: selectedKeyLine, longLines: longLines
+        )
     }
 
     nonisolated static func == (lhs: PRSession, rhs: PRSession) -> Bool {
@@ -259,10 +285,7 @@ final class PRSession: Hashable {
     private func read() async {
         do {
             let fetched = try await model.fetch(ref, row: opening.reads)
-            let content = fetched.content
-                .replacing(
-                    drafts: drafts, changedLinesOnly: changedLinesOnly, note: selectedKeyLine, longLines: longLines
-                )
+            let content = shown(fetched.content)
             viewedFiles = Set(content.detail.viewedFiles ?? [])
             withAnimation(AppMotion.swap) { state = .ready(content) }
             reportContent(networkMilliseconds: fetched.networkMilliseconds, decodeMilliseconds: fetched.decodeMilliseconds)
@@ -315,9 +338,7 @@ final class PRSession: Hashable {
 
     /// A newer copy on screen, with this session's drafts, changed-lines choice and open key line.
     private func swapIn(_ fetched: PRContent) {
-        let content = fetched.replacing(
-            drafts: drafts, changedLinesOnly: changedLinesOnly, note: selectedKeyLine, longLines: longLines
-        )
+        let content = shown(fetched)
         viewedFiles = Set(content.detail.viewedFiles ?? [])
         withAnimation(AppMotion.swap) { state = .ready(content) }
     }
@@ -377,7 +398,7 @@ final class PRSession: Hashable {
         notice = nil
         do {
             let outcome = try await model.write(write, to: ref)
-            setDrafts(drafts, detail: outcome.posted)
+            rebuildRows(detail: outcome.posted)
             show(outcome, of: write)
             return true
         } catch {
@@ -389,7 +410,7 @@ final class PRSession: Hashable {
     func setChangedLinesOnly(_ isOn: Bool) {
         changedLinesOnly = isOn
         model.settings.set(isOn, forKey: Self.changedLinesKey)
-        setDrafts(drafts)
+        rebuildRows()
     }
 
     /// Long lines wrap in the diff's width, or stay on one row that scrolls sideways.
@@ -444,21 +465,22 @@ final class PRSession: Hashable {
             throw PRLocalRefusal.notLoaded
         }
         var goingOut: [PRDraftComment] = []
-        if case .review = target {
+        if case .review = target, !usesPendingReview {
             goingOut = drafts
         }
-        let write = target.write(
-            body: text, head: content.detail.head, drafts: goingOut, description: content.detail.body
-        )
+        let write = write(text, to: target, in: content.detail, with: goingOut)
         // Posted or saved to go, words and drafts with it: the box is done with them either way.
         let outcome = try await model.write(write, to: ref)
         show(outcome, of: write)
-        let kept = drafts.filter { !goingOut.contains($0) }
         discardText(for: target)
         if let answer = target.answer {
             model.noteAnswer(answer, on: ref, head: content.detail.head)
         }
-        setDrafts(kept, detail: outcome.posted)
+        if usesPendingReview {
+            rebuildRows(detail: outcome.posted)
+        } else {
+            setDrafts(drafts.filter { !goingOut.contains($0) }, detail: outcome.posted)
+        }
     }
 
     /// Sends a review from its box, which closes at once (`PRsModel.submitReview`): its words and line comments go with
@@ -466,6 +488,10 @@ final class PRSession: Hashable {
     func submitReview(_ text: String, to target: PRComposerTarget) throws {
         guard let content else {
             throw PRLocalRefusal.notLoaded
+        }
+        if usesPendingReview {
+            submitPendingReview(text, to: target, in: content.detail)
+            return
         }
         var goingOut: [PRDraftComment] = []
         if case .review = target {
@@ -500,41 +526,36 @@ final class PRSession: Hashable {
     func setResolved(_ resolved: Bool, thread: PullRequestDetail.Thread) async throws {
         let write = PRWrite.resolve(thread: thread.id, resolved: resolved)
         let outcome = try await model.write(write, to: ref)
-        setDrafts(drafts, detail: outcome.posted)
+        rebuildRows(detail: outcome.posted)
         show(outcome, of: write)
     }
 
-    func addDraft(_ text: String, on target: PRComposerTarget) {
-        guard case let .line(path, line, side) = target else {
-            return
-        }
-        discardText(for: target)
-        setDrafts(drafts + [PRDraftComment(id: UUID(), path: path, line: line, side: side, body: text)])
-    }
-
-    /// Line comments from elsewhere (Ask AI's drafted review), after his own.
-    func addDrafts(_ more: [PRDraftComment]) {
-        setDrafts(drafts + more)
-    }
-
-    func removeDraft(_ draft: PRDraftComment) {
-        setDrafts(drafts.filter { $0 != draft })
-    }
-
-    private func setDrafts(_ next: [PRDraftComment], detail: PullRequestDetail? = nil) {
+    /// The device's drafts on a Worker without pending reviews: kept, and drawn under their lines.
+    func setDrafts(_ next: [PRDraftComment], detail: PullRequestDetail? = nil) {
         drafts = next
         draftStore.save(next, for: ref)
         rebuildRows(detail: detail)
     }
 
-    private func rebuildRows(detail: PullRequestDetail? = nil) {
-        if let content {
-            withAnimation(AppMotion.fold) {
-                state = .ready(content.replacing(
-                    detail: detail, drafts: drafts, changedLinesOnly: changedLinesOnly, note: selectedKeyLine,
-                    longLines: longLines
-                ))
-            }
+    /// The rows again, over `detail` when a write or a read brought a newer one. `isNoted`: `PRPendingSync` has
+    /// that detail's pending review already, as when it is the one telling.
+    func rebuildRows(detail: PullRequestDetail? = nil, isNoted: Bool = false) {
+        guard let content else {
+            return
+        }
+        let shownDetail = detail ?? content.detail
+        if detail != nil, !isNoted || !shownDetail.pendingReview.isSupported {
+            pending = Self.pending(in: shownDetail, on: ref, drafts: drafts, model: model)
+        } else if shownDetail.pendingReview.isSupported {
+            pending = model.pendingSync.comments(for: ref)
+        } else {
+            pending = drafts.map(PRPendingComment.init)
+        }
+        withAnimation(AppMotion.fold) {
+            state = .ready(content.replacing(
+                detail: detail, pending: pending, changedLinesOnly: changedLinesOnly, note: selectedKeyLine,
+                longLines: longLines
+            ))
         }
     }
 

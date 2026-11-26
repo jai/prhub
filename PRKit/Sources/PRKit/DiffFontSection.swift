@@ -156,7 +156,7 @@ struct DiffFontPreview: View {
             explain: nil,
             setBarsHidden: { _ in },
             setKeyboardUp: { _ in },
-            removeDraft: { _ in },
+            pending: .none,
             reply: { _, _ in },
             setResolved: { _, _ in },
             showsFileOnTop: { _ in }
