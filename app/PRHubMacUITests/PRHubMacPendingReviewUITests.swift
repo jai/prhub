@@ -58,10 +58,15 @@ final class PRHubMacPendingReviewUITests: XCTestCase {
 
         // A click on a line of code opens its box, in the table. The Mac's table draws its code itself and gives a
         // test no row to find, so the click goes by place: the line the pending comment sits under, just over its card.
+        // The card is brought up from the window's foot first: with the diff's rows of hidden lines over it, it sat
+        // half under the review bar, and a click measured from there landed on the card (CI's picture, 2026-11-26).
+        // Two rows over the card's Edit is a line of code wherever the card's own top padding ends.
         let table = app.tables.firstMatch
+        table.scroll(byDeltaX: 0, deltaY: -160)
         let edit = app.buttons["pending-edit"].firstMatch
+        XCTAssertTrue(edit.waitForExistence(timeout: 5), "the card, after the scroll")
         table.coordinate(withNormalizedOffset: .zero)
-            .withOffset(CGVector(dx: table.frame.width / 2, dy: edit.frame.minY - table.frame.minY - 30))
+            .withOffset(CGVector(dx: table.frame.width / 2, dy: edit.frame.minY - table.frame.minY - 60))
             .click()
         let send = app.buttons["inline-composer-send"].firstMatch
         XCTAssertTrue(send.waitForExistence(timeout: 5), "the line's box")
