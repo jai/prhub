@@ -356,8 +356,8 @@ otherwise GitHub's status with `{"error": "…"}` in GitHub's own words where it
 | `merge` | `method` (`merge`, `squash`, `rebase`), `commit` | Merges, if the head is still `commit` |
 | `pending_add` | `pullRequest` (the detail's `id`), `path`, `body`, and `line` with `side`, or `file: true` | Adds a comment to the unsent review, and starts that review when there is none |
 | `pending_reply` | `thread`, `body` | A reply to a posted thread that waits in the unsent review, started when there is none |
-| `pending_edit` | `comment`, `body` | Changes a comment's words |
-| `pending_delete` | `comment` | Deletes a comment |
+| `pending_edit` | `comment`, `body` | Changes the words of a comment in the unsent review |
+| `pending_delete` | `comment` | Deletes a comment in the unsent review |
 | `pending_submit` | `event`, `body?` | Sends the unsent review. With none started, posts a review of these words alone |
 | `pending_discard` | | Deletes the unsent review and its comments. None there counts as done |
 
@@ -365,11 +365,15 @@ otherwise GitHub's status with `{"error": "…"}` in GitHub's own words where it
 github.com and every device hold the same one. The `pending_` kinds are GraphQL mutations as the person:
 
 - `pending_add` is `addPullRequestReviewThread` with the PR's id and no review id. A comment on a whole file sends
-  `file: true` and neither `line` nor `side`. A line GitHub has no place for is refused with `422`.
+  `file: true` and neither `line` nor `side`. GitHub answers no thread, and no error, for a line outside the diff's
+  hunks (an unchanged line of a changed file among them) or a file not in the diff: that is refused with `422`.
 - `pending_reply` finds the unsent review first, and starts an empty one when there is none, because a reply that
   names no review may be posted at once.
-- `pending_edit` and `pending_delete` are `updatePullRequestReviewComment` and `deletePullRequestReviewComment`.
-  GitHub applies them to any review comment the person wrote, sent or not.
+- `pending_edit` and `pending_delete` are `updatePullRequestReviewComment` and `deletePullRequestReviewComment`, and
+  act only on a comment in the person's unsent review on this PR: the Worker reads that review first. Any other
+  comment (one already sent, another PR's, one deleted since, or one past the review's first 100, which is as many as
+  the detail lists) is refused with `409` ("That comment is no longer in your unsent review. Refresh the PR.") and
+  nothing is sent to GitHub. A copy of a delete that GitHub already took answers that `409` too.
 - `pending_submit` is `submitPullRequestReview`. An empty `body` is not sent, so GitHub is not told to replace words
   the review already has. There is no write for the words alone: GitHub refuses to empty an unsent review's words.
 - A refusal says why in GitHub's words (`422`; `403` where it says the person may not; `404` for a PR or comment it

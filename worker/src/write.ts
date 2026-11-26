@@ -32,7 +32,7 @@ const PENDING_REVIEW = `query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) { pullRequest(number: $number) {
     id
     reviews(states: [PENDING], first: 1) { nodes {
-      id viewerDidAuthor comments(first: 100) { nodes { path line body } }
+      id viewerDidAuthor comments(first: 100) { nodes { id path line body } }
     } }
   } }
 }`;
@@ -44,7 +44,7 @@ const ADD_THREAD = `mutation(
     pullRequestId: $pr, path: $path, body: $body, line: $line, side: $side, subjectType: $subject
   }) { thread { id } }
 }`;
-/** Without an event the review stays unsent; with one it is sent at once. */
+/** Without an event the review stays unsent, and with the PR's id alone it is empty; with an event it is sent at once. */
 const ADD_REVIEW = `mutation($pr: ID!, $event: PullRequestReviewEvent, $body: String) {
   addPullRequestReview(input: { pullRequestId: $pr, event: $event, body: $body }) { pullRequestReview { id } }
 }`;
@@ -96,12 +96,16 @@ async function mutate(query: string, variables: object, env: Env): Promise<unkno
 }
 
 interface PendingComment {
+  id: string;
   path: string;
   line: number | null;
   body: string;
 }
 
-/** A PR's own id, and the viewer's unsent review on it with the comments it holds; null with none started. */
+/**
+ * A PR's own id, and the viewer's unsent review on it with the comments it holds; null with none started. The comments
+ * are its first 100, as many as the detail reads (`VIEWER_FIELDS`).
+ */
 interface Pending {
   pullRequest: string;
   review: { id: string; comments: PendingComment[] } | null;
@@ -134,7 +138,10 @@ async function pendingOf(repo: RepoFullName, number: number, env: Env): Promise<
   };
 }
 
-/** A thread on a line, or on the whole file. GitHub answers no thread, and no failure, for a line the diff lacks. */
+/**
+ * A thread on a line, or on the whole file. GitHub answers no thread, and no failure, for a line outside the diff's
+ * hunks (an unchanged line of a changed file among them) and for a file the diff has not got.
+ */
 async function addThread(
   pullRequest: string,
   comment: Pick<ReviewComment, "path" | "body"> & {
@@ -189,16 +196,17 @@ async function sendPending(
     await addThread(write.pullRequest, write, env);
     return;
   }
-  if (write.kind === "pending_edit") {
-    await mutate(EDIT_COMMENT, { comment: write.comment, body: write.body }, env);
-    return;
-  }
-  if (write.kind === "pending_delete") {
-    await mutate(DELETE_COMMENT, { comment: write.comment }, env);
-    return;
-  }
   const { pullRequest, review } = await pendingOf(repo, number, env);
-  if (write.kind === "pending_reply") {
+  if (write.kind === "pending_edit" || write.kind === "pending_delete") {
+    // GitHub would change any review comment the person wrote. These change one not yet sent, on this PR, and no other:
+    // a comment sent since, or one past the first 100 read here, is refused and nothing is sent.
+    if (!review?.comments.some((comment) => comment.id === write.comment)) {
+      throw new Refused(409, "That comment is no longer in your unsent review. Refresh the PR.");
+    }
+    await (write.kind === "pending_edit"
+      ? mutate(EDIT_COMMENT, { comment: write.comment, body: write.body }, env)
+      : mutate(DELETE_COMMENT, { comment: write.comment }, env));
+  } else if (write.kind === "pending_reply") {
     const started = review ?? (await startReview(pullRequest, env));
     await mutate(
       REPLY_PENDING,

@@ -333,7 +333,7 @@ test("a comment GitHub answers no thread for is refused, not taken as added", as
 });
 
 test("a refused write to the unsent review answers GitHub's own words", async () => {
-  gitHubTaking(NO_REVIEW, {
+  gitHubTaking(reviewOf([{ id: "PRRC_3" }]), {
     addPullRequestReviewThread: {
       data: { addPullRequestReviewThread: null },
       errors: [
@@ -386,29 +386,58 @@ test("a posted thread's reply, resolve and viewed mark answer a GraphQL refusal 
   assert.doesNotMatch(refused?.[1] ?? "", /Not yours/);
 });
 
-test("an edit and a delete name the comment", async () => {
-  const calls = gitHubTaking();
-  const edit = { kind: "pending_edit", comment: "PRRC_3", body: "Check the total." };
-  assert.equal(await writeToGitHub(REPO, 7, edit, env()), null);
-  assert.equal(
-    await writeToGitHub(REPO, 7, { kind: "pending_delete", comment: "PRRC_3" }, env()),
-    null,
-  );
+const HELD = {
+  id: "PRRC_3",
+  path: "src/checkout/payments.ts",
+  line: 40,
+  body: "This check went missing.",
+};
+const EDIT = { kind: "pending_edit", comment: "PRRC_3", body: "Check the total." };
+const DELETE = { kind: "pending_delete", comment: "PRRC_3" };
+
+test("an edit and a delete of a comment in the unsent review name the comment", async () => {
+  const calls = gitHubTaking(reviewOf([HELD]));
+  assert.equal(await writeToGitHub(REPO, 7, EDIT, env()), null);
+  assert.equal(await writeToGitHub(REPO, 7, DELETE, env()), null);
   assert.deepEqual(sent(calls), [
+    ["repository", { owner: "acme", name: "app", number: 7 }],
     ["updatePullRequestReviewComment", { comment: "PRRC_3", body: "Check the total." }],
+    ["repository", { owner: "acme", name: "app", number: 7 }],
     ["deletePullRequestReviewComment", { comment: "PRRC_3" }],
   ]);
+  assert.ok(calls.every((call) => call.token === "owner"));
 });
 
-test("a comment GitHub no longer has is not found", async () => {
-  gitHubTaking(NO_REVIEW, {
+test("a comment that is not in the unsent review is never edited or deleted: nothing is sent", async () => {
+  const refusal = [409, "That comment is no longer in your unsent review. Refresh the PR."];
+  // A posted comment, or one GitHub has not got: the unsent review holds another. Then no unsent review at all.
+  for (const found of [reviewOf([{ ...HELD, id: "PRRC_9" }]), reviewOf(), NO_REVIEW]) {
+    const calls = gitHubTaking(found);
+    assert.deepEqual(await errorOf(await writeToGitHub(REPO, 7, EDIT, env())), refusal);
+    assert.deepEqual(await errorOf(await writeToGitHub(REPO, 7, DELETE, env())), refusal);
+    assert.deepEqual(
+      sent(calls).map(([root]) => root),
+      ["repository", "repository"],
+    );
+  }
+});
+
+test("a comment in another person's unsent review is not the viewer's to change", async () => {
+  const found = reviewOf([HELD]);
+  found.repository.pullRequest.reviews.nodes[0]!.viewerDidAuthor = false;
+  const calls = gitHubTaking(found);
+  assert.equal((await errorOf(await writeToGitHub(REPO, 7, DELETE, env())))?.[0], 409);
+  assert.equal(sent(calls).length, 1);
+});
+
+test("a comment GitHub no longer has when the edit arrives is not found", async () => {
+  gitHubTaking(reviewOf([HELD]), {
     updatePullRequestReviewComment: {
       data: { updatePullRequestReviewComment: null },
       errors: [{ type: "NOT_FOUND", message: "Could not resolve to a node." }],
     },
   });
-  const edit = { kind: "pending_edit", comment: "PRRC_gone", body: "Check the total." };
-  assert.equal((await errorOf(await writeToGitHub(REPO, 7, edit, env())))?.[0], 404);
+  assert.equal((await errorOf(await writeToGitHub(REPO, 7, EDIT, env())))?.[0], 404);
 });
 
 const REPLY = { kind: "pending_reply", thread: "PRRT_1", body: "It is." };
