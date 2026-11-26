@@ -19,7 +19,9 @@ struct PRSampleWriteTests {
     "title":null}
     """
 
-    private func model(list: String = "review", detail: String = PRSampleWriteTests.detail) -> PRsModel {
+    private func model(
+        list: String = "review", detail: String = PRSampleWriteTests.detail, refusesLinePendingAdds: String? = nil
+    ) -> PRsModel {
         let status = PullRequestRow.Status(
             list: list, author: "mona", checks: "passing", review: "approved", merge: "clean", jaiReview: nil,
             jaiReviewedAt: nil
@@ -28,10 +30,11 @@ struct PRSampleWriteTests {
             repo: ref.repo, number: ref.number, title: "Add a thing", head: "h", revision: "sample", diff: .ready,
             detail: "sample", status: status
         )
-        let samples = PRSampleSet(
+        var samples = PRSampleSet(
             samples: [.init(row: row, detail: detail, diff: "", keyLines: nil)], mergedReviewed: [],
             mergedMine: [], answersOnPhone: true
         )
+        samples.refusesLinePendingAdds = refusesLinePendingAdds
         let client = PRViewerClient(access: .offline, transport: UnexpectedTransport())
         let model = PRsModel(client: client, samples: samples, storage: .inMemory(), network: PRNetwork(isOnline: true))
         model.featureSource = {
@@ -112,8 +115,11 @@ struct PRSampleWriteTests {
 
     // MARK: - A pending review on a sample PR
 
-    private func pendingModel() -> PRsModel {
-        model(detail: Self.detail.replacing(#""title":null}"#, with: #""title":null,"pendingReview":null}"#))
+    private func pendingModel(refusing refusal: String? = nil) -> PRsModel {
+        model(
+            detail: Self.detail.replacing(#""title":null}"#, with: #""title":null,"pendingReview":null}"#),
+            refusesLinePendingAdds: refusal
+        )
     }
 
     @Test func aSampleKeepsAPendingReviewAsGitHubWould() async throws {
@@ -159,5 +165,16 @@ struct PRSampleWriteTests {
         let model = model()
         let add = PRWrite.pendingAdd(pullRequest: "", path: "README.md", line: 3, side: .right, body: "Which step?")
         #expect(try await model.write(add, to: ref).posted?.pendingReview == .unsupported)
+    }
+
+    /// A UI test's way to a failed pending comment: a line's add is refused, a file's is taken.
+    @Test func aSampleSetCanRefuseAPendingCommentOnALine() async throws {
+        let model = pendingModel(refusing: "Its line may no longer be in the diff.")
+        let onLine = PRWrite.pendingAdd(pullRequest: "", path: "README.md", line: 3, side: .right, body: "Which step?")
+        await #expect(throws: PRWorkerError.refused("Its line may no longer be in the diff.", isPermanent: true)) {
+            try await model.write(onLine, to: ref)
+        }
+        let onFile = PRWrite.pendingAdd(pullRequest: "", path: "README.md", line: nil, side: .right, body: "Line 3: Which step?")
+        #expect(try await model.write(onFile, to: ref).posted?.pendingReview.comments.map(\.isFile) == [true])
     }
 }

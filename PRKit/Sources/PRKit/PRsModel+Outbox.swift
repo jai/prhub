@@ -45,6 +45,9 @@ extension PRsModel {
     ) async throws -> PRWriteOutcome {
         // A sample row can name a real PR. Nothing done to it may reach GitHub.
         if let samples {
+            if let refusal = samples.refusesLinePendingAdds, case .pendingAdd(_, _, .some, _, _) = write {
+                throw PRWorkerError.refused(refusal, isPermanent: true)
+            }
             guard samples.answersOnPhone, let detail = sampleWrite(write, to: ref) else {
                 throw PRLocalRefusal.sampleWrite
             }

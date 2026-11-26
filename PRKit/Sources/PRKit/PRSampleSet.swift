@@ -37,6 +37,9 @@ public struct PRSampleSet: Sendable {
     /// Set, the first review sent from its box is refused in these words, and Retry sends it: a UI test's or a
     /// recording's way to show a refusal on sample PRs.
     public var refusesFirstReview: String?
+    /// Set, a sample's pending comment on a line is refused in these words, as GitHub refuses one on a line outside the
+    /// diff; one on a whole file is taken. A UI test's way to show a pending comment that failed.
+    public var refusesLinePendingAdds: String?
     /// Set, the list opens with these words in its "Not up to date" line: a UI test's way to picture that line.
     public var notUpToDate: String?
 
