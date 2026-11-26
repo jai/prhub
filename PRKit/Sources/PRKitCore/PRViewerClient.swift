@@ -220,6 +220,25 @@ public struct PRViewerClient: Sendable {
         try await get(path: "prs/\(row.repo)/\(row.number)/diff", query: ["revision": row.revision])
     }
 
+    /// One file's text at the PR's head commit, its bytes as GitHub has them: what the diff's hunks leave out is read
+    /// from it. The Worker's own refusals come back as `PRFileProblem`. Those are answers, not failures, so they
+    /// are not reported.
+    public func file(path filePath: String, head: String, for ref: PullRequestRef) async throws -> Data {
+        let path = "prs/\(ref.repo)/\(ref.number)/file"
+        var request = try await authorized(path: path, query: ["path": filePath, "head": head])
+        // A `+` in a query is read as a space, and a file's name may have one (`PRSession+Diff.swift`).
+        if let url = request.url, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            parts.percentEncodedQuery = parts.percentEncodedQuery?.replacing("+", with: "%2B")
+            request.url = parts.url ?? url
+        }
+        let (data, response) = try await fetch(request, path: path)
+        if let problem = PRFileProblem(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: data) {
+            throw problem
+        }
+        try await check(response, body: data, path: path)
+        return data
+    }
+
     public func detail(_ row: PullRequestRow) async throws -> Data {
         try await get(path: "prs/\(row.repo)/\(row.number)/detail", query: ["version": row.detail])
     }
