@@ -22,6 +22,8 @@
     ///   for the diff's bars; with `-PRHubLongLines` it starts with a PR of lines too long for any screen
     ///   (`PRHubLongLineSamples`); with `-PRHubCompactWidth` the PRs tab lays out as in a narrow Split View; with
     ///   `-PRHubSlowReview` a review takes 10 seconds to land, so a UI test still finds its toast after a navigation;
+    ///   with `-PRHubPendingAddRefused` a pending comment added on a line is refused, as GitHub refuses one on a line
+    ///   outside the diff, so a UI test can show a failed one;
     ///   with `-PRHubFeedback` the Worker serves Feedback, over two sample chats that never leave the device
     ///   (`FeatureSamples.prHub`), with `-PRHubFeedbackPush <chat>` it opens as a tapped push of that feedback
     ///   chat does, and with `-PRHubFeedbackAsks` a third chat's agent has asked a question, so Feedback is badged.
@@ -93,6 +95,9 @@
             }
             if arguments.contains("-PRHubSlowReview") {
                 samples.reviewDelay = .seconds(10)
+            }
+            if arguments.contains("-PRHubPendingAddRefused") {
+                samples.refusesLinePendingAdds = "GitHub didn't take the comment. Its line may no longer be in the diff."
             }
             return samples
         }
