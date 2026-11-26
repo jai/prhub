@@ -62,9 +62,11 @@ final class PRKitKeyLineDraftUITests: PRHubUITestCase {
         // by the drag `PRKitKeyLinesPanelUITests` reads the list with, until its controls are clear of the tab bar.
         let copy = app.buttons["key-line-copy-\(line)"]
         let finger = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
-            .withOffset(CGVector(dx: app.buttons["key-lines-context-100"].frame.midX, dy: window.height * 0.6))
-        // The glance alone is thousands of points tall at this size. Slow drags, which carry no fling: a flung list
-        // runs past the first key line's controls between two looks.
+            .withOffset(CGVector(dx: app.buttons["key-lines-context-0"].frame.midX, dy: window.height * 0.6))
+        // The glance alone is thousands of points tall at this size. The finger goes down under the first chip, the
+        // one always in view: at this size the others are off the panel's right edge, and a drag begun there moved
+        // nothing (the bench's picture, 2026-11-26). Slow drags, which carry no fling: a flung list runs past the
+        // first key line's controls between two looks.
         for _ in 0 ..< 40 where !(copy.exists && copy.isHittable && copy.frame.maxY <= bottom) {
             finger.press(
                 forDuration: 0.05, thenDragTo: finger.withOffset(CGVector(dx: 0, dy: -400)), withVelocity: .slow,
