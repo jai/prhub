@@ -246,6 +246,11 @@ final class PRKitPendingReviewUITests: PRHubUITestCase {
 
     /// Back from the diff to the PR's page, its top in view.
     private func backToThePR() {
+        // Reading down the diff hides its bars; a short drag the other way brings them, and Back, again.
+        if !app.navigationBars.firstMatch.exists {
+            diffTable.swipeDown(velocity: .slow)
+            XCTAssertTrue(app.navigationBars.firstMatch.waitForExistence(timeout: 5), "the bar, after a drag down")
+        }
         app.back()
         XCTAssertTrue(app.buttons["pr-review-changes"].waitForExistence(timeout: 5), "the PR's page")
     }
