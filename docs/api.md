@@ -287,6 +287,8 @@ checked on every run: [`row.json`](../PRKit/Tests/PRContractFixtures/Fixtures/ro
   over a merge state that lags, and a draft is `blocked`. `mergeState` (GitHub's raw value) and `reviewDecision` stay
   for app builds that read them; new code reads `merge` and `review`. A detail stored before these fields existed lacks
   them until its PR is read again.
+- A detail's `createdAt` is when the PR was opened, as a draft or not (GitHub's `createdAt`). A detail stored before
+  it was read has none until its PR is read again. When a draft was marked ready for review is not read.
 - A detail's `checks` hold each check once: a check run again (a rerun, or a run per PR event) is its latest run, and
   the same name in two workflows is two checks. Each has `name`, `state` (`success`, `failure`, `pending`, `skipped`),
   `url`, `required` and `workflow`: the Actions workflow that ran it, or `null` for a commit status or an app's check.
