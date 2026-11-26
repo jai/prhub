@@ -287,16 +287,19 @@ struct PRKeyLineRow: View {
     }
 
     private func control(_ title: String, icon: AppIcon, id: String, action: @escaping () -> Void) -> some View {
-        Button(title, systemImage: icon.symbol, action: action)
-            .labelStyle(.iconOnly)
-            .font(.appFootnote)
-            .foregroundStyle(Color.primary)
-            // A finger's width at least, and room beside the icon when the text is large.
-            .padding(.horizontal, Space.sm)
-            .frame(minWidth: PRStyle.rowHeight, minHeight: PRStyle.rowHeight)
-            .contentShape(.rect)
-            .buttonStyle(.plain)
-            .accessibilityIdentifier(id)
+        // The whole square is the button, as the tick's is: around the button, only the icon itself took the tap.
+        Button(action: action) {
+            Label(title, systemImage: icon.symbol)
+                .labelStyle(.iconOnly)
+                .font(.appFootnote)
+                .foregroundStyle(Color.primary)
+                // A finger's width at least, and room beside the icon when the text is large.
+                .padding(.horizontal, Space.sm)
+                .frame(minWidth: PRStyle.rowHeight, minHeight: PRStyle.rowHeight)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
     }
 }
 
@@ -465,14 +468,16 @@ struct PRKeyLineNote: View {
 
     /// A control on the note's top line: its icon, quiet, a finger's width.
     private func top(_ title: String, icon: AppIcon, id: String, action: @escaping () -> Void) -> some View {
-        Button(title, systemImage: icon.symbol, action: action)
-            .labelStyle(.iconOnly)
-            .font(.appFootnote)
-            .foregroundStyle(.secondary)
-            .frame(width: PRStyle.rowHeight, height: PRStyle.rowHeight)
-            .contentShape(.rect)
-            .buttonStyle(.plain)
-            .accessibilityIdentifier(id)
+        Button(action: action) {
+            Label(title, systemImage: icon.symbol)
+                .labelStyle(.iconOnly)
+                .font(.appFootnote)
+                .foregroundStyle(.secondary)
+                .frame(width: PRStyle.rowHeight, height: PRStyle.rowHeight)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
     }
 
     private func buttons(_ reviewed: Bool, _ added: Bool, explainIcon: Bool, iconOnly: Bool) -> some View {

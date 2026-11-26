@@ -88,8 +88,20 @@ final class PRKitLabelsUITests: PRHubUITestCase {
         app.waitForStill(row("bug"))
     }
 
+    /// Close, in the panel's heading. The panel has gone once its rows take no tap: one sliding out can stay in what
+    /// a test reads for a moment after it has left the screen. A failure says where Close was and what was over it.
     private func closeTheList() {
-        app.buttons["pr-labels-close"].firstMatch.tap()
-        XCTAssertTrue(waitFor { !self.row("bug").exists }, "the panel has gone")
+        let close = app.buttons["pr-labels-close"].firstMatch
+        let bar = app.navigationBars.firstMatch
+        let place = "Close at \(close.frame), hittable \(close.isHittable); the nav bar at \(bar.frame)"
+        XCTAssertTrue(close.isHittable, place)
+        XCTAssertGreaterThanOrEqual(close.frame.width, 44, "a finger's width. \(place)")
+        XCTAssertGreaterThanOrEqual(close.frame.height, 44, "a finger's height. \(place)")
+        close.tap()
+        let bug = row("bug")
+        XCTAssertTrue(
+            waitFor { !bug.exists || !bug.isHittable },
+            "the panel has gone. \(place); the app is \(app.state == .runningForeground ? "in front" : "not in front")"
+        )
     }
 }

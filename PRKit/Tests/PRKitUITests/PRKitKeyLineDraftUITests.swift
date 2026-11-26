@@ -58,6 +58,18 @@ final class PRKitKeyLineDraftUITests: PRHubUITestCase {
     func testTheRowsControlsFitInTheLargestText() {
         openPanel(textSize: Self.largest)
         let window = app.windows.firstMatch.frame
+        // In the largest text the PR at a glance fills the panel's first screens: down to the key line's own card,
+        // by the drag `PRKitKeyLinesPanelUITests` reads the list with, until its controls are clear of the tab bar.
+        let copy = app.buttons["key-line-copy-\(line)"]
+        let finger = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: app.buttons["key-lines-context-100"].frame.midX, dy: window.height * 0.6))
+        for _ in 0 ..< 20 where !(copy.isHittable && copy.frame.maxY <= bottom) {
+            finger.press(
+                forDuration: 0.05, thenDragTo: finger.withOffset(CGVector(dx: 0, dy: -250)), withVelocity: .slow,
+                thenHoldForDuration: 0.2
+            )
+        }
+        app.waitForStill(copy)
         for name in ["key-line-copy-\(line)", "key-line-add-\(line)", "key-line-explain-\(line)"] {
             let control = app.buttons[name]
             XCTAssertTrue(control.exists && control.isHittable, name)
@@ -69,6 +81,16 @@ final class PRKitKeyLineDraftUITests: PRHubUITestCase {
             "clear of the tick"
         )
         recordScreenshot("key-line-row-largest")
+    }
+
+    /// Where the panel's own room ends: the tab bar's top on a phone, the window's foot where the tabs are at the top.
+    private var bottom: CGFloat {
+        let window = app.windows.firstMatch
+        guard window.horizontalSizeClass != .regular else {
+            return window.frame.maxY
+        }
+        let tabBar = app.tabBars.firstMatch
+        return tabBar.exists ? tabBar.frame.minY : window.frame.maxY
     }
 
     /// The checkout sample's diff, its panel open on Key lines.

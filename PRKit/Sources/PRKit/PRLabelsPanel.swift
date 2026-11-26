@@ -22,14 +22,18 @@ struct PRLabelsPanel: View {
                     .font(.appSubheadline.weight(.semibold))
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 0)
-                Button("Close", systemImage: AppIcon.close.symbol, action: session.closeLabels)
-                    .labelStyle(.iconOnly)
-                    .font(.appFootnote)
-                    .foregroundStyle(.secondary)
-                    .frame(width: PRStyle.rowHeight, height: PRStyle.rowHeight)
-                    .contentShape(.rect)
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("pr-labels-close")
+                // The whole square is the button, as a key line's tick is: with the frame around the button, only
+                // the mark itself, a dozen points across, took the tap.
+                Button(action: session.closeLabels) {
+                    Label("Close", systemImage: AppIcon.close.symbol)
+                        .labelStyle(.iconOnly)
+                        .font(.appFootnote)
+                        .foregroundStyle(.secondary)
+                        .frame(width: PRStyle.rowHeight, height: PRStyle.rowHeight)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("pr-labels-close")
             }
             .padding(.leading, Space.lg)
             Divider()
