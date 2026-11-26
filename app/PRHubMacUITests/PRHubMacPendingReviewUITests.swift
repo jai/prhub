@@ -56,8 +56,13 @@ final class PRHubMacPendingReviewUITests: XCTestCase {
         XCTAssertTrue(app.buttons["pending-delete"].firstMatch.exists, "Delete")
         picture("mac-pending-diff")
 
-        // A click on a line of code opens its box, in the table.
-        element("diff-line-28").click()
+        // A click on a line of code opens its box, in the table. The Mac's table draws its code itself and gives a
+        // test no row to find, so the click goes by place: the line the pending comment sits under, just over its card.
+        let table = app.tables.firstMatch
+        let edit = app.buttons["pending-edit"].firstMatch
+        table.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: table.frame.width / 2, dy: edit.frame.minY - table.frame.minY - 30))
+            .click()
         let send = app.buttons["inline-composer-send"].firstMatch
         XCTAssertTrue(send.waitForExistence(timeout: 5), "the line's box")
         XCTAssertTrue([send.label, send.title].contains("Add to review"), "label \(send.label), title \(send.title)")
