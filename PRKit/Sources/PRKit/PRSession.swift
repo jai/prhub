@@ -50,6 +50,9 @@ struct DiffJump: Equatable {
     let path: String
     var line: Int?
     var side: PRDiffSide?
+    /// A pending comment's id: its card is brought whole into view, its foot above the floating controls, and
+    /// nothing else moves.
+    var pending: String?
 }
 
 enum PRKeyLinesState: Sendable {
@@ -550,6 +553,12 @@ final class PRSession: Hashable {
         guard let content else {
             return
         }
+        let before = pending
+        defer {
+            if let refused = pending.newlyFailed(since: before) {
+                reveal(pending: refused)
+            }
+        }
         let shownDetail = detail ?? content.detail
         if detail != nil, !isNoted || !shownDetail.pendingReview.isSupported {
             pending = Self.pending(in: shownDetail, on: ref, drafts: drafts, model: model)
@@ -564,6 +573,17 @@ final class PRSession: Hashable {
                 longLines: longLines
             ))
         }
+    }
+}
+
+extension PRSession {
+    /// Brings a pending comment's card whole into view in the diff, when the diff is what is on screen: after GitHub
+    /// refused it, or its edit box closed, its buttons could sit under the floating controls until a scroll.
+    func reveal(pending comment: PRPendingComment) {
+        guard isDiffOnScreen else {
+            return
+        }
+        jump = DiffJump(path: comment.path, pending: comment.id)
     }
 
     func report(document: DiffDocument, milliseconds: Double) {

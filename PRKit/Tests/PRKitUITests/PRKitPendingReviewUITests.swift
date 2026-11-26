@@ -158,6 +158,33 @@ final class PRKitPendingReviewUITests: PRHubUITestCase {
         recordScreenshot("pending-refused-on-file")
     }
 
+    /// The refusal grows the card downwards, GitHub's reason and two buttons: the diff brings it whole above the key
+    /// line stepper and the panel button that float over its foot.
+    func testARefusedCommentsButtonsAreClearOfTheFloatingControls() {
+        launch(["-PRHubPendingAddRefused"])
+        openDiffAtThePendingComment()
+        openLineBox()
+        type("Sample kiwi comment", into: field)
+        app.buttons["inline-composer-send"].tap()
+        let toFile = app.buttons["pending-add-to-file"].firstMatch
+        let retry = app.buttons["pending-retry"].firstMatch
+        XCTAssertTrue(toFile.waitForExistence(timeout: 5), "Add to the file instead")
+        let stepper = app.buttons["key-line-position"]
+        let panel = app.buttons["diff-files"]
+        XCTAssertTrue(stepper.waitForExistence(timeout: 5), "the floating controls are back once the box has gone")
+        let isClear = { (button: XCUIElement) in
+            button.isHittable && !button.frame.intersects(stepper.frame) && !button.frame.intersects(panel.frame)
+        }
+        XCTAssertTrue(waitFor { isClear(toFile) && isClear(retry) }, "the card is brought above the controls")
+        app.waitForStill(toFile)
+        XCTAssertTrue(toFile.isHittable && retry.isHittable, "both take a tap")
+        for button in [toFile, retry] {
+            XCTAssertFalse(button.frame.intersects(stepper.frame), "\(button.label) is clear of the stepper")
+            XCTAssertFalse(button.frame.intersects(panel.frame), "\(button.label) is clear of the panel button")
+        }
+        recordScreenshot("pending-refused-clear")
+    }
+
     // MARK: - Steps
 
     private func launch(_ arguments: [String] = [], appearance: XCUIDevice.Appearance = .light) {

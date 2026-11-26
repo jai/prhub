@@ -90,7 +90,14 @@ extension PRSession: PRPendingFollower {
     /// The words of the pending comment being changed, while its box is open; nil while it is not.
     func editText(for comment: PRPendingComment) -> Binding<String?> {
         let key = "pending:\(comment.id)"
-        return Binding { self.writing[key] } set: { self.writing[key] = $0 }
+        return Binding { self.writing[key] } set: { words in
+            let closes = words == nil && self.writing[key] != nil
+            self.writing[key] = words
+            // The card is shorter without its box: it is brought back whole, clear of the diff's floating controls.
+            if closes {
+                self.reveal(pending: comment)
+            }
+        }
     }
 
     /// New words for a pending comment, shown at once.

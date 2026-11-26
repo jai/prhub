@@ -175,6 +175,31 @@ struct DiffRows: Sendable {
     }
 }
 
+extension DiffRows {
+    /// Where a pending comment's card is drawn: its file, and its row among that file's. Nil for one with no row in
+    /// this diff.
+    func place(ofPending id: String) -> (file: Int, row: Int)? {
+        guard let index = pending.firstIndex(where: { $0.id == id }) else {
+            return nil
+        }
+        for (file, held) in files.enumerated() {
+            if let row = held.rows.firstIndex(of: .draft(index)) {
+                return (file, row)
+            }
+        }
+        return nil
+    }
+}
+
+extension [PRPendingComment] {
+    /// The comment GitHub has refused since `before`: one that was there and not refused, and now says why it was.
+    func newlyFailed(since before: [PRPendingComment]) -> PRPendingComment? {
+        first { comment in
+            comment.failure != nil && before.contains { $0.id == comment.id && $0.failure == nil }
+        }
+    }
+}
+
 extension DiffRows.Row {
     /// The line of the document a code row draws, whichever piece of it.
     var codeLine: Int? {

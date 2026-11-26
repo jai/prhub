@@ -689,7 +689,9 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
   (`PRButtonStyle(.plain)`), then the words (`PRCommentText`). Edit opens the words in the card's own `InlineComposer`,
   with Save, as the description's does. It is saved on the device and shown at once, then sent to GitHub's pending
   review. One GitHub refused keeps its words and says why under them (`appFootnote`, `toneBad`), with Try again and,
-  for a line comment, Add to the file instead (`PRButtonStyle(.secondary)`). It sits under its line in the diff, or
+  for a line comment, Add to the file instead (`PRButtonStyle(.secondary)`). When GitHub refuses one, and when its box
+  closes, the diff brings its card whole into view, its foot above the room kept under the code for the floating
+  controls (`DiffStyle.controlsClearance`, on the phone, the iPad and the Mac). It sits under its line in the diff, or
   under the thread it replies to; one with no line in the diff (on a file, outdated) is listed on the PR's page under
   the review bar (`PRPendingList`, "Pending comments · N"), with its path. Over the review bar and in its box,
   "N pending comments will go with your review" (`appFootnote`, `toneWaiting`) counts GitHub's too, and a line in

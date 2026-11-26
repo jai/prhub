@@ -11,6 +11,9 @@ import SwiftUI
 /// the font is `DiffMetrics`.
 enum DiffStyle {
     static let threadInset: CGFloat = 8
+    /// Under the diff's last row, and under a card brought into view: room for the key line stepper and the panel
+    /// button that float over the code's foot.
+    static let controlsClearance: CGFloat = 60
     static let lineInset: CGFloat = 6
     static let lineNumberGap = Space.sm
     static let selectedLine = PlatformColor.systemYellow.withAlphaComponent(0.32)

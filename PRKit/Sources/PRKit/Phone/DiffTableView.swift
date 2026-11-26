@@ -13,7 +13,6 @@
         static let hostedIdentifier = "hosted"
         /// Past this many rows, a file folds with a cross-dissolve: animating each row out would drop frames.
         private static let animatedFoldLimit = 1500
-        private static let controlsClearance: CGFloat = 60
 
         let table = ReportingTableView()
         /// Taken with each new `rows`: a sync brings a new diff, and rows of it index lines this one may not have.
@@ -81,7 +80,7 @@
             contentInsetAdjustmentBehavior = .never
             table.contentInsetAdjustmentBehavior = .never
             // Room to read the last line above the floating controls.
-            table.contentInset.bottom = Self.controlsClearance
+            table.contentInset.bottom = DiffStyle.controlsClearance
             let belowRows = UITapGestureRecognizer(target: self, action: #selector(tappedBelowRows))
             belowRows.cancelsTouchesInView = false
             table.addGestureRecognizer(belowRows)
@@ -225,6 +224,10 @@
                 return
             }
             lastJump = jump
+            if let pending = jump.pending {
+                reveal(pending: pending)
+                return
+            }
             guard let section = rows.files.firstIndex(where: { $0.path == jump.path }) else {
                 return
             }

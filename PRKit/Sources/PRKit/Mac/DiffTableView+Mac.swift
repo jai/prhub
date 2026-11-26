@@ -88,6 +88,9 @@
             // The code stops at its edges, as on the phone: a sideways rubber band would pull it off the window's edge.
             horizontalScrollElasticity = .none
             drawsBackground = false
+            // Room to read the last line above the floating controls, as the phone's table leaves.
+            automaticallyAdjustsContentInsets = false
+            contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: DiffStyle.controlsClearance, right: 0)
             let column = NSTableColumn(identifier: .init("diff"))
             table.addTableColumn(column)
             table.headerView = nil
@@ -189,6 +192,10 @@
                 return
             }
             lastJump = jump
+            if let pending = jump.pending {
+                reveal(pending: pending)
+                return
+            }
             guard let section = rows.files.firstIndex(where: { $0.path == jump.path }) else {
                 return
             }
@@ -203,8 +210,29 @@
             }
         }
 
+        /// A pending comment's card, whole: the least scroll that shows all of it, its foot above the room kept for the
+        /// floating controls. Once the card has its new height: GitHub's reason and its buttons fold in, and a closed
+        /// box folds away.
+        private func reveal(pending id: String) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                guard let self, let place = rows.place(ofPending: id),
+                      let index = items.firstIndex(of: .row(section: place.file, row: place.row))
+                else {
+                    return
+                }
+                let card = table.rect(ofRow: index)
+                let seen = contentView.bounds
+                if card.maxY > seen.maxY - DiffStyle.controlsClearance {
+                    scrollTable(toY: min(card.minY, card.maxY + DiffStyle.controlsClearance - seen.height))
+                } else if card.minY < seen.minY {
+                    scrollTable(toY: card.minY)
+                }
+            }
+        }
+
         func scrollTable(toY top: CGFloat) {
-            let end = max(table.bounds.height - contentView.bounds.height, 0)
+            // As far as the last row's foot above the room kept for the floating controls.
+            let end = max(table.bounds.height + contentInsets.bottom - contentView.bounds.height, 0)
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.3
                 contentView.animator().setBoundsOrigin(NSPoint(x: 0, y: min(max(top, 0), end)))

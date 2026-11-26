@@ -90,6 +90,23 @@
         }
     }
 
+    extension DiffTableContainer {
+        /// A pending comment's card, whole: the least scroll that shows all of it, its foot above the room kept for the
+        /// floating controls (the table's bottom inset). Once the card has its new height: GitHub's reason and its
+        /// buttons fold in, and a closed box folds away.
+        func reveal(pending id: String) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                guard let self, let place = rows.place(ofPending: id), place.file < table.numberOfSections,
+                      place.row < table.numberOfRows(inSection: place.file)
+                else {
+                    return
+                }
+                table.layoutIfNeeded()
+                table.scrollToRow(at: IndexPath(row: place.row, section: place.file), at: .none, animated: true)
+            }
+        }
+    }
+
     // MARK: - The bars and the keyboard
 
     extension DiffTableContainer {
