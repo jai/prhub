@@ -99,10 +99,15 @@ public struct PRSampleSet: Sendable {
     /// The stored detail with `write` applied as GitHub would show it, signed by `login`. A review or a comment joins
     /// the conversation; an approval or a change request is the decision and its reviewer's state; a line comment,
     /// alone or sent with a review, starts a thread on its line, which takes replies and resolves; an edit is the
-    /// description; a merge leaves the PR merged. Other writes leave it as it was.
+    /// description; a merge leaves the PR merged. A detail that carries `pendingReview` keeps a pending review as
+    /// GitHub would: comments are added to it, changed and removed, and its submit posts them with the review. Other
+    /// writes leave it as it was.
     public static func applying(_ write: PRWrite, to detail: Data, login: String, now: Date = .now) -> Data {
         guard var object = (try? JSONSerialization.jsonObject(with: detail)) as? [String: Any] else {
             return detail
+        }
+        if let pending = applyingPending(write, to: object, login: login, now: now) {
+            return (try? JSONSerialization.data(withJSONObject: pending)) ?? detail
         }
         let author: [String: Any] = ["login": login, "avatarUrl": NSNull()]
         let stamp = now.ISO8601Format()
@@ -148,10 +153,82 @@ public struct PRSampleSet: Sendable {
         return (try? JSONSerialization.data(withJSONObject: object)) ?? detail
     }
 
+    /// `detail` after a write to its pending review; nil for any other write. A detail without the `pendingReview`
+    /// key is an older Worker's, and stays as it was.
+    private static func applyingPending(
+        _ write: PRWrite, to detail: [String: Any], login: String, now: Date
+    ) -> [String: Any]? {
+        var object = detail
+        switch write {
+        case let .pendingAdd(_, path, line, side, body):
+            let added: [String: Any] = [
+                "id": "sample-\(UUID().uuidString)", "path": path, "line": line ?? NSNull(), "side": side.rawValue,
+                "body": body, "createdAt": now.ISO8601Format(), "outdated": false, "thread": NSNull(),
+                "file": line == nil,
+            ]
+            object.changePending { $0 + [added] }
+        case let .pendingEdit(comment, body):
+            object.changePending { comments in
+                comments.map { $0["id"] as? String == comment ? $0.merging(["body": body]) { _, new in new } : $0 }
+            }
+        case let .pendingDelete(comment):
+            object.changePending { comments in comments.filter { $0["id"] as? String != comment } }
+        case let .pendingSubmit(event, body):
+            return submittingPending(event, body: body, in: object, login: login, now: now)
+        case .pendingDiscard:
+            if object["pendingReview"] != nil {
+                object["pendingReview"] = NSNull()
+            }
+        default:
+            return nil
+        }
+        return object
+    }
+
+    /// The review posted with every pending comment: a reply joins its thread, the rest each start one, on their
+    /// line or, with none, on their file.
+    private static func submittingPending(
+        _ event: PRReviewEvent, body: String, in detail: [String: Any], login: String, now: Date
+    ) -> [String: Any] {
+        var object = detail
+        let comments = object.pendingComments
+        if object["pendingReview"] != nil {
+            object["pendingReview"] = NSNull()
+        }
+        let review = PRWrite.review(event, body: body, commit: "", comments: [])
+        if let data = try? JSONSerialization.data(withJSONObject: object),
+           let posted = try? JSONSerialization.jsonObject(with: applying(review, to: data, login: login, now: now))
+        {
+            object = posted as? [String: Any] ?? object
+        }
+        for pending in comments {
+            let said: [String: Any] = [
+                "id": "sample-\(UUID().uuidString)", "author": ["login": login, "avatarUrl": NSNull()],
+                "body": pending["body"] as? String ?? "", "createdAt": now.ISO8601Format(),
+            ]
+            if let thread = pending["thread"] as? String {
+                object.changeThread(thread) { $0.append([said], to: "comments") }
+            } else {
+                object.append([[
+                    "id": "sample-\(UUID().uuidString)", "isResolved": false, "isOutdated": false,
+                    "viewerCanResolve": true, "viewerCanUnresolve": true, "path": pending["path"] as? String ?? "",
+                    "line": pending["line"] ?? NSNull(), "diffSide": pending["side"] as? String ?? "RIGHT",
+                    "comments": ["nodes": [said]],
+                ]], to: "reviewThreads")
+            }
+        }
+        return object
+    }
+
     /// A sample's row after `write`, as the Worker's next list would have it: an approval or a change request is the
     /// PR's review. Other writes leave the row as it was; a merge takes it off the open list (`PRsModel`).
     public static func applying(_ write: PRWrite, to row: PullRequestRow) -> PullRequestRow {
-        guard case let .review(event, _, _, _) = write, event != .comment, let status = row.status else {
+        let event: PRReviewEvent
+        switch write {
+        case let .review(sent, _, _, _), let .pendingSubmit(sent, _): event = sent
+        default: return row
+        }
+        guard event != .comment, let status = row.status else {
             return row
         }
         return row.with(status.with(review: event == .approve ? "approved" : "changes_requested"))
@@ -164,6 +241,23 @@ private extension [String: Any] {
         var holder = self[key] as? [String: Any] ?? [:]
         holder["nodes"] = (holder["nodes"] as? [Any] ?? []) + items
         self[key] = holder
+    }
+
+    /// The pending review's comments; none where the detail has no pending review.
+    var pendingComments: [[String: Any]] {
+        (self["pendingReview"] as? [String: Any])?["comments"] as? [[String: Any]] ?? []
+    }
+
+    /// Changes the pending review's comments, on a detail that carries the key: the first comment starts the review,
+    /// and the last one's removal ends it, as on GitHub.
+    mutating func changePending(_ change: ([[String: Any]]) -> [[String: Any]]) {
+        guard let held = self["pendingReview"] else {
+            return
+        }
+        var review = held as? [String: Any] ?? ["id": "sample-\(UUID().uuidString)", "body": ""]
+        let comments = change(pendingComments)
+        review["comments"] = comments
+        self["pendingReview"] = comments.isEmpty ? NSNull() : review
     }
 
     /// Changes the review thread with this id, where the detail has it.
