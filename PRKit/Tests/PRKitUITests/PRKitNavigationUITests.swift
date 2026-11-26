@@ -160,9 +160,13 @@ final class PRKitNavigationUITests: PRHubUITestCase {
 
     // MARK: - Helpers
 
+    /// Key repeat is off in the app these tests launch. A key that is held repeats its shortcut, as on any iPad, and
+    /// XCUITest does not say how long it holds a key: on a slow Mac a typed ⌥⌘0 was held past the repeat delay, the
+    /// panel's shortcut fired twice, and the panel was back where it began (run 45746123293; 1 press in 400 on
+    /// GitHub's Macs). The arguments are the system's own switch, for this launch only.
     private func launch(_ arguments: [String] = []) {
         app.terminate()
-        app.launchArguments = ["-PRHubPaired"] + arguments
+        app.launchArguments = ["-PRHubPaired", "-KeyRepeatEnabled", "<false/>"] + arguments
         app.launch()
     }
 
