@@ -56,6 +56,10 @@ struct PRScreen: View {
                 showDiff: { opener?.showDiff(of: session) }, reviewChanges: { opener?.reviewChanges(of: session) }
             )
             .heldRefreshable { [session] in await session.pullToRefresh() }
+            // The repo's labels, in the panel the diff's files are in: over the page, in place (DESIGN.md).
+            .sidePanel(isPresented: session.labelEditing.isShowing, close: session.closeLabels) {
+                PRLabelsPanel(session: session)
+            }
         }
         .id(ObjectIdentifier(session))
         .navigationTitle(session.label)

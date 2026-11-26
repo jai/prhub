@@ -166,6 +166,7 @@ all of them are in scope. A new screen adds a row here and a step in `PRHubScree
 | Review shortcut | PRs → a row's Review button, its swipe right, or its long-press menu | `PrListBlock`, `PRSwipeRow`, `PullRequestOpener` |
 | PR filter | PRs → Filter | `PRFilterPanel`, `PRSectionTitle` |
 | PR description | PRs → a PR: its title, who it is from, its tickets, then the way into its diff and the review buttons, the PR at a glance, status, description and conversation | `PRScreen`, `PRDescriptionView`, `ObjectReferenceLines`, `PRChangesCard`, `PRReviewActions`, `PRKeyLinesSummaryCard`, `PRStatusCard`, `.prCard()`, `PRCommentText`, `PRThreadCard` |
+| PR labels | PRs → a PR → Labels, first in the header's row of chips: the repo's labels in a panel over the page, each put on the PR or taken off by a tap | `PRLabelsPanel`, `sidePanel`, `StatusChip`, `PRCheckCircle` |
 | Review in the background | PRs → a PR → Approve, Request changes or Comment → send: the box closes, the toast follows the review | `PRReviewComposer`, `PRReviewToastView` |
 | Ask AI | PRs → a PR → the toolbar, a line's comment box, or a key line's Explain | `PRAskSheet`, `ChatView`, `SessionComposer` |
 | Ask AI at work | a chat going on, or answered, after its sheet closed: the PR's Ask AI tinted (a badge once answered), a bar above the tabs on that PR's pages, a line on its row in the list; any number of PRs at once | `PRAskToolbarButton`, `PRAskStatusBar`, `PRAskLine`, `PRAskActivity` |
@@ -511,7 +512,7 @@ parts:
   byline:  { holds: "PRByline: PRAvatar and who, and for a bot's PR the person, 'via' and a groundFill capsule with the agent's PRAvatar, its name and '· <login>'", font: appCaption }
   branch:  { holds: "'<branch> → <base>'", font: caption2 monospaced quiet, lines: 1, truncates: middle, starts: under the name }
   tickets: { holds: "ObjectReferenceLines of TicketLine, awaitsLinear false, each a row high (44 pt) reaching into the header's gaps", optional: true }
-  labels:  { holds: "an AI trash StatusChip in toneBad when the summary found the description reads as AI slop, then a StatusChip per label in its GitHub colour, darkened on light and lightened on dark until it reads at 4.5:1 (GitHubLabelColor)", scrolls sideways, optional: true }
+  labels:  { holds: "Labels (PRButtonStyle(.secondary), AppIcon.labels), which opens the repo's labels (Other parts, A PR's labels) and stays first whether the PR has any; then an AI trash StatusChip in toneBad when the summary found the description reads as AI slop, then a StatusChip per label in its GitHub colour, darkened on light and lightened on dark until it reads at 4.5:1 (GitHubLabelColor). The chips scroll sideways beside the button", optional: "the button goes on a Worker with no labels to change; the chips stay" }
 rules:
   - Who: the author's profile name, else their login. A bot's PR leads with the person it was opened for when the
     Worker found one: their face and first name, "via", then the chip. The chip is the agent Linear delegated the
@@ -672,6 +673,17 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
   right closes it. In place: no sheet. A diff's Files and Key lines (`PRNavigator`) use it. It opens on Key lines when
   the PR offers them, else on Files. Where a regular width has room (`PanelStyle`), the diff's panel is a column beside
   the code instead, open until its button puts it away, and a pick in it keeps it open.
+- **A PR's labels:** `PRLabelsPanel`, in the `sidePanel` over the PR's page, the same on the phone, the iPad and the
+  Mac, opened by Labels in the header. A heading (Labels, `appSubheadline` semibold) with Close, a `.prField` that
+  narrows the list by a label's name or what it is for, then the repo's labels, a row each, a hairline between: its
+  tick first (`PRCheckCircle`, as a file's viewed mark in Files), its `StatusChip` in the colour the page draws it in,
+  and what it is for under it (`appCaption`, quiet). A tap on a row puts the label on the PR or takes it off: the tick
+  and the header's chip change at once, the change goes as any write does, and one GitHub refuses is put back with
+  GitHub's words over the list (`appFootnote`, `toneBad`). VoiceOver reads a row "bug, on" or "bug, off". Where the
+  person can't change the repo's labels the rows are read and not pressed, under "You can't change labels on this
+  repo." (`appCaption`, quiet). While they are read: a spinner and "Reading the labels…"; with none, "This repo has
+  no labels"; a failed read, its reason and Try again; with no network, a line in `toneWaiting`. A Worker with no
+  labels route says "Labels can't be changed here.", and the header's button goes.
 - **A pending comment:** `PRPendingCard`, a card (`prCard`) for one comment of the review not submitted yet, GitHub's or
   the device's: a `StatusChip` "Pending" in `toneWaiting` (and "Outdated" where GitHub says so), then Edit and Delete
   (`PRButtonStyle(.plain)`), then the words (`PRCommentText`). Edit opens the words in the card's own `InlineComposer`,

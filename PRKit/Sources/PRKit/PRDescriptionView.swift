@@ -151,22 +151,39 @@ struct PRDescriptionView: View {
         }
     }
 
-    /// GitHub's labels, after a red AI trash chip when the summary found the description reads as AI slop.
+    /// Labels, the way in to putting them on and taking them off, first, where it stays whether the PR has any; then a
+    /// red AI trash chip when the summary found the description reads as AI slop, and GitHub's labels with what was
+    /// changed here already on them.
     @ViewBuilder private var labels: some View {
         let isSlop = session.summary?.isSlop == true
-        if isSlop || !detail.labels.isEmpty {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Space.xs) {
-                    if isSlop {
-                        StatusChip(text: "AI trash", tint: Color.toneBad)
-                            .accessibilityIdentifier("pr-ai-slop")
+        let shown = session.shownLabels(in: detail)
+        let hasChips = isSlop || !shown.isEmpty
+        if hasChips || session.offersLabelEditing {
+            HStack(spacing: Space.sm) {
+                if session.offersLabelEditing {
+                    Button("Labels", systemImage: AppIcon.labels.symbol) { session.openLabels() }
+                        .buttonStyle(PRButtonStyle(.secondary))
+                        .accessibilityIdentifier("pr-labels-edit")
+                }
+                if hasChips {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: Space.xs) {
+                            if isSlop {
+                                StatusChip(text: "AI trash", tint: Color.toneBad)
+                                    .accessibilityIdentifier("pr-ai-slop")
+                            }
+                            ForEach(shown) { label in
+                                StatusChip(
+                                    text: label.name,
+                                    tint: GitHubLabelColor(hex: label.color).readable(dark: colorScheme == .dark).color
+                                )
+                                .accessibilityIdentifier("pr-label-chip-\(label.name)")
+                                .transition(.fold)
+                            }
+                        }
                     }
-                    ForEach(detail.labels) { label in
-                        StatusChip(
-                            text: label.name,
-                            tint: GitHubLabelColor(hex: label.color).readable(dark: colorScheme == .dark).color
-                        )
-                    }
+                } else {
+                    Spacer(minLength: 0)
                 }
             }
         }

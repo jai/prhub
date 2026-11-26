@@ -96,6 +96,8 @@ public enum AppIcon: String {
     case openExternally = "arrow.up.right"
     case taskDone = "checkmark.square.fill"
     case taskOpen = "square"
+    /// A PR's labels: the way in to putting them on and taking them off.
+    case labels = "tag"
     case fold = "chevron.down"
     case close = "xmark"
 
