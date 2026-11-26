@@ -1,5 +1,7 @@
 # test-ui-prkit (make test-ui-prkit): PRKit's UI layer, the app-hosted rendering plan and then the UI plan, on an iPhone
 # and an iPad Simulator. In each prkit and ios release (release.yml), after the cheaper applicable ios and PRKit checks pass.
+# A dispatch runs the whole of it on a branch (Jai, 2026-11-26): a change to the diff is proven here before it
+# lands, on GitHub's Macs, not by hand on a Mac of Jai's.
 # Prepare: mise (XcodeGen) and a Simulator of the job's own. Test: make test-ui-prkit on it, which also generates the
 # project. Keep: result bundles only on failure, for 3 days. Clean up: delete the job's Simulator
 # and logs. GitHub discards the VM and all remaining job products afterward (docs/workflow.md, "Disk use").
@@ -7,6 +9,7 @@ name: test-ui-prkit
 
 on:
   workflow_call:
+  workflow_dispatch:
 
 permissions:
   contents: read

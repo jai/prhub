@@ -6,7 +6,7 @@ PRHub's CI follows Jai's personal CI standard ([personal-ci-standard.md](https:/
 
 - **GitHub-hosted Ubuntu** runs everything that needs no Mac: `lint-ios` and `lint-prkit` (on `ubuntu-24.04`: SwiftLint's Linux build needs libxml2.so.2), `lint-worker`, `lint-workflows`, `test-unit-worker`, `test-integration-worker`, `generate-release-candidate`, the `release` job of `release`, `deploy-worker` and `notify-update-available`. GitHub discards each VM after its job.
 - **GitHub-hosted Macs** (`runs-on: xcode-27`) run the Mac work: `build-ios`, the `swift test` workflows, `test-ui-ios`, `test-ui-prkit` and `test-ui-mac`. GitHub discards each VM after its job (see "Disk use").
-- Only pushes to `main`, RC tags, the clock and a dispatch of `test-ui-mac` start workflows. No workflow runs on a pull request, so no fork's code reaches the home lab.
+- Only pushes to `main`, RC tags, the clock and a dispatch of `test-ui-mac` or `test-ui-prkit` (on a branch, to prove a change before it lands) start workflows. No workflow runs on a pull request, so no fork's code reaches the home lab.
 - **This repo is public, so every job runs on GitHub's runners, never on Jai's Macs** (Jai, 2026-11-25). That includes the Mac UI tests, which control the screen of the Mac they run on.
 
 ## Components
