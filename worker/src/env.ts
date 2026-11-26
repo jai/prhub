@@ -143,6 +143,8 @@ export interface Env extends LimitVars {
    * and the three bindings below; without any of them the Worker answers 503 rather than act as a self-hosted one.
    */
   HOSTED?: string;
+  /** Optional shared secret for trusted same-account Service Bindings (`X-PRHub-Service-Token` + `X-PRHub-User-Id`). */
+  SERVICE_TOKEN?: string;
   GITHUB_APP_CLIENT_ID?: string;
   GITHUB_APP_CLIENT_SECRET?: string;
   /**

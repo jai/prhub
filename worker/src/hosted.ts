@@ -830,6 +830,53 @@ export async function authenticate(
       };
 }
 
+function timingSafeEqualString(a: string, b: string): boolean {
+  const encoder = new TextEncoder();
+  const ab = encoder.encode(a);
+  const bb = encoder.encode(b);
+  if (ab.byteLength !== bb.byteLength) {
+    return false;
+  }
+  let diff = 0;
+  for (let i = 0; i < ab.byteLength; i += 1) {
+    diff |= ab[i]! ^ bb[i]!;
+  }
+  return diff === 0;
+}
+
+/**
+ * Delegated authentication for trusted same-account Workers bound via Cloudflare Service Binding:
+ * `X-PRHub-Service-Token` must match `SERVICE_TOKEN` and `X-PRHub-User-Id` names the signed-in GitHub user id.
+ * Returns null when the header is absent so normal hosted session authentication runs.
+ */
+export async function authenticateService(
+  request: Request,
+  env: Env,
+  services: Pick<HostedServices, "account">,
+): Promise<{ env: Env; userId: string } | { answer: Response } | null> {
+  const sent = request.headers.get("X-PRHub-Service-Token");
+  if (sent === null) {
+    return null;
+  }
+  if (!isSet(env.SERVICE_TOKEN) || !timingSafeEqualString(sent, env.SERVICE_TOKEN)) {
+    return { answer: errorAnswer(401, "unauthorized", "invalid service token") };
+  }
+  const userId = (request.headers.get("X-PRHub-User-Id") ?? "").trim();
+  if (!/^\d{1,20}$/.test(userId)) {
+    return { answer: errorAnswer(400, "invalid_user", "missing or invalid X-PRHub-User-Id") };
+  }
+  const token = await services.account(userId).accessToken();
+  if (token.kind === "ok") {
+    return { env: userEnv(env, token), userId };
+  }
+  return {
+    answer:
+      token.kind === "signed_out"
+        ? errorAnswer(401, "signed_out", "sign in with GitHub again")
+        : errorAnswer(503, "github_unavailable", "GitHub could not be asked; try again"),
+  };
+}
+
 /** How long `GET /device/config` waits for a read of the installations before it answers with the ones it holds. */
 const READ_NOW_WAIT_MS = 8_000;
 

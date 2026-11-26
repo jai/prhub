@@ -59,6 +59,7 @@ import { Installation, IpLimit, SignIn, UserAccount } from "./account";
 import { accountOf } from "./account-of.ts";
 import {
   authenticate,
+  authenticateService,
   configInstallations,
   hostedAccountConfig,
   hostedMode,
@@ -737,6 +738,19 @@ async function serveHosted(
   );
   if (open) {
     return open;
+  }
+  const serviceAuth = await authenticateService(request, env, services);
+  if (serviceAuth !== null) {
+    if ("answer" in serviceAuth) {
+      return serviceAuth.answer;
+    }
+    const { pathname } = new URL(request.url);
+    if (pathname === "/prs/states" && request.method === "POST") {
+      return statesRoute(request, reviewWeek(serviceAuth.env), (refs, week) =>
+        prIndex(serviceAuth.env).states(refs, week),
+      );
+    }
+    return serveAuthorized(request, serviceAuth.env, context);
   }
   const isConfig = new URL(request.url).pathname === "/device/config" && request.method === "GET";
   const auth = await authenticate(request, env, services);
