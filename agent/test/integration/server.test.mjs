@@ -96,6 +96,12 @@ test(
     const lines = await asked({ progress: true });
     assert.equal(lines.headers.get("content-type"), "application/x-ndjson");
     assert.equal(typeof (await lines.json()).error, "string");
+    const reply = await fetch(`http://127.0.0.1:${port}/reply`, {
+      method: "POST",
+      body: JSON.stringify({ id: "nobody-asked", text: "x", isError: false }),
+    });
+    assert.equal(reply.status, 404, "a reply to a question no turn asked settles nothing");
+    assert.deepEqual(await reply.json(), { ok: false });
     const plain = await asked({});
     assert.equal(plain.headers.get("content-type"), "application/json");
     assert.equal(typeof (await plain.json()).error, "string");

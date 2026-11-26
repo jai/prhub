@@ -330,6 +330,16 @@ export const INPUTS = {
       .default([]),
   },
   github_act: { action: z.record(z.string(), z.unknown()).describe("One action, as above") },
+  linear_issue: {
+    key: z
+      .string()
+      .regex(/^[A-Za-z][A-Za-z0-9]{0,9}-\d+$/)
+      .describe("The ticket's key, such as ENG-12"),
+    comments: z.boolean().optional().describe("true to read the ticket's comments too"),
+  },
+  linear_search: {
+    text: z.string().min(1).max(200).describe("A ticket's key, or words to look for"),
+  },
   linear_act: {
     issue: z
       .string()

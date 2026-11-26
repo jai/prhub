@@ -69,6 +69,7 @@ export async function askContainer<Answer extends { error?: string }>(
   wait: (ms: number) => Promise<void> = pause,
   instance = "ai",
   doing?: (activity: string) => void,
+  needs?: Needs,
 ): Promise<Answer> {
   const accounts = Math.max(1, subscriptionAccounts(env));
   const first = currentAccount % accounts;
@@ -77,11 +78,12 @@ export async function askContainer<Answer extends { error?: string }>(
     const account = (first + tried) % accounts;
     answer = await onContainer<Answer>(
       path,
-      JSON.stringify({ ...body, account, ...(doing ? { progress: true } : {}) }),
+      JSON.stringify({ ...body, account, ...(doing || needs ? { progress: true } : {}) }),
       env.AGENT!,
       wait,
       instance,
       doing,
+      needs,
     );
     if (!answer.error || !ACCOUNT_SPENT.test(answer.error)) {
       currentAccount = account;
@@ -101,18 +103,42 @@ export async function askContainer<Answer extends { error?: string }>(
 const ACTIVITY_LENGTH = 80;
 
 /**
+ * What a turn's tools may ask of the Worker while the turn runs: a read that needs a key the container never holds
+ * (`linear-read.ts`). The container asks in a line of its answer, `{"need": {"id", "linear": {…}}}`, and the Worker
+ * answers with `POST /reply` to the same container.
+ */
+export type Needs = (asked: unknown) => Promise<{ text: string; isError: boolean }>;
+
+/** A line's need, `{id, linear}`; null for any other line. */
+function needIn(line: string): { id: string; linear: unknown } | null {
+  try {
+    const { need } = JSON.parse(line) as { need?: { id?: unknown; linear?: unknown } };
+    return need && typeof need.id === "string" ? { id: need.id, linear: need.linear } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The answer's text. A container asked for `progress` answers in lines (`application/x-ndjson`): `{"activity"}` as the
  * agent works, the answer last. One from before that answers the JSON alone.
  */
 export async function answerText(
   response: Response,
   doing?: (activity: string) => void,
+  /** Told each need as its line comes; the turn's lines are read on meanwhile. */
+  need?: (asked: { id: string; linear: unknown }) => void,
 ): Promise<string> {
   if (!response.headers.get("content-type")?.startsWith("application/x-ndjson") || !response.body) {
     return response.text();
   }
   let rest = "";
   const hear = (line: string) => {
+    const asked = needIn(line);
+    if (asked) {
+      need?.(asked);
+      return true;
+    }
     const said = activityIn(line);
     if (said === null) {
       return false;
@@ -153,18 +179,38 @@ async function onContainer<Answer extends { error?: string }>(
   wait: (ms: number) => Promise<void>,
   instance: string,
   doing?: (activity: string) => void,
+  needs?: Needs,
 ): Promise<Answer> {
   let failure = "";
   for (let tryNumber = 1; tryNumber <= CONTAINER_TRIES; tryNumber++) {
     let response: Response;
     let text: string;
     try {
-      response = await agent.get(agent.idFromName(instance)).fetch(`http://agent${path}`, {
+      const container = agent.get(agent.idFromName(instance));
+      response = await container.fetch(`http://agent${path}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body,
       });
-      text = await answerText(response, doing);
+      text = await answerText(
+        response,
+        doing,
+        needs &&
+          (({ id, linear }) => {
+            // Answered beside the turn, which waits on it: a read that fails is told as one, never left hanging.
+            void needs(linear)
+              .catch(() => ({ text: "Linear could not be read.", isError: true }))
+              .then((result) =>
+                container.fetch("http://agent/reply", {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ id, ...result }),
+                }),
+              )
+              .then((replied) => replied.body?.cancel())
+              .catch(() => {});
+          }),
+      );
     } catch (error) {
       // The container went away mid-run, as a deploy replaces it: the run goes again in a new one.
       failure = String(error instanceof Error ? error.message : error);

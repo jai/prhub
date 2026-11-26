@@ -21,6 +21,7 @@ import {
   githubApiHandler,
   LINEAR_ACTS,
   linearActHandler,
+  linearReadHandler,
   reply,
 } from "./replies.mjs";
 import {
@@ -138,10 +139,13 @@ export function readTools({
   onDraft = () => {},
   onAct = () => {},
   onLinear = () => {},
+  askWorker = null,
 }) {
   const draftReview = draftReviewTool(onDraft);
   const act = actTool(onAct);
   const linear = linearActTool(onLinear);
+  // Linear's reads exist only when the Worker said it answers them: it holds the key, this process never does.
+  const linearReads = askWorker ? linearReadTools(askWorker) : [];
   const dirOf = (repo) => (repo === undefined ? prDir : `${clones}/${repo}`);
   const git = tool(
     "git",
@@ -166,7 +170,7 @@ export function readTools({
   if (!token) {
     return createSdkMcpServer({
       name: SERVER,
-      tools: [git, draftReview, act, linear],
+      tools: [git, draftReview, act, linear, ...linearReads],
       alwaysLoad: true,
     });
   }
@@ -244,7 +248,7 @@ export function readTools({
   );
   return createSdkMcpServer({
     name: SERVER,
-    tools: [git, cloneRepo, githubApi, draftReview, act, linear],
+    tools: [git, cloneRepo, githubApi, draftReview, act, linear, ...linearReads],
     alwaysLoad: true,
   });
 }
@@ -279,6 +283,24 @@ A line comment must be on a line the diff shows.`,
     INPUTS.github_act,
     actHandler(onAct),
   );
+}
+
+/** Reading Linear: both tools ask the Worker, which runs a fixed query with the reviewer's own key. Neither writes. */
+function linearReadTools(askWorker) {
+  return [
+    tool(
+      "linear_issue",
+      "Reads one Linear ticket by its key, such as ENG-12, read only: title, description, state, owner (assignee), the agent it is delegated to, labels, parent, sub-issues and linked pull requests. With `comments` true, its newest comments too. The PR's own tickets are already in your instructions: use this for their comments, or for another ticket.",
+      INPUTS.linear_issue,
+      linearReadHandler(askWorker, "issue"),
+    ),
+    tool(
+      "linear_search",
+      "Finds Linear tickets by a key or by words, read only: up to 10, each with its key, title, state and owner. Read one in full with linear_issue.",
+      INPUTS.linear_search,
+      linearReadHandler(askWorker, "search"),
+    ),
+  ];
 }
 
 /**

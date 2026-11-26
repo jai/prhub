@@ -515,6 +515,23 @@ cost on the API; Ask's chat has `costCents` `null`, so the app shows no cost, an
   (the first 6,000 characters) fenced in `<pr-description>` as data the agent must not take instructions from. The
   chat is kept in R2 at `ask/<repo>/<n>.json` and the session's transcript at `ask-sessions/<repo>/<n>.json`, so the
   next question resumes it in any container. A question at another model or effort starts a new chat.
+- The system prompt also holds, each fenced as data:
+  - The PR's own Linear tickets (the keys its title, branch and description name, as on the PR's page), read with the
+    person's Linear key in one call when the question starts: the first three Linear has, 8,000 characters together,
+    each with its title, link, state, priority, project, owner (assignee), the agent it is delegated to, creator,
+    labels, parent, sub-issues, linked pull requests and description (the first 4,000 characters), in
+    `<linear-ticket>`. Another ticket the PR names is named, for `linear_issue`. With no Linear key saved, the prompt
+    says so and the agent tells the reviewer to add their Linear key in Settings.
+  - PRHub's own review of the head, as the PR's page shows it (the key lines answer): the risk and why, the
+    bugs found, whether it meets its ticket (the gaps of a scope mismatch), whether its description reads as AI slop
+    (the tells), what the PR does, and the key lines, each bug and key line with its `path:line` and that line's text
+    from the diff. In `<prhub-review>`, named as automated and possibly wrong, so the agent cites it ("the review
+    flagged…") and may disagree. It is the answer kept at the default context and model, else the newest other one
+    kept for the head; with none yet, the prompt says so. At most 6,000 characters: past that it loses each line's
+    text first, then key lines from the last, so the risk, the bugs and the requirements stay.
+
+  The description (6,000), the tickets (8,000) and the review (6,000) are the whole of what a question adds to the
+  prompt, about 5,000 tokens; the diff is never in it, and is read from its file as needed.
 - Ask's agent reads, nothing else. It has no shell and no write or edit tool. Its tools, which the container runs
   itself (`agent/read-tools.mjs`), are:
   - Read, Grep and Glob, inside the PR's checkout and the person's cloned repos (`<scope>/.clones/<owner>/<name>`),
@@ -537,6 +554,18 @@ cost on the API; Ask's chat has `costCents` `null`, so the app shows no cost, an
   - `clone_repo` (`owner/name`, optional branch, tag or commit): a blobless clone with branches and tags into the
     person's clones; again, it updates.
   - `github_api`: one `GET` of a path on `https://api.github.com`, redirects not followed. No other method is offered.
+  - `linear_issue` (a ticket's key, optionally `comments`) and `linear_search` (a key or words): Linear, read only.
+    The container holds no Linear key. Each call is a line of the turn's answer, `{"need": {"id", "linear": {"tool":
+    "issue", "key", "comments"}}}` or `{"tool": "search", "text"}`; the Worker runs one of three fixed queries with the
+    person's own Linear key (`worker/src/linear-read.ts`) and answers with `POST /reply` `{"id", "text", "isError"}` to
+    the same container. The key or the words go in as a GraphQL variable; any other shape is refused before Linear is
+    asked, so nothing can create, edit or comment. `linear_issue` answers the ticket as above with its description's
+    first 12,000 characters and, when asked, its 30 newest comments (1,500 characters each); `linear_search` up to 10
+    tickets, each with its key, title, state, owner and link. A read no one answers in 45 seconds tells the agent so.
+    The tools exist only when the Worker says it answers them (`linearRead` in `/ask`'s body) and the answer goes in
+    lines. Each read logs one `ask_event` line, stage `linear_read`, with the tool and whether Linear answered: never
+    the key, the ticket or the words. `linear_act`, apart, proposes a comment the person posts
+    ("Commenting on Linear", under [AI model choice](#ai-model-choice)).
 
   A PreToolUse hook checks each call against these rules and denies any other tool; each tool checks again. The token
   rides each git command's header and the API request, never the agent's view or disk. It and
@@ -575,6 +604,7 @@ Each Ask turn has one id, the question's own (its `client_ref`, else one the Wor
 | `queued` / `received` | `POST …/ask` stored the question, or found it already there (`repeat`) | |
 | `handed_over` / `resumed` | The queue gave it to the agent; `resumed` when a turn a deploy cut short runs again | `model`, `effort` |
 | `grant` | GitHub's read-only token for the turn is minted | `ms`, `read_only`, `repos` |
+| `linear_read` | The agent's `linear_issue` or `linear_search` was answered | `tool` (`issue` or `search`), `ok` |
 | `container` | The Agent SDK container answered | `ms`, `subtype`, `tools` |
 | `answered` | The answer is in the chat | `ms`, `model`, `cost_cents` |
 | `failed` | The turn ended without an answer | `ms`, `side`, `reason`, `status` |

@@ -226,6 +226,14 @@ test("each tool's input shape takes what the tool says and refuses the rest", ()
   assert.equal(parse("draft_review", { event: "COMMENT", body: "x".repeat(20_001) }), false);
   assert.equal(parse("github_act", { action: { kind: "comment", body: "x" } }), true);
   assert.equal(parse("github_act", { action: "merge" }), false);
+  assert.equal(parse("linear_issue", { key: "eng-12", comments: true }), true);
+  assert.equal(parse("linear_issue", { key: "ENG-12" }), true);
+  for (const key of ["", "12", "ENG", 'ENG-1") { id } } mutation { x', "https://linear.app/x"]) {
+    assert.equal(parse("linear_issue", { key }), false, key);
+  }
+  assert.equal(parse("linear_search", { text: "retry uploads" }), true);
+  assert.equal(parse("linear_search", { text: "" }), false);
+  assert.equal(parse("linear_search", { text: "x".repeat(201) }), false);
   assert.equal(parse("linear_act", { issue: "ENG-12", body: "x" }), true);
   assert.equal(parse("linear_act", { issue: "eng-12", body: "x" }), true);
   for (const issue of ["ENG12", "12-ENG", "ENG-", "ABCDEFGHIJK-1", "ENG-1 x"]) {

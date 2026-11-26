@@ -5,6 +5,7 @@ import {
   activityOf,
   askAnswer,
   createLocks,
+  createNeeds,
   grantedRepos,
   parseBody,
   runAnswer,
@@ -181,4 +182,39 @@ test("what the agent is doing comes from the tool it uses, and names a file alon
   ]) {
     assert.equal(activityOf(quiet), null);
   }
+});
+
+test("a tool's question to the Worker is one line of the answer, settled once by its id", async () => {
+  const lines = [];
+  const needs = createNeeds(1_000, () => "n1");
+  const waiting = needs.ask((line) => lines.push(line), { tool: "issue", key: "ENG-12" });
+  assert.deepEqual(lines, ['{"need":{"id":"n1","linear":{"tool":"issue","key":"ENG-12"}}}\n']);
+  assert.equal(needs.settle("other", { text: "x" }), false, "an id nobody asked settles nothing");
+  assert.equal(needs.settle("n1", { text: "ENG-12: Retry", isError: false, extra: 1 }), true);
+  assert.deepEqual(await waiting, { text: "ENG-12: Retry", isError: false });
+  assert.equal(needs.settle("n1", { text: "again" }), false, "and only once");
+});
+
+test("a question the Worker never answers ends as an error, and the turn goes on", async () => {
+  vi.useFakeTimers();
+  try {
+    const needs = createNeeds(45_000, () => "n2");
+    const waiting = needs.ask(() => {}, { tool: "search", text: "retry" });
+    await vi.advanceTimersByTimeAsync(45_000);
+    const answer = await waiting;
+    assert.equal(answer.isError, true);
+    assert.match(answer.text, /did not answer in time/);
+    assert.equal(needs.settle("n2", { text: "late" }), false);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("reading Linear is named in the chat's activity line", () => {
+  const use = (name) => ({
+    type: "assistant",
+    message: { content: [{ type: "tool_use", name, input: { key: "ENG-12" } }] },
+  });
+  assert.equal(activityOf(use("mcp__prhub__linear_issue")), "Reading Linear");
+  assert.equal(activityOf(use("mcp__prhub__linear_search")), "Reading Linear");
 });

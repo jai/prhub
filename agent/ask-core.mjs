@@ -98,6 +98,7 @@ export function activityOf(message) {
   }
   if (use.name === "Grep" || use.name === "Glob") return "Searching the code";
   if (use.name === "WebSearch" || use.name === "WebFetch") return "Reading the web";
+  if (/__linear_(issue|search)$/.test(use.name)) return "Reading Linear";
   return "Reading the repo";
 }
 
@@ -117,6 +118,41 @@ export function turnKeeper() {
     },
     onLinear: (comment) => {
       if (kept.linear.length < LINEAR_ACTS) kept.linear.push(comment);
+    },
+  };
+}
+
+/** How long a tool waits for the Worker's answer before it says there is none. */
+export const NEED_WAIT_MS = 45_000;
+
+/**
+ * What a turn's tools ask of the Worker while the turn runs: `ask(write, linear)` writes one line of the answer,
+ * `{"need": {"id", "linear"}}`, and waits for `settle(id, result)`, which the Worker's `POST /reply` calls. An id is
+ * settled once; one nobody answers in `waitMs` says so, and the turn goes on.
+ */
+export function createNeeds(waitMs = NEED_WAIT_MS, newId = () => crypto.randomUUID()) {
+  const waiting = new Map();
+  return {
+    ask(write, linear) {
+      const id = newId();
+      return new Promise((done) => {
+        const timer = setTimeout(() => {
+          waiting.delete(id);
+          done({ text: "Linear did not answer in time. Say so; don't guess.", isError: true });
+        }, waitMs);
+        waiting.set(id, (result) => {
+          clearTimeout(timer);
+          waiting.delete(id);
+          done(result);
+        });
+        write(`${JSON.stringify({ need: { id, linear } })}\n`);
+      });
+    },
+    settle(id, result) {
+      const done = waiting.get(id);
+      if (!done) return false;
+      done({ text: String(result?.text ?? ""), isError: result?.isError === true });
+      return true;
     },
   };
 }

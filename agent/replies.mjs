@@ -85,6 +85,25 @@ export function linearActHandler(onLinear) {
   };
 }
 
+/**
+ * linear_issue and linear_search: one read of Linear, made by the Worker with the reviewer's own key (`askWorker`). The
+ * request is built here from the tool's vetted input, so it is always one of the two reads the Worker takes.
+ */
+export function linearReadHandler(askWorker, tool) {
+  return async (input) => {
+    const asked =
+      tool === "issue"
+        ? { tool, key: input.key.toUpperCase(), ...(input.comments ? { comments: true } : {}) }
+        : { tool: "search", text: input.text };
+    try {
+      const { text, isError } = await askWorker(asked);
+      return reply(String(text ?? ""), null, isError === true);
+    } catch (error) {
+      return reply(`Linear could not be read: ${error?.message ?? error}`, null, true);
+    }
+  };
+}
+
 /** github_api: one GET on GitHub's REST API with `token`; a 404 or 403 on another repo says it can't be reached. */
 export function githubApiHandler({ token, prRepo }) {
   return async ({ path }) => {

@@ -2,7 +2,7 @@
 // checkout of the PR at its head. The chat the phone reads and the session's transcript live in R2, so any container can
 // take the next question.
 import { AskFailure, askEvent, errorWords, failedLine, scrubbed, sideOf } from "./ask-trace.ts";
-import { type AgentAnswer, askContainer } from "./agent-container.ts";
+import { type AgentAnswer, askContainer, type Needs } from "./agent-container.ts";
 import {
   type AskChat,
   type AskChatMessage,
@@ -163,6 +163,8 @@ export async function askOnSubscription(
     act?: (action: unknown) => Promise<string | null>;
     /** The container's proposed Linear comments as cards: issues the PR names, mentions found in Linear. */
     linear?: (raw: unknown[]) => Promise<LinearProposal[]>;
+    /** One read of Linear the agent's tools asked for (`readLinear`): with it, the container offers those tools. */
+    linearRead?: Needs;
   },
 ): Promise<void> {
   const now = services.now ?? Date.now;
@@ -235,6 +237,19 @@ export async function askOnSubscription(
       repos: grant.repos?.length ?? null,
       checked_by: grant.checkedBy ?? null,
     });
+    const read = services.linearRead;
+    const linearRead: Needs | undefined =
+      read &&
+      (async (asked) => {
+        const result = await read(asked);
+        // What was read stays out of the log: the tool and whether Linear answered, no more.
+        askEvent("linear_read", turn, {
+          ...trace,
+          tool: (asked as { tool?: unknown } | null)?.tool === "search" ? "search" : "issue",
+          ok: !result.isError,
+        });
+        return result;
+      });
     const answer = await askContainer<AskAnswer>(
       "/ask",
       {
@@ -253,11 +268,13 @@ export async function askOnSubscription(
         session: record.session,
         entries: entries ?? [],
         budgetUsd: services.budgetUsd,
+        ...(linearRead ? { linearRead: true } : {}),
       },
       env,
       undefined,
       askInstance(env),
       services.doing,
+      linearRead,
     );
     if (answer.error) {
       throw new AskFailure(MODEL_TROUBLE.test(answer.error) ? "model" : "container", answer.error);

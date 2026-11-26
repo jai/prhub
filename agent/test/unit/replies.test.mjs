@@ -11,6 +11,7 @@ import {
   KEPT,
   LINEAR_ACTS,
   linearActHandler,
+  linearReadHandler,
   redact,
   said,
 } from "../../replies.mjs";
@@ -144,4 +145,52 @@ test("linear_act proposes a comment for the reviewer to post, holds no Linear ke
   );
   assert.ok(readToolNames(false).includes("mcp__prhub__linear_act"));
   assert.equal(LINEAR_ACTS, 3);
+});
+
+test("linear_issue and linear_search ask the Worker for one of its two reads, and hold no Linear key", async () => {
+  const asked = [];
+  const askWorker = async (one) => {
+    asked.push(one);
+    return { text: "ENG-12: Retry uploads twice", isError: false };
+  };
+  const issue = await linearReadHandler(askWorker, "issue")({ key: "eng-12", comments: true });
+  assert.equal(issue.content[0].text, "ENG-12: Retry uploads twice");
+  assert.equal(issue.isError, false);
+  await linearReadHandler(askWorker, "issue")({ key: "ENG-12", body: "Ship it", tool: "comment" });
+  await linearReadHandler(askWorker, "search")({ text: "retry", tool: "comment", key: "ENG-1" });
+  assert.deepEqual(
+    asked,
+    [
+      { tool: "issue", key: "ENG-12", comments: true },
+      { tool: "issue", key: "ENG-12" },
+      { tool: "search", text: "retry" },
+    ],
+    "only a key, whether comments are wanted, or the words go to the Worker",
+  );
+  const refused = await linearReadHandler(
+    async () => ({ text: "No.", isError: true }),
+    "search",
+  )({
+    text: "x",
+  });
+  assert.equal(refused.isError, true);
+  const lost = await linearReadHandler(async () => {
+    throw new Error("gone");
+  }, "issue")({ key: "ENG-12" });
+  assert.deepEqual([lost.isError, lost.content[0].text], [true, "Linear could not be read: gone"]);
+  for (const name of ["linear_issue", "linear_search"]) {
+    assert.deepEqual(await hook({ tool_name: `mcp__prhub__${name}`, tool_input: {} }), {});
+    assert.equal(
+      readToolNames(true).includes(`mcp__prhub__${name}`),
+      false,
+      "not without the Worker",
+    );
+    assert.ok(readToolNames(true, true).includes(`mcp__prhub__${name}`));
+  }
+  assert.equal(
+    (await hook({ tool_name: "mcp__prhub__linear_comment", tool_input: {} })).hookSpecificOutput
+      .permissionDecision,
+    "deny",
+    "no other Linear tool exists",
+  );
 });

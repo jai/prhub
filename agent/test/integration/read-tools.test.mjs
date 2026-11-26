@@ -81,6 +81,32 @@ test("the git tool runs a read in the checkout, refuses a write itself, and keep
   for (const name of ["draft_review", "github_act", "linear_act"]) {
     assert.ok(server.instance._registeredTools[name], `${name} is offered without a token`);
   }
+  for (const name of ["linear_issue", "linear_search"]) {
+    assert.equal(server.instance._registeredTools[name], undefined, `${name} needs the Worker`);
+  }
+  const asked = [];
+  const reading = readTools({
+    prDir: cwd,
+    prRepo: "acme/api",
+    clones: `${root}/.clones`,
+    scope: root,
+    token: null,
+    locked: (_, f) => f(),
+    askWorker: async (one) => {
+      asked.push(one);
+      return { text: "ENG-12: Retry uploads twice", isError: false };
+    },
+  }).instance._registeredTools;
+  const issue = await (reading.linear_issue.handler ?? reading.linear_issue.callback)(
+    { key: "eng-12" },
+    {},
+  );
+  assert.equal(issue.content[0].text, "ENG-12: Retry uploads twice");
+  await (reading.linear_search.handler ?? reading.linear_search.callback)({ text: "retry" }, {});
+  assert.deepEqual(asked, [
+    { tool: "issue", key: "ENG-12" },
+    { tool: "search", text: "retry" },
+  ]);
   const call = (args) => (git.handler ?? git.callback)(args, {});
   const log = await call({ args: ["log", "--format=%s"] });
   assert.equal(log.content[0].text.trim(), "first");

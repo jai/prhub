@@ -9,6 +9,7 @@ import {
   activityOf,
   askAnswer,
   createLocks,
+  createNeeds,
   DIFF_FILE,
   grantedRepos,
   parseBody,
@@ -127,8 +128,10 @@ async function ask(
     entries,
     budgetUsd,
     account,
+    linearRead,
   },
   doing,
+  askWorker = null,
 ) {
   const unsafe = vetQuestion({ scope, repo, number, head });
   if (unsafe) {
@@ -146,7 +149,9 @@ async function ask(
     placeDiff(cwd, diff);
     // Only a token the Worker vouches is read only reaches GitHub from the tools: anything else stays on the checkout.
     const reads = readOnly === true ? token : null;
-    const allowed = [...ASK_TOOLS, ...readToolNames(reads !== null)];
+    // Linear is read by the Worker, when it said it will (`linearRead`) and this answer goes in lines it can hear.
+    const linearReads = linearRead === true && askWorker !== null ? askWorker : null;
+    const allowed = [...ASK_TOOLS, ...readToolNames(reads !== null, linearReads !== null)];
     const store = new SeededStore(session ? entries : []);
     // The newest review the agent drafted (`draft_review`), what the reviewer asked it to do on GitHub (`github_act`),
     // and comments for the PR's Linear tickets (`linear_act`): all go to the Worker, never to GitHub or Linear from here.
@@ -175,6 +180,7 @@ async function ask(
             onDraft,
             onAct,
             onLinear,
+            askWorker: linearReads,
           }),
         },
         settingSources: [],
@@ -206,6 +212,9 @@ async function ask(
 
 const ROUTES = { "/run": run, "/ask": ask };
 
+/** What running turns have asked the Worker and not heard back about (`POST /reply`). */
+const needs = createNeeds();
+
 /**
  * The Worker stops an idle container with SIGTERM. Node is this container's first process, and a first process ignores
  * a signal it has no handler for, so the container never stopped: it ran on with the CLAUDE_CODE_OAUTH_TOKEN it started
@@ -233,7 +242,7 @@ const server = createServer(async (request, response) => {
     return;
   }
   const route = ROUTES[request.url ?? ""];
-  if (request.method !== "POST" || !route) {
+  if (request.method !== "POST" || (!route && request.url !== "/reply")) {
     response.statusCode = 404;
     response.end('{"error":"not found"}');
     return;
@@ -254,6 +263,13 @@ const server = createServer(async (request, response) => {
     response.end(JSON.stringify({ error }));
     return;
   }
+  if (request.url === "/reply") {
+    // The Worker's answer to something a running turn asked it: that turn's tool takes it from here.
+    const taken = needs.settle(body.id, body);
+    response.statusCode = taken ? 200 : 404;
+    response.end(JSON.stringify({ ok: taken }));
+    return;
+  }
   // Asked for progress, the answer is the last of its lines, and what the agent is doing comes before it.
   const inLines = body.progress === true;
   let last = null;
@@ -268,7 +284,10 @@ const server = createServer(async (request, response) => {
     response.setHeader("content-type", "application/x-ndjson");
   }
   try {
-    response.end(JSON.stringify(await route(body, doing)));
+    const askWorker = inLines
+      ? (linear) => needs.ask((line) => response.write(line), linear)
+      : null;
+    response.end(JSON.stringify(await route(body, doing, askWorker)));
   } catch (error) {
     if (!response.headersSent) {
       response.statusCode = 500;

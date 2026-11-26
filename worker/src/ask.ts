@@ -19,6 +19,8 @@ import { writeToGitHub } from "./write";
 import { proposalsOf } from "./linear-act";
 import { linearPostedNow } from "./ask-linear";
 import { allKeys, ticketKeysOf } from "./tickets";
+import { askTickets, readLinear } from "./linear-read";
+import { reviewText, storedReview } from "./ask-review";
 import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models";
 
 /**
@@ -190,18 +192,34 @@ export async function ask(
           : error;
       });
     const reach = askGitHubReach(env);
+    // Read once a turn: the prompt's review quotes the diff's lines, and the container gets the same diff.
+    let diffRead: Promise<string> | null = null;
+    const diff = () => (diffRead ??= prDiff(repo, number, input.head, env));
+    const keysOf = (pr: Awaited<ReturnType<typeof prFacts>>) =>
+      pr ? allKeys(ticketKeysOf(pr.title, (pr.head ?? "").replace(/^[^:]*:/, ""), pr.body)) : [];
     return askOnSubscription(repo, number, input, choice, env, {
-      system: async () =>
-        askSubscriptionPrompt({
+      system: async () => {
+        const pr = await prFacts(repo, number, env);
+        // Neither stops a question: without Linear or the review the agent is told so, and answers from the rest.
+        const [linear, review] = await Promise.all([
+          askTickets(keysOf(pr), env).catch(() => null),
+          storedReview(repo, number, input.head, env).catch(() => null),
+        ]);
+        return askSubscriptionPrompt({
           reviewer: env.GITHUB_LOGIN ?? null,
           repo,
           number,
-          pr: await prFacts(repo, number, env),
+          pr,
           reach,
-        }),
+          linear,
+          review: review ? reviewText(review, await diff().catch(() => "")) : null,
+        });
+      },
       grant,
       readOnly: reach !== "none",
-      diff: () => prDiff(repo, number, input.head, env),
+      diff,
+      // Linear, read only, with the person's own key, which stays here: the container asks, this answers.
+      linearRead: (asked) => readLinear(asked, env),
       budgetUsd: askBudgetOf(limitsOf(env)) / 100,
       turn,
       doing,
@@ -214,17 +232,7 @@ export async function ask(
           : null;
       },
       // Cards only: each posts when the person confirms it (`postAskLinear`), with their own Linear key.
-      linear: (raw) =>
-        proposalsOf(
-          raw,
-          async () => {
-            const pr = await prFacts(repo, number, env);
-            return pr
-              ? allKeys(ticketKeysOf(pr.title, (pr.head ?? "").replace(/^[^:]*:/, ""), pr.body))
-              : [];
-          },
-          env,
-        ),
+      linear: (raw) => proposalsOf(raw, async () => keysOf(await prFacts(repo, number, env)), env),
     });
   }
   if (!onApiKey(env)) {

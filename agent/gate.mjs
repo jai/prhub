@@ -49,8 +49,11 @@ const DENY = (reason) => ({
   },
 });
 
-/** Tools that hand a draft or a request to the Worker: they reach nothing, and post nothing. */
-const HANDED_ON = ["draft_review", "github_act", "linear_act"].map(
+/**
+ * Tools that hand a draft or a request to the Worker: they reach nothing, and post nothing. `linear_issue` and
+ * `linear_search` ask the Worker to read Linear, which it does with fixed queries: the container has no Linear key.
+ */
+const HANDED_ON = ["draft_review", "github_act", "linear_act", "linear_issue", "linear_search"].map(
   (one) => `mcp__${SERVER}__${one}`,
 );
 
@@ -116,12 +119,13 @@ export function readOnlyHooks(cwd, clones, reachable, realpath) {
 }
 
 /** The tools' names, for `allowedTools`. */
-export function readToolNames(hasToken) {
+export function readToolNames(hasToken, readsLinear = false) {
   return [
     "git",
     ...(hasToken ? ["clone_repo", "github_api"] : []),
     "draft_review",
     "github_act",
     "linear_act",
+    ...(readsLinear ? ["linear_issue", "linear_search"] : []),
   ].map((name) => `mcp__${SERVER}__${name}`);
 }
