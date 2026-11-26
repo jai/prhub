@@ -23,7 +23,32 @@ export type Write =
   | { kind: "remove_request" }
   | { kind: "checkbox"; index: number; checked: boolean; task: string | null }
   | { kind: "edit_body"; body: string; base: string | null }
-  | { kind: "merge"; method: "merge" | "squash" | "rebase"; commit: string };
+  | { kind: "merge"; method: "merge" | "squash" | "rebase"; commit: string }
+  | PendingWrite;
+
+/**
+ * What the phone does to the review the viewer has started on GitHub and not sent (the detail's `pendingReview`):
+ * GitHub holds it, so the same review is there on github.com and on every device.
+ */
+export type PendingWrite =
+  /** A comment that starts a thread: on a line, or with `file` on the whole file (`line` is then null). */
+  | {
+      kind: "pending_add";
+      pullRequest: string;
+      body: string;
+      path: string;
+      line: number | null;
+      side: "LEFT" | "RIGHT";
+      file: boolean;
+    }
+  /** A reply to a posted thread, held until the review is sent. */
+  | { kind: "pending_reply"; thread: string; body: string }
+  | { kind: "pending_edit"; comment: string; body: string }
+  | { kind: "pending_delete"; comment: string }
+  /** Sends the review; with none started, a review of these words alone. */
+  | { kind: "pending_submit"; event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT"; body: string }
+  /** Deletes the review and its comments; none there counts as done. */
+  | { kind: "pending_discard" };
 
 const TASK = /^(\s*[-*] \[)[ xX](\] )/;
 

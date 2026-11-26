@@ -136,7 +136,7 @@ const OTHER_KEY_LINES_PER_PASS = 1;
 /** A job that failed, say at a usage limit, goes again after this long, so the list heals without being asked. */
 const KEY_LINES_RETRY_MS = 30 * 60_000;
 /** Raise it when what a row or detail holds changes shape: every held PR is then read again, once. */
-const ROW_SHAPE = 13;
+const ROW_SHAPE = 14;
 /** The retention sweep (`retention.ts`) runs at most this often. */
 const RETENTION_SWEEP_MS = 86_400_000;
 const LIST_ORDER = "CASE list WHEN 'mine' THEN 1 ELSE 0 END, updated_at DESC";

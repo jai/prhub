@@ -319,6 +319,69 @@ checked on every run: [`row.json`](../PRKit/Tests/PRContractFixtures/Fixtures/ro
   `source` being `body`, `linear`, `co_author` or `assignee`, and null on a person's own PR or when nothing is
   recorded.
 
+- A detail's `pendingReview` is the review the viewer has started on GitHub and not sent, from the app or on
+  github.com, or `null` without one: `{id, body, comments}`. GitHub shows such a review to its author alone, so it is
+  read, and written, only with the person's own token (`GITHUB_TOKEN`, or the hosted account's), never with
+  `GITHUB_READ_TOKEN` or the read App. Each of `comments` (the first 100) is
+  `{id, path, line, side, body, createdAt, outdated, thread, file}`:
+  - `line` is null where GitHub has none: a comment on a whole file (`file: true`), or on a line the diff no longer has
+    (`outdated: true`).
+  - `side` (`LEFT` or `RIGHT`) is its thread's side: GitHub keeps none on the comment. It is `RIGHT` when the thread is
+    not among the PR's last 100 or the comment not among its thread's first 30.
+  - `thread` is the id of the posted thread it replies to, and `null` for a comment that starts a thread.
+- What is not sent yet is nowhere else in the detail: `reviews.nodes` leaves the unsent review out, and
+  `reviewThreads.nodes` leaves out a thread whose comments are all unsent and each unsent reply to a posted thread. A
+  detail stored before `pendingReview` existed lacks it until its PR is read again, which the index does once for
+  every row it holds.
+
+### `POST /prs/{owner}/{repo}/{n}/write`
+
+One write as the person, with their own token: `{"kind": …, "client_ref"?: …}` and the kind's own fields. It answers
+the PR's detail as GitHub has it after the write (the shape of `GET …/detail`), `400` for a body that is no write, and
+otherwise GitHub's status with `{"error": "…"}` in GitHub's own words where it gave some. A copy with the same
+`client_ref` answers as the first did and posts nothing twice ([Limits](#limits) count it once).
+
+| `kind` | Fields | What it does |
+|---|---|---|
+| `comment` | `body` | A comment on the PR |
+| `review` | `event` (`APPROVE`, `REQUEST_CHANGES`, `COMMENT`), `body`, `commit`, `comments?` (`{path, line, side, body}`) | A whole review in one post. An approval needs no words |
+| `line` | `body`, `commit`, `path`, `line`, `side` | One comment on a line, posted at once |
+| `reply` | `thread`, `body` | A reply to a thread, posted at once |
+| `resolve` | `thread`, `resolved` | Resolves a thread, or opens it again |
+| `viewed` | `pullRequest` (the detail's `id`), `path`, `viewed` | Marks a file viewed, or not |
+| `update_branch` | `commit` | Updates the branch from its base, if the head is still `commit` |
+| `remove_request` | | Takes the person off the requested reviewers |
+| `checkbox` | `index`, `checked`, `task?` | Ticks one task in the description, read from GitHub now |
+| `edit_body` | `body`, `base?` | Replaces the description; `409` when it is no longer `base` |
+| `merge` | `method` (`merge`, `squash`, `rebase`), `commit` | Merges, if the head is still `commit` |
+| `pending_add` | `pullRequest` (the detail's `id`), `path`, `body`, and `line` with `side`, or `file: true` | Adds a comment to the unsent review, and starts that review when there is none |
+| `pending_reply` | `thread`, `body` | A reply to a posted thread that waits in the unsent review, started when there is none |
+| `pending_edit` | `comment`, `body` | Changes a comment's words |
+| `pending_delete` | `comment` | Deletes a comment |
+| `pending_submit` | `event`, `body?` | Sends the unsent review. With none started, posts a review of these words alone |
+| `pending_discard` | | Deletes the unsent review and its comments. None there counts as done |
+
+**The unsent review** (the detail's `pendingReview`) is GitHub's own pending review, one per person and PR, so the app,
+github.com and every device hold the same one. The `pending_` kinds are GraphQL mutations as the person:
+
+- `pending_add` is `addPullRequestReviewThread` with the PR's id and no review id. A comment on a whole file sends
+  `file: true` and neither `line` nor `side`. A line GitHub has no place for is refused with `422`.
+- `pending_reply` finds the unsent review first, and starts an empty one when there is none, because a reply that
+  names no review may be posted at once.
+- `pending_edit` and `pending_delete` are `updatePullRequestReviewComment` and `deletePullRequestReviewComment`.
+  GitHub applies them to any review comment the person wrote, sent or not.
+- `pending_submit` is `submitPullRequestReview`. An empty `body` is not sent, so GitHub is not told to replace words
+  the review already has. There is no write for the words alone: GitHub refuses to empty an unsent review's words.
+- A refusal says why in GitHub's words (`422`; `403` where it says the person may not; `404` for a PR or comment it
+  has not got): "Could not edit a review with a missing body.", for one.
+
+**A `review` while one is unsent.** GitHub takes one unsent review per person and PR, and refuses a second with `422`
+("User can only have one pending review per pull request"). The Worker then joins the two: it adds each of the
+review's `comments` to the unsent review, and sends that review with this one's `event` and `body`. Everything already
+in the unsent review is sent with it. If a step fails, the answer is that step's refusal in GitHub's words and the
+review is not sent: the comments added before it stay in the unsent review (the detail's `pendingReview` shows them),
+and a copy sent again does not add a comment the unsent review already holds at that path and line with those words.
+
 ### `POST /prs/states`
 
 The threads hub's read of any PRs' state, with `HUB_TOKEN` as a bearer token: `{"refs": ["owner/repo#7", …]}`, 1 to

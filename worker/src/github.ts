@@ -174,6 +174,7 @@ export interface Detail {
       submittedAt: string | null;
     }[];
   };
+  /** Posted threads and their posted comments. What the viewer has not sent yet is in `pendingReview`. */
   reviewThreads: {
     nodes: {
       id: string;
@@ -187,6 +188,30 @@ export interface Detail {
       comments: { nodes: Comment[] };
     }[];
   };
+  /** The review the viewer has started on GitHub and not sent, which only they can see; null without one. */
+  pendingReview: PendingReview | null;
+}
+
+export interface PendingReview {
+  id: string;
+  body: string;
+  comments: PendingComment[];
+}
+
+export interface PendingComment {
+  id: string;
+  path: string;
+  /** Null where GitHub has none: a comment on a whole file, or on a line the diff no longer has. */
+  line: number | null;
+  /** The side of the thread that holds it; `RIGHT` when that thread was not read. */
+  side: "LEFT" | "RIGHT";
+  body: string;
+  createdAt: string;
+  outdated: boolean;
+  /** The posted thread it replies to; null for a comment that starts a thread. */
+  thread: string | null;
+  /** On the whole file, not a line. */
+  file: boolean;
 }
 
 interface CommonStatus {
@@ -308,7 +333,41 @@ interface Node extends Pick<PeopleNode, "peopleComments" | "committers"> {
   commits: { nodes: { commit: { statusCheckRollup: Rollup | null } }[] };
   comments: Detail["comments"];
   reviews: Detail["reviews"];
-  reviewThreads: Detail["reviewThreads"];
+  reviewThreads: { nodes: ThreadNode[] };
+  /** The viewer's review not yet sent (`VIEWER_FIELDS`); absent when the owner's own read did not answer. */
+  pendingReviews?: { nodes: PendingReviewNode[] };
+  /** The threads as the owner sees them, where another token read `reviewThreads` (`withViewer`). */
+  viewerThreads?: ViewerThread[];
+}
+
+/** A thread as GitHub answers it: a comment's `state` is `PENDING` until its review is sent. */
+type ThreadNode = Omit<Detail["reviewThreads"]["nodes"][number], "comments"> & {
+  comments: { nodes: (Comment & { state?: string })[] };
+};
+
+interface PendingReviewNode {
+  id: string;
+  body: string;
+  comments: {
+    nodes: {
+      id: string;
+      path: string;
+      line: number | null;
+      outdated: boolean;
+      subjectType?: string;
+      body: string;
+      createdAt: string;
+    }[];
+  };
+}
+
+/** What the owner's read says of a thread: its side, and which of its comments are sent. */
+interface ViewerThread {
+  id: string;
+  viewerCanResolve: boolean;
+  viewerCanUnresolve: boolean;
+  diffSide?: string;
+  comments?: { nodes: { id: string; state?: string }[] };
 }
 
 const PAGE_SIZE = 50;
@@ -352,18 +411,28 @@ const FIELDS = `fragment Fields on PullRequest {
   reviewThreads(last: 100) {
     nodes {
       id isResolved isOutdated path line diffSide
-      comments(first: 30) { nodes { ${COMMENT} } }
+      comments(first: 30) { nodes { ${COMMENT} state } }
     }
   }
   ${PEOPLE_FIELDS}
 }`;
 
-/** What only the owner's own token can answer: these fields are about whoever the token is. */
+/**
+ * What only the owner's own token can answer: these fields are about whoever the token is. A review not yet sent is
+ * visible to its author alone, so it and its comments are read here. Where one query spreads both fragments, GitHub
+ * merges their selections: `reviewThreads` and its `comments` take the same arguments as in `FIELDS`.
+ */
 const VIEWER_FIELDS = `fragment Viewer on PullRequest {
   viewerDidAuthor
   repository { viewerDefaultMergeMethod }
   files(first: 100) { nodes { path viewerViewedState } }
-  reviewThreads(last: 100) { nodes { id viewerCanResolve viewerCanUnresolve } }
+  pendingReviews: reviews(states: [PENDING], first: 1) { nodes {
+    id body
+    comments(first: 100) { nodes { id path line outdated subjectType body createdAt } }
+  } }
+  reviewThreads(last: 100) {
+    nodes { id viewerCanResolve viewerCanUnresolve diffSide comments(first: 30) { nodes { id state } } }
+  }
 }`;
 
 /** A PR's checks. Inline, not in a fragment: only GitHub knows which are required, and it asks for the PR's number. */
@@ -520,6 +589,25 @@ export function postGraphql(query: string, variables: object, env: Env): Promise
   });
 }
 
+/**
+ * GitHub answered a GraphQL call with errors: a refusal arrives as a 200 that says why. `words` are GitHub's own, one
+ * sentence per error, and empty when it gave none.
+ */
+export class GraphqlRefusal extends Error {
+  readonly type: string | null;
+  readonly words: string;
+
+  constructor(errors: { type?: string; message?: string }[], failure: { type?: string } | null) {
+    super(`GitHub GraphQL failed: ${failure?.type ?? "no data"}`);
+    this.name = "GraphqlRefusal";
+    this.type = failure?.type ?? errors[0]?.type ?? null;
+    this.words = errors
+      .map((error) => error.message)
+      .filter((message): message is string => typeof message === "string" && message !== "")
+      .join(" ");
+  }
+}
+
 export async function graphql<Data>(query: string, variables: object, env: Env): Promise<Data> {
   const response = await postGraphql(query, variables, env);
   if (!response.ok) {
@@ -531,7 +619,7 @@ export async function graphql<Data>(query: string, variables: object, env: Env):
   };
   const failure = body.errors?.find((error) => error.type !== "NOT_FOUND");
   if (!body.data || failure) {
-    throw new Error(`GitHub GraphQL failed: ${failure?.type ?? "no data"}`);
+    throw new GraphqlRefusal(body.errors ?? [], failure ?? null);
   }
   return body.data;
 }
@@ -977,9 +1065,67 @@ export function pullRequest(
       labels: node.labels.nodes,
       checks: verdict.checks,
       comments: node.comments,
-      reviews: node.reviews,
-      reviewThreads: node.reviewThreads,
+      reviews: { nodes: node.reviews.nodes.filter((review) => review.state !== "PENDING") },
+      reviewThreads: postedThreads(node.reviewThreads.nodes),
+      pendingReview: pendingReviewOf(
+        node.pendingReviews?.nodes[0] ?? null,
+        node.viewerThreads ?? node.reviewThreads.nodes,
+      ),
     },
+  };
+}
+
+/**
+ * The threads everyone can see, with the comments everyone can see. A thread the viewer started in a review not yet
+ * sent is left out, and so is their unsent reply to a posted thread: both are in the detail's `pendingReview`.
+ */
+function postedThreads(threads: ThreadNode[]): Detail["reviewThreads"] {
+  return {
+    nodes: threads.flatMap((thread) => {
+      const posted = thread.comments.nodes.filter((comment) => comment.state !== "PENDING");
+      if (posted.length === 0 && thread.comments.nodes.length > 0) {
+        return [];
+      }
+      const comments = posted.map(({ state: _state, ...comment }) => comment);
+      return [{ ...thread, comments: { nodes: comments } }];
+    }),
+  };
+}
+
+/**
+ * The viewer's unsent review as the detail says it. GitHub puts a comment's side on its thread alone, so each comment
+ * is looked up in the threads the owner's token read; a thread with a posted comment is one the comment replies to.
+ */
+function pendingReviewOf(
+  review: PendingReviewNode | null,
+  threads: Pick<ViewerThread, "id" | "diffSide" | "comments">[],
+): PendingReview | null {
+  if (!review) {
+    return null;
+  }
+  const holders = new Map(
+    threads.flatMap((thread) =>
+      (thread.comments?.nodes ?? []).map((comment) => [comment.id, thread] as const),
+    ),
+  );
+  return {
+    id: review.id,
+    body: review.body,
+    comments: review.comments.nodes.map((comment) => {
+      const thread = holders.get(comment.id);
+      const isReply = thread?.comments?.nodes.some((one) => one.state !== "PENDING") ?? false;
+      return {
+        id: comment.id,
+        path: comment.path,
+        line: comment.line ?? null,
+        side: thread?.diffSide === "LEFT" ? "LEFT" : "RIGHT",
+        body: comment.body,
+        createdAt: comment.createdAt,
+        outdated: comment.outdated,
+        thread: thread && isReply ? thread.id : null,
+        file: comment.subjectType === "FILE",
+      };
+    }),
   };
 }
 
@@ -1141,11 +1287,9 @@ export async function mergedPullRequests(
 }
 
 type Nodes = Record<string, { pullRequest: Node | null } | null>;
-type ViewerNode = Pick<Node, "viewerDidAuthor" | "files"> & {
+type ViewerNode = Pick<Node, "viewerDidAuthor" | "files" | "pendingReviews"> & {
   repository: { viewerDefaultMergeMethod: string | null };
-  reviewThreads: {
-    nodes: { id: string; viewerCanResolve: boolean; viewerCanUnresolve: boolean }[];
-  };
+  reviewThreads: { nodes: ViewerThread[] };
 };
 
 function prQuery(
@@ -1163,7 +1307,7 @@ function prQuery(
 
 /**
  * The PRs' nodes in one query, as the owner. With a read token, everything but the viewer's fields is read with it, and
- * those alone, a far cheaper query, as the owner.
+ * those alone, a cheaper query (no checks, people or words but the unsent review's), as the owner.
  */
 async function readNodes(refs: PullRequestRef[], env: Env): Promise<Nodes> {
   const shared = (ref: PullRequestRef) => `...Fields ${contextsOf(ref.number)}`;
@@ -1193,7 +1337,11 @@ async function readNodes(refs: PullRequestRef[], env: Env): Promise<Nodes> {
   );
 }
 
-/** A node read with the read token, with the owner's own fields put in; none known reads as the owner seeing nothing. */
+/**
+ * A node read with the read token, with the owner's own fields put in; none known reads as the owner seeing nothing.
+ * The read token's account does not see the owner's unsent review, so that and the threads it is placed by
+ * (`viewerThreads`) are the owner's answer.
+ */
 export function withViewer(node: Node, viewer: ViewerNode | null): Node {
   const threads = new Map((viewer?.reviewThreads.nodes ?? []).map((thread) => [thread.id, thread]));
   return {
@@ -1204,6 +1352,8 @@ export function withViewer(node: Node, viewer: ViewerNode | null): Node {
       viewerDefaultMergeMethod: viewer?.repository.viewerDefaultMergeMethod ?? null,
     },
     files: viewer?.files ?? null,
+    pendingReviews: viewer?.pendingReviews,
+    viewerThreads: viewer?.reviewThreads.nodes ?? [],
     reviewThreads: {
       nodes: node.reviewThreads.nodes.map((thread) => ({
         ...thread,

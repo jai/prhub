@@ -139,3 +139,66 @@ test("GitHub's reason reads its errors' words, not their objects", () => {
   assert.equal(gitHubReason({ message: "Not Found" }), "Not Found");
   assert.equal(gitHubReason(null), "");
 });
+
+test("a comment for the unsent review is on a line and its side, or on the whole file", () => {
+  const add = {
+    kind: "pending_add",
+    pullRequest: "PR_1",
+    body: "Check the total first.",
+    path: "src/checkout/payments.ts",
+    line: 12,
+    side: "LEFT",
+  };
+  assert.deepEqual(parseWrite(add), { ...add, file: false });
+  // An app that also names the commit is taken: GitHub places the thread on the PR's diff as it is.
+  assert.deepEqual(parseWrite({ ...add, commit: "abc" }), { ...add, file: false });
+  const { line: _line, side: _side, ...whole } = add;
+  assert.deepEqual(parseWrite({ ...whole, file: true }), {
+    ...whole,
+    line: null,
+    side: "RIGHT",
+    file: true,
+  });
+  assert.equal(parseWrite(whole), null);
+  assert.equal(parseWrite({ ...add, file: true }), null);
+  assert.equal(parseWrite({ ...whole, line: 12 }), null);
+  assert.equal(parseWrite({ ...add, line: 0 }), null);
+  assert.equal(parseWrite({ ...add, line: 1.5 }), null);
+  assert.equal(parseWrite({ ...add, side: "MIDDLE" }), null);
+  assert.equal(parseWrite({ ...add, body: "" }), null);
+  assert.equal(parseWrite({ ...add, path: "" }), null);
+  assert.equal(parseWrite({ ...add, pullRequest: undefined }), null);
+});
+
+test("the unsent review's other writes name a thread or a comment, and sending it needs no words", () => {
+  const reply = { kind: "pending_reply", thread: "PRRT_1", body: "Agreed." };
+  assert.deepEqual(parseWrite(reply), reply);
+  // The PR's id is not needed: the route names the PR.
+  assert.deepEqual(parseWrite({ ...reply, pullRequest: "PR_1" }), reply);
+  assert.equal(parseWrite({ ...reply, body: "" }), null);
+  assert.equal(parseWrite({ ...reply, thread: "" }), null);
+  const edit = { kind: "pending_edit", comment: "PRRC_1", body: "Check the total." };
+  assert.deepEqual(parseWrite(edit), edit);
+  assert.equal(parseWrite({ ...edit, body: "" }), null);
+  assert.equal(parseWrite({ kind: "pending_edit", body: "Check the total." }), null);
+  assert.deepEqual(parseWrite({ kind: "pending_delete", comment: "PRRC_1" }), {
+    kind: "pending_delete",
+    comment: "PRRC_1",
+  });
+  assert.equal(parseWrite({ kind: "pending_delete", comment: "" }), null);
+  assert.deepEqual(parseWrite({ kind: "pending_submit", event: "COMMENT" }), {
+    kind: "pending_submit",
+    event: "COMMENT",
+    body: "",
+  });
+  assert.deepEqual(parseWrite({ kind: "pending_submit", event: "APPROVE", body: "Ship it." }), {
+    kind: "pending_submit",
+    event: "APPROVE",
+    body: "Ship it.",
+  });
+  assert.equal(parseWrite({ kind: "pending_submit", event: "DISMISS" }), null);
+  assert.equal(parseWrite({ kind: "pending_submit" }), null);
+  assert.deepEqual(parseWrite({ kind: "pending_discard" }), { kind: "pending_discard" });
+  // GitHub refuses to empty an unsent review's words, so there is no write that sets them alone.
+  assert.equal(parseWrite({ kind: "pending_body", pullRequest: "PR_1", body: "" }), null);
+});

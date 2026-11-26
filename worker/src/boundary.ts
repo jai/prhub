@@ -143,6 +143,36 @@ const WriteSchema = z.discriminatedUnion("kind", [
     method: z.enum(["merge", "squash", "rebase"]),
     commit: TEXT,
   }),
+  // A comment on a line names the line and its side; one on the whole file (`file`) names neither.
+  z
+    .object({
+      kind: z.literal("pending_add"),
+      pullRequest: TEXT,
+      body: TEXT,
+      path: TEXT,
+      line: z
+        .number()
+        .int()
+        .positive()
+        .nullish()
+        .transform((line) => line ?? null),
+      side: SIDE.optional(),
+      file: z.boolean().default(false),
+    })
+    .refine((add) =>
+      add.file ? add.line === null && add.side === undefined : add.line !== null && add.side,
+    )
+    .transform((add) => ({ ...add, side: add.side ?? "RIGHT" })),
+  z.object({ kind: z.literal("pending_reply"), thread: TEXT, body: TEXT }),
+  z.object({ kind: z.literal("pending_edit"), comment: TEXT, body: TEXT }),
+  z.object({ kind: z.literal("pending_delete"), comment: TEXT }),
+  // No words are needed here: the review may already hold comments, and GitHub refuses one that says nothing.
+  z.object({
+    kind: z.literal("pending_submit"),
+    event: z.enum(["APPROVE", "REQUEST_CHANGES", "COMMENT"]),
+    body: z.string().default(""),
+  }),
+  z.object({ kind: z.literal("pending_discard") }),
 ]);
 
 /** `POST /prs/{owner}/{repo}/{n}/write`: one of the writes the viewer can post. */

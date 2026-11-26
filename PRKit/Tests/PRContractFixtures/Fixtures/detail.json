@@ -98,5 +98,6 @@
   },
   "reviewThreads": {
     "nodes": []
-  }
+  },
+  "pendingReview": null
 }
