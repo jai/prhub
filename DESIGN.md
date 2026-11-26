@@ -283,6 +283,23 @@ line is read whole, with no button. **Wrap lines**, under the
 panel's list of files beside Changed lines only, turns wrapping off for the device: each line is then one row, cut with
 `⋯` past 160 columns, and the code scrolls sideways as one sheet.
 
+**Hidden lines.** GitHub's diff shows three unchanged lines round each change. Where a file has more, over its first
+hunk, between two hunks or after its last, a row on the hunk header's ground offers them, in the accent like Show full
+line: **Show 12 hidden lines**, or **Show hidden lines** after the last hunk, where only the file's text says how many.
+A press reads the file's text at the PR's head, once for the PR and kept on the device, and the row gives way to its
+lines: unchanged lines with their numbers in both files, wrapped and cut as any line is. While the file is read the
+row keeps its words and turns the small spinner after them. **Show less**, under the lines, closes the gap again. A
+gap of more than 2,000 lines (`DiffRows.gapLimit`) opens as its first and last 200 (`gapEdge`) round **Show N more
+lines**. A read that failed says why in the row's place, as a pending comment's refusal does (`appFootnote`,
+`toneBad`, then Try again in `PRButtonStyle(.secondary)`): "This file is too large to show." over 1 MB, "This file is
+binary.". A file's header has a menu, a long press on iPhone and iPad and a right click on the Mac, with one item,
+**Show whole file**: it opens every gap of the file, is ticked while on, reads the same on and off, and is how a file
+renamed with nothing changed is read. A new, a deleted or a binary file has no rows and no menu: its diff is all there
+is. Changed lines only leaves hidden lines and their rows out. GitHub takes no comment on a line outside the diff's
+hunks, so the box of such a line says "This line isn't in the diff, so the comment goes on the file." (`appFootnote`,
+secondary) and keeps the comment as a pending comment on the file, its words starting "Line 12: "; with a Worker that
+has no pending reviews the line takes no comment.
+
 **The diff stops at its sideways edges.** With Wrap lines off, the code stops at its left and right edges, with no
 bounce, so the file header and the threads and notes, which stay where the screen is, are never pulled off it.
 
