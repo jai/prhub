@@ -25,6 +25,8 @@
     ///   and its toast then stays, so the test reads what it says however slowly it looks;
     ///   with `-PRHubPendingAddRefused` a pending comment added on a line is refused, as GitHub refuses one on a line
     ///   outside the diff, so a UI test can show a failed one;
+    ///   with `-PRHubLabelsReadOnly` the sample repos' labels can be read and not changed, as on a repo the person
+    ///   can't triage;
     ///   with `-PRHubFeedback` the Worker serves Feedback, over two sample chats that never leave the device
     ///   (`FeatureSamples.prHub`), with `-PRHubFeedbackPush <chat>` it opens as a tapped push of that feedback
     ///   chat does, and with `-PRHubFeedbackAsks` a third chat's agent has asked a question, so Feedback is badged.
@@ -100,6 +102,9 @@
             }
             if arguments.contains("-PRHubPendingAddRefused") {
                 samples.refusesLinePendingAdds = "GitHub didn't take the comment. Its line may no longer be in the diff."
+            }
+            if arguments.contains("-PRHubLabelsReadOnly") {
+                samples.repoLabels = PRRepoLabels(labels: PRSampleSet.sampleLabels, canEdit: false)
             }
             return samples
         }
