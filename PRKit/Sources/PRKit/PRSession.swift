@@ -390,10 +390,6 @@ final class PRSession: Hashable {
         Binding { self.writing[target.key] } set: { self.writing[target.key] = $0 }
     }
 
-    func editDescription() {
-        withAnimation(AppMotion.fold) { writing[PRComposerTarget.description.key] = content?.detail.body ?? "" }
-    }
-
     func updateBranch() async {
         guard let head = content?.detail.head else {
             return
@@ -587,6 +583,10 @@ final class PRSession: Hashable {
 }
 
 extension PRSession {
+    func editDescription() {
+        withAnimation(AppMotion.fold) { writing[PRComposerTarget.description.key] = content?.detail.body ?? "" }
+    }
+
     /// Brings a pending comment's card whole into view in the diff, when the diff is what is on screen: after GitHub
     /// refused it, or its edit box closed, its buttons could sit under the floating controls until a scroll.
     func reveal(pending comment: PRPendingComment) {
