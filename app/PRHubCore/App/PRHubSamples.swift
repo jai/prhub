@@ -421,6 +421,7 @@ struct PRHubSample {
     private var detail: String {
         let isMine = list == "mine"
         let yesterday = Date.now.addingTimeInterval(-86400).ISO8601Format()
+        let opened = Date.now.addingTimeInterval(-3 * 86400).ISO8601Format()
         let failing = checks == "failing"
         let comments = comment.map {
             #"[{"id": "sample-comment-\#(number)", "author": {"login": "\#($0.0)", "avatarUrl": null}, "#
@@ -435,7 +436,7 @@ struct PRHubSample {
         } ?? "[]"
         return """
         {"id": null, "url": "https://github.com/\(repo)/pull/\(number)", "state": "open", "head": "sample-\(number)",
-         "base": "main", "headBranch": "\(author)/sample-\(number)",
+         "base": "main", "headBranch": "\(author)/sample-\(number)", "createdAt": "\(opened)",
          "author": {"login": "\(author)", "avatarUrl": null},
          "isAuthor": \(isMine), "authorIsBot": \(bot != nil), "requestedBy": \(bot ?? "null"),
          "tickets": \(tickets), "body": "\(body)",

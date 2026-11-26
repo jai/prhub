@@ -147,6 +147,8 @@ public struct PullRequestDetail: Decodable, Sendable {
     public let head: String
     public let base: String
     public let headBranch: String
+    /// When it was opened, as a draft or not. Absent in a detail stored before the Worker read it.
+    public let createdAt: Date?
     public let author: Author?
     public let isAuthor: Bool
     /// These three are absent in a detail stored before the Worker read them. A GitHub App, a `[bot]` login, or an
@@ -178,6 +180,19 @@ public struct PullRequestDetail: Decodable, Sendable {
 
     public var listState: PrListState {
         PrListState(rawValue: (state ?? "open").capitalized) ?? .open
+    }
+
+    /// "opened 3 days ago", in the words a comment's date is in. Nil where the Worker has not said when.
+    public func opened(now: Date = .now) -> String? {
+        createdAt.map { opened in
+            let style = Date.AnchoredRelativeFormatStyle(anchor: opened, presentation: .numeric, unitsStyle: .abbreviated)
+            return "opened \(style.format(now))"
+        }
+    }
+
+    /// "23 November 2026 at 14:02", for VoiceOver: the whole date.
+    public var openedInFull: String? {
+        createdAt.map { $0.formatted(date: .long, time: .shortened) }
     }
 
     public static func decode(_ data: Data) throws -> PullRequestDetail {

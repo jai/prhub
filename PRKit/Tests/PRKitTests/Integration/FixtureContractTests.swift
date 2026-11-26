@@ -49,6 +49,7 @@ struct FixtureContractTests {
         #expect(detail.listState == .open)
         #expect(!detail.listedChecks.isEmpty)
         #expect(detail.body == "Retries a failed upload twice.")
+        #expect(detail.createdAt == ISO8601DateFormatter().date(from: "2026-11-05T02:00:00Z"), "when it was opened")
     }
 
     /// Written by hand to the Worker's shape (docs/api.md), beside the Worker's own `detail.json`: a detail whose

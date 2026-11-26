@@ -75,6 +75,20 @@ final class PRKitPRPageUITests: PRHubUITestCase {
         try picture("pr-page-description")
     }
 
+    /// The top of the page says when the PR was opened, beside which PR it is, and VoiceOver has the whole date
+    /// (Jai's feedback, 2026-11-26: the PR did not say when it was opened).
+    func testTheHeaderSaysWhenThePRWasOpened() throws {
+        launch()
+        openCheckout()
+        let reference = app.staticTexts["pr-reference"]
+        XCTAssertTrue(reference.waitForExistence(timeout: 5))
+        try picture("pr-page-opened")
+        XCTAssertEqual(reference.label, "acme/web#412 · opened 3 days ago")
+        let whole = try XCTUnwrap(reference.value as? String)
+        XCTAssertTrue(whole.contains(String(Calendar.current.component(.year, from: .now - 3 * 86400))), whole)
+        XCTAssertTrue(app.isClearOfBars(reference), "on screen as the page opens")
+    }
+
     /// A long press on Open in GitHub offers the PR's link, to copy or to share.
     func testALongPressOnOpenInGitHubOffersThePRsLink() throws {
         launch([])
