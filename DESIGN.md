@@ -544,7 +544,8 @@ rules:
     survives the app leaving the foreground; a late answer or refusal still reaches the toast.
   - It slides down from ToastStyle.travel above, from under the nav bar, and back up the same way, fading
     (AppMotion.fold); its words, mark and bar change in place (AppMotion.swap). Done stays ToastStyle.dwell, then goes.
-    A line's Comment now and a reply go through it too, and it shows over a PR pushed on any tab. Failed stays until Retry or close, and gives the line comments back to the PR.
+    A line's Comment now and a reply go through it too, and it shows over a PR pushed on any tab. Failed stays until Retry or close, and gives the words back to the box. The pending comments are not lost: they
+    are on GitHub's pending review or on the device, and with a Worker that has no pending reviews they go back to the PR.
   - Opaque, never glass: glass let the title's words show through its own. One at a time; a new review replaces it.
   - Never over the nav bar: there it covered Back (Jai's feedback, build 305). Each screen of a PR stack, the list's
     included, draws it under its own bar.
@@ -668,6 +669,17 @@ parts: { words: appCaption2 semibold, ground: "its tone at PRStyle.toneGroundOpa
   right closes it. In place: no sheet. A diff's Files and Key lines (`PRNavigator`) use it. It opens on Key lines when
   the PR offers them, else on Files. Where a regular width has room (`PanelStyle`), the diff's panel is a column beside
   the code instead, open until its button puts it away, and a pick in it keeps it open.
+- **A pending comment:** `PRPendingCard`, a card (`prCard`) for one comment of the review not submitted yet, GitHub's or
+  the device's: a `StatusChip` "Pending" in `toneWaiting` (and "Outdated" where GitHub says so), then Edit and Delete
+  (`PRButtonStyle(.plain)`), then the words (`PRCommentText`). Edit opens the words in the card's own `InlineComposer`,
+  with Save, as the description's does. It is saved on the device and shown at once, then sent to GitHub's pending
+  review. One GitHub refused keeps its words and says why under them (`appFootnote`, `toneBad`), with Try again and,
+  for a line comment, Add to the file instead (`PRButtonStyle(.secondary)`). It sits under its line in the diff, or
+  under the thread it replies to; one with no line in the diff (on a file, outdated) is listed on the PR's page under
+  the review bar (`PRPendingList`, "Pending comments · N"), with its path. Over the review bar and in its box,
+  "N pending comments will go with your review" (`appFootnote`, `toneWaiting`) counts GitHub's too, and a line in
+  `toneBad` says what will not go. The line box's button is always "Add to review": GitHub holds the one review. (With
+  a Worker that has no pending reviews, comments wait on the device, and the first one's button is "Start review".)
 - **A key line:** in Key lines, a card of its own (`PRKeyLineRow`, `.prCard()`) on the list's page
   (`Color.groundList`), `Space.sm` from the next, so one ends where the next begins in dark as in light. On it: a
   heading (its tick first, where a file's viewed mark is in Files; its kind as a `StatusChip`: Risk in `toneBad`,
