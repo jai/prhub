@@ -148,7 +148,7 @@
                 }
                 closeComposer()
             }
-            let ids = Set(rows.threads.map(\.id) + rows.drafts.map(\.id.uuidString) + (rows.note.map { [$0.id] } ?? []))
+            let ids = Set(rows.threads.map(\.id) + rows.pending.map(\.id) + (rows.note.map { [$0.id] } ?? []))
             hosted = hosted.filter { ids.contains($0.key) }
             headers = [:]
             rebuild()

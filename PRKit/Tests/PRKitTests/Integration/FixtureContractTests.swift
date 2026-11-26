@@ -50,4 +50,24 @@ struct FixtureContractTests {
         #expect(!detail.listedChecks.isEmpty)
         #expect(detail.body == "Retries a failed upload twice.")
     }
+
+    /// Written by hand to the Worker's shape (docs/api.md), beside the Worker's own `detail.json`: a detail whose
+    /// person has a pending review on GitHub, with a line comment, a file comment and a reply to a posted thread.
+    @Test func aDetailWithAPendingReviewDecodes() throws {
+        let detail = try PullRequestDetail.decode(Self.data("detail-pending-review.json"))
+        #expect(detail.pendingReview.isSupported)
+        let comments = detail.pendingReview.comments
+        #expect(comments.map(\.id) == ["PRRC_kwDOAcme1", "PRRC_kwDOAcme2", "PRRC_kwDOAcme3"])
+        #expect(comments[0].path == "src/upload.ts" && comments[0].line == 12 && comments[0].side == .right)
+        #expect(comments[1].isFile && comments[1].line == nil)
+        #expect(comments[2].thread == "PRRT_kwDOAcme1" && comments[2].isOutdated)
+    }
+
+    /// A detail as a Worker from before pending reviews sends it: no `pendingReview` key, so the app keeps comments
+    /// on the device as it did.
+    @Test func aDetailFromBeforePendingReviewsStillDecodes() throws {
+        let detail = try PullRequestDetail.decode(Self.data("detail-before-pending-review.json"))
+        #expect(detail.pendingReview == .unsupported)
+        #expect(detail.body == "Retries a failed upload twice.")
+    }
 }

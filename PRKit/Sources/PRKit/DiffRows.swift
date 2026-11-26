@@ -63,9 +63,41 @@ struct DiffRows: Sendable {
         isCut ? [.rest(index)] : (1 ..< document.pieceCount(ofLine: index)).map { .piece(index, $0) } + [.less(index)]
     }
 
+    /// The comment rows by the line they sit under, and each placed pending comment's line: a thread on its line, a
+    /// pending reply straight under the thread it answers, a pending line comment on its own line.
+    private static func anchor(
+        threads: [PullRequestDetail.Thread], pending: [PRPendingComment]
+    ) -> (rows: [Anchor: [Row]], pending: [String: Anchor]) {
+        var anchored: [Anchor: [Row]] = [:]
+        var anchors: [String: Anchor] = [:]
+        for (index, thread) in threads.enumerated() {
+            if let line = thread.line {
+                let anchor = Anchor(path: thread.path, line: line, isNewSide: thread.diffSide == "RIGHT")
+                anchored[anchor, default: []].append(.thread(index))
+                // A pending reply sits straight under the thread it answers.
+                for (reply, comment) in pending.enumerated() where comment.thread == thread.id {
+                    anchored[anchor, default: []].append(.draft(reply))
+                    anchors[comment.id] = anchor
+                }
+            }
+        }
+        for (index, comment) in pending.enumerated() where comment.thread == nil {
+            if let line = comment.line {
+                let anchor = Anchor(path: comment.path, line: line, isNewSide: comment.side == .right)
+                anchored[anchor, default: []].append(.draft(index))
+                anchors[comment.id] = anchor
+            }
+        }
+        return (anchored, anchors)
+    }
+
     let files: [File]
     let threads: [PullRequestDetail.Thread]
-    let drafts: [PRDraftComment]
+    /// The comments of the review not submitted yet. A `draft` row draws one, by its place here.
+    let pending: [PRPendingComment]
+    /// The pending comments that have a row here, by id: under their line, or under the thread they reply to. The PR's
+    /// page lists the rest.
+    let placed: Set<String>
     /// Differs for every build of the rows, so the table knows to reload after a comment is posted.
     let stamp = UUID()
     /// Long lines wrap in the diff's width; otherwise each is one row and the code scrolls sideways.
@@ -78,7 +110,7 @@ struct DiffRows: Sendable {
 
     /// `changedLinesOnly` leaves out unchanged lines, but keeps one that carries a comment.
     init(
-        document: DiffDocument, threads: [PullRequestDetail.Thread], drafts: [PRDraftComment] = [],
+        document: DiffDocument, threads: [PullRequestDetail.Thread], pending: [PRPendingComment] = [],
         changedLinesOnly: Bool = false, note: PRKeyLines.Item? = nil, longLines: LongLines = LongLines()
     ) {
         wraps = longLines.wraps
@@ -86,18 +118,9 @@ struct DiffRows: Sendable {
         self.note = note
         var noteLine: Int?
         var cut: Set<Int> = []
-        self.drafts = drafts
-        var anchored: [Anchor: [Row]] = [:]
-        for (index, thread) in threads.enumerated() {
-            if let line = thread.line {
-                let anchor = Anchor(path: thread.path, line: line, isNewSide: thread.diffSide == "RIGHT")
-                anchored[anchor, default: []].append(.thread(index))
-            }
-        }
-        for (index, draft) in drafts.enumerated() {
-            let anchor = Anchor(path: draft.path, line: draft.line, isNewSide: draft.side == .right)
-            anchored[anchor, default: []].append(.draft(index))
-        }
+        self.pending = pending
+        let (anchored, anchors) = Self.anchor(threads: threads, pending: pending)
+        var shown: Set<Anchor> = []
         var byFile = [[Row]](repeating: [], count: document.files.count)
         var headers = byFile
         for (index, line) in document.lines.enumerated() where line.kind != .file {
@@ -109,9 +132,17 @@ struct DiffRows: Sendable {
                 continue
             }
             let path = document.files[line.file]
-            let newSide = line.newLine > 0 ? anchored[Anchor(path: path, line: line.newLine, isNewSide: true)] : nil
-            let oldSide = line.oldLine > 0 ? anchored[Anchor(path: path, line: line.oldLine, isNewSide: false)] : nil
+            let newAnchor = Anchor(path: path, line: line.newLine, isNewSide: true)
+            let oldAnchor = Anchor(path: path, line: line.oldLine, isNewSide: false)
+            let newSide = line.newLine > 0 ? anchored[newAnchor] : nil
+            let oldSide = line.oldLine > 0 ? anchored[oldAnchor] : nil
             let comments = (newSide ?? []) + (oldSide ?? [])
+            if newSide != nil {
+                shown.insert(newAnchor)
+            }
+            if oldSide != nil {
+                shown.insert(oldAnchor)
+            }
             let carriesNote = note.map { note in
                 note.path == path && note.line == (note.side == "RIGHT" ? line.newLine : line.oldLine)
             } ?? false
@@ -134,6 +165,7 @@ struct DiffRows: Sendable {
         }
         self.noteLine = noteLine
         self.cut = cut
+        placed = Set(anchors.filter { shown.contains($0.value) }.keys)
         files = document.files.indices.map { index in
             File(
                 path: document.files[index], change: document.fileChanges[index],

@@ -238,7 +238,8 @@ struct DiffActions {
     /// The reader scrolled down the code (true) or back up. The phone's bars go and come with it.
     let setBarsHidden: (Bool) -> Void
     let setKeyboardUp: (Bool) -> Void
-    let removeDraft: (PRDraftComment) -> Void
+    /// What a pending comment's card asks for: its words to change, Delete, and Try again after a refusal.
+    let pending: PRPendingActions
     let reply: (PullRequestDetail.Thread, String) async throws -> Void
     let setResolved: (PullRequestDetail.Thread, Bool) async throws -> Void
     /// The file at the top of the screen, by index, as the reader scrolls.

@@ -96,6 +96,8 @@ final class PRsModel {
     /// Whether the device has a network: what a question left in the outbox says while it waits. A test sets its own.
     @ObservationIgnored var isOnline: @MainActor () -> Bool
     let draftStore: PRDraftStore
+    /// Each PR's pending review, kept the same on GitHub and on this device (`PRPendingSync`).
+    @ObservationIgnored private(set) lazy var pendingSync = PRPendingSync(model: self, store: draftStore)
 
     let mirror: PRMirror
     /// Last good answers to the reads the mirror doesn't hold (the merged lists, each PR's Ask chat, key lines at
@@ -159,6 +161,7 @@ final class PRsModel {
         }
         mirror = PRMirror(files: files, client: client, shown: saved)
         isOnline = { [network] in network.isOnline }
+        network.onReturn = { [weak self] in self?.pendingSync.syncAll() }
     }
 
     /// On disk: the mirror in `directory`, the app's caches unless the host names its own (`PRKitStorage.onDisk`).

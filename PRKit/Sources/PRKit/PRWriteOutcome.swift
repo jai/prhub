@@ -53,6 +53,11 @@ extension PRWrite {
         case .checkbox: "Your checkbox"
         case .editBody: "Your description edit"
         case .merge: "The merge"
+        case .pendingAdd: "Your pending comment"
+        case .pendingEdit: "Your edit of a pending comment"
+        case .pendingDelete: "Deleting a pending comment"
+        case .pendingSubmit: "Your review"
+        case .pendingDiscard: "Discarding your pending review"
         }
     }
 
@@ -60,15 +65,18 @@ extension PRWrite {
     var quote: String? {
         switch self {
         case let .comment(body), let .reply(_, body), let .line(_, _, _, body, _): body
-        case let .review(_, body, _, _): body.isEmpty ? nil : body
-        case .resolve, .viewed, .updateBranch, .removeRequest, .checkbox, .editBody, .merge: nil
+        case let .pendingAdd(_, _, _, _, body), let .pendingEdit(_, body): body
+        case let .review(_, body, _, _), let .pendingSubmit(_, body): body.isEmpty ? nil : body
+        case .resolve, .viewed, .updateBranch, .removeRequest, .checkbox, .editBody, .merge, .pendingDelete,
+             .pendingDiscard: nil
         }
     }
 
     /// Said under the screen while it waits. A Viewed mark and leaving a review show their effect at once instead.
     var saysWhenQueued: Bool {
         switch self {
-        case .viewed, .removeRequest: false
+        // A pending comment says where it stands on its own card.
+        case .viewed, .removeRequest, .pendingAdd, .pendingEdit, .pendingDelete: false
         default: true
         }
     }

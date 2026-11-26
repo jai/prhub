@@ -137,7 +137,7 @@ struct PRDiffPage: View {
                     session.barsHidden = isUp
                 }
             },
-            removeDraft: { session.removeDraft($0) },
+            pending: PRPendingActions(session),
             reply: { thread, text in try await session.send(text, to: .reply(thread: thread)) },
             setResolved: { thread, resolved in try await session.setResolved(resolved, thread: thread) },
             showsFileOnTop: { file in
@@ -173,7 +173,9 @@ struct PRDiffPage: View {
             InlineComposer(
                 text: text,
                 placeholder: "Comment on this line",
-                buttonTitle: session.drafts.isEmpty ? "Start review" : "Add to review",
+                buttonTitle: PRPendingWords.addTitle(
+                    usesPendingReview: session.usesPendingReview, hasPending: !session.pending.isEmpty
+                ),
                 // Wrapped, the whole line is on screen over the box. Scrolled, a cut line is read here, as far as a
                 // box can hold.
                 context: !rows.wraps && document.isClipped(line)

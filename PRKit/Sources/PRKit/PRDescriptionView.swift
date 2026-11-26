@@ -66,6 +66,7 @@ struct PRDescriptionView: View {
                 PRChangesCard(detail: detail, showDiff: showDiff, reviewChanges: reviewChanges)
                 PRReviewActions(session: session, isAuthor: detail.isAuthor, showsNotice: false, action: $action)
                 composer
+                PRPendingList(session: session)
                 if let summary = session.summary {
                     // A bug's tap is its line in the diff, as in Key lines.
                     PRKeyLinesSummaryCard(summary: summary, onPage: true) { bug in
@@ -269,6 +270,10 @@ struct PRDescriptionView: View {
                 reply: { try await session.send($0, to: .reply(thread: thread)) },
                 setResolved: { try await session.setResolved($0, thread: thread) }
             )
+            // A reply of the review not submitted yet, under the thread it answers.
+            ForEach(session.pendingReplies(to: thread.id)) { reply in
+                PRPendingCard(comment: reply, actions: PRPendingActions(session))
+            }
         }
     }
 

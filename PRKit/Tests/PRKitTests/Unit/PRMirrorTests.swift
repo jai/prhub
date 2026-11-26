@@ -432,9 +432,9 @@ struct PRMirrorTests {
     @Test func aPendingCommentSitsUnderItsLineOnItsSide() {
         let document = DiffDocument(data: Data("diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -5 +5 @@\n-old\n+new\n".utf8))
         let draft = { (line: Int, side: PRDiffSide) in
-            PRDraftComment(id: UUID(), path: "f", line: line, side: side, body: "b")
+            PRPendingComment(PRDraftComment(id: UUID(), path: "f", line: line, side: side, body: "b"))
         }
-        let rows = DiffRows(document: document, threads: [], drafts: [draft(5, .right), draft(5, .left)])
+        let rows = DiffRows(document: document, threads: [], pending: [draft(5, .right), draft(5, .left)])
         #expect(rows.files[0].rows == [.line(3), .line(4), .draft(1), .line(5), .draft(0)])
     }
 }

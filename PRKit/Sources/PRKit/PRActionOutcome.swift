@@ -108,6 +108,11 @@ public enum PRWriteKind: String, CaseIterable, Sendable {
     /// Saving the description, typed or rewritten by the model.
     case editBody = "edit_body"
     case merge
+    /// A comment added to the pending review on GitHub, changed there, or removed from it.
+    case pendingAdd = "pending_add"
+    case pendingEdit = "pending_edit"
+    case pendingDelete = "pending_delete"
+    case pendingDiscard = "pending_discard"
 
     public init(_ write: PRWrite) {
         self = switch write {
@@ -124,6 +129,18 @@ public enum PRWriteKind: String, CaseIterable, Sendable {
         case .checkbox: .checkbox
         case .editBody: .editBody
         case .merge: .merge
+        case .pendingAdd, .pendingEdit, .pendingDelete, .pendingSubmit, .pendingDiscard: Self.pending(write)
+        }
+    }
+
+    /// A write to the pending review, by what it does. Its submit is the review it posts.
+    private static func pending(_ write: PRWrite) -> PRWriteKind {
+        switch write {
+        case .pendingAdd: .pendingAdd
+        case .pendingEdit: .pendingEdit
+        case .pendingDelete: .pendingDelete
+        case let .pendingSubmit(event, _): PRWriteKind(.review(event, body: "", commit: "", comments: []))
+        default: .pendingDiscard
         }
     }
 }

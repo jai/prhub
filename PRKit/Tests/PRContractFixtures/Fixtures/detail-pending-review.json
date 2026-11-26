@@ -1,0 +1,141 @@
+{
+  "id": "PR_kwDOAcme7",
+  "url": "https://github.com/acme/app/pull/7",
+  "state": "open",
+  "head": "504754b2bc3ce5db892dde980e4bc83b60ff7a68",
+  "base": "main",
+  "headBranch": "alex/retry",
+  "author": {
+    "__typename": "User",
+    "login": "alex",
+    "avatarUrl": "https://avatars.example/alex",
+    "name": "Alex Doe"
+  },
+  "isAuthor": false,
+  "authorIsBot": false,
+  "requestedBy": null,
+  "tickets": [
+    {
+      "key": "ENG-7",
+      "url": null,
+      "title": null,
+      "state": null,
+      "state_type": null,
+      "state_color": null,
+      "assignee": null,
+      "assignee_avatar": null,
+      "delegate": null,
+      "delegate_avatar": null,
+      "found": null
+    }
+  ],
+  "body": "Retries a failed upload twice.",
+  "additions": 40,
+  "deletions": 6,
+  "changedFiles": 3,
+  "reviewDecision": "REVIEW_REQUIRED",
+  "mergeState": "CLEAN",
+  "merge": "conflicting",
+  "review": "required",
+  "mergeMethod": "SQUASH",
+  "policy": null,
+  "reviewers": [
+    {
+      "login": "sam",
+      "avatarUrl": "https://avatars.example/sam",
+      "state": "COMMENTED"
+    },
+    {
+      "login": "jai",
+      "avatarUrl": "https://avatars.example/jai",
+      "state": "REQUESTED"
+    }
+  ],
+  "viewedFiles": [
+    "src/upload.ts"
+  ],
+  "labels": [
+    {
+      "name": "backend",
+      "color": "0e8a16"
+    }
+  ],
+  "checks": [
+    {
+      "name": "test",
+      "state": "success",
+      "url": "https://github.com/acme/app/actions/runs/1",
+      "required": true,
+      "workflow": "ci"
+    }
+  ],
+  "comments": {
+    "nodes": [
+      {
+        "id": "IC_1",
+        "author": {
+          "login": "sam",
+          "avatarUrl": "https://avatars.example/sam"
+        },
+        "body": "Looks right.",
+        "createdAt": "2026-11-06T04:00:00Z"
+      }
+    ]
+  },
+  "reviews": {
+    "nodes": [
+      {
+        "id": "PRR_1",
+        "author": {
+          "login": "sam",
+          "avatarUrl": "https://avatars.example/sam"
+        },
+        "state": "COMMENTED",
+        "body": "",
+        "submittedAt": "2026-11-06T04:00:00Z"
+      }
+    ]
+  },
+  "reviewThreads": {
+    "nodes": []
+  },
+  "pendingReview": {
+    "id": "PRR_kwDOAcme7",
+    "body": "",
+    "comments": [
+      {
+        "id": "PRRC_kwDOAcme1",
+        "path": "src/upload.ts",
+        "line": 12,
+        "side": "RIGHT",
+        "body": "Should the second retry wait longer?",
+        "createdAt": "2026-11-20T10:00:00Z",
+        "outdated": false,
+        "thread": null,
+        "file": false
+      },
+      {
+        "id": "PRRC_kwDOAcme2",
+        "path": "src/upload.ts",
+        "line": null,
+        "side": "RIGHT",
+        "body": "This file could use a test.",
+        "createdAt": "2026-11-20T10:01:00Z",
+        "outdated": false,
+        "thread": null,
+        "file": true
+      },
+      {
+        "id": "PRRC_kwDOAcme3",
+        "path": "src/upload.ts",
+        "line": null,
+        "side": "RIGHT",
+        "body": "Still true after the rename?",
+        "createdAt": "2026-11-20T10:02:00Z",
+        "outdated": true,
+        "thread": "PRRT_kwDOAcme1",
+        "file": false
+      }
+    ]
+  }
+}
