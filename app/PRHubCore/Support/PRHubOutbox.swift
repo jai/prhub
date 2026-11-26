@@ -83,6 +83,24 @@ final class PRHubOutbox: PRKitOutbox {
         items.contains { $0.rejection == nil && $0.lane == Self.lane(ref) && Self.kind(of: $0) == kind }
     }
 
+    /// Stops a job nothing has been sent of yet: one tried even once may have reached the Worker, so it goes on, and
+    /// PRKit sends its change after it. The outbox itself is asked, not the copy here, which can be a moment behind.
+    func cancel(_ id: String) async -> Bool {
+        let state = await outbox.state
+        guard let item = state.items.first(where: { $0.id == id }), item.attempts == 0, !state.underWay.contains(id) else {
+            return false
+        }
+        await outbox.cancel(id: id)
+        await refresh()
+        return true
+    }
+
+    /// Before the saved jobs are read at launch nothing is known to be gone, so every job counts as held: a pending
+    /// comment is sent again only once its job is known to be on no phone.
+    func holds(job id: String, about _: PullRequestRef) -> Bool {
+        revision < 0 || items.contains { $0.id == id && $0.rejection == nil }
+    }
+
     /// Disconnect, sign out, or another person signing in: nothing saved goes to the next Worker.
     func forget() async {
         for item in await outbox.snapshot {
@@ -121,8 +139,8 @@ final class PRHubOutbox: PRKitOutbox {
         kit?.outboxAnswered(id: item.id, data: data)
     }
 
-    /// A refusal is told once, then dropped: PRHub has no list of waiting jobs to retry it from, and PRKit's toast
-    /// gives the words back to the box.
+    /// A refusal is told once, then dropped: PRHub has no list of waiting jobs to retry it from. PRKit's toast gives a
+    /// review's words back to the box, and a pending comment keeps its refusal on the device, with its own Try again.
     private func rejected(_ item: OutboxItem, _ reason: String) async {
         kit?.outboxRefused(id: item.id, kind: Self.kind(of: item), reason: reason)
         await outbox.cancel(id: item.id)

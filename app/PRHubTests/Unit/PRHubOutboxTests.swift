@@ -60,6 +60,30 @@ struct PRHubOutboxTests {
         #expect(worker.requests.with(\.count) == 1, "a refusal is not tried again")
     }
 
+    /// A pending comment changed before its add went: PRKit stops the job and sends the comment as it now reads.
+    @Test func aJobNotTriedYetIsStoppedAndNeverSent() async throws {
+        let worker = StubWorker([.reply(status: 200, body: "{}")])
+        let outbox = outbox(worker)
+        let id = try await outbox.enqueue(job)
+        #expect(outbox.holds(job: id, about: ref))
+        #expect(await outbox.cancel(id))
+        #expect(!outbox.holds(job: id, about: ref) && !outbox.isQueued(.write, about: ref))
+        #expect(await outbox.cancel(id) == false, "nothing is left to stop")
+        let kept = try await outbox.enqueue(job)
+        await outbox.start(watchingNetwork: false).value
+        await waitUntilEmpty(outbox, worker: worker, attempts: 1)
+        #expect(worker.requests.with(\.count) == 1, "only the job that was kept went")
+        #expect(await outbox.cancel(kept) == false, "one the Worker has is not stopped")
+    }
+
+    /// Until the saved jobs are read, no job is known to be gone: PRKit sends a pending comment again only when it is.
+    @Test func beforeTheSavedJobsAreReadEveryJobCountsAsHeld() async {
+        let outbox = outbox(StubWorker([]))
+        #expect(outbox.holds(job: "a-job-from-the-last-launch", about: ref))
+        await outbox.start(watchingNetwork: false).value
+        #expect(!outbox.holds(job: "a-job-from-the-last-launch", about: ref))
+    }
+
     @Test func aServerErrorIsTriedAgainUntilTheWorkerHasIt() async throws {
         let worker = StubWorker([.reply(status: 503, body: "{}"), .reply(status: 200, body: "{}")])
         let outbox = outbox(worker)
