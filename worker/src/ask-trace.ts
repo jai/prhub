@@ -13,6 +13,7 @@ export type AskStage =
   | "answered"
   | "failed"
   | "resumed"
+  | "context"
   | "linear_read";
 
 /** One stage of a turn, as one structured log line. `turn` is the question's id; the first 8 characters name it. */

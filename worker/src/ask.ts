@@ -6,7 +6,7 @@ import { prId, type RepoFullName } from "./ids";
 import { askGitHubReach, askGrant, askRepoToken, InstallationTokenRefused } from "./app-token";
 import { onApiKey, onSubscription } from "./agent-container";
 import { askSubscriptionPrompt } from "./ask-setup";
-import { AskFailure } from "./ask-trace";
+import { AskFailure, askEvent } from "./ask-trace";
 import {
   askOnSubscription,
   isSubscriptionRecord,
@@ -19,7 +19,7 @@ import { writeToGitHub } from "./write";
 import { proposalsOf } from "./linear-act";
 import { linearPostedNow } from "./ask-linear";
 import { allKeys, ticketKeysOf } from "./tickets";
-import { askTickets, readLinear } from "./linear-read";
+import { askTickets, type AskTickets, readLinear } from "./linear-read";
 import { reviewText, storedReview } from "./ask-review";
 import { BUILT_IN_DEFAULTS, type ModelChoice, sameChoice } from "./models";
 
@@ -52,6 +52,26 @@ interface AskRecord {
 }
 
 export class AskRefused extends Error {}
+
+/** The `context` trace line's fields: how much of each part a turn's instructions hold, as counts. */
+export function contextSizes(
+  pr: { body: string } | null,
+  linear: AskTickets | null,
+  review: string | null,
+  prompt: string,
+): Record<string, number | boolean | null> {
+  return {
+    prompt_chars: prompt.length,
+    description_chars: pr?.body.length ?? null,
+    linear_connected: linear?.connected ?? null,
+    linear_unavailable: linear?.unavailable ?? null,
+    tickets_named: linear?.named.length ?? null,
+    tickets_included: linear?.tickets.length ?? null,
+    tickets_chars: linear?.tickets.reduce((sum, one) => sum + one.text.length, 0) ?? null,
+    review_included: review !== null,
+    review_chars: review?.length ?? 0,
+  };
+}
 
 function client(env: Env): Anthropic {
   return new Anthropic({
@@ -205,15 +225,23 @@ export async function ask(
           askTickets(keysOf(pr), env).catch(() => null),
           storedReview(repo, number, input.head, env).catch(() => null),
         ]);
-        return askSubscriptionPrompt({
+        const reviewed = review ? reviewText(review, await diff().catch(() => "")) : null;
+        const prompt = askSubscriptionPrompt({
           reviewer: env.GITHUB_LOGIN ?? null,
           repo,
           number,
           pr,
           reach,
           linear,
-          review: review ? reviewText(review, await diff().catch(() => "")) : null,
+          review: reviewed,
         });
+        // What the instructions hold, in sizes alone: never a ticket's or the review's words.
+        askEvent("context", turn ?? "", {
+          pr: `${repo}#${number}`,
+          user_id: env.SIGNED_IN_USER_ID ?? null,
+          ...contextSizes(pr, linear, reviewed, prompt),
+        });
+        return prompt;
       },
       grant,
       readOnly: reach !== "none",

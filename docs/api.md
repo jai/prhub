@@ -604,8 +604,9 @@ Each Ask turn has one id, the question's own (its `client_ref`, else one the Wor
 | `queued` / `received` | `POST …/ask` stored the question, or found it already there (`repeat`) | |
 | `handed_over` / `resumed` | The queue gave it to the agent; `resumed` when a turn a deploy cut short runs again | `model`, `effort` |
 | `grant` | GitHub's read-only token for the turn is minted | `ms`, `read_only`, `repos` |
+| `context` | The turn's instructions are made | Sizes only: `prompt_chars`, `description_chars`, `linear_connected`, `linear_unavailable`, `tickets_named`, `tickets_included`, `tickets_chars`, `review_included`, `review_chars` |
 | `linear_read` | The agent's `linear_issue` or `linear_search` was answered | `tool` (`issue` or `search`), `ok` |
-| `container` | The Agent SDK container answered | `ms`, `subtype`, `tools` |
+| `container` | The Agent SDK container answered | `ms`, `subtype`, `tools`, `session_resumed` |
 | `answered` | The answer is in the chat | `ms`, `model`, `cost_cents` |
 | `failed` | The turn ended without an answer | `ms`, `side`, `reason`, `status` |
 

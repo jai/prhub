@@ -461,6 +461,40 @@ test("the review comes from where the PR's page keeps it: the usual one, else an
   );
 });
 
+test("the context line says how much the instructions hold, in sizes alone", async () => {
+  const { contextSizes } = await import("../../src/ask.ts");
+  const linear = {
+    connected: true,
+    named: ["ENG-12", "OPS-4"],
+    tickets: [{ key: "ENG-12", text: ticketText(ISSUE, 4_000) }],
+    more: ["OPS-4"],
+    unavailable: false,
+  };
+  const review = reviewText(REVIEW, DIFF);
+  const sizes = contextSizes(FACTS, linear, review, "p".repeat(900));
+  assert.deepEqual(sizes, {
+    prompt_chars: 900,
+    description_chars: FACTS.body.length,
+    linear_connected: true,
+    linear_unavailable: false,
+    tickets_named: 2,
+    tickets_included: 1,
+    tickets_chars: linear.tickets[0].text.length,
+    review_included: true,
+    review_chars: review.length,
+  });
+  for (const value of Object.values(sizes)) {
+    assert.notEqual(typeof value, "string", "no words, only counts and flags");
+  }
+  assert.deepEqual(
+    [
+      contextSizes(null, null, null, "").review_included,
+      contextSizes(null, null, null, "").tickets_chars,
+    ],
+    [false, null],
+  );
+});
+
 /** A container that asks the Worker for one read mid-answer, and keeps what it is told. */
 function askingContainer() {
   const replies: Record<string, unknown>[] = [];

@@ -284,6 +284,8 @@ export async function askOnSubscription(
       ms: now() - started,
       subtype: answer.subtype ?? null,
       tools: answer.tools ?? null,
+      // Whether the turn went on from an earlier one's session: a chat already open, not a new one.
+      session_resumed: record.session !== null,
     });
     if (answer.session && answer.entries) {
       await env.DIFFS.put(transcriptKey(repo, number, env), JSON.stringify(answer.entries));
