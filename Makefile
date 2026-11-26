@@ -23,8 +23,8 @@
 # Tools: mise (https://mise.jdx.dev) installs each pinned tool on first use. GNU Make 3.81 (macOS's): no .ONESHELL.
 
 SHELL := /bin/bash
-.PHONY: fix lint-ios lint-prkit lint-worker lint-workflows build-ios test-unit-ios test-integration-ios test-ui-ios \
-	test-ui-mac \
+.PHONY: fix resolve lint-lockfile lint-ios lint-prkit lint-worker lint-workflows build-ios test-unit-ios \
+	test-integration-ios test-ui-ios test-ui-mac \
 	test-unit-prkit test-integration-prkit test-ui-prkit test-unit-worker test-integration-worker lint all-tests
 
 X := mise exec
@@ -100,6 +100,24 @@ build-ios:
 	$(XCODEBUILD) build -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO
 	$(XCODEBUILD) build -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO
 
+# After a kit's pin changed: the app's packages are resolved again. Then the root lockfile is resolved from nothing, so
+# SwiftPM names the packages PRKit needs and writes the package's own originHash (it keeps the old one when only the pins
+# change), takes the app's version of each, and must resolve with exactly those.
+resolve:
+	$(GENERATE_XCODE_PROJECT)
+	cd app && xcodebuild -project PRHub.xcodeproj -scheme PRHub -resolvePackageDependencies
+	cp $(XCODE_PINS)/Package.resolved app/Package.resolved
+	rm -f Package.resolved
+	swift package resolve
+	python3 -I scripts/keep-app-versions.py app/Package.resolved Package.resolved
+	swift package --force-resolved-versions resolve
+
+# Fails unless the root lockfile has the originHash SwiftPM writes for Package.swift: --force-resolved-versions passes with
+# a stale one. The folder is named after the manifest, so a lockfile already there was written for it.
+lint-lockfile:
+	@d=.build/lockfile-check/$$(shasum -a 256 Package.swift | cut -c1-16) && mkdir -p $$d && cp Package.swift $$d/ && \
+	swift package --package-path $$d resolve && python3 -I scripts/same-origin-hash.py $$d/Package.resolved Package.resolved
+
 # ---- Tests ----------------------------------------------------------------------------------------------------------
 
 SWIFT_JOBS ?= 4
@@ -110,7 +128,7 @@ test-unit-ios:
 test-integration-ios:
 	swift test -j $(SWIFT_JOBS) --filter PRHubIntegrationTests
 
-test-unit-prkit:
+test-unit-prkit: lint-lockfile
 	swift test -j $(SWIFT_JOBS) --filter PRKitUnitTests
 
 test-integration-prkit:

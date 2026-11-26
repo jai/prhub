@@ -1,0 +1,73 @@
+# A Renovate bump of a kit, made whole: Renovate edits the pins it names and resolves nothing, so a kit that asks more of
+# another kit leaves the lockfiles out of step. This resolves the app's and PRKit's packages on Renovate's branch, commits
+# both lockfiles to it, and starts lint-ios, test-unit-ios and test-unit-prkit on the result. Renovate merges its PR only
+# once every check on the last commit passed (renovate.json); when one fails, the PR stays open.
+name: resolve-packages
+
+on:
+  push:
+    branches: ['renovate/**']
+    paths: ["Package.resolved", "app/Package.resolved"]
+
+permissions:
+  contents: write
+  actions: write
+  checks: read
+  statuses: write
+
+concurrency:
+  group: resolve-packages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    runs-on: xcode-27
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v5
+        with:
+          cache: false
+      - run: make resolve
+      # A push with github.token starts no workflow, so the job starts the checks itself. The push takes the checkout's token
+      # and no other: a host's git config that rewrote github.com to SSH pushed with its user's key, and that push started
+      # the workflow again (agent-pager on Cube 03, 2026-11-25). Renovate takes this author's commit as its own
+      # (gitIgnoredAuthors), so it still updates and merges the branch.
+      - name: Commit the lockfiles
+        env:
+          GIT_CONFIG_GLOBAL: /dev/null
+          GIT_CONFIG_NOSYSTEM: '1'
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          git add Package.resolved app/Package.resolved
+          git diff --cached --quiet && exit 0
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -q -m 'chore(deps): resolve both lockfiles for this bump'
+          git push "https://github.com/$GITHUB_REPOSITORY.git" "HEAD:$GITHUB_REF"
+      # The commit's status is pending until the checks are on it, and failed if this job is: Renovate merges on every
+      # check it sees, and would not know that one never started.
+      - name: Start the checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          head=$(git rev-parse HEAD)
+          status() {
+            gh api "repos/$GITHUB_REPOSITORY/statuses/$head" -f state="$1" -f context=resolve-packages \
+              -f description="$2" --silent
+          }
+          trap 'status failure "The checks did not start"' ERR
+          status pending 'Starting lint-ios, test-unit-ios and test-unit-prkit'
+          for workflow in lint-ios test-unit-ios test-unit-prkit; do
+            gh workflow run "$workflow.yml" -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME"
+          done
+          for _ in $(seq 60); do
+            names=$(gh api "repos/$GITHUB_REPOSITORY/commits/$head/check-runs" --jq '.check_runs[].name')
+            if grep -qx lint-ios <<<"$names" && grep -qx build-ios <<<"$names" \
+              && grep -qx test-unit-ios <<<"$names" && grep -qx test-unit-prkit <<<"$names"; then
+              status success 'The checks started'
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "the checks did not appear on $head" >&2
+          false
