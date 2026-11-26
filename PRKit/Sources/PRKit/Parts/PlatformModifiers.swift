@@ -14,6 +14,20 @@ public extension View {
         #endif
     }
 
+    /// A page that scrolls under its title: the bar is the page's own ground, solid, so the page ends at the bar's foot
+    /// and none of its words can be read behind the title. At rest it is the page's colour and cannot be seen. iOS 26's
+    /// soft edge only blurs the words, and its hard edge only fades them: both left them readable under an iPad's
+    /// title, which sits below the tabs (Jai's picture, 2026-11-26). The diff's bars are solid too. A Mac window's
+    /// toolbar already is.
+    func titleClearOfThePage() -> some View {
+        #if os(iOS)
+            toolbarBackground(Color.groundPage, for: .navigationBar)
+                .toolbarBackgroundVisibility(.visible, for: .navigationBar)
+        #else
+            self
+        #endif
+    }
+
     /// The phone's compact gaps between list sections; the Mac's lists keep their own.
     func compactListSections() -> some View {
         #if os(iOS)

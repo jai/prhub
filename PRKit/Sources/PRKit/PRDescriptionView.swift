@@ -89,6 +89,7 @@ struct PRDescriptionView: View {
             .padding()
         }
         .background(Color.groundPage)
+        .titleClearOfThePage()
     }
 
     /// "Conversation" and its count, with the order it is in: a tap flips it, and the phone keeps the choice.
