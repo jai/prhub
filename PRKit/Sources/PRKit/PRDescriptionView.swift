@@ -120,13 +120,22 @@ struct PRDescriptionView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 PrStateIcon(state: detail.listState)
             }
-            Text(session.label)
-                .font(.appCaption)
-                .foregroundStyle(.secondary)
+            reference
             PRByline(detail: detail)
             tickets
             labels
         }
+    }
+
+    /// "acme/web#412 · opened 3 days ago": which PR, and when it was opened, in the words a comment's date is in
+    /// (Jai's feedback, 2026-11-26: the PR did not say when it was opened). VoiceOver reads the whole date after it.
+    private var reference: some View {
+        let opened = detail.opened()
+        return Text(verbatim: opened.map { "\(session.label) · \($0)" } ?? session.label)
+            .font(.appCaption)
+            .foregroundStyle(.secondary)
+            .accessibilityValue(Text(verbatim: detail.openedInFull ?? ""))
+            .accessibilityIdentifier("pr-reference")
     }
 
     /// The tickets the title and branch name, each a button a row high that opens it; the title above leaves their

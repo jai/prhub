@@ -504,7 +504,7 @@ purpose: What the PR is, who it is from and what it is for, at the top of its pa
 parts:
   title:   { holds: "the PR's title without the brackets of tickets shown below", font: appTitle3 semibold }
   state:   { holds: PrStateIcon, column: state }
-  ref:     { holds: "repo#N", font: appCaption quiet }
+  ref:     { holds: "'repo#N · opened 3 days ago': when it was opened, in the words a comment's date is in; the whole date is its VoiceOver value; 'repo#N' alone where the Worker has not said when", font: appCaption quiet }
   byline:  { holds: "PRByline: PRAvatar and who, and for a bot's PR the person, 'via' and a groundFill capsule with the agent's PRAvatar, its name and '· <login>'", font: appCaption }
   branch:  { holds: "'<branch> → <base>'", font: caption2 monospaced quiet, lines: 1, truncates: middle, starts: under the name }
   tickets: { holds: "ObjectReferenceLines of TicketLine, awaitsLinear false, each a row high (44 pt) reaching into the header's gaps", optional: true }
