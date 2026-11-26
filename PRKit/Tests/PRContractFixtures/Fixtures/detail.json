@@ -5,6 +5,7 @@
   "head": "504754b2bc3ce5db892dde980e4bc83b60ff7a68",
   "base": "main",
   "headBranch": "alex/retry",
+  "createdAt": "2026-11-05T02:00:00Z",
   "author": {
     "__typename": "User",
     "login": "alex",

@@ -131,6 +131,8 @@ export interface Detail {
   head: string;
   base: string;
   headBranch: string;
+  /** When it was opened, draft or not. GitHub's `createdAt`; absent in a detail stored before it was read. */
+  createdAt: string;
   author: (Author & { __typename: string; name?: string | null }) | null;
   isAuthor: boolean;
   /**
@@ -308,6 +310,7 @@ interface Node extends Pick<PeopleNode, "peopleComments" | "committers"> {
   headRefOid: string;
   headRefName: string;
   baseRefName: string;
+  createdAt: string;
   updatedAt: string;
   additions: number;
   deletions: number;
@@ -390,7 +393,8 @@ const SEARCH_QUERY = `query($q: String!, $n: Int!, $after: String) {
 const AUTHOR = "author { login ... on Actor { avatarUrl(size: 80) } }";
 const COMMENT = `id ${AUTHOR} body createdAt`;
 const FIELDS = `fragment Fields on PullRequest {
-  id number title body state isDraft url headRefOid headRefName baseRefName updatedAt additions deletions changedFiles
+  id number title body state isDraft url headRefOid headRefName baseRefName createdAt updatedAt additions deletions
+  changedFiles
   reviewDecision mergeable mergeStateStatus
   author { __typename login avatarUrl(size: 80) ... on User { name } }
   repository { nameWithOwner }
@@ -1043,6 +1047,7 @@ export function pullRequest(
       head: node.headRefOid,
       base: node.baseRefName,
       headBranch: node.headRefName,
+      createdAt: node.createdAt,
       author: node.author,
       isAuthor: node.viewerDidAuthor,
       authorIsBot,
