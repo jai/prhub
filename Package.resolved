@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/jai/durable-networking",
       "state" : {
-        "revision" : "1874c12c5e3b12136935afe5f3aaf9e2afa1eb55",
-        "version" : "0.6.0"
+        "revision" : "8e678b5075465c86f4800dd799128009af0b33f0",
+        "version" : "0.12.0"
       }
     },
     {
