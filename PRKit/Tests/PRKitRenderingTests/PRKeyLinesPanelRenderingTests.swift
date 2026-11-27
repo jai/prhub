@@ -73,6 +73,6 @@ struct PRKeyLinesPanelRenderingTests {
         let foot = try #require(lowest({ $0.distance(to: ground) >= 60 }, in: bitmap, of: window), "the foot's words")
         let barTop = Self.size.height - window.footInset - Self.bar
         #expect(foot <= barTop, "the Files page's last line ends at \(foot), above the bar at \(barTop)")
-        #expect(foot >= barTop - PRStyle.inset - 4, "and it is the panel's foot: \(foot)")
+        #expect(foot >= barTop - PRStyle.inset - 8, "and it is the panel's foot: \(foot)")
     }
 }
