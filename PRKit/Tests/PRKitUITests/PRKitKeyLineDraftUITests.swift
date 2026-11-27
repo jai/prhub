@@ -4,10 +4,10 @@ import XCTest
 /// `src/checkout/CheckoutError.tsx` line 9. Its row in the panel and its note under the line each have Copy and Add to
 /// review; the press opens the line's comment box with the key line's words in it, the box's own Add to review keeps
 /// them as a pending comment, and the control is then ticked and adds no second. What is kept and where is
-/// `PRKeyLineDraftTests`'. One launch a test. Pictures stay in the test's result bundle.
+/// `PRKeyLineDraftTests`'; that the row's controls fit in the largest text is `PRKeyLineRowRenderingTests`'. One walk,
+/// one launch.
 @MainActor
 final class PRKitKeyLineDraftUITests: PRHubUITestCase {
-    private static let largest = "UICTContentSizeCategoryAccessibilityXXXL"
     private let line = "src/checkout/CheckoutError.tsx:RIGHT:9"
     private let why = "If retryPayment throws, retrying stays true and the button stays disabled."
 
@@ -22,7 +22,6 @@ final class PRKitKeyLineDraftUITests: PRHubUITestCase {
         XCTAssertTrue(rowAdd.exists && rowAdd.isHittable, "Add to review, on the key line's row")
         XCTAssertEqual(rowAdd.value as? String, "not added")
         XCTAssertTrue(app.buttons["key-line-copy-\(line)"].isHittable, "Copy, on the key line's row")
-        recordScreenshot("key-line-row")
 
         app.buttons["key-line-\(line)"].tap()
         let add = app.buttons["key-line-note-add"].firstMatch
@@ -30,7 +29,6 @@ final class PRKitKeyLineDraftUITests: PRHubUITestCase {
         app.waitForStill(add)
         XCTAssertTrue(app.buttons["key-line-note-copy"].firstMatch.exists, "Copy, on the note")
         XCTAssertEqual(add.value as? String, "not added")
-        recordScreenshot("key-line-note")
 
         add.tap()
         let send = app.buttons["inline-composer-send"]
@@ -39,14 +37,12 @@ final class PRKitKeyLineDraftUITests: PRHubUITestCase {
         XCTAssertEqual(field.value as? String, why, "with the key line's words in it, to be changed")
         XCTAssertEqual(send.label, "Add to review")
         XCTAssertEqual(add.value as? String, "not added", "nothing is kept yet")
-        recordScreenshot("key-line-box-prefilled")
 
         send.tap()
         // The tick is read from the review's pending comments: it says the comment is kept.
         XCTAssertTrue(waitFor { add.exists && add.value as? String == "added" }, "kept, and the note's control is ticked")
         XCTAssertTrue(app.staticTexts["Pending"].firstMatch.exists, "its card, marked Pending")
         XCTAssertEqual(add.label, "Add to review", "and reads the same")
-        recordScreenshot("key-line-added")
 
         // A second press shows the comment there is, and opens no second box.
         app.waitForStill(add)
@@ -55,59 +51,9 @@ final class PRKitKeyLineDraftUITests: PRHubUITestCase {
         XCTAssertEqual(add.value as? String, "added")
     }
 
-    func testTheRowsControlsFitInTheLargestText() {
-        openPanel(textSize: Self.largest)
-        let window = app.windows.firstMatch.frame
-        // In the largest text the PR at a glance fills the panel's first screens: down to the key line's own card,
-        // by the drag `PRKitKeyLinesPanelUITests` reads the list with, until its controls are clear of the tab bar.
-        let copy = app.buttons["key-line-copy-\(line)"]
-        let finger = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
-            .withOffset(CGVector(dx: app.buttons["key-lines-context-0"].frame.midX, dy: window.height * 0.6))
-        // The glance alone is thousands of points tall at this size. The finger goes down under the first chip, the
-        // one always in view: at this size the others are off the panel's right edge, and a drag begun there moved
-        // nothing (the bench's picture, 2026-11-26). Slow drags, which carry no fling: a flung list runs past the
-        // first key line's controls between two looks.
-        for _ in 0 ..< 40 where !(copy.exists && copy.isHittable && copy.frame.maxY <= bottom) {
-            finger.press(
-                forDuration: 0.05, thenDragTo: finger.withOffset(CGVector(dx: 0, dy: -400)), withVelocity: .slow,
-                thenHoldForDuration: 0.2
-            )
-        }
-        app.waitForStill(copy)
-        recordScreenshot("key-line-row-largest-reached")
-        for name in ["key-line-copy-\(line)", "key-line-add-\(line)", "key-line-explain-\(line)"] {
-            let control = app.buttons[name]
-            XCTAssertTrue(
-                control.exists && control.isHittable,
-                "\(name): exists \(control.exists), at \(control.exists ? control.frame : .null), tab bar from \(bottom)"
-            )
-            XCTAssertLessThanOrEqual(control.frame.maxX, window.maxX, "\(name) is on the card")
-            XCTAssertGreaterThanOrEqual(control.frame.width, 44, "\(name) is a finger's width")
-        }
-        XCTAssertFalse(
-            app.buttons["key-line-add-\(line)"].frame.intersects(app.buttons["key-line-reviewed-\(line)"].frame),
-            "clear of the tick"
-        )
-        recordScreenshot("key-line-row-largest")
-    }
-
-    /// Where the panel's own room ends: the tab bar's top on a phone, the window's foot where the tabs are at the top.
-    private var bottom: CGFloat {
-        let window = app.windows.firstMatch
-        guard window.horizontalSizeClass != .regular else {
-            return window.frame.maxY
-        }
-        let tabBar = app.tabBars.firstMatch
-        return tabBar.exists ? tabBar.frame.minY : window.frame.maxY
-    }
-
     /// The checkout sample's diff, its panel open on Key lines.
-    private func openPanel(textSize: String? = nil) {
-        app.launch(
-            ["-PRHubPaired", "-prhubAlertsDeclined", "YES"]
-                + (textSize.map { ["-UIPreferredContentSizeCategoryName", $0] } ?? []),
-            appearance: .light
-        )
+    private func openPanel() {
+        app.launch(["-PRHubPaired", "-prhubAlertsDeclined", "YES"], appearance: .light)
         app.openPR("Show a retry button when checkout fails")
         let review = app.buttons["pr-review-changes"]
         XCTAssertTrue(app.reveal(review), "Review changes, on the PR's page")

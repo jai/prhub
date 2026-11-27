@@ -97,6 +97,89 @@ struct PRKeyLineRowRenderingTests {
         let looksTicked = open.bytes != ticked.bytes
         #expect(looksTicked, "a ticked line looks ticked")
     }
+
+    /// The sample acme/web#412's first key line as the panel's list draws it, with Copy, Add to review and Explain.
+    private static func sampleRow(isAdded: Bool) -> PRKeyLineRow {
+        PRKeyLineRow(
+            item: PRKeyLines.Item(
+                path: "src/checkout/CheckoutError.tsx", line: 9, side: "RIGHT", kind: "risk",
+                why: "If retryPayment throws, retrying stays true and the button stays disabled."
+            ),
+            isSelected: false, isReviewed: false, show: {}, explain: {}, setReviewed: { _ in }, isAdded: isAdded,
+            addToReview: {}
+        )
+    }
+
+    /// The runs of columns with ink in them over `rows` of a card drawn in light, clear of the card's own edge; a run goes on over a gap
+    /// narrower than `Space.sm`, which the parts of one icon are and two controls never are.
+    private func inkRuns(in bitmap: Bitmap, rows: ClosedRange<Int>) -> [ClosedRange<Int>] {
+        var environment = EnvironmentValues()
+        environment.colorScheme = .light
+        let ground = Pixel(Color.groundCard.resolve(in: environment))
+        let edge = pixel(Space.xs)
+        let inked = (edge ..< bitmap.width - edge).filter { column in
+            rows.contains { bitmap[column, $0].distance(to: ground) >= 60 }
+        }
+        var runs: [ClosedRange<Int>] = []
+        for column in inked {
+            if let last = runs.last, column - last.upperBound < pixel(Space.sm) {
+                runs[runs.count - 1] = last.lowerBound ... column
+            } else {
+                runs.append(column ... column)
+            }
+        }
+        return runs
+    }
+
+    /// In the largest text the row's controls have a line of their own under the tick and the kind: beside them they
+    /// ran off the card. Drawn as wide as the card is in the phone's panel, which leaves a strip of the page to tap.
+    @Test func inTheLargestTextTheControlsAreOnTheCardUnderTheTickEachAFingerWide() throws {
+        let largest = DynamicTypeSize.accessibility5
+        let card = (402 * 0.86 - PRStyle.inset * 2).rounded(.down)
+        let renderer = ImageRenderer(
+            content: Self.sampleRow(isAdded: false).frame(width: card).environment(\.dynamicTypeSize, largest)
+                .environment(\.colorScheme, .light)
+        )
+        renderer.scale = Self.scale
+        let picture = try renderer.settledImage()
+        try Attachment.record(picture.png(), named: "key-line-row-largest.png")
+        let open = try Bitmap(picture)
+        let added = try render(Self.sampleRow(isAdded: true).environment(\.dynamicTypeSize, largest), width: card, in: .light)
+        #expect(open.width == added.width && open.height == added.height, "adding it to the review moves nothing")
+        guard open.width == added.width, open.height == added.height else { return }
+
+        // Add to review's icon is all that changes when the review has the comment: where the two pictures differ.
+        let rows = (0 ..< open.height).filter { row in
+            (0 ..< open.width).contains { open[$0, row].distance(to: added[$0, row]) >= 24 }
+        }
+        let columns = (0 ..< open.width).filter { column in
+            (0 ..< open.height).contains { open[column, $0].distance(to: added[column, $0]) >= 24 }
+        }
+        let top = try #require(rows.first, "Add to review looks added"), bottom = try #require(rows.last)
+        let left = try #require(columns.first), right = try #require(columns.last)
+
+        // Clear of the tick: under its line, where the tick is the row's first thing.
+        let tick = try render(
+            PRKeyLineCheck(isReviewed: false, toggle: {}, identifier: "tick").environment(\.dynamicTypeSize, largest),
+            width: nil, in: .light
+        )
+        #expect(top >= tick.height, "Add to review's icon starts \(top) px down, the tick's line is \(tick.height) px")
+
+        // On that line Copy, Add to review and Explain, and nothing else.
+        let runs = inkRuns(in: open, rows: top ... bottom)
+        #expect(runs.count == 3, "Copy, Add to review, Explain: \(runs)")
+        guard runs.count == 3 else { return }
+        #expect(runs[1].overlaps(left ... right), "Add to review is the middle one: \(runs), changed \(left) to \(right)")
+        // Each is a finger's width, its icon in the middle of it, and all of each is on the card. An icon's ink is
+        // not quite in the middle of its own box: a few points either way.
+        let middles = runs.map { CGFloat($0.lowerBound + $0.upperBound) / 2 / Self.scale }
+        let slack = Space.xs
+        for (before, after) in zip(middles, middles.dropFirst()) {
+            #expect(after - before >= PRStyle.rowHeight - slack, "a finger's width each: middles at \(middles) pt")
+        }
+        #expect(middles[0] - PRStyle.rowHeight / 2 >= -slack, "Copy is on the card: middles at \(middles) pt")
+        #expect(middles[2] + PRStyle.rowHeight / 2 <= card + slack, "Explain is on the card, \(card) pt wide: \(middles)")
+    }
 }
 
 /// The note's Reviewed button, drawn off screen ticked and not. Its words are the same either way and only its circle
