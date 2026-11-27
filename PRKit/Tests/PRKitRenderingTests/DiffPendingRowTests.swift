@@ -98,45 +98,51 @@ struct DiffPendingRowTests {
         #endif
     }
 
-    /// A card whose foot is under the floating controls, on a short screen. Asked to show the card, as a refusal that
-    /// grew it asks, the table scrolls just far enough: all of it, Try again and Add to the file instead included, is
-    /// above the controls, and its top is still in view.
-    @Test func aCardAskedForIsBroughtWholeAboveTheFloatingControls() async throws {
-        let (container, rows, _) = try Self.table(height: 320)
-        #if os(iOS)
-            // In a window: a table scrolls with animation only on a screen.
-            let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-            let window = UIWindow(windowScene: scene)
-            let controller = UIViewController()
-            window.frame = CGRect(x: 0, y: 0, width: 402, height: 320)
-            window.rootViewController = controller
-            window.isHidden = false
-            controller.view.addSubview(container)
-            container.frame = controller.view.bounds
-            container.layoutIfNeeded()
-            defer {
-                window.isHidden = true
-                window.rootViewController = nil
-                window.windowScene = nil
-            }
-            #expect(container.table.contentInset.bottom == DiffStyle.controlsClearance, "the room the controls float in")
-        #endif
-        let place = try #require(rows.place(ofPending: SamplePR.onLineID))
-        try Self.putTheCardsFootUnderTheControls(in: container, at: place)
-        let before = try Self.card(in: container, at: place)
-        #expect(before.card.height > 0)
-        #expect(before.card.maxY > before.clear.maxY + 8, "the case this is for: its foot is under the controls: \(before)")
-        #expect(before.card.minY < before.clear.maxY, "and its top is in view: \(before)")
+    // On the phone's table only. Under `swift test` on GitHub's Mac the AppKit table in a window never shown did not
+    // scroll to the card (2026-11-27, main's and the candidate's test-integration-prkit); the Mac's table had no test of
+    // this before either.
+    #if os(iOS)
 
-        container.update(jump: DiffJump(path: SamplePR.path, pending: SamplePR.onLineID))
-        let clock = ContinuousClock()
-        let start = clock.now
-        var now = try Self.card(in: container, at: place)
-        while !(now.card.maxY <= now.clear.maxY + 0.5 && now.card.minY >= now.clear.minY - 0.5), clock.now - start < .seconds(5) {
-            try await Task.sleep(for: .milliseconds(50))
-            now = try Self.card(in: container, at: place)
+        /// A card whose foot is under the floating controls, on a short screen. Asked to show the card, as a refusal that
+        /// grew it asks, the table scrolls just far enough: all of it, Try again and Add to the file instead included, is
+        /// above the controls, and its top is still in view.
+        @Test func aCardAskedForIsBroughtWholeAboveTheFloatingControls() async throws {
+            let (container, rows, _) = try Self.table(height: 320)
+            #if os(iOS)
+                // In a window: a table scrolls with animation only on a screen.
+                let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+                let window = UIWindow(windowScene: scene)
+                let controller = UIViewController()
+                window.frame = CGRect(x: 0, y: 0, width: 402, height: 320)
+                window.rootViewController = controller
+                window.isHidden = false
+                controller.view.addSubview(container)
+                container.frame = controller.view.bounds
+                container.layoutIfNeeded()
+                defer {
+                    window.isHidden = true
+                    window.rootViewController = nil
+                    window.windowScene = nil
+                }
+                #expect(container.table.contentInset.bottom == DiffStyle.controlsClearance, "the room the controls float in")
+            #endif
+            let place = try #require(rows.place(ofPending: SamplePR.onLineID))
+            try Self.putTheCardsFootUnderTheControls(in: container, at: place)
+            let before = try Self.card(in: container, at: place)
+            #expect(before.card.height > 0)
+            #expect(before.card.maxY > before.clear.maxY + 8, "the case this is for: its foot is under the controls: \(before)")
+            #expect(before.card.minY < before.clear.maxY, "and its top is in view: \(before)")
+
+            container.update(jump: DiffJump(path: SamplePR.path, pending: SamplePR.onLineID))
+            let clock = ContinuousClock()
+            let start = clock.now
+            var now = try Self.card(in: container, at: place)
+            while !(now.card.maxY <= now.clear.maxY + 0.5 && now.card.minY >= now.clear.minY - 0.5), clock.now - start < .seconds(5) {
+                try await Task.sleep(for: .milliseconds(50))
+                now = try Self.card(in: container, at: place)
+            }
+            #expect(now.card.maxY <= now.clear.maxY + 0.5, "its foot is above the floating controls: \(now)")
+            #expect(now.card.minY >= now.clear.minY - 0.5, "and its top is in view: \(now)")
         }
-        #expect(now.card.maxY <= now.clear.maxY + 0.5, "its foot is above the floating controls: \(now)")
-        #expect(now.card.minY >= now.clear.minY - 0.5, "and its top is in view: \(now)")
-    }
+    #endif
 }

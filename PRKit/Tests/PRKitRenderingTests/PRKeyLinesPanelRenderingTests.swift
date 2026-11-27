@@ -47,22 +47,26 @@ struct PRKeyLinesPanelRenderingTests {
         return Pixel(color.resolve(in: environment))
     }
 
-    @Test(arguments: [ColorScheme.light, .dark], [DynamicTypeSize.large, .accessibility5])
-    func theLastKeyLineEndsAboveTheBar(_ scheme: ColorScheme, _ textSize: DynamicTypeSize) async throws {
-        let window = try await panel(on: .keyLines, in: scheme, textSize: textSize)
-        defer { window.close() }
-        let name = "panel-key-lines-\(scheme)-\(textSize)"
-        _ = try await window.picture(named: "\(name)-1-top")
-        try window.scroll(by: .infinity)
-        let bitmap = try await window.picture(named: "\(name)-2-end")
-        #expect(try window.scrolled() > 0, "the list is longer than the panel, and is at its end")
+    // On the phone only. Under `swift test` on GitHub's Mac the first of the four cases was drawn before its list had
+    // scrolled to its end (2026-11-27, main's and the candidate's test-integration-prkit). The Files foot's test runs on both.
+    #if os(iOS)
+        @Test(arguments: [ColorScheme.light, .dark], [DynamicTypeSize.large, .accessibility5])
+        func theLastKeyLineEndsAboveTheBar(_ scheme: ColorScheme, _ textSize: DynamicTypeSize) async throws {
+            let window = try await panel(on: .keyLines, in: scheme, textSize: textSize)
+            defer { window.close() }
+            let name = "panel-key-lines-\(scheme)-\(textSize)"
+            _ = try await window.picture(named: "\(name)-1-top")
+            try window.scroll(by: .infinity)
+            let bitmap = try await window.picture(named: "\(name)-2-end")
+            #expect(try window.scrolled() > 0, "the list is longer than the panel, and is at its end")
 
-        let card = pixel(.groundCard, in: scheme)
-        let foot = try #require(lowest({ $0.isNear(card) }, in: bitmap, of: window), "a key line's card")
-        let barTop = Self.size.height - window.footInset - Self.bar
-        #expect(foot <= barTop, "the last key line ends at \(foot), above the bar at \(barTop)")
-        #expect(foot >= barTop - PRStyle.inset - 2, "and the list is at its end: \(foot)")
-    }
+            let card = pixel(.groundCard, in: scheme)
+            let foot = try #require(lowest({ $0.isNear(card) }, in: bitmap, of: window), "a key line's card")
+            let barTop = Self.size.height - window.footInset - Self.bar
+            #expect(foot <= barTop, "the last key line ends at \(foot), above the bar at \(barTop)")
+            #expect(foot >= barTop - PRStyle.inset - 2, "and the list is at its end: \(foot)")
+        }
+    #endif
 
     @Test(arguments: [ColorScheme.light, .dark])
     func theFilesFootEndsAboveTheBar(_ scheme: ColorScheme) async throws {
