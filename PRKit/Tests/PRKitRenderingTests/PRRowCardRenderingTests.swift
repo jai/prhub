@@ -46,6 +46,34 @@ struct PRRowCardRenderingTests {
         Int((points * Self.scale).rounded())
     }
 
+    /// A row's ticket is a button of its own, a finger high (Jai's feedback, 2026-11-24, on a PR's Linear ticket): a
+    /// second ticket makes the row a row's height taller.
+    @Test func eachTicketOnARowIsARowHigh() throws {
+        let ticket = { (key: String) in
+            PRListTicket(
+                key: key, url: "https://linear.app/acme/issue/\(key)", title: "Throttle password reset emails",
+                state: "In Progress", stateType: "started", found: true
+            )
+        }
+        let row = { (more: [PRListTicket]) in
+            let status = PullRequestStatus(
+                repo: "acme/api", number: 88, url: "https://github.com/acme/api/pull/88",
+                title: "Rate-limit the password reset endpoint", state: .open, checks: .passing, merge: .clean,
+                review: .required
+            )
+            return PrListBlock(
+                item: PRListItem(
+                    ticket: ticket("API-88"), moreTickets: more,
+                    pullRequests: [PRListPullRequest(status: status, author: "hubot", found: true)]
+                ),
+                id: "88", sentAt: Self.now, now: Self.now, folds: FoldSet()
+            )
+        }
+        let one = try render(row([]), in: .light)
+        let two = try render(row([ticket("SEC-12")]), in: .light)
+        #expect(two.height - one.height >= pixel(PRStyle.rowHeight), "a ticket's line: \(two.height - one.height) px")
+    }
+
     #if os(macOS)
         /// The fault cards fix (Jai, 2026-11-24: "How do we make the rows stand out and look nice on dark mode here"):
         /// the Mac's window and a block on it are one colour, so nothing could be seen between two rows.
