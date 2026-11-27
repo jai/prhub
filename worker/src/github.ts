@@ -408,7 +408,6 @@ const FIELDS = `fragment Fields on PullRequest {
   requestEvents: timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 20) { nodes {
     ... on ReviewRequestedEvent { createdAt requestedReviewer { ... on User { login } } }
   } }
-  labels(first: 50) { nodes { name color } }
   overall: commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
   comments(first: 100) { nodes { ${COMMENT} } }
   reviews(last: 50) { nodes { id ${AUTHOR} state body submittedAt } }

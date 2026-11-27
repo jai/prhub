@@ -24,10 +24,16 @@ export interface PeopleFacts {
   comments: { login: string; body: string; createdAt: string }[];
 }
 
+/**
+ * A PR's labels, asked for once. GitHub refuses a whole query that selects one field twice with different arguments,
+ * so every PR selection takes its labels from here (`PEOPLE_FIELDS` carries it) and never writes its own.
+ */
+export const LABEL_FIELDS = `labels(first: 50) { nodes { name color } }`;
+
 /** What a PR query asks for so `.policy.yml`'s people can be counted (policy-people.ts). */
 export const PEOPLE_FIELDS = `baseRefName title author { login }
   files(first: 100) { nodes { path } }
-  labels(first: 20) { nodes { name } }
+  ${LABEL_FIELDS}
   latestReviews(first: 50) { nodes { author { login } state submittedAt } }
   peopleReviews: reviews(last: 100) { nodes { author { login } state submittedAt } }
   peopleComments: comments(last: 100) { nodes { author { login } body createdAt } }

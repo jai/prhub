@@ -26,6 +26,11 @@ export interface GraphqlRequest {
   fields: GraphqlField[];
   /** Every named fragment spread anywhere in the operation. */
   spreads: Set<string>;
+  /**
+   * Why a real GraphQL server refuses the whole query, or null: one selection asks for a field twice under one name
+   * with different arguments (`labels(first: 50)` and `labels(first: 20)`). GitHub answers that with errors and no data.
+   */
+  refusal: string | null;
 }
 
 /** A request as a fake sees it. */
@@ -63,6 +68,10 @@ export function fakeFetch(answer: Answer): { fetch: typeof fetch; asked: Asked[]
   const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const one = await askedOf(input, init);
     asked.push(one);
+    // As the real service: a query it would refuse gets its errors and no data, whatever the test's answer is.
+    if (one.graphql?.refusal) {
+      return Response.json({ errors: [{ message: one.graphql.refusal }] });
+    }
     return answer(one);
   }) as typeof fetch;
   return { fetch: fetcher, asked };
@@ -182,6 +191,7 @@ function parseOperation(query: string, variables: Record<string, unknown>): Grap
       const first = take();
       const [alias, name] = peek() === ":" ? (take(), [first, take()]) : [first, first];
       const args: Record<string, unknown> = {};
+      const argsFrom = at;
       if (peek() === "(") {
         take();
         while (peek() !== ")") {
@@ -191,6 +201,7 @@ function parseOperation(query: string, variables: Record<string, unknown>): Grap
         }
         take();
       }
+      const written = tokens.slice(argsFrom, at).join(" ");
       while (peek() === "@") {
         take();
         take();
@@ -199,20 +210,96 @@ function parseOperation(query: string, variables: Record<string, unknown>): Grap
         }
       }
       const inner = peek() === "{" ? selection() : { fields: [], spreads: [] };
-      fields.push({ alias, name, args, fields: inner.fields, spreads: inner.spreads });
+      const field = { alias, name, args, fields: inner.fields, spreads: inner.spreads };
+      WRITTEN_ARGS.set(field, written);
+      fields.push(field);
     }
     take(); // }
     return { fields, spreads: named };
   };
+  // A document is its one operation and the fragments it spreads, in either order.
+  const fragments = new Map<string, Selection>();
   let operation: string | null = null;
-  if (peek() === "query" || peek() === "mutation" || peek() === "subscription") {
-    take();
-    if (peek() !== "(" && peek() !== "{") {
-      operation = take();
+  let root: Selection = { fields: [], spreads: [] };
+  while (at < tokens.length) {
+    if (peek() === "fragment") {
+      take();
+      const name = take();
+      take(); // on
+      take(); // its type
+      fragments.set(name, selection());
+      continue;
     }
-    if (peek() === "(") {
-      skipBalanced("(", ")");
+    if (peek() === "query" || peek() === "mutation" || peek() === "subscription") {
+      take();
+      if (peek() !== "(" && peek() !== "{") {
+        operation = take();
+      }
+      if (peek() === "(") {
+        skipBalanced("(", ")");
+      }
+    }
+    root = selection();
+  }
+  return {
+    operation,
+    variables,
+    fields: root.fields,
+    spreads,
+    refusal: refusalOf(root, fragments),
+  };
+}
+
+interface Selection {
+  fields: GraphqlField[];
+  spreads: string[];
+}
+
+/** A field's arguments as the query wrote them, a `$variable` by its name: what a server compares. */
+const WRITTEN_ARGS = new WeakMap<GraphqlField, string>();
+
+/**
+ * GraphQL's rule that fields answering under one name can be merged, as far as the Worker's queries need it: in one
+ * selection, its fragments spread into it, every field under a name is the same field with the same arguments, and so
+ * on down. The first pair that is not, in GitHub's words; null when there is none.
+ */
+function refusalOf(selection: Selection, fragments: Map<string, Selection>): string | null {
+  const byAlias = new Map<string, GraphqlField[]>();
+  const seen = new Set<string>();
+  const gather = (one: Selection) => {
+    for (const field of one.fields) {
+      byAlias.set(field.alias, [...(byAlias.get(field.alias) ?? []), field]);
+    }
+    for (const name of one.spreads) {
+      const fragment = fragments.get(name);
+      if (fragment && !seen.has(name)) {
+        seen.add(name);
+        gather(fragment);
+      }
+    }
+  };
+  gather(selection);
+  for (const [alias, same] of byAlias) {
+    const first = same[0]!;
+    for (const other of same.slice(1)) {
+      if (other.name !== first.name) {
+        return `Field '${alias}' has a field conflict: ${first.name} or ${other.name}?`;
+      }
+      const [one, two] = [WRITTEN_ARGS.get(first) ?? "", WRITTEN_ARGS.get(other) ?? ""];
+      if (one !== two) {
+        return `Field '${alias}' has an argument conflict: ${one || "()"} or ${two || "()"}?`;
+      }
+    }
+    const below = refusalOf(
+      {
+        fields: same.flatMap((field) => field.fields),
+        spreads: same.flatMap((field) => field.spreads),
+      },
+      fragments,
+    );
+    if (below) {
+      return below;
     }
   }
-  return { operation, variables, fields: selection().fields, spreads };
+  return null;
 }
