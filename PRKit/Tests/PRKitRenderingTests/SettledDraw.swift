@@ -1,5 +1,7 @@
+import ImageIO
 import SwiftUI
 import Testing
+import UniformTypeIdentifiers
 
 /// Drawing a view off screen until its picture has settled. Every test here that draws with `ImageRenderer` takes its
 /// picture through `ImageRenderer.settledImage()`.
@@ -79,5 +81,16 @@ extension ImageRenderer {
             }
         )
         return try #require(image)
+    }
+}
+
+extension CGImage {
+    /// The picture as a PNG, for `Attachment.record`, on the phone and the Mac alike.
+    func png() throws -> Data {
+        let data = NSMutableData()
+        let destination = try #require(CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, self, nil)
+        try #require(CGImageDestinationFinalize(destination), "the picture was written")
+        return data as Data
     }
 }

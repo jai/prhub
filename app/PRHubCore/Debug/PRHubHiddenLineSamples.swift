@@ -5,19 +5,13 @@
     /// `-PRHubHiddenLines`: For review starts with a PR whose diff leaves lines out, for "Show N hidden lines" and
     /// "Show whole file". All of it is made up here. `src/checkout/charge.ts` has two hunks, so lines are left out
     /// before the first (7), between the two (11) and after the second (11); `src/billing/money.ts` is renamed with
-    /// nothing changed, so its diff shows none of it; `src/checkout/rates.json` has one hunk in its middle. With
-    /// `-PRHubFileTooLarge` the read of `rates.json` fails as the Worker's does for a file over 1 MB, so a UI test can
-    /// show a read that failed.
+    /// nothing changed, so its diff shows none of it; `src/checkout/rates.json` has one hunk in its middle.
     extension PRSampleSet {
-        static func prHubHiddenLines(failsRates: Bool) -> PRSampleSet {
-            var samples = PRSampleSet(
+        static var prHubHiddenLines: PRSampleSet {
+            PRSampleSet(
                 samples: [PRHubHiddenLineSamples.sample] + prHub.samples, mergedReviewed: [], mergedMine: [],
                 answersOnPhone: true
             )
-            if failsRates {
-                samples.failsFileReads[PRHubHiddenLineSamples.ratesPath] = .tooLarge
-            }
-            return samples
         }
     }
 

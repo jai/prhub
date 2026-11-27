@@ -6,7 +6,7 @@ import Testing
 /// A sample PR answers for its files' texts from the phone, and each text agrees with its diff: every unchanged or
 /// added line the diff shows is that line of the text, so the lines the diff leaves out are numbered right beside it.
 struct PRHubSampleFilesTests {
-    private static let hidden = PRSampleSet.prHubHiddenLines(failsRates: false)
+    private static let hidden = PRSampleSet.prHubHiddenLines
 
     @Test(arguments: PRSampleSet.prHub.samples.map(\.row.id) + ["acme/web#431"])
     func everyFileWithLinesLeftOutHasATextThatAgreesWithItsDiff(id: String) throws {
@@ -30,7 +30,7 @@ struct PRHubSampleFilesTests {
     }
 
     /// `-PRHubHiddenLines`' PR: lines left out before, between and after the hunks of one file, a file renamed with
-    /// nothing changed, and one whose read `-PRHubFileTooLarge` fails.
+    /// nothing changed, and one with a hunk in its middle.
     @Test func theHiddenLinesSampleHasEveryKindOfGap() throws {
         let sample = try #require(Self.hidden.samples.first)
         #expect(sample.row.id == "acme/web#431" && sample.row.status?.list == "review")
@@ -49,9 +49,7 @@ struct PRHubSampleFilesTests {
         #expect(rows.files.map(\.showsWhole) == [false, false, false])
 
         let ref = PullRequestRef(repo: "acme/web", number: 431)
-        let failing = PRSampleSet.prHubHiddenLines(failsRates: true)
-        #expect(throws: PRFileProblem.tooLarge) { try failing.fileText("src/checkout/rates.json", for: ref) }
-        #expect(try failing.fileText("src/checkout/charge.ts", for: ref).count > 1000)
+        #expect(try Self.hidden.fileText("src/checkout/charge.ts", for: ref).count > 1000)
     }
 
     /// acme/web#412's `payments.ts` starts at line 10: nine lines over its hunk and five under it.

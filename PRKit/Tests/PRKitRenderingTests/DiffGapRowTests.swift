@@ -216,3 +216,83 @@ struct DiffGapRowTests {
         #endif
     }
 }
+
+/// A gap whose file's text could not be read, as its row is drawn in the phone's table and the Mac's
+/// (`DiffGapFailure`): why, in the bad tone, over a "Try again" button. That a failed read is this row is
+/// `DiffGapRowTests`'; what a failure's words are and that a second read clears it are `PRHiddenLinesTests`'.
+@MainActor
+struct DiffGapFailureTests {
+    private static let width: CGFloat = 370
+    private static let scale: CGFloat = 2
+    private static let words = "This file is too large to show."
+
+    /// `src/checkout/rates.json`'s first gap in the sample acme/web#431, its third file.
+    private static func gap(saying words: String) -> DiffRows.Gap {
+        DiffRows.Gap(
+            file: 2, ordinal: 0, id: DiffRows.GapID(path: "src/checkout/rates.json", first: 1), last: 4,
+            state: .failed(words)
+        )
+    }
+
+    private func render(_ view: some View, width: CGFloat? = Self.width, in scheme: ColorScheme) throws -> CGImage {
+        let renderer = ImageRenderer(
+            content: view.frame(width: width).tint(Color.accentColor).environment(\.colorScheme, scheme)
+        )
+        renderer.scale = Self.scale
+        return try renderer.settledImage()
+    }
+
+    private func row(_ words: String, in scheme: ColorScheme) throws -> CGImage {
+        try render(DiffGapFailure(gap: Self.gap(saying: words), words: words) {}, in: scheme)
+    }
+
+    /// Whether `part` is drawn in `whole` with its top left corner at `column`, `row`.
+    private func isDrawn(_ part: Bitmap, in whole: Bitmap, column: Int, row: Int) -> Bool {
+        guard column >= 0, row >= 0, column + part.width <= whole.width, row + part.height <= whole.height else {
+            return false
+        }
+        for down in 0 ..< part.height {
+            for across in 0 ..< part.width where !part[across, down].isNear(whole[column + across, row + down]) {
+                return false
+            }
+        }
+        return true
+    }
+
+    @Test(arguments: [ColorScheme.light, .dark])
+    func theRowIsWhyOverATryAgainButton(_ scheme: ColorScheme) throws {
+        let gap = Self.gap(saying: Self.words)
+        #expect(DiffRows.Gap.retryTitle == "Try again")
+        #expect(gap.identifier("retry") == "diff-gap-retry-2-0" && gap.identifier() == "diff-gap-2-0")
+
+        let image = try row(Self.words, in: scheme)
+        try Attachment.record(image.png(), named: "diff-gap-failed-\(scheme).png")
+        let drawn = try Bitmap(image)
+
+        // The button as any secondary button with these words is drawn, on the card's ground: found whole in the
+        // row, at the card's leading inset and over its foot's.
+        let button = try Bitmap(render(
+            Button("Try again") {}.buttonStyle(PRButtonStyle(.secondary)).background(Color.groundCard), width: nil,
+            in: scheme
+        ))
+        let inset = Int(PRStyle.inset * Self.scale)
+        let top = drawn.height - inset - button.height
+        let found = (-2 ... 2).contains { isDrawn(button, in: drawn, column: inset, row: top + $0) }
+        #expect(found, "a Try again button \(button.width) by \(button.height) px, \(inset) px in and up from the foot")
+
+        // Its words take their room over the button: said in more lines, the row is taller.
+        let long = try Bitmap(row(Array(repeating: Self.words, count: 6).joined(separator: " "), in: scheme))
+        #expect(long.height > drawn.height, "\(long.height) px for six times the words, \(drawn.height) px for them once")
+        #if os(iOS)
+            // In the app's own test host, where the tones are its colour sets: the words are in the bad tone.
+            var environment = EnvironmentValues()
+            environment.colorScheme = scheme
+            let red = Pixel(Color.toneBad.resolve(in: environment))
+            let rows = (0 ..< drawn.height).filter { row in
+                (0 ..< drawn.width).contains { drawn[$0, row].distance(to: red) <= 60 }
+            }
+            #expect(rows.count >= Int(4 * Self.scale), "why, in the bad tone: \(rows.count) rows of it")
+            #expect((rows.max() ?? drawn.height) < top, "over the button")
+        #endif
+    }
+}
