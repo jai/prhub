@@ -1,10 +1,13 @@
 import XCTest
 
-/// A PR's labels put on and taken off, over the sample PR acme/web#412, which comes with the label "sample" on a repo
-/// of eight made-up labels (`PRSampleSet.sampleLabels`). Labels, first in the header's row of chips, opens the repo's
-/// labels in a panel over the page; a tap on a row puts its label on the PR or takes it off, and the page's chips
-/// follow. What is sent and what a refusal does is `PRLabelsTests`'. One launch a test. Pictures stay in the test's
-/// result bundle.
+/// A PR's labels put on and taken off on a real screen, over the sample PR acme/web#412, which comes with the label
+/// "sample" on a repo of eight made-up labels (`PRSampleSet.sampleLabels`). Labels, first in the header's row of chips,
+/// opens the repo's labels in a panel over the page; a tap on a row puts its label on the PR or takes it off, and the
+/// page's chips follow. One launch.
+///
+/// What needs no running app is proven below this: the list drawn with the repo's labels and the PR's ticked, and
+/// the line that says so where they can't be changed, in light and dark, with their pictures
+/// (`PRLabelsPanelRenderingTests`); what is ticked, what is sent and what a refusal does (`PRLabelsTests`).
 @MainActor
 final class PRKitLabelsUITests: PRHubUITestCase {
     private let checkout = "Show a retry button when checkout fails"
@@ -14,50 +17,35 @@ final class PRKitLabelsUITests: PRHubUITestCase {
         XCUIDevice.shared.orientation = .portrait
     }
 
-    func testTheListShowsTheReposLabelsWithThePRsTicked() {
-        openTheList()
-        XCTAssertTrue(element("pr-labels-list").exists, "the panel")
-        XCTAssertEqual(row("sample").label, "sample, on", "the label the PR came with is ticked")
-        XCTAssertEqual(row("bug").label, "bug, off")
-        XCTAssertEqual(row("needs-design").label, "needs-design, off")
-        XCTAssertTrue(element("pr-labels-filter").exists, "the field that narrows the list")
-        XCTAssertFalse(element("pr-labels-read-only").exists, "these can be changed")
-        recordScreenshot("labels-list")
-    }
+    func testALabelIsPutOnAndTakenOffAndItsChipFollowsOnThePage() {
+        app.launch(["-PRHubPaired", "-prhubAlertsDeclined", "YES"], appearance: .light)
+        app.openPR(checkout)
+        let edit = app.buttons["pr-labels-edit"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 10), "Labels, in the PR's header")
+        XCTAssertTrue(chip("sample").exists, "the PR's own label, as a chip")
+        XCTAssertFalse(chip("bug").exists)
 
-    func testALabelIsPutOnAndItsChipShowsOnThePage() {
+        // On: ticked at once in the panel, and a chip on the page once it is closed.
         openTheList()
         let bug = row("bug")
+        XCTAssertEqual(bug.label, "bug, off")
+        XCTAssertEqual(row("sample").label, "sample, on", "the label the PR came with is ticked")
         bug.tap()
         XCTAssertTrue(waitFor { bug.label == "bug, on" }, "ticked at once: \(bug.label)")
         XCTAssertEqual(row("sample").label, "sample, on", "the others stay as they were")
         closeTheList()
         XCTAssertTrue(chip("bug").waitForExistence(timeout: 5), "its chip, on the PR's page")
         XCTAssertTrue(chip("sample").exists, "beside the one the PR came with")
-        XCTAssertEqual(app.buttons["pr-labels-edit"].label, "Labels", "the way in reads the same")
-        recordScreenshot("labels-added")
-    }
+        XCTAssertEqual(edit.label, "Labels", "the way in reads the same")
 
-    func testALabelIsTakenOffAndItsChipGoes() {
+        // Off: its tick goes at once, and its chip leaves the page.
         openTheList()
-        let sample = row("sample")
-        sample.tap()
-        XCTAssertTrue(waitFor { sample.label == "sample, off" }, "its tick goes at once: \(sample.label)")
+        XCTAssertEqual(bug.label, "bug, on", "as it was left")
+        bug.tap()
+        XCTAssertTrue(waitFor { bug.label == "bug, off" }, "its tick goes at once: \(bug.label)")
         closeTheList()
-        XCTAssertTrue(waitFor { !self.chip("sample").exists }, "its chip leaves the page")
-        XCTAssertTrue(app.buttons["pr-labels-edit"].exists, "the way in stays on a PR with no labels")
-        recordScreenshot("labels-removed")
-    }
-
-    func testLabelsThatCanNotBeChangedAreReadAndSaySo() {
-        openTheList(["-PRHubLabelsReadOnly"])
-        let note = element("pr-labels-read-only")
-        XCTAssertTrue(note.exists, "why a tap does nothing")
-        XCTAssertEqual(note.label, "You can't change labels on this repo.")
-        XCTAssertEqual(row("bug").label, "bug, off")
-        row("bug").tap()
-        XCTAssertFalse(waitFor(timeout: 1) { self.row("bug").label == "bug, on" }, "a tap changes nothing")
-        recordScreenshot("labels-read-only")
+        XCTAssertTrue(waitFor { !self.chip("bug").exists }, "its chip leaves the page")
+        XCTAssertTrue(chip("sample").exists, "the PR's own label stays")
     }
 
     // MARK: - Steps
@@ -76,15 +64,14 @@ final class PRKitLabelsUITests: PRHubUITestCase {
         app.staticTexts["pr-label-chip-\(name)"].firstMatch
     }
 
-    /// The sample PR's page, then Labels: the panel with the repo's labels read.
-    private func openTheList(_ arguments: [String] = []) {
-        app.launch(["-PRHubPaired", "-prhubAlertsDeclined", "YES"] + arguments, appearance: .light)
-        app.openPR(checkout)
+    /// Labels, on the PR's page: the panel with the repo's labels read.
+    private func openTheList() {
         let edit = app.buttons["pr-labels-edit"]
-        XCTAssertTrue(edit.waitForExistence(timeout: 10), "Labels, in the PR's header")
-        XCTAssertTrue(chip("sample").exists, "the PR's own label, as a chip")
+        XCTAssertTrue(waitFor { edit.exists && edit.isHittable }, "Labels, in the PR's header")
+        app.waitForStill(edit)
         edit.tap()
         XCTAssertTrue(row("bug").waitForExistence(timeout: 5), "the repo's labels")
+        XCTAssertTrue(waitFor { self.row("bug").isHittable }, "the panel is over the page")
         app.waitForStill(row("bug"))
     }
 

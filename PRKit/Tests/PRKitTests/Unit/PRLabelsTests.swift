@@ -288,6 +288,21 @@ struct PRLabelsTests {
         #expect(labels.labels.contains { $0.name == "sample" }, "the label the sample PRs come with")
     }
 
+    /// The panel's rows: the repo's labels, with a tick on each the PR has. Where they can't be changed they are read
+    /// the same, and a press on one changes nothing.
+    @Test(arguments: [true, false])
+    func aSamplesListTicksThePRsOwnLabelsWhetherOrNotTheyCanBeChanged(canEdit: Bool) async throws {
+        let model = sampleModel(canEdit: canEdit)
+        let session = try model.session(for: #require(model.rows.first))
+        await session.loadLabels()
+        #expect(session.labelEditing.load == .ready(PRRepoLabels(labels: PRSampleSet.sampleLabels, canEdit: canEdit)))
+        #expect(PRSampleSet.sampleLabels.filter { session.hasLabel($0.name) }.map(\.name) == ["sample"])
+        #expect(session.canEditLabels == canEdit && session.offersLabelEditing)
+        if !canEdit {
+            #expect(session.toggleLabel(bug) == nil && !session.hasLabel("bug"), "a press changes nothing")
+        }
+    }
+
     @Test func aSampleKeepsALabelPutOnAndDropsOneTakenOff() async throws {
         let model = sampleModel()
         let added = try #require(try await model.write(.labelAdd(name: "needs-design"), to: ref).posted)
