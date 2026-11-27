@@ -24,6 +24,7 @@ final class PRKitTicketLinkUITests: PRHubUITestCase {
         XCTAssertTrue(ticket.exists, "the ticket is a button")
         XCTAssertTrue(ticket.label.contains("WEB-31"), ticket.label)
         XCTAssertTrue(app.isClearOfBars(ticket), "on the page's first screen")
+        let pageTicket = ticket.frame
         ticket.tap()
         assertTheTicketIsOpenOverPRHub()
         closeTheBrowser()
@@ -36,7 +37,6 @@ final class PRKitTicketLinkUITests: PRHubUITestCase {
         XCTAssertTrue(app.staticTexts[checkout].waitForExistence(timeout: 10))
         // Beside the PR, the row's ticket is the one in the list's column, before the page's.
         let named = app.buttons.matching(NSPredicate(format: "label CONTAINS 'WEB-31'"))
-        let pageTicket = ticket.frame
         let inList = app.isWide ? named.allElementsBoundByIndex.first { $0.frame.maxX <= pageTicket.minX } : nil
         let rowTicket = inList ?? named.firstMatch
         for _ in 0 ..< 10 where !app.isClearOfBars(rowTicket) {
