@@ -200,14 +200,14 @@ public enum PRKitEvent: Equatable, Sendable {
     /// A request to the Worker failed: what it was for, and its status or why there was none. Each area's kind of
     /// failure at most once a minute (`PRViewerClient.reporting`).
     case requestFailed(PRRequestArea, PRRequestFailure)
-    /// A pull to refresh of the PR list began, with how many rows the list had (issue #55).
-    case listRefreshStarted(rows: Int)
+    /// A pull to refresh began, on the PR list with how many rows it had, or on a PR's page (issue #55).
+    case listRefreshStarted(rows: Int, screen: PRRefreshScreen)
     /// That refresh ended: how, how long it took, and the rows before and after.
     case listRefreshFinished(PRListRefreshFinish)
     /// Two seconds after a refresh ended the list was not back at rest: its geometry and state then.
     case listRefreshStuck(PRListRefreshStuck)
     /// The app left the foreground while a refresh ran, this long after it began.
-    case listRefreshBackgrounded(milliseconds: Int)
+    case listRefreshBackgrounded(milliseconds: Int, screen: PRRefreshScreen)
     /// A write of the user's (a review, a comment, a merge, an edit…): what it does, and whether GitHub took it, it
     /// is saved on the phone and still going, or why it failed. A refusal after its screen has gone is `writeRefused`.
     case wrote(PRWriteKind, PRActionOutcome)

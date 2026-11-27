@@ -73,14 +73,14 @@ struct PRPullToRefreshTests {
     @Test func aPullAtTheSameCommitKeepsItsKeyLines() async throws {
         let session = try session()
         worker.serve(detail(head: "old", title: "Retitled"))
-        await session.pullToRefresh()
+        #expect(await session.pullToRefresh() == .ok)
         #expect(session.title == "Retitled" && session.heldKeyLines != nil)
     }
 
     @Test func aFailedPullLeavesThePRUpAndSaysWhy() async throws {
         let session = try session()
         worker.serve(nil)
-        await session.pullToRefresh()
+        #expect(await session.pullToRefresh() == .error, "what the pull's watch records")
         #expect(session.title == "Before")
         #expect(session.model.network.isOnline)
         guard case let .failed(words) = session.notice else {

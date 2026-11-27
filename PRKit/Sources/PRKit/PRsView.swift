@@ -271,7 +271,7 @@ struct PRsList: View {
             refreshWatch.geometry = rest
         }
         .onScrollPhaseChange { _, phase in
-            refreshWatch.isInteracting = phase == .interacting || phase == .tracking
+            refreshWatch.scrolled(to: PRRefreshScrollState(phase))
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             refreshWatch.scene = phase
@@ -297,13 +297,7 @@ struct PRsList: View {
         if showsMergedHere {
             await model.loadMerged(on: page)
         }
-        let outcome: PRListRefreshOutcome = if Task.isCancelled {
-            .cancelled
-        } else if synced == .failed {
-            model.network.isOnline ? .error : .offline
-        } else {
-            .ok
-        }
+        let outcome = PRListRefreshOutcome(synced, isOnline: model.network.isOnline)
         await PullHold.wait(since: start) { [refreshWatch] in refreshWatch.isInteracting }
         model.onEvent(refreshWatch.ended(outcome, rowsBefore: rowsBefore, rowsAfter: model.rows.count))
         Task { @MainActor [refreshWatch, model] in

@@ -12,14 +12,15 @@ struct AnalyticsEventTests {
         .pullRequestOpened(.push, .hit, timeToContentMs: 180, networkMs: 0, decodeMs: 40),
         .pullRequestsSynced(.pull, .changed), .pullRequestWriteRefused, .pushPrefetch(.landed, milliseconds: 412),
         .requestFailed(.feedback, .status(404)), .updateOffered(.internal, build: 235), .updateAnswered(.later),
-        .listRefreshStarted(rows: 5), .listRefreshFinished(PRListRefreshFinish(
-            outcome: .ok, milliseconds: 840, rowsBefore: 5, rowsAfter: 6, source: .network
+        .listRefreshStarted(rows: 5, screen: .list), .listRefreshFinished(PRListRefreshFinish(
+            outcome: .ok, milliseconds: 840, rowsBefore: 5, rowsAfter: 6, source: .network,
+            scroll: PRRefreshEndScroll(state: .gliding, offsetY: -124, insetTop: 62, gap: 62, millisecondsSinceLift: 300)
         )),
         .listRefreshStuck(PRListRefreshStuck(
             gap: 62, offsetY: -124, insetTop: 62, restingInsetTop: 62, isRefreshing: false, isLoading: true,
             isInteracting: false, scene: .active
         )),
-        .listRefreshBackgrounded(milliseconds: 1200),
+        .listRefreshBackgrounded(milliseconds: 1200, screen: .pullRequest),
         .feedbackSent(FeedbackSend(kind: .new, images: 1, kilobytes: 412, milliseconds: 1840)),
         .feedbackSendFailed(FeedbackSend(kind: .reply, images: 0, kilobytes: 1, milliseconds: 15000), .timeout),
         .pullRequestWrote(.merge, .failed(.refused)),
@@ -118,6 +119,7 @@ struct AnalyticsEventTests {
                 + TestFlightGroup.allCases.map(\.rawValue) + UpdateAnswer.allCases.map(\.rawValue)
                 + PRListRefreshOutcome.allCases.map(\.rawValue) + PRListRefreshSource.allCases.map(\.rawValue)
                 + PRListSceneState.allCases.map(\.rawValue) + FeedbackSend.Kind.allCases.map(\.rawValue)
+                + PRRefreshScreen.allCases.map(\.rawValue) + PRRefreshScrollState.allCases.map(\.rawValue)
                 + PRWriteKind.allCases.map(\.rawValue) + PRActionFailure.allCases.map(\.rawValue)
                 + ActionOutcomeWord.allCases.map(\.rawValue) + PRAIKind.allCases.map(\.rawValue)
                 + PRAskOrigin.allCases.map(\.rawValue) + PRAskReviewUse.allCases.map(\.rawValue)

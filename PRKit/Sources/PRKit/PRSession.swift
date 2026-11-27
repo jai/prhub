@@ -327,35 +327,6 @@ final class PRSession: Hashable {
         swapIn(fetched.content)
     }
 
-    /// A pull on the PR's page: the PR as GitHub has it now, over the copy on screen. At a new commit the older one's
-    /// key lines go, and the diff asks for the new ones when it next shows. A failure leaves the copy up and says why,
-    /// unless offline, where the app's banner already does.
-    func pullToRefresh() async {
-        guard let shown = content else {
-            return
-        }
-        do {
-            let fetched = try await model.fetch(ref, row: nil)
-            guard case .ready = state else {
-                return
-            }
-            if fetched.content.detail.head != shown.detail.head {
-                keyLinesByContext = [:]
-                keyLines = .working
-            }
-            swapIn(fetched.content)
-        } catch is CancellationError {
-            return
-        } catch let error as URLError where error.code == .cancelled {
-            return
-        } catch {
-            guard model.network.isOnline else {
-                return
-            }
-            withAnimation(AppMotion.fold) { notice = .failed("Didn't refresh. \(error.localizedDescription)") }
-        }
-    }
-
     /// A newer copy on screen, with this session's drafts, changed-lines choice and open key line.
     private func swapIn(_ fetched: PRContent) {
         let content = shown(fetched)
@@ -696,6 +667,40 @@ extension PRSession {
             }
         } catch {
             withAnimation(AppMotion.fold) { notice = .failed(error.localizedDescription) }
+        }
+    }
+}
+
+extension PRSession {
+    /// A pull on the PR's page: the PR as GitHub has it now, over the copy on screen. At a new commit the older one's
+    /// key lines go, and the diff asks for the new ones when it next shows. A failure leaves the copy up and says why,
+    /// unless offline, where the app's banner already does. How it ended is for the pull's watch.
+    @discardableResult
+    func pullToRefresh() async -> PRListRefreshOutcome {
+        guard let shown = content else {
+            return .cancelled
+        }
+        do {
+            let fetched = try await model.fetch(ref, row: nil)
+            guard case .ready = state else {
+                return .cancelled
+            }
+            if fetched.content.detail.head != shown.detail.head {
+                keyLinesByContext = [:]
+                keyLines = .working
+            }
+            swapIn(fetched.content)
+            return .ok
+        } catch is CancellationError {
+            return .cancelled
+        } catch let error as URLError where error.code == .cancelled {
+            return .cancelled
+        } catch {
+            guard model.network.isOnline else {
+                return .offline
+            }
+            withAnimation(AppMotion.fold) { notice = .failed("Didn't refresh. \(error.localizedDescription)") }
+            return .error
         }
     }
 }

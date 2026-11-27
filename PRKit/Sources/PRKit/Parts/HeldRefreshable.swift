@@ -26,31 +26,58 @@ enum PullHold {
 
 extension View {
     /// Pull to refresh held by `PullHold`, with its work in a task of its own too, so a pull SwiftUI cancels still
-    /// finishes. On the Mac, which has no pull, the toolbar's Refresh and ⌘R.
-    func heldRefreshable(_ action: @escaping @MainActor @Sendable () async -> Void) -> some View {
-        modifier(HeldRefreshable(action: action))
+    /// finishes. On the Mac, which has no pull, the toolbar's Refresh and ⌘R. A PR page's, watched as the PR list's
+    /// is (`PRListRefreshWatch`): `action` says how the refresh ended and `report` takes each event.
+    func heldRefreshable(
+        report: @escaping @MainActor @Sendable (PRKitEvent) -> Void,
+        action: @escaping @MainActor @Sendable () async -> PRListRefreshOutcome
+    ) -> some View {
+        modifier(HeldRefreshable(report: report, action: action))
     }
 }
 
 private struct HeldRefreshable: ViewModifier {
-    let action: @MainActor @Sendable () async -> Void
-    @State private var finger = Finger()
+    let report: @MainActor @Sendable (PRKitEvent) -> Void
+    let action: @MainActor @Sendable () async -> PRListRefreshOutcome
+    @State private var watch = PRListRefreshWatch(screen: .pullRequest)
+    @Environment(\.scenePhase) private var scenePhase
 
     func body(content: Content) -> some View {
         content
-            .onScrollPhaseChange { _, phase in
-                finger.isDown = phase == .interacting || phase == .tracking
+            .onScrollGeometryChange(for: PRListScrollRest.self) { geometry in
+                PRListScrollRest(offsetY: geometry.contentOffset.y, insetTop: geometry.contentInsets.top)
+            } action: { _, rest in
+                watch.geometry = rest
             }
-            .refreshableWithCommand { [action, finger] in
-                let start = ContinuousClock.now
-                await Task { @MainActor in await action() }.value
-                await PullHold.wait(since: start) { finger.isDown }
+            .onScrollPhaseChange { _, phase in
+                watch.scrolled(to: PRRefreshScrollState(phase))
+            }
+            .onChange(of: scenePhase, initial: true) { _, phase in
+                watch.scene = phase
+                if phase == .background, let event = watch.backgrounded() {
+                    report(event)
+                }
+            }
+            .refreshableWithCommand { [action, report, watch] in
+                await Self.pull(action, watch: watch, report: report)
             }
     }
-}
 
-/// A finger on the scroll view, read as the spinner waits.
-@MainActor
-private final class Finger {
-    var isDown = false
+    @MainActor
+    private static func pull(
+        _ action: @escaping @MainActor @Sendable () async -> PRListRefreshOutcome, watch: PRListRefreshWatch,
+        report: @escaping @MainActor @Sendable (PRKitEvent) -> Void
+    ) async {
+        let start = ContinuousClock.now
+        report(watch.began(rows: 0))
+        let outcome = await Task { @MainActor in await action() }.value
+        await PullHold.wait(since: start) { watch.isInteracting }
+        report(watch.ended(outcome, rowsBefore: 0, rowsAfter: 0))
+        Task { @MainActor in
+            try? await Task.sleep(for: PRListRefreshWatch.settle)
+            if let event = watch.stuck(isLoading: false) {
+                report(event)
+            }
+        }
+    }
 }

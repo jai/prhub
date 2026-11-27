@@ -37,10 +37,10 @@ public enum AnalyticsEvent: Equatable, Sendable {
     case pushPrefetch(PRPushPrefetch.Outcome, milliseconds: Int)
     case pullRequestsSynced(PRSyncTrigger, PRSyncOutcome)
     /// The PR list's pull to refresh (issue #55): counts, timings and the scroll view's state, never a PR.
-    case listRefreshStarted(rows: Int)
+    case listRefreshStarted(rows: Int, screen: PRRefreshScreen)
     case listRefreshFinished(PRListRefreshFinish)
     case listRefreshStuck(PRListRefreshStuck)
-    case listRefreshBackgrounded(milliseconds: Int)
+    case listRefreshBackgrounded(milliseconds: Int, screen: PRRefreshScreen)
     case pullRequestWriteRefused
     /// From PRKit (`PRKitEvent.requestFailed`): a request to the Worker failed, what it was for and how. Each area's
     /// kind of failure at most once a minute.
@@ -145,21 +145,28 @@ public enum AnalyticsEvent: Equatable, Sendable {
                 "time_to_content_ms": .number(timeToContent), "network_ms": .number(network),
                 "decode_ms": .number(decode),
             ]
-        case let .listRefreshStarted(rows): ["rows": .number(rows)]
+        case let .listRefreshStarted(rows, screen): ["rows": .number(rows), "screen": .word(screen.rawValue)]
         case let .listRefreshFinished(finish):
             [
+                "screen": .word(finish.screen.rawValue),
                 "outcome": .word(finish.outcome.rawValue), "duration_ms": .number(finish.milliseconds),
                 "rows_before": .number(finish.rowsBefore), "rows_after": .number(finish.rowsAfter),
                 "source": .word(finish.source.rawValue),
+                "end_scroll": .word(finish.scroll.state.rawValue), "end_offset_y": .number(finish.scroll.offsetY),
+                "end_inset_top": .number(finish.scroll.insetTop), "end_gap": .number(finish.scroll.gap),
+                // -1: no finger had lifted, or one was on the list.
+                "ms_since_lift": .number(finish.scroll.millisecondsSinceLift ?? -1),
             ]
         case let .listRefreshStuck(stuck):
             [
+                "screen": .word(stuck.screen.rawValue),
                 "gap": .number(stuck.gap), "content_offset_y": .number(stuck.offsetY),
                 "adjusted_inset_top": .number(stuck.insetTop), "resting_inset_top": .number(stuck.restingInsetTop),
                 "is_refreshing": .number(stuck.isRefreshing ? 1 : 0), "is_loading": .number(stuck.isLoading ? 1 : 0),
                 "is_interacting": .number(stuck.isInteracting ? 1 : 0), "scene": .word(stuck.scene.rawValue),
             ]
-        case let .listRefreshBackgrounded(milliseconds): ["ms": .number(milliseconds)]
+        case let .listRefreshBackgrounded(milliseconds, screen):
+            ["ms": .number(milliseconds), "screen": .word(screen.rawValue)]
         case let .pushPrefetch(outcome, milliseconds):
             ["outcome": .word(outcome.rawValue), "ms": .number(milliseconds)]
         case let .requestFailed(area, failure):
@@ -398,14 +405,14 @@ extension AnalyticsEvent {
             self = .askRefused
         case let .requestFailed(area, failure):
             self = .requestFailed(area, failure)
-        case let .listRefreshStarted(rows):
-            self = .listRefreshStarted(rows: rows)
+        case let .listRefreshStarted(rows, screen):
+            self = .listRefreshStarted(rows: rows, screen: screen)
         case let .listRefreshFinished(finish):
             self = .listRefreshFinished(finish)
         case let .listRefreshStuck(stuck):
             self = .listRefreshStuck(stuck)
-        case let .listRefreshBackgrounded(milliseconds):
-            self = .listRefreshBackgrounded(milliseconds: milliseconds)
+        case let .listRefreshBackgrounded(milliseconds, screen):
+            self = .listRefreshBackgrounded(milliseconds: milliseconds, screen: screen)
         case .wrote, .aiAnswered, .askSent, .askAnswerFailed, .askReviewUsed, .askLinearPosted:
             return nil
         }
