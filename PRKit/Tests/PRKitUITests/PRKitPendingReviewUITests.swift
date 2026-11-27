@@ -1,15 +1,18 @@
 import XCTest
 
 /// The review not submitted yet, over the sample PR that comes with one begun on github.com (acme/web#412: a comment on
-/// `src/checkout/payments.ts` line 13 and one on the whole of `src/checkout/CheckoutError.tsx`). Its comments show
-/// under their lines in the diff and, with no line there, in a list on the PR's page; each is changed and deleted on
-/// its card; a new one joins the same review; one GitHub refuses says why and can go on its file instead. What the
-/// list holds and what is sent is `PRPendingSyncTests`'. One launch a test. Pictures stay in the test's result bundle.
+/// `src/checkout/payments.ts` line 13 and one on the whole of `src/checkout/CheckoutError.tsx`), as far as it needs a
+/// real screen: a comment typed on a line, a card's words changed and a card deleted, each read back on the PR's
+/// page, and one GitHub refuses moved to its file. Two launches.
+///
+/// What needs no running app is proven below this: how a card, the page's list and the count line are drawn, in light
+/// and dark, with their pictures (`PRPendingCardRenderingTests`); the card under its line in the diff's table, and
+/// a refused one brought clear of the floating controls (`DiffPendingRowTests`, `PRPendingRevealTests`); what the list
+/// and the count hold (`PRPendingPageTests`, `PRPendingListTests`); what is sent (`PRPendingSyncTests`).
 @MainActor
 final class PRKitPendingReviewUITests: PRHubUITestCase {
     private let checkout = "Show a retry button when checkout fails"
     private let onLine = "Should a retry stop after a few tries?"
-    private let onFile = "This file could use a test for the retry."
     /// The diff's row for `payments.ts` line 12, the added comment line over the one the sample's comment is on: a
     /// new comment goes here. Its number is its line's place in the whole diff.
     private let lineToCommentOn = "diff-line-28"
@@ -19,117 +22,58 @@ final class PRKitPendingReviewUITests: PRHubUITestCase {
         XCUIDevice.shared.orientation = .portrait
     }
 
-    // MARK: - a. What GitHub's pending review shows
+    // MARK: - a. Changed, added and deleted with the keyboard, then counted on the PR's page
 
-    func testTheDiffShowsGitHubsPendingCommentUnderItsLine() {
-        diffShowsThePendingComment(.light)
-    }
-
-    func testTheDiffShowsGitHubsPendingCommentUnderItsLineInTheDark() {
-        diffShowsThePendingComment(.dark)
-    }
-
-    private func diffShowsThePendingComment(_ appearance: XCUIDevice.Appearance) {
-        launch(appearance: appearance)
+    func testAPendingCommentIsChangedOneIsAddedAndBothAreDeleted() {
+        launch()
         openDiffAtThePendingComment()
-        XCTAssertTrue(element("pending-comment").exists, "the comment's card")
+        XCTAssertTrue(element("pending-comment").exists, "the comment begun on github.com, under its line")
         XCTAssertTrue(app.staticTexts["Pending"].firstMatch.exists, "marked Pending")
-        XCTAssertTrue(words(onLine).exists, "with the words written on github.com")
-        XCTAssertTrue(app.buttons["pending-edit"].firstMatch.exists, "Edit")
-        XCTAssertTrue(app.buttons["pending-delete"].firstMatch.exists, "Delete")
-        XCTAssertFalse(words(onFile).exists, "the comment on a whole file has no line here")
-        recordScreenshot("pending-diff-\(appearance == .dark ? "dark" : "light")")
-    }
+        XCTAssertTrue(words(onLine).exists, "with its words")
 
-    func testTheReviewSaysBothPendingCommentsGoWithIt() {
-        launch()
-        app.openPR(checkout)
-        XCTAssertEqual(pendingCount(), "2 pending comments will go with your review", "GitHub's count")
-        let comment = app.buttons["pr-review-comment"]
-        XCTAssertTrue(app.reveal(comment))
-        comment.tap()
-        XCTAssertTrue(app.buttons["inline-composer-send"].waitForExistence(timeout: 5), "the review's box")
-        XCTAssertEqual(pendingCount(), "2 pending comments will go with your review", "still said with the box open")
-        recordScreenshot("pending-review-box")
-    }
-
-    // MARK: - b. Add
-
-    func testACommentOnALineIsAddedToTheOneReview() {
-        launch()
-        openDiffAtThePendingComment()
-        openLineBox()
-        let send = app.buttons["inline-composer-send"]
-        XCTAssertEqual(send.label, "Add to review")
-        XCTAssertFalse(app.buttons["Start review"].exists, "there is always one review to add to")
-        recordScreenshot("pending-add-box")
-        type("Sample kiwi comment", into: field)
-        XCTAssertEqual(send.label, "Add to review", "the same words with something typed")
-        send.tap()
-        XCTAssertTrue(words("Sample kiwi comment").waitForExistence(timeout: 5), "the new comment, under its line")
-        XCTAssertTrue(waitFor { self.app.buttons.matching(identifier: "pending-edit").count == 2 }, "a card of its own")
-        recordScreenshot("pending-added")
-
-        // The button reads the same with the review one comment longer.
-        openLineBox()
-        XCTAssertEqual(app.buttons["inline-composer-send"].label, "Add to review")
-        XCTAssertFalse(app.buttons["Start review"].exists)
-        app.buttons["Cancel"].firstMatch.tap()
-
-        backToThePR()
-        XCTAssertEqual(pendingCount(), "3 pending comments will go with your review")
-        recordScreenshot("pending-added-count")
-    }
-
-    // MARK: - c. Edit
-
-    func testAPendingCommentsWordsAreChangedOnItsCard() {
-        launch()
-        openDiffAtThePendingComment()
+        // Its words are changed in the card's own box.
         app.buttons["pending-edit"].firstMatch.tap()
         let save = app.buttons["inline-composer-send"]
         XCTAssertTrue(save.waitForExistence(timeout: 5), "the card's own box")
         XCTAssertEqual(save.label, "Save")
-        type(" kiwi ", into: field)
-        recordScreenshot("pending-edit-box")
+        type(" mango ", into: field)
         save.tap()
-        XCTAssertTrue(words("kiwi").waitForExistence(timeout: 5), "the card shows the new words")
-        XCTAssertTrue(waitFor { self.app.buttons["pending-edit"].firstMatch.exists }, "the box has closed")
+        XCTAssertTrue(words("mango").waitForExistence(timeout: 5), "the card shows the new words")
+        let edit = app.buttons["pending-edit"].firstMatch
+        XCTAssertTrue(waitFor { edit.exists && edit.isHittable }, "the box has closed")
         XCTAssertTrue(app.staticTexts["Pending"].firstMatch.exists, "still Pending")
-        recordScreenshot("pending-edited")
-    }
+        app.waitForStill(edit)
 
-    // MARK: - d. Delete
+        // A comment typed on the line over it joins the same review.
+        openLineBox()
+        let send = app.buttons["inline-composer-send"]
+        XCTAssertEqual(send.label, "Add to review")
+        XCTAssertFalse(app.buttons["Start review"].exists, "there is always one review to add to")
+        type("Sample kiwi comment", into: field)
+        XCTAssertEqual(send.label, "Add to review", "the same words with something typed")
+        send.tap()
+        XCTAssertTrue(words("Sample kiwi comment").waitForExistence(timeout: 5), "the new comment, under its line")
+        let cards = app.buttons.matching(identifier: "pending-edit")
+        XCTAssertTrue(waitFor { cards.count == 2 }, "a card of its own")
 
-    func testADeletedPendingCommentGoesAndTheCountDrops() {
-        launch()
-        openDiffAtThePendingComment()
-        app.buttons["pending-delete"].firstMatch.tap()
-        XCTAssertTrue(waitFor { !self.words(self.onLine).exists }, "the card goes")
-        XCTAssertFalse(app.buttons["pending-edit"].exists)
-        recordScreenshot("pending-deleted")
+        // Each card's Delete takes its comment away.
+        let delete = app.buttons["pending-delete"].firstMatch
+        XCTAssertTrue(waitFor { delete.exists && delete.isHittable }, "Delete, on the first card")
+        delete.tap()
+        XCTAssertTrue(waitFor { cards.count == 1 }, "one card goes")
+        XCTAssertTrue(waitFor { delete.exists && delete.isHittable }, "Delete, on the card that is left")
+        app.waitForStill(delete)
+        delete.tap()
+        XCTAssertTrue(waitFor { !self.app.buttons["pending-edit"].exists }, "and the other")
+        XCTAssertFalse(words("Sample kiwi comment").exists)
+        XCTAssertFalse(words("mango").exists)
+
+        // The PR's page counts what is left: the comment on the whole file.
         backToThePR()
         XCTAssertEqual(pendingCount(), "1 pending comment will go with your review")
-        recordScreenshot("pending-deleted-count")
     }
 
-    // MARK: - e. The PR's page
-
-    func testThePRsPageListsThePendingCommentWithNoLineInTheDiff() {
-        launch()
-        app.openPR(checkout)
-        let edit = app.buttons["pending-edit"].firstMatch
-        XCTAssertTrue(app.reveal(edit), "the list, under the review's buttons")
-        XCTAssertTrue(element("pr-pending-list").exists)
-        XCTAssertTrue(app.staticTexts["Pending comments · 1"].exists, "one: the other sits under its line in the diff")
-        XCTAssertTrue(words(onFile).exists, "the comment on the whole file")
-        XCTAssertTrue(app.staticTexts["src/checkout/CheckoutError.tsx"].exists, "with its file's path")
-        XCTAssertFalse(words(onLine).exists)
-        XCTAssertTrue(app.buttons["pending-delete"].firstMatch.exists)
-        recordScreenshot("pending-page-list")
-    }
-
-    // MARK: - f. A comment GitHub refuses
+    // MARK: - b. A comment GitHub refuses
 
     func testARefusedCommentSaysWhyAndCanGoOnItsFileInstead() {
         launch(["-PRHubPendingAddRefused"])
@@ -145,8 +89,9 @@ final class PRKitPendingReviewUITests: PRHubUITestCase {
         XCTAssertTrue(reason.exists, "GitHub's reason, on the card")
         XCTAssertTrue(reason.label.contains("may no longer be in the diff"), reason.label)
         XCTAssertTrue(words("Sample kiwi comment").exists, "the words are kept")
-        recordScreenshot("pending-refused")
 
+        XCTAssertTrue(waitFor { toFile.isHittable }, "the card's buttons are brought clear of the floating controls")
+        app.waitForStill(toFile)
         toFile.tap()
         XCTAssertTrue(waitFor { !self.app.buttons["pending-add-to-file"].exists }, "it leaves its line")
         XCTAssertFalse(app.staticTexts["pending-failure"].exists)
@@ -154,41 +99,14 @@ final class PRKitPendingReviewUITests: PRHubUITestCase {
         XCTAssertEqual(pendingCount(), "3 pending comments will go with your review")
         let moved = words("Line 12: Sample kiwi comment")
         XCTAssertTrue(app.reveal(moved), "it joins the page's list, saying which line it was written on")
+        XCTAssertTrue(element("pr-pending-list").exists)
         XCTAssertTrue(app.staticTexts["Pending comments · 2"].exists)
-        recordScreenshot("pending-refused-on-file")
-    }
-
-    /// The refusal grows the card downwards, GitHub's reason and two buttons: the diff brings it whole above the key
-    /// line stepper and the panel button that float over its foot.
-    func testARefusedCommentsButtonsAreClearOfTheFloatingControls() {
-        launch(["-PRHubPendingAddRefused"])
-        openDiffAtThePendingComment()
-        openLineBox()
-        type("Sample kiwi comment", into: field)
-        app.buttons["inline-composer-send"].tap()
-        let toFile = app.buttons["pending-add-to-file"].firstMatch
-        let retry = app.buttons["pending-retry"].firstMatch
-        XCTAssertTrue(toFile.waitForExistence(timeout: 5), "Add to the file instead")
-        let stepper = app.buttons["key-line-position"]
-        let panel = app.buttons["diff-files"]
-        XCTAssertTrue(stepper.waitForExistence(timeout: 5), "the floating controls are back once the box has gone")
-        let isClear = { (button: XCUIElement) in
-            button.isHittable && !button.frame.intersects(stepper.frame) && !button.frame.intersects(panel.frame)
-        }
-        XCTAssertTrue(waitFor { isClear(toFile) && isClear(retry) }, "the card is brought above the controls")
-        app.waitForStill(toFile)
-        XCTAssertTrue(toFile.isHittable && retry.isHittable, "both take a tap")
-        for button in [toFile, retry] {
-            XCTAssertFalse(button.frame.intersects(stepper.frame), "\(button.label) is clear of the stepper")
-            XCTAssertFalse(button.frame.intersects(panel.frame), "\(button.label) is clear of the panel button")
-        }
-        recordScreenshot("pending-refused-clear")
     }
 
     // MARK: - Steps
 
-    private func launch(_ arguments: [String] = [], appearance: XCUIDevice.Appearance = .light) {
-        app.launch(["-PRHubPaired", "-prhubAlertsDeclined", "YES"] + arguments, appearance: appearance)
+    private func launch(_ arguments: [String] = []) {
+        app.launch(["-PRHubPaired", "-prhubAlertsDeclined", "YES"] + arguments, appearance: .light)
     }
 
     private func element(_ identifier: String) -> XCUIElement {
@@ -236,9 +154,17 @@ final class PRKitPendingReviewUITests: PRHubUITestCase {
         app.waitForStill(edit)
     }
 
-    /// A tap on the line over the sample's comment opens the line's box.
+    /// A tap on the line over the sample's comment opens the line's box. A box that closed can leave the line just
+    /// over the top of what shows: a short drag down brings it back.
     private func openLineBox() {
         let line = app.cells[lineToCommentOn]
+        let table = diffTable
+        var drags = 0
+        while drags < 4, !(line.exists && line.isHittable) {
+            let from = table.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
+            from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: 0, dy: 120)))
+            drags += 1
+        }
         XCTAssertTrue(line.exists && line.isHittable, "the line to comment on")
         line.tap()
         XCTAssertTrue(app.buttons["inline-composer-send"].waitForExistence(timeout: 5), "the line's box")
