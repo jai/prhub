@@ -11,13 +11,13 @@ struct PRKeyLineRowRenderingTests {
     private static let width: CGFloat = 340
     private static let scale: CGFloat = 2
 
-    private static func row(_ line: Int, isReviewed: Bool = false) -> PRKeyLineRow {
+    private static func row(_ line: Int, isReviewed: Bool = false, explains: Bool = true) -> PRKeyLineRow {
         PRKeyLineRow(
             item: PRKeyLines.Item(
                 path: "src/checkout/a/long/way/down/the/tree/CheckoutErrorBoundary.tsx", line: line, side: "RIGHT",
                 kind: "risk", why: "If retryPayment throws, retrying stays true and the button stays disabled."
             ),
-            isSelected: false, isReviewed: isReviewed, show: {}, explain: {}, setReviewed: { _ in }
+            isSelected: false, isReviewed: isReviewed, show: {}, explain: explains ? {} : nil, setReviewed: { _ in }
         )
     }
 
@@ -86,6 +86,40 @@ struct PRKeyLineRowRenderingTests {
             #expect(bitmap[corner.0, corner.1].distance(to: ground) < 60, "a circle's box has clear corners: \(corner)")
         }
         #expect(bitmap[(left + right) / 2, (top + bottom) / 2].distance(to: ground) < 60, "and an open one is a ring")
+    }
+
+    /// The tick is first in the card, as a file's viewed mark is in Files, and Explain is at the far end, a finger's
+    /// width from it at least (Jai, 2026-11-25: "the checkbox could move left"). At the default text size and the
+    /// largest, where the controls have a line of their own.
+    @Test(arguments: [DynamicTypeSize.large, .accessibility5])
+    func theTickLeadsTheCardAndExplainIsAtItsFarEnd(_ textSize: DynamicTypeSize) throws {
+        let tick = try render(
+            PRKeyLineCheck(isReviewed: false, toggle: {}, identifier: "tick").background(Color.groundCard)
+                .environment(\.dynamicTypeSize, textSize),
+            width: nil, in: .dark
+        )
+        let card = try render(Self.row(9).environment(\.dynamicTypeSize, textSize), in: .dark)
+        // The ring's columns: where the tick, drawn alone, has ink across its middle.
+        let ring = (0 ..< tick.width).filter { tick[$0, tick.height / 2].distance(to: tick[0, 0]) >= 60 }
+        let alone = try (#require(ring.first, "the tick's ring"), #require(ring.last))
+        // The same columns have the ring in the card's heading, and nothing but the card's edge comes before it.
+        let ground = card[tick.width / 2, pixel(Space.xs)]
+        let leading = (pixel(Space.xs) ..< tick.width).filter { column in
+            (pixel(Radius.md) ..< tick.height).contains { card[column, $0].distance(to: ground) >= 60 }
+        }
+        let inCard = try (#require(leading.first, "ink where the card starts"), #require(leading.last))
+        #expect(abs(inCard.0 - alone.0) <= 2 && abs(inCard.1 - alone.1) <= 2, "the tick is first: \(inCard), \(alone)")
+
+        // Explain: the columns that change when the card has it.
+        let without = try render(Self.row(9, explains: false).environment(\.dynamicTypeSize, textSize), in: .dark)
+        #expect(card.width == without.width && card.height == without.height, "Explain takes no room of the words'")
+        guard card.width == without.width, card.height == without.height else { return }
+        let changed = (0 ..< card.width).filter { column in
+            (0 ..< card.height).contains { card[column, $0].distance(to: without[column, $0]) >= 24 }
+        }
+        let first = try #require(changed.first, "a card with Explain shows it")
+        #expect(first > card.width / 2, "Explain is at the far end: column \(first) of \(card.width)")
+        #expect(first - tick.width >= pixel(PRStyle.rowHeight), "and a finger's width from the tick: \(first)")
     }
 
     /// Ticking a line fades its words and moves nothing.
