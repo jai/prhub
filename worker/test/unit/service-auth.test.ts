@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { NO_AI } from "../../src/account-core.ts";
 import type { AccountApi } from "../../src/account-of.ts";
 import type { Env } from "../../src/env.ts";
-import { authenticateService } from "../../src/hosted.ts";
+import { authenticateService, publicHostedRoute } from "../../src/hosted.ts";
+import { APP, hostedWorld, ORIGIN } from "../support/hosted-world.ts";
 
 function fakeEnv(serviceToken?: string): Env {
   return {
@@ -80,5 +81,58 @@ describe("authenticateService", () => {
       expect(r.env.GITHUB_TOKEN).toBe("ghu_live");
       expect(r.env.CLAUDE_CODE_OAUTH_TOKEN).toBe("sub-tok");
     }
+  });
+});
+
+describe("publicHostedRoute /prs/states gating", () => {
+  it("returns 404 for /prs/states without X-PRHub-Service-Token or on non-POST methods", async () => {
+    const world = hostedWorld();
+    const unauth = await publicHostedRoute(
+      new Request(`${ORIGIN}/prs/states`, { method: "POST" }),
+      world.workerEnv,
+      world.services,
+      APP,
+      () => {},
+    );
+    expect(unauth?.status).toBe(404);
+
+    const wrongMethod = await publicHostedRoute(
+      new Request(`${ORIGIN}/prs/states`, {
+        method: "GET",
+        headers: { "X-PRHub-Service-Token": "right", "X-PRHub-User-Id": "1943284" },
+      }),
+      world.workerEnv,
+      world.services,
+      APP,
+      () => {},
+    );
+    expect(wrongMethod?.status).toBe(404);
+
+    const selfHostedOnly = await publicHostedRoute(
+      new Request(`${ORIGIN}/device/pair`, {
+        method: "POST",
+        headers: { "X-PRHub-Service-Token": "right", "X-PRHub-User-Id": "1943284" },
+      }),
+      world.workerEnv,
+      world.services,
+      APP,
+      () => {},
+    );
+    expect(selfHostedOnly?.status).toBe(404);
+  });
+
+  it("lets service-authenticated POST /prs/states pass through to serveHosted", () => {
+    const world = hostedWorld();
+    const res = publicHostedRoute(
+      new Request(`${ORIGIN}/prs/states`, {
+        method: "POST",
+        headers: { "X-PRHub-Service-Token": "right", "X-PRHub-User-Id": "1943284" },
+      }),
+      world.workerEnv,
+      world.services,
+      APP,
+      () => {},
+    );
+    expect(res).toBeNull();
   });
 });

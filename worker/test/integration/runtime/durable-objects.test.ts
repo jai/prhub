@@ -1,7 +1,10 @@
 import { env, exports } from "cloudflare:workers";
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { expect, test } from "vitest";
+import { NO_AI } from "../../../src/account-core.ts";
+import type { Env } from "../../../src/env.ts";
 import type { PendingSignIn } from "../../../src/hosted.ts";
+import worker from "../../../src/index.ts";
 import { LimitName, limitsOf, rateWindowOf } from "../../../src/limits.ts";
 import { question } from "../../support/ask-queue-values.ts";
 import { authorization } from "./values.ts";
@@ -98,4 +101,101 @@ test("a question queued in the real ask queue ends a held read's wait on its PR"
   await waited;
   expect((await queue.askNow(pr)).version).not.toBe(version);
   await runInDurableObject(queue, (_object, state) => state.storage.deleteAlarm());
+});
+
+test("hosted POST /prs/states answers service-authenticated callers and still 404s everyone else", async () => {
+  const indexNames: string[] = [];
+  const askedRefs: string[][] = [];
+  const hostedEnv: Env = {
+    ...(env as unknown as Env),
+    HOSTED: "on",
+    GITHUB_APP_CLIENT_ID: "client-id",
+    GITHUB_APP_CLIENT_SECRET: "client-secret",
+    TOKEN_ENCRYPTION_KEY: "test-key",
+    SERVICE_TOKEN: "svc-secret",
+    USER_ACCOUNTS: {
+      idFromName: (name: string) => name,
+      get: () => ({
+        accessToken: async () => ({
+          kind: "ok" as const,
+          userId: "1943284",
+          login: "jai",
+          token: "ghu_live",
+          ai: NO_AI,
+        }),
+      }),
+    } as unknown as Env["USER_ACCOUNTS"],
+    INSTALLATIONS: {} as Env["INSTALLATIONS"],
+    PR_INDEX: {
+      idFromName: (name: string) => {
+        indexNames.push(name);
+        return name;
+      },
+      get: () => ({
+        states: async (refs: string[]) => {
+          askedRefs.push(refs);
+          return {
+            answer: {
+              states: Object.fromEntries(refs.map((ref) => [ref, { state: "open" }])),
+              unanswered: [],
+            },
+            githubCalls: 0,
+          };
+        },
+      }),
+    } as unknown as Env["PR_INDEX"],
+  };
+  const ctx = {
+    waitUntil() {},
+    passThroughOnException() {},
+    props: {},
+  } as unknown as ExecutionContext;
+
+  const unauth = await worker.fetch(
+    new Request("https://prhub.test/prs/states", {
+      method: "POST",
+      body: JSON.stringify({ refs: ["acme/api#7"] }),
+    }),
+    hostedEnv,
+    ctx,
+  );
+  expect(unauth.status).toBe(404);
+
+  const badToken = await worker.fetch(
+    new Request("https://prhub.test/prs/states", {
+      method: "POST",
+      headers: { "X-PRHub-Service-Token": "wrong", "X-PRHub-User-Id": "1943284" },
+      body: JSON.stringify({ refs: ["acme/api#7"] }),
+    }),
+    hostedEnv,
+    ctx,
+  );
+  expect(badToken.status).toBe(401);
+
+  const selfHostedOnly = await worker.fetch(
+    new Request("https://prhub.test/device/pair", {
+      method: "POST",
+      headers: { "X-PRHub-Service-Token": "svc-secret", "X-PRHub-User-Id": "1943284" },
+    }),
+    hostedEnv,
+    ctx,
+  );
+  expect(selfHostedOnly.status).toBe(404);
+
+  const ok = await worker.fetch(
+    new Request("https://prhub.test/prs/states", {
+      method: "POST",
+      headers: { "X-PRHub-Service-Token": "svc-secret", "X-PRHub-User-Id": "1943284" },
+      body: JSON.stringify({ refs: ["acme/api#7"] }),
+    }),
+    hostedEnv,
+    ctx,
+  );
+  expect(ok.status).toBe(200);
+  expect(await ok.json()).toEqual({
+    states: { "acme/api#7": { state: "open" } },
+    unanswered: [],
+  });
+  expect(indexNames).toEqual(["user:1943284"]);
+  expect(askedRefs).toEqual([["acme/api#7"]]);
 });

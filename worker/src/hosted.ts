@@ -723,7 +723,9 @@ export function associationRoute(env: Env): Response {
 
 /**
  * Everything hosted mode answers before a session is needed, or null for a route that needs one. Self-hosted routes
- * that act with the Worker's own token (pairing, the webhook App's setup, the hub's states) are not served.
+ * that act with the Worker's own token (pairing, the webhook App's setup) are not served; `POST /prs/states` passes
+ * through only when delegated service auth (`X-PRHub-Service-Token`) is present, so normal hosted callers still get
+ * 404.
  */
 export function publicHostedRoute(
   request: Request,
@@ -788,13 +790,11 @@ function openRoute(
     return anthropicKeyRoute(request, env, services);
   }
   if (
-    [
-      "/device/pair",
-      "/github/setup",
-      "/github/callback",
-      "/github/app-credentials",
-      "/prs/states",
-    ].includes(pathname)
+    ["/device/pair", "/github/setup", "/github/callback", "/github/app-credentials"].includes(
+      pathname,
+    ) ||
+    (pathname === "/prs/states" &&
+      (method !== "POST" || !request.headers.has("X-PRHub-Service-Token")))
   ) {
     return Promise.resolve(new Response("not found\n", { status: 404 }));
   }
